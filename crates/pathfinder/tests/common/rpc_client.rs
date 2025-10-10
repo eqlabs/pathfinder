@@ -9,7 +9,8 @@ use tokio::time::sleep;
 use crate::common::pathfinder_instance::PathfinderInstance;
 
 /// Spawns a task which waits until the node at `rpc_port` has reached at least
-/// `height`. Polls every `poll_interval`.
+/// `height`. Polls every `poll_interval`. Returns a handle to the spawned task
+/// that runs the rpc client.
 pub fn wait_for_height(
     instance: &PathfinderInstance,
     height: u64,

@@ -1,11 +1,11 @@
 //! Build pathfinder in debug:
 //! ```
-//! cargo build -p pathfinder --bin pathfinder -F p2p
+//! cargo build -p pathfinder --bin pathfinder -F p2p -F integration-testing
 //! ```
 //!
 //! Run the test:
 //! ```
-//! cargo test --test consensus_smoke -p pathfinder -F p2p -- --nocapture
+//! cargo test --test consensus_smoke -p pathfinder -F p2p -F integration-testing -- --nocapture
 //! ```
 
 #[cfg(feature = "p2p")]
@@ -17,23 +17,15 @@ mod test {
         use std::time::Duration;
         use std::vec;
 
-        use anyhow::Context;
-        use tokio::task::JoinError;
-        use tokio::time::sleep;
-
         use crate::common::pathfinder_instance::{respawn_on_fail, PathfinderInstance};
         use crate::common::rpc_client::wait_for_height;
         use crate::common::utils;
 
-        // If the env variable `PATHFINDER_CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL` is
-        // set, the stdout and stderr logs of each Pathfinder instance will be
-        // dumped automatically to the parent process descriptors if the test fails.
-        // Otherwise you need to inspect the temporary directory that is created to
-        // hold the test artifacts.
         #[tokio::test]
         async fn happy_path() -> anyhow::Result<()> {
             const NUM_NODES: usize = 3;
-            const HEIGHT: u64 = 20;
+            // System contracts start to matter after block 10
+            const HEIGHT: u64 = 15;
             const READY_TIMEOUT: Duration = Duration::from_secs(20);
             const TEST_TIMEOUT: Duration = Duration::from_secs(120);
             const POLL_READY: Duration = Duration::from_millis(500);
@@ -65,25 +57,8 @@ mod test {
 
             let _guard = respawn_on_fail(bob, bob_cfg, POLL_READY, READY_TIMEOUT, TEST_TIMEOUT);
 
-            tokio::select! {
-                _ = sleep(TEST_TIMEOUT) => {
-                    eprintln!("Test timed out after {TEST_TIMEOUT:?}");
-                    Err(anyhow::anyhow!("Test timed out after {TEST_TIMEOUT:?}"))
-                }
-
-                test_result = futures::future::join_all(vec![alice_client, bob_client, charlie_client]) => {
-                    test_result.into_iter().collect::<Result<Vec<_>, JoinError>>().context("Joining all RPC client tasks")?;
-
-                    // Don't dump logs if the test succeeded.
-                    PathfinderInstance::enable_log_dump(false);
-                    Ok(())
-                }
-
-                _ = tokio::signal::ctrl_c() => {
-                    eprintln!("Received Ctrl-C, terminating test early");
-                    Err(anyhow::anyhow!("Test interrupted by user"))
-                }
-            }
+            utils::wait_for_test_end(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT)
+                .await
         }
     }
 }

@@ -12,19 +12,19 @@ mod enabled {
         #[arg(
             long = "integration-testing.inject-failure.on-proposal-rx",
             action = clap::ArgAction::Set,
-            value_parser = up_to_10_height_parser(),
+            value_parser = up_to_15_height_parser(),
         )]
         inject_failure_on_proposal_rx: Option<u64>,
         #[arg(
             long = "integration-testing.inject-failure.on-proposal-decided",
             action = clap::ArgAction::Set,
-            value_parser = up_to_10_height_parser(),
+            value_parser = up_to_15_height_parser(),
         )]
         inject_failure_on_proposal_decided: Option<u64>,
     }
 
-    fn up_to_10_height_parser() -> RangedU64ValueParser {
-        (0..=10).into()
+    fn up_to_15_height_parser() -> RangedU64ValueParser {
+        (0..=15).into()
     }
 
     #[derive(Clone)]
