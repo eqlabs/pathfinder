@@ -127,7 +127,7 @@ pub fn spawn(
                     }
                 }
                 from_p2p = rx_from_p2p.recv() => {
-                    from_p2p.expect("Receiver not to be dropped")
+                    from_p2p.expect("Consensus task event receiver not to be dropped")
                 }
             };
 
@@ -174,7 +174,7 @@ pub fn spawn(
                                     finalized_block,
                                 ))
                                 .await
-                                .expect("Receiver not to be dropped");
+                                .expect("Cache proposal receiver not to be dropped");
 
                             let proposal = Proposal {
                                 height,
@@ -214,7 +214,7 @@ pub fn spawn(
                                 tx_to_p2p
                                     .send(P2PTaskEvent::GossipRequest(msg))
                                     .await
-                                    .expect("Receiver not to be dropped");
+                                    .expect("Gossip request receiver not to be dropped");
                             } else {
                                 tracing::debug!(
                                     "🧠 🤷 Ignoring gossip request for height {} < \
@@ -239,7 +239,7 @@ pub fn spawn(
                             tx_to_p2p
                                 .send(P2PTaskEvent::CommitBlock(height_and_round, value.clone()))
                                 .await
-                                .expect("Receiver not to be dropped");
+                                .expect("Commit block receiver not to be dropped");
 
                             info_watch_tx.send_if_modified(|info| {
                                 let do_update = match info {
