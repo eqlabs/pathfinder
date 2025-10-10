@@ -1,17 +1,14 @@
 //! Utilities for spawning and managing Pathfinder instances.
 
 use std::fs::{File, OpenOptions};
-use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::atomic::AtomicBool;
-use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
 use http::StatusCode;
 use tokio::signal::unix::{signal, SignalKind};
-use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 
@@ -311,20 +308,6 @@ impl Drop for PathfinderInstance {
 
 static DUMP_LOGS_ON_DROP: AtomicBool = AtomicBool::new(true);
 
-static SIGCHLD_WATCH: LazyLock<watch::Receiver<Option<()>>> = LazyLock::new(|| {
-    let mut child_signal = signal(SignalKind::child()).unwrap();
-    let (tx, rx) = tokio::sync::watch::channel(None);
-
-    tokio::spawn(async move {
-        loop {
-            child_signal.recv().await;
-            _ = tx.send(Some(()));
-        }
-    });
-
-    rx
-});
-
 impl Config {
     const NAMES: &'static [&'static str] = &[
         "Alice", "Bob", "Charlie", "Dan", "Eve", "Frank", "Grace", "Heidi",
@@ -361,34 +344,6 @@ impl Config {
     }
 }
 
-pub fn pathfinder_bin() -> PathBuf {
-    let mut path = manifest_dir_path();
-    assert!(path.pop());
-    assert!(path.pop());
-    path.push("target");
-    #[cfg(debug_assertions)]
-    {
-        path.push("debug");
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        path.push("release");
-    }
-    path.push("pathfinder");
-    path
-}
-
-pub fn fixture_dir() -> PathBuf {
-    let mut path = manifest_dir_path();
-    path.push("tests");
-    path.push("fixtures");
-    path
-}
-
-fn manifest_dir_path() -> PathBuf {
-    PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
-}
-
 /// A guard that aborts the task when dropped.
 pub struct AbortGuard {
     jh: tokio::task::JoinHandle<()>,
@@ -417,8 +372,7 @@ pub fn respawn_on_fail(
     ready_timeout: Duration,
     test_timeout: Duration,
 ) -> AbortGuard {
-    let mut child_signal =
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::child()).unwrap();
+    let mut child_signal = signal(SignalKind::child()).unwrap();
 
     tokio::spawn(async move {
         if let Some(_) = child_signal.recv().await {
@@ -427,7 +381,7 @@ pub fn respawn_on_fail(
                 Ok(true) => {
                     println!("Respawning {}...", instance.name());
                     drop(instance);
-                    let mut instance = PathfinderInstance::spawn(config).unwrap();
+                    let instance = PathfinderInstance::spawn(config).unwrap();
                     instance
                         .wait_for_ready(ready_poll_interval, ready_timeout)
                         .await
