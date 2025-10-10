@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `starknet_estimateFee` fails if the validate entry point runs ouf of gas during L2 fee binary search.
+- Pathfinder stops syncing for a minute after logging an "L2 sync process terminated with: Download block from sequencer" error.
 
 ## [0.20.4] - 2025-09-25
 
