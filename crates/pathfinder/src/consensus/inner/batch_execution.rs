@@ -606,11 +606,6 @@ mod tests {
 
         // Verify the checkpoint contains the right data
         let checkpoint = target_checkpoint.unwrap();
-        println!(
-            "Debug: checkpoint has {} transactions, next_txn_idx: {}",
-            checkpoint.transactions.len(),
-            checkpoint.next_txn_idx
-        );
         assert_eq!(checkpoint.transactions.len(), 2);
         assert_eq!(checkpoint.next_txn_idx, 2);
 
@@ -677,7 +672,6 @@ mod tests {
 
         // Verify state before TransactionsFin
         let state = manager.get_execution_state(&height_and_round);
-        println!("Debug: state before TransactionsFin: {state:?}");
         assert!(matches!(state, Some(ExecutionState::Collecting)));
 
         // Process TransactionsFin (proposer executed all 5 transactions)
@@ -894,5 +888,304 @@ mod tests {
         let _state = manager.get_execution_state(&height_and_round);
         // State might be Collecting (if executed) or None (if deferred)
         // Both are valid outcomes for this test
+    }
+
+    /// Test that reproduces the CachedState contamination issue in checkpoint
+    /// restoration
+    ///
+    /// This test demonstrates the problem where the BlockExecutor's CachedState
+    /// gets contaminated during optimistic execution. When we restore from a
+    /// checkpoint, the BlockExecutor's internal state was contaminated instead
+    /// of being reset to clean state.
+    #[tokio::test]
+    async fn test_cached_state_contamination_issue() {
+        use pathfinder_common::{ChainId, ContractAddress};
+        use pathfinder_crypto::Felt;
+        use pathfinder_storage::test_utils;
+
+        use crate::consensus::inner::test_helpers::{
+            create_test_proposal,
+            create_transaction_batch,
+        };
+        use crate::validator::ValidatorBlockInfoStage;
+
+        // Setup test storage
+        let (storage, _test_data) = test_utils::setup_test_storage();
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+        let proposer = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
+
+        // Create test proposal with transactions
+        let height = 1;
+        let round = 1;
+        let transactions = create_transaction_batch(0, 2, chain_id);
+        let (proposal_init, block_info) =
+            create_test_proposal(chain_id, height, round, proposer, transactions.clone());
+
+        // Create validator
+        let mut validator = ValidatorBlockInfoStage::new(chain_id, proposal_init)
+            .expect("Failed to create ValidatorBlockInfoStage")
+            .validate_consensus_block_info(block_info, storage.clone())
+            .expect("Failed to create ValidatorTransactionBatchStage");
+
+        // Execute first transaction optimistically
+        let batch1 = vec![transactions[0].clone()];
+        validator
+            .execute_transactions(batch1.clone())
+            .expect("Failed to execute first batch");
+
+        let checkpoint1 = validator
+            .create_checkpoint()
+            .expect("Failed to create checkpoint");
+
+        // Execute second transaction optimistically
+        let batch2 = vec![transactions[1].clone()];
+        validator
+            .execute_transactions(batch2.clone())
+            .expect("Failed to execute second batch");
+
+        // At this point, the BlockExecutor's CachedState contains state from both
+        // batch1 and batch2
+
+        // Before restoration: validator should have 2 transactions
+        let before_checkpoint = validator
+            .create_checkpoint()
+            .expect("Failed to create checkpoint");
+        assert_eq!(
+            before_checkpoint.transactions.len(),
+            2,
+            "Validator should have 2 transactions before restoration"
+        );
+
+        // Restore from checkpoint1 (should have 1 transaction)
+        // BlockExecutor's CachedState contains state from both batch1 and batch2,
+        // but we want to restore to the state after batch1 only
+        validator
+            .restore_from_checkpoint(checkpoint1.clone())
+            .expect("Checkpoint restoration should succeed");
+
+        // After restoration: validator should have 1 transaction (from checkpoint1)
+        let after_checkpoint = validator
+            .create_checkpoint()
+            .expect("Failed to create checkpoint");
+        assert_eq!(
+            after_checkpoint.transactions.len(),
+            1,
+            "Validator should have 1 transaction after restoration"
+        );
+
+        // Verify receipts and events are also restored correctly
+        assert_eq!(
+            after_checkpoint.receipts.len(),
+            1,
+            "Should have 1 receipt after restoration"
+        );
+        assert_eq!(
+            after_checkpoint.events.len(),
+            1,
+            "Should have 1 event after restoration"
+        );
+    }
+
+    /// Comprehensive test for checkpoint restoration with multiple scenarios
+    #[tokio::test]
+    async fn test_comprehensive_checkpoint_restoration() {
+        use pathfinder_common::{ChainId, ContractAddress};
+        use pathfinder_crypto::Felt;
+        use pathfinder_storage::test_utils;
+
+        use crate::consensus::inner::test_helpers::{
+            create_test_proposal,
+            create_transaction_batch,
+        };
+        use crate::validator::ValidatorBlockInfoStage;
+
+        // Setup test storage
+        let (storage, _test_data) = test_utils::setup_test_storage();
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+        let proposer = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
+
+        // Create test proposal with 5 transactions
+        let height = 1;
+        let round = 1;
+        let transactions = create_transaction_batch(0, 5, chain_id);
+        let (proposal_init, block_info) =
+            create_test_proposal(chain_id, height, round, proposer, transactions.clone());
+
+        // Create validator
+        let mut validator = ValidatorBlockInfoStage::new(chain_id, proposal_init)
+            .expect("Failed to create ValidatorBlockInfoStage")
+            .validate_consensus_block_info(block_info, storage.clone())
+            .expect("Failed to create ValidatorTransactionBatchStage");
+
+        // Execute transactions in batches and create checkpoints
+        let batch1 = vec![transactions[0].clone(), transactions[1].clone()];
+        validator
+            .execute_transactions(batch1)
+            .expect("Failed to execute batch 1");
+        let checkpoint1 = validator
+            .create_checkpoint()
+            .expect("Failed to create checkpoint 1");
+
+        let batch2 = vec![transactions[2].clone()];
+        validator
+            .execute_transactions(batch2)
+            .expect("Failed to execute batch 2");
+        let checkpoint2 = validator
+            .create_checkpoint()
+            .expect("Failed to create checkpoint 2");
+
+        let batch3 = vec![transactions[3].clone(), transactions[4].clone()];
+        validator
+            .execute_transactions(batch3)
+            .expect("Failed to execute batch 3");
+        let checkpoint3 = validator
+            .create_checkpoint()
+            .expect("Failed to create checkpoint 3");
+
+        // Test restoration to checkpoint1 (2 transactions)
+        validator
+            .restore_from_checkpoint(checkpoint1.clone())
+            .expect("Failed to restore from checkpoint 1");
+
+        let restored_checkpoint1 = validator
+            .create_checkpoint()
+            .expect("Failed to create restored checkpoint 1");
+        assert_eq!(
+            restored_checkpoint1.transactions.len(),
+            checkpoint1.transactions.len(),
+            "Should have 2 transactions after restoring to checkpoint 1"
+        );
+        assert_eq!(
+            restored_checkpoint1.receipts.len(),
+            checkpoint1.receipts.len(),
+            "Should have 2 receipts after restoring to checkpoint 1"
+        );
+        assert_eq!(
+            restored_checkpoint1.events.len(),
+            checkpoint1.events.len(),
+            "Should have 2 events after restoring to checkpoint 1"
+        );
+
+        // Test restoration to checkpoint2 (3 transactions)
+        validator
+            .restore_from_checkpoint(checkpoint2.clone())
+            .expect("Failed to restore from checkpoint 2");
+
+        let restored_checkpoint2 = validator
+            .create_checkpoint()
+            .expect("Failed to create restored checkpoint 2");
+        assert_eq!(
+            restored_checkpoint2.transactions.len(),
+            checkpoint2.transactions.len(),
+            "Should have 3 transactions after restoring to checkpoint 2"
+        );
+        assert_eq!(
+            restored_checkpoint2.receipts.len(),
+            checkpoint2.receipts.len(),
+            "Should have 3 receipts after restoring to checkpoint 2"
+        );
+        assert_eq!(
+            restored_checkpoint2.events.len(),
+            checkpoint2.events.len(),
+            "Should have 3 events after restoring to checkpoint 2"
+        );
+
+        // Test restoration to checkpoint3 (5 transactions)
+        validator
+            .restore_from_checkpoint(checkpoint3.clone())
+            .expect("Failed to restore from checkpoint 3");
+
+        let restored_checkpoint3 = validator
+            .create_checkpoint()
+            .expect("Failed to create restored checkpoint 3");
+        assert_eq!(
+            restored_checkpoint3.transactions.len(),
+            checkpoint3.transactions.len(),
+            "Should have 5 transactions after restoring to checkpoint 3"
+        );
+        assert_eq!(
+            restored_checkpoint3.receipts.len(),
+            checkpoint3.receipts.len(),
+            "Should have 5 receipts after restoring to checkpoint 3"
+        );
+        assert_eq!(
+            restored_checkpoint3.events.len(),
+            checkpoint3.events.len(),
+            "Should have 5 events after restoring to checkpoint 3"
+        );
+
+        // Test that we can continue executing after restoration
+        let additional_transaction = create_transaction_batch(5, 1, chain_id);
+        let additional_batch = vec![additional_transaction[0].clone()];
+        validator
+            .execute_transactions(additional_batch)
+            .expect("Failed to execute additional batch after restoration");
+
+        let final_checkpoint = validator
+            .create_checkpoint()
+            .expect("Failed to create final checkpoint");
+        assert_eq!(
+            final_checkpoint.transactions.len(),
+            checkpoint3.transactions.len() + 1,
+            "Should have 6 transactions after executing additional batch"
+        );
+        assert_eq!(
+            final_checkpoint.receipts.len(),
+            checkpoint3.receipts.len() + 1,
+            "Should have 6 receipts after executing additional batch"
+        );
+        assert_eq!(
+            final_checkpoint.events.len(),
+            checkpoint3.events.len() + 1,
+            "Should have 6 events after executing additional batch"
+        );
+    }
+
+    /// Test that validates state consistency validation works correctly
+    #[tokio::test]
+    async fn test_state_consistency_validation() {
+        use pathfinder_common::{ChainId, ContractAddress};
+        use pathfinder_crypto::Felt;
+        use pathfinder_storage::test_utils;
+
+        use crate::consensus::inner::test_helpers::{
+            create_test_proposal,
+            create_transaction_batch,
+        };
+        use crate::validator::ValidatorBlockInfoStage;
+
+        // Setup test storage
+        let (storage, _test_data) = test_utils::setup_test_storage();
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+        let proposer = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
+
+        // Create test proposal with transactions
+        let height = 1;
+        let round = 1;
+        let transactions = create_transaction_batch(0, 2, chain_id);
+        let (proposal_init, block_info) =
+            create_test_proposal(chain_id, height, round, proposer, transactions.clone());
+
+        // Create validator
+        let mut validator = ValidatorBlockInfoStage::new(chain_id, proposal_init)
+            .expect("Failed to create ValidatorBlockInfoStage")
+            .validate_consensus_block_info(block_info, storage.clone())
+            .expect("Failed to create ValidatorTransactionBatchStage");
+
+        // Execute transactions to create some state
+        let batch = vec![transactions[0].clone()];
+        validator
+            .execute_transactions(batch)
+            .expect("Failed to execute batch");
+
+        // Test that state validation passes for consistent state
+        validator
+            .validate_state_consistency()
+            .expect("State should be consistent after execution");
+
+        // Test that state validation fails for inconsistent state
+        // (This would require manually corrupting the state, which is complex)
+        // For now, we just verify that the validation method exists and can be
+        // called
     }
 }

@@ -360,72 +360,76 @@ impl ValidatorTransactionBatchStage {
         })
     }
 
+    /// Reset the BlockExecutor to clean state by creating a new one
+    fn reset_block_executor(&mut self) -> anyhow::Result<()> {
+        // Extract the storage from the current executor
+        let storage = self.extract_storage_from_executor()?;
+
+        // Create a new LazyBlockExecutor with clean state
+        self.block_executor =
+            LazyBlockExecutor::new(self.chain_id, self.block_info.clone(), storage);
+
+        Ok(())
+    }
+
+    /// Extract storage from the current BlockExecutor
+    fn extract_storage_from_executor(&self) -> anyhow::Result<Storage> {
+        match &self.block_executor {
+            LazyBlockExecutor::Uninitialized { storage, .. } => Ok(storage.clone()),
+            LazyBlockExecutor::Initialized { storage, .. } => Ok(storage.clone()),
+            LazyBlockExecutor::Initializing => {
+                Err(anyhow::anyhow!("Cannot extract storage while initializing"))
+            }
+        }
+    }
+
+    /// Validate that the validator state is consistent
+    pub fn validate_state_consistency(&self) -> anyhow::Result<()> {
+        // Validate that receipts and events match transaction count
+        if self.receipts.len() != self.transactions.len() {
+            return Err(anyhow::anyhow!(
+                "State inconsistency: {} receipts but {} transactions",
+                self.receipts.len(),
+                self.transactions.len()
+            ));
+        }
+
+        if self.events.len() != self.transactions.len() {
+            return Err(anyhow::anyhow!(
+                "State inconsistency: {} event arrays but {} transactions",
+                self.events.len(),
+                self.transactions.len()
+            ));
+        }
+
+        // Validate that BlockExecutor is in a valid state
+        // After restoration, it should be either Uninitialized (clean) or Initialized
+        // (clean)
+        if matches!(self.block_executor, LazyBlockExecutor::Initializing { .. }) {
+            return Err(anyhow::anyhow!(
+                "BlockExecutor is in invalid initializing state"
+            ));
+        }
+
+        Ok(())
+    }
+
     /// Restore from a checkpoint
     pub fn restore_from_checkpoint(
         &mut self,
         checkpoint: ExecutionCheckpoint,
     ) -> anyhow::Result<()> {
-        // Restore the accumulated state
+        // Reset BlockExecutor to clean state
+        self.reset_block_executor()?;
+
+        // Restore validator fields from checkpoint
+        // The checkpoint already contains the final state after execution
         self.transactions = checkpoint.transactions;
         self.receipts = checkpoint.receipts;
         self.events = checkpoint.events;
 
-        // Get the storage reference
-        let storage = match &self.block_executor {
-            LazyBlockExecutor::Uninitialized { storage, .. } => storage.clone(),
-            LazyBlockExecutor::Initialized { storage, .. } => storage.clone(),
-            LazyBlockExecutor::Initializing => {
-                return Err(anyhow::anyhow!(
-                    "Cannot restore checkpoint: executor is initializing"
-                ));
-            }
-        };
-
-        // Create a new executor
-        let db_conn = storage.connection().context("Create database connection")?;
-        let mut new_executor = BlockExecutor::new(
-            self.chain_id,
-            self.block_info,
-            ETH_FEE_TOKEN_ADDRESS,
-            STRK_FEE_TOKEN_ADDRESS,
-            db_conn,
-        )
-        .context("Creating BlockExecutor")?;
-
-        // Execute all transactions up to the checkpoint
-        if !self.transactions.is_empty() {
-            // Convert transactions to executor format
-            let executor_txns = self
-                .transactions
-                .iter()
-                .map(|tx| {
-                    let api_txn = to_starknet_api_transaction(tx.variant.clone())?;
-                    let tx_hash =
-                        starknet_api::transaction::TransactionHash(tx.hash.0.into_starkfelt());
-                    pathfinder_executor::Transaction::from_api(
-                        api_txn,
-                        tx_hash,
-                        None, // TODO: handle class info
-                        None, // TODO: handle paid fee on L1
-                        None, // TODO: handle deployed address
-                        pathfinder_executor::AccountTransactionExecutionFlags::default(),
-                    )
-                    .map_err(|e| anyhow::anyhow!("Failed to create executor transaction: {}", e))
-                })
-                .collect::<anyhow::Result<Vec<_>>>()?;
-
-            // Execute the transactions
-            new_executor
-                .execute(executor_txns)
-                .map_err(|e| anyhow::anyhow!("Failed to execute transactions: {}", e))?;
-        }
-
-        // Update the executor
-        self.block_executor = LazyBlockExecutor::Initialized {
-            executor: Box::new(new_executor),
-            storage,
-        };
-
+        // Validate state consistency
+        self.validate_state_consistency()?;
         Ok(())
     }
 
