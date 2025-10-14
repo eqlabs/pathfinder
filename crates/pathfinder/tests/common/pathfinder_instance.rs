@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
 use http::StatusCode;
+use rand::Rng;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
@@ -44,7 +45,7 @@ pub struct Config {
 #[derive(Debug, Clone, Copy)]
 pub enum InjectFailure {
     OnProposalRx(u64),
-    OnProposalDecided(u64),
+    _OnProposalDecided(u64),
 }
 
 impl PathfinderInstance {
@@ -333,13 +334,15 @@ impl Config {
             "Max {} instances supported",
             Self::NAMES.len()
         );
+        // Randomize ports a bit to avoid collisions when running tests in parallel.
+        let base = rand::rngs::ThreadRng::default().gen_range(0..400u16);
         (0..set_size)
             .map(|i| Self {
                 name: Self::NAMES[i],
-                monitor_port: 9090 + i as u16,
-                rpc_port: 9545 + i as u16,
-                p2p_port: 50001 + i as u16,
-                boot_port: if i == 0 { None } else { Some(50001) },
+                monitor_port: 9090 + base + i as u16,
+                rpc_port: 9545 + base + i as u16,
+                p2p_port: 50001 + base + i as u16,
+                boot_port: if i == 0 { None } else { Some(50001 + base) },
                 my_validator_address: (i + 1) as u8,
                 // The set is deduplicated when consensus task is started, so including the own
                 // validator address is fine.
@@ -364,7 +367,7 @@ impl InjectFailure {
             Self::OnProposalRx(n) => {
                 format!("--integration-testing.inject-failure.on-proposal-rx={n}")
             }
-            Self::OnProposalDecided(n) => {
+            Self::_OnProposalDecided(n) => {
                 format!("--integration-testing.inject-failure.on-proposal-decided={n}")
             }
         }

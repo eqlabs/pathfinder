@@ -29,8 +29,10 @@ mod test {
 
         #[rstest]
         #[case::happy_path(None)]
-        // #[case::fail_on_proposal_rx(Some(InjectFailure2::OnProposalRx(12)))]
-        // #[case::fail_on_proposal_decided(InjectFailure2::OnProposalDecided(12))]
+        #[case::fail_on_proposal_rx(Some(InjectFailure::OnProposalRx(12)))]
+        // TODO this test currently fails because the node doesn't properly recover proposals that
+        // were decided but not committed before crashing.
+        // #[case::fail_on_proposal_decided(Some(InjectFailure::_OnProposalDecided(12)))]
         #[tokio::test]
         async fn test_test(#[case] inject_failure: Option<InjectFailure>) -> anyhow::Result<()> {
             const NUM_NODES: usize = 3;
@@ -66,7 +68,7 @@ mod test {
             let charlie_client = wait_for_height(&charlie, HEIGHT, POLL_HEIGHT);
 
             let _maybe_guard = match inject_failure {
-                Some(i) => Some(respawn_on_fail(
+                Some(_) => Some(respawn_on_fail(
                     bob,
                     bob_cfg,
                     POLL_READY,
