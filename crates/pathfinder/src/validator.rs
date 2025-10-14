@@ -366,8 +366,7 @@ impl ValidatorTransactionBatchStage {
         let storage = self.extract_storage_from_executor()?;
 
         // Create a new LazyBlockExecutor with clean state
-        self.block_executor =
-            LazyBlockExecutor::new(self.chain_id, self.block_info.clone(), storage);
+        self.block_executor = LazyBlockExecutor::new(self.chain_id, self.block_info, storage);
 
         Ok(())
     }
@@ -405,7 +404,7 @@ impl ValidatorTransactionBatchStage {
         // Validate that BlockExecutor is in a valid state
         // After restoration, it should be either Uninitialized (clean) or Initialized
         // (clean)
-        if matches!(self.block_executor, LazyBlockExecutor::Initializing { .. }) {
+        if matches!(self.block_executor, LazyBlockExecutor::Initializing) {
             return Err(anyhow::anyhow!(
                 "BlockExecutor is in invalid initializing state"
             ));

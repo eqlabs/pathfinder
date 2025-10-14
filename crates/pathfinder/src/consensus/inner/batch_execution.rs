@@ -24,23 +24,14 @@ pub struct BatchExecutionManager {
 
 /// State for a single proposal's batch execution
 struct BatchExecutionState {
-    /// All received batches (indexed by arrival order)
-    batches: Vec<BatchInfo>,
+    /// Whether each batch has been executed (indexed by arrival order)
+    batch_executed: Vec<bool>,
     /// Checkpoints after each batch execution
     checkpoints: Vec<ExecutionCheckpoint>,
     /// Current execution state
     current_state: ExecutionState,
     /// Total transactions executed so far
     total_executed: usize,
-}
-
-/// Information about a single batch
-struct BatchInfo {
-    /// Transactions in this batch
-    #[allow(dead_code)]
-    transactions: Vec<Transaction>,
-    /// Whether this batch has been executed
-    executed: bool,
 }
 
 /// Current execution state
@@ -130,24 +121,21 @@ impl BatchExecutionManager {
             self.executions
                 .entry(height_and_round)
                 .or_insert_with(|| BatchExecutionState {
-                    batches: Vec::new(),
+                    batch_executed: Vec::new(),
                     checkpoints: Vec::new(),
                     current_state: ExecutionState::Collecting,
                     total_executed: 0,
                 });
 
-        let batch_index = state.batches.len();
-        state.batches.push(BatchInfo {
-            transactions: transactions.clone(),
-            executed: false,
-        });
+        let batch_index = state.batch_executed.len();
+        state.batch_executed.push(false);
 
         // Execute the batch immediately (optimistic execution)
         validator
             .execute_transactions(transactions)
             .context("Failed to execute transaction batch")?;
 
-        state.batches[batch_index].executed = true;
+        state.batch_executed[batch_index] = true;
         state.total_executed += 1;
 
         // Create checkpoint after execution
@@ -206,8 +194,8 @@ impl BatchExecutionManager {
 
             // Update state to reflect rollback
             state.total_executed = target_batch_count;
-            for i in target_batch_count..state.batches.len() {
-                state.batches[i].executed = false;
+            for i in target_batch_count..state.batch_executed.len() {
+                state.batch_executed[i] = false;
             }
         }
 
@@ -234,7 +222,7 @@ impl BatchExecutionManager {
             self.executions
                 .entry(height_and_round)
                 .or_insert_with(|| BatchExecutionState {
-                    batches: Vec::new(),
+                    batch_executed: Vec::new(),
                     checkpoints: Vec::new(),
                     current_state: ExecutionState::Collecting,
                     total_executed: 0,
@@ -253,7 +241,7 @@ impl BatchExecutionManager {
     }
 
     /// Get the current execution state for a proposal
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn get_execution_state(
         &self,
         height_and_round: &HeightAndRound,
@@ -268,7 +256,7 @@ impl BatchExecutionManager {
         if let Some(state) = self.executions.remove(height_and_round) {
             tracing::debug!(
                 "Cleaned up execution state for {height_and_round}: {} batches, {} checkpoints",
-                state.batches.len(),
+                state.batch_executed.len(),
                 state.checkpoints.len()
             );
         }
@@ -804,8 +792,8 @@ mod tests {
         if target_batch_count < state.total_executed {
             // Update state to reflect rollback
             state.total_executed = target_batch_count;
-            for i in target_batch_count..state.batches.len() {
-                state.batches[i].executed = false;
+            for i in target_batch_count..state.batch_executed.len() {
+                state.batch_executed[i] = false;
             }
         }
 
@@ -825,12 +813,12 @@ mod tests {
         // Verify the execution state reflects the rollback
         let final_execution_state = manager.executions.get(&height_and_round).unwrap();
         assert_eq!(final_execution_state.total_executed, 3); // Rolled back to 3 batches
-        assert_eq!(final_execution_state.batches.len(), 4); // We have 4 batches total
-        assert!(final_execution_state.batches[0].executed); // First 3 batches executed
-        assert!(final_execution_state.batches[1].executed);
-        assert!(final_execution_state.batches[2].executed);
-        assert!(!final_execution_state.batches[3].executed); // Last batch not
-                                                             // executed
+        assert_eq!(final_execution_state.batch_executed.len(), 4); // We have 4 batches total
+        assert!(final_execution_state.batch_executed[0]); // First 3 batches executed
+        assert!(final_execution_state.batch_executed[1]);
+        assert!(final_execution_state.batch_executed[2]);
+        assert!(!final_execution_state.batch_executed[3]); // Last batch not
+                                                           // executed
     }
 
     /// Test deferral mechanism with real transactions
