@@ -37,7 +37,8 @@ pub fn start(
     p2p_client: Client,
     p2p_event_rx: mpsc::UnboundedReceiver<Event>,
     data_directory: &Path,
-    integration_testing_config: integration_testing::IntegrationTestingConfig,
+    // Does nothing in production builds. Used for integration testing only.
+    inject_failure_config: integration_testing::InjectFailureConfig,
 ) -> ConsensusTaskHandles {
     inner::start(
         config,
@@ -47,7 +48,7 @@ pub fn start(
         p2p_client,
         p2p_event_rx,
         data_directory,
-        integration_testing_config,
+        inject_failure_config,
     )
 }
 
@@ -63,7 +64,7 @@ mod inner {
         _: Client,
         _: mpsc::UnboundedReceiver<Event>,
         _: &Path,
-        _: integration_testing::IntegrationTestingConfig,
+        _: integration_testing::InjectFailureConfig,
     ) -> ConsensusTaskHandles {
         ConsensusTaskHandles::pending()
     }

@@ -315,7 +315,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
                 client,
                 event_rx,
                 &config.data_directory,
-                integration_testing_config,
+                // Does nothing in production builds. Used for integration testing only.
+                integration_testing_config.inject_failure_config(),
             )
         } else {
             ConsensusTaskHandles::pending()

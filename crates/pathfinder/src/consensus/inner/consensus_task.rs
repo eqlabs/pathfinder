@@ -53,7 +53,7 @@ use tokio::sync::{mpsc, watch};
 use super::fetch_proposers::L2ProposerSelector;
 use super::fetch_validators::L2ValidatorSetProvider;
 use super::{ConsensusTaskEvent, ConsensusValue, HeightExt, P2PTaskEvent};
-use crate::config::{integration_testing, ConsensusConfig};
+use crate::config::ConsensusConfig;
 use crate::state::block_hash::{
     calculate_event_commitment,
     calculate_receipt_commitment,
@@ -61,97 +61,7 @@ use crate::state::block_hash::{
 };
 use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage};
 
-// TODO cases
-//
-// 1. on first part of proposal rx
-// 2. after last part of proposal rx
-// 3. on prevote on proposal
-// 4. on precommit on proposal
-// 5. on proposal decided
-// 6. on proposal committed
-//
-// Setup:
-// A. 3 nodes, A, B, C, A is proposer, B fails, the network always halts
-// - test should pass in 1
-// - will fail in other cases, because proposals are not persisted yet
-//
-// B. 4 nodes, A, B, C, D, A is proposer, B fails, the network continues
-//- tests will fail because the node needs to catch up with finalized blocks
-#[cfg(all(feature = "p2p", feature = "integration-testing", debug_assertions))]
-fn fail_on(
-    current_height: u64,
-    failure_height: Option<u64>,
-    prefix: &str,
-    data_directory: PathBuf,
-) {
-    let Some(failure_height) = failure_height else {
-        return;
-    };
-
-    if current_height != failure_height {
-        return;
-    }
-
-    let marker_file = data_directory.join(format!("fail_on_{prefix}_{failure_height}"));
-
-    if marker_file.exists() {
-        let x = std::fs::remove_file(&marker_file).inspect_err(|err| {
-            tracing::error!(
-                "Failed to remove marker file {}: {err}",
-                marker_file.display()
-            );
-        });
-        tracing::error!(
-            "💥 ❌ Integration testing: removed file {}, result {x:?}",
-            marker_file.display()
-        );
-    } else {
-        let x = std::fs::File::create(&marker_file).inspect_err(|err| {
-            tracing::error!(
-                "Failed to create marker file {}: {err}",
-                marker_file.display()
-            );
-        });
-        tracing::error!(
-            "💥 ✅ Integration testing: created file {}, result {x:?}",
-            marker_file.display()
-        );
-        tracing::error!(
-            "💥 💥 Integration testing: failing at height {failure_height} on {prefix} as \
-             configured"
-        );
-        std::process::exit(1);
-    }
-}
-
-fn fail_on_proposal_decided(
-    _current_height: u64,
-    _data_directory: PathBuf,
-    _integration_testing: &integration_testing::IntegrationTestingConfig,
-) {
-    #[cfg(all(feature = "p2p", feature = "integration-testing", debug_assertions))]
-    fail_on(
-        _current_height,
-        _integration_testing.inject_failure_on_proposal_decided,
-        "proposal_decided",
-        _data_directory,
-    );
-}
-
-// TODO rename - fail on first proposal part RX
-fn fail_on_proposal_rx(
-    _current_height: u64,
-    _data_directory: PathBuf,
-    _integration_testing: &integration_testing::IntegrationTestingConfig,
-) {
-    #[cfg(all(feature = "p2p", feature = "integration-testing", debug_assertions))]
-    fail_on(
-        _current_height,
-        _integration_testing.inject_failure_on_proposal_rx,
-        "proposal_rx",
-        _data_directory,
-    );
-}
+mod integration_testing;
 
 #[allow(clippy::too_many_arguments)]
 pub fn spawn(
@@ -164,7 +74,8 @@ pub fn spawn(
     storage: Storage,
     fake_proposals_storage: Storage,
     data_directory: &Path,
-    integration_testing_config: integration_testing::IntegrationTestingConfig,
+    // Does nothing in production builds. Used for integration testing only.
+    inject_failure: crate::config::integration_testing::InjectFailureConfig,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     let mut db_conn = storage
         .connection()
@@ -352,10 +263,11 @@ pub fn spawn(
                                  round {round}",
                             );
 
-                            fail_on_proposal_decided(
+                            // Does nothing in production builds. Used for integration testing only.
+                            integration_testing::debug_fail_on(
                                 height,
-                                data_directory.clone(),
-                                &integration_testing_config,
+                                inject_failure.on_proposal_decided,
+                                &data_directory,
                             );
 
                             let height_and_round = HeightAndRound::new(height, round);
@@ -430,11 +342,16 @@ pub fn spawn(
                         // messages.
                         ConsensusCommand::Proposal(_) | ConsensusCommand::Vote(_) => {
                             match cmd {
-                                ConsensusCommand::Proposal(_) => fail_on_proposal_rx(
-                                    cmd_height,
-                                    data_directory.clone(),
-                                    &integration_testing_config,
-                                ),
+                                ConsensusCommand::Proposal(_) =>
+                                // Does nothing in production builds. Used for integration testing
+                                // only.
+                                {
+                                    integration_testing::debug_fail_on(
+                                        cmd_height,
+                                        inject_failure.on_proposal_rx,
+                                        &data_directory,
+                                    )
+                                }
                                 _ => {}
                             };
 

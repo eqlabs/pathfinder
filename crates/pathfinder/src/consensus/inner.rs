@@ -35,7 +35,7 @@ pub fn start(
     p2p_client: Client,
     p2p_event_rx: mpsc::UnboundedReceiver<Event>,
     data_directory: &Path,
-    integration_testing_config: integration_testing::IntegrationTestingConfig,
+    inject_failure_config: integration_testing::InjectFailureConfig,
 ) -> ConsensusTaskHandles {
     // Events that are produced by the P2P task and consumed by the consensus task.
     // TODO determine sufficient buffer size. 1 is not enough.
@@ -70,7 +70,7 @@ pub fn start(
         consensus_storage,
         storage,
         data_directory,
-        integration_testing_config,
+        inject_failure_config,
     );
 
     ConsensusTaskHandles {
