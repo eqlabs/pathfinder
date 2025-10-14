@@ -30,7 +30,7 @@ use pathfinder_consensus::{
     SignedProposal,
     SignedVote,
 };
-use pathfinder_storage::{Storage, TransactionBehavior};
+use pathfinder_storage::{Storage, Transaction, TransactionBehavior};
 use tokio::sync::mpsc;
 
 use super::{ConsensusTaskEvent, P2PTaskEvent};
@@ -43,6 +43,17 @@ use crate::consensus::inner::persist_proposals::{
 };
 use crate::consensus::inner::ConsensusValue;
 use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage, ValidatorStage};
+
+// Successful result of handling an incoming message in a dedicated
+// thread; carried data are used for async handling (e.g. gossiping).
+enum ComputationSuccess {
+    Continue,
+    IncomingProposalCommitment(HeightAndRound, ProposalCommitmentWithOrigin),
+    EventVote(p2p_proto::consensus::Vote),
+    ProposalGossip(HeightAndRound, Vec<ProposalPart>),
+    GossipVote(p2p_proto::consensus::Vote),
+    ConfirmedProposalCommitment(HeightAndRound, ProposalCommitmentWithOrigin),
+}
 
 #[allow(clippy::too_many_arguments)]
 pub fn spawn(
@@ -65,6 +76,13 @@ pub fn spawn(
     let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
 
     util::task::spawn(async move {
+        let readonly_storage = storage.clone();
+        let mut db_conn = storage
+            .connection()
+            .context("Creating database connection")?;
+        let mut cons_conn = consensus_storage
+            .connection()
+            .context("Creating consensus database connection")?;
         loop {
             let p2p_task_event = tokio::select! {
                 p2p_event = p2p_event_rx.recv() => {
@@ -81,132 +99,118 @@ pub fn spawn(
                 }
             };
 
-            match p2p_task_event {
-                P2PTaskEvent::P2PEvent(event) => {
-                    tracing::info!("🖧  💌 {validator_address} incoming p2p event: {event:?}");
+            let success = tokio::task::block_in_place(|| {
+                let db_tx = db_conn
+                    .transaction_with_behavior(TransactionBehavior::Immediate)
+                    .context("Create database transaction")?;
+                let cons_tx = cons_conn
+                    .transaction_with_behavior(TransactionBehavior::Immediate)
+                    .context("Create database transaction")?;
 
-                    if is_outdated_p2p_event(storage.clone(), &event).await? {
-                        // TODO consider punishing the sender if the event is too old
-                        continue;
-                    }
+                let success = match p2p_task_event {
+                    P2PTaskEvent::P2PEvent(event) => {
+                        tracing::info!("🖧  💌 {validator_address} incoming p2p event: {event:?}");
 
-                    match event {
-                        Event::Proposal(height_and_round, proposal_part) => {
-                            let vcache = validator_cache.clone();
-                            let dex = deferred_executions.clone();
-                            let storage = storage.clone();
-                            let consensus_storage2 = consensus_storage.clone();
-                            let result = util::task::spawn_blocking(move |_| {
-                                handle_incoming_proposal_part(
+                        if is_outdated_p2p_event(&db_tx, &event)? {
+                            // TODO consider punishing the sender if the event is too old
+                            return Ok(ComputationSuccess::Continue);
+                        }
+
+                        match event {
+                            Event::Proposal(height_and_round, proposal_part) => {
+                                let vcache = validator_cache.clone();
+                                let dex = deferred_executions.clone();
+                                let result = handle_incoming_proposal_part(
                                     chain_id,
                                     validator_address,
                                     height_and_round,
                                     proposal_part,
                                     vcache,
                                     dex,
-                                    storage,
-                                    consensus_storage2,
-                                )
-                            })
-                            .await?;
-                            match result {
-                                Ok(Some(commitment)) => {
-                                    send_proposal_to_consensus(
-                                        &tx_to_consensus,
-                                        height_and_round,
-                                        commitment,
-                                    )
-                                    .await;
-                                }
-                                Ok(None) => {
-                                    // Still waiting for more parts to complete
-                                    // the proposal or the proposal is complete
-                                    // but cannot be executed yet, because the
-                                    // previous block is not committed yet.
-                                }
-                                Err(error) => {
-                                    tracing::warn!(
-                                        "Error handling incoming proposal part for \
-                                         {height_and_round}: {error:#?}"
-                                    );
-                                    anyhow::bail!(
-                                        "Error handling incoming proposal part for \
-                                         {height_and_round}: {error:#?}"
-                                    );
+                                    &db_tx,
+                                    readonly_storage.clone(),
+                                    &cons_tx,
+                                );
+                                match result {
+                                    Ok(Some(commitment)) => {
+                                        anyhow::Ok(ComputationSuccess::IncomingProposalCommitment(
+                                            height_and_round,
+                                            commitment,
+                                        ))
+                                    }
+                                    Ok(None) => {
+                                        // Still waiting for more parts to complete
+                                        // the proposal or the proposal is complete
+                                        // but cannot be executed yet, because the
+                                        // previous block is not committed yet.
+                                        Ok(ComputationSuccess::Continue)
+                                    }
+                                    Err(error) => {
+                                        tracing::warn!(
+                                            "Error handling incoming proposal part for \
+                                             {height_and_round}: {error:#?}"
+                                        );
+                                        anyhow::bail!(
+                                            "Error handling incoming proposal part for \
+                                             {height_and_round}: {error:#?}"
+                                        );
+                                    }
                                 }
                             }
-                        }
-                        Event::Vote(vote) => {
-                            let vote = p2p_vote_to_consensus_vote(vote);
-                            let cmd = ConsensusCommand::Vote(SignedVote {
-                                vote,
-                                signature: Signature::test(),
-                            });
 
-                            tx_to_consensus
-                                .send(ConsensusTaskEvent::CommandFromP2P(cmd))
-                                .await
-                                .expect("Receiver not to be dropped");
+                            Event::Vote(vote) => Ok(ComputationSuccess::EventVote(vote)),
                         }
                     }
-                }
-                P2PTaskEvent::CacheProposal(height_and_round, proposal_parts, finalized_block) => {
-                    let ProposalFin {
-                        proposal_commitment,
-                    } = proposal_parts
-                        .last()
-                        .and_then(ProposalPart::as_fin)
-                        .expect("Proposals produced by our node are always coherent and complete");
 
-                    tracing::info!(
-                        "🖧  🗃️  {validator_address} caching our proposal for {height_and_round}, \
-                         hash {proposal_commitment}"
-                    );
+                    P2PTaskEvent::CacheProposal(
+                        height_and_round,
+                        proposal_parts,
+                        finalized_block,
+                    ) => {
+                        let ProposalFin {
+                            proposal_commitment,
+                        } = proposal_parts.last().and_then(ProposalPart::as_fin).expect(
+                            "Proposals produced by our node are always coherent and complete",
+                        );
 
-                    let consensus_storage2 = consensus_storage.clone();
-                    let duplicate_encountered = util::task::spawn_blocking(move |_| {
-                        let mut db_conn = consensus_storage2
-                            .connection()
-                            .context("Creating database connection")?;
-                        let db_tx = db_conn
-                            .transaction()
-                            .context("Creating database transaction")?;
+                        tracing::info!(
+                            "🖧  🗃️  {validator_address} caching our proposal for \
+                             {height_and_round}, hash {proposal_commitment}"
+                        );
+
                         let duplicate_encountered = persist_proposal_parts(
-                            db_tx,
+                            &cons_tx,
                             height_and_round.height(),
                             height_and_round.round(),
                             &validator_address,
                             &proposal_parts,
                         )?;
 
-                        anyhow::Ok(duplicate_encountered)
-                    })
-                    .await??;
+                        my_finalized_blocks_cache.insert(height_and_round, finalized_block);
+                        if duplicate_encountered {
+                            tracing::warn!(
+                                "Duplicate proposal cache request for {height_and_round}!"
+                            );
+                        }
 
-                    my_finalized_blocks_cache.insert(height_and_round, finalized_block);
-                    if duplicate_encountered {
-                        tracing::warn!("Duplicate proposal cache request for {height_and_round}!");
+                        Ok(ComputationSuccess::Continue)
                     }
-                }
-                P2PTaskEvent::GossipRequest(msg) => match msg {
-                    NetworkMessage::Proposal(SignedProposal {
-                        proposal,
-                        signature: _,
-                    }) => {
-                        let height_and_round = HeightAndRound::new(
-                            proposal.height,
-                            proposal.round.as_u32().expect("Valid round"),
-                        );
+                    P2PTaskEvent::GossipRequest(msg) => match msg {
+                        NetworkMessage::Proposal(SignedProposal {
+                            proposal,
+                            signature: _,
+                        }) => {
+                            let height_and_round = HeightAndRound::new(
+                                proposal.height,
+                                proposal.round.as_u32().expect("Valid round"),
+                            );
 
-                        let consensus_storage2 = consensus_storage.clone();
-                        let consensus_storage3 = consensus_storage.clone();
-                        let proposal_parts = util::task::spawn_blocking(move |_| {
-                            let proposal_parts = if let Some(proposal_parts) =
-                                query_own_proposal_parts(
-                                    consensus_storage2,
-                                    height_and_round,
-                                    &validator_address,
-                                )? {
+                            let proposal_parts = if let Some(proposal_parts) = own_proposal_parts(
+                                &cons_tx,
+                                height_and_round.height(),
+                                height_and_round.round(),
+                                &validator_address,
+                            )? {
                                 // TODO we're assuming that all proposals are valid and any failure
                                 // to reach consensus in round 0
                                 // always yields re-proposing the same
@@ -228,14 +232,8 @@ pub fn spawn(
                                 // For now we just choose the proposal from the previous round, and
                                 // the rest are kept for debugging
                                 // purposes.
-                                let mut db_conn = consensus_storage3
-                                    .connection()
-                                    .context("Creating database connection")?;
-                                let db_tx = db_conn
-                                    .transaction()
-                                    .context("Creating database transaction")?;
                                 let Some((round, mut proposal_parts)) = last_proposal_parts(
-                                    &db_tx,
+                                    &cons_tx,
                                     proposal.height,
                                     &validator_address,
                                 )?
@@ -264,7 +262,7 @@ pub fn spawn(
                                 *proposer = Address(proposal.proposer.0);
                                 let proposer_address = ContractAddress(proposal.proposer.0);
                                 persist_proposal_parts(
-                                    db_tx,
+                                    &cons_tx,
                                     proposal.height,
                                     *round,
                                     &proposer_address,
@@ -273,90 +271,131 @@ pub fn spawn(
                                 proposal_parts
                             };
 
-                            anyhow::Ok(proposal_parts)
-                        })
-                        .await??;
-
-                        loop {
-                            tracing::info!(
-                                "🖧  🚀 {validator_address} Gossiping proposal for \
-                                 {height_and_round} ..."
-                            );
-                            match p2p_client
-                                .gossip_proposal(height_and_round, proposal_parts.clone())
-                                .await
-                            {
-                                Ok(()) => {
-                                    tracing::info!(
-                                        "🖧  🚀 {validator_address} Gossiping proposal for \
-                                         {height_and_round} DONE"
-                                    );
-                                    break;
-                                }
-                                Err(PublishError::InsufficientPeers) => {
-                                    tracing::warn!(
-                                        "Insufficient peers to gossip proposal for \
-                                         {height_and_round}, retrying..."
-                                    );
-                                    tokio::time::sleep(Duration::from_secs(5)).await;
-                                }
-                                Err(error) => {
-                                    tracing::error!(
-                                        "Error gossiping proposal for {height_and_round}: {error}"
-                                    );
-                                    // TODO implement proper error handling policy
-                                    Err(error)?;
-                                }
-                            }
+                            Ok(ComputationSuccess::ProposalGossip(
+                                height_and_round,
+                                proposal_parts,
+                            ))
                         }
-                    }
-                    NetworkMessage::Vote(SignedVote { vote, signature: _ }) => {
-                        loop {
+                        NetworkMessage::Vote(SignedVote { vote, signature: _ }) => {
                             tracing::info!("🖧  ✋ {validator_address} Gossiping vote {vote:?} ...");
-                            match p2p_client
-                                .gossip_vote(consensus_vote_to_p2p_vote(vote.clone()))
-                                .await
-                            {
-                                Ok(()) => {
-                                    tracing::info!(
-                                        "🖧  ✋ {validator_address} Gossiping vote {vote:?} SUCCESS"
-                                    );
-                                    break;
-                                }
-                                Err(PublishError::InsufficientPeers) => {
-                                    tracing::warn!(
-                                        "Insufficient peers to gossip {vote:?}, retrying..."
-                                    );
-                                    tokio::time::sleep(Duration::from_secs(5)).await;
-                                }
-                                Err(error) => {
-                                    tracing::error!("Error gossiping {vote:?}: {error}");
-                                    // TODO implement proper error handling policy
-                                    Err(error)?;
-                                }
+                            Ok(ComputationSuccess::GossipVote(consensus_vote_to_p2p_vote(
+                                vote,
+                            )))
+                        }
+                    },
+
+                    P2PTaskEvent::CommitBlock(height_and_round, value) => {
+                        finalize_and_commit_block(
+                            validator_address,
+                            height_and_round,
+                            value,
+                            readonly_storage.clone(),
+                            &db_tx,
+                            &cons_tx,
+                            &mut my_finalized_blocks_cache,
+                            validator_cache.clone(),
+                        )?;
+
+                        let exec_success = execute_deferred_for_next_height(
+                            height_and_round,
+                            validator_cache.clone(),
+                            deferred_executions.clone(),
+                        )?;
+                        // If we finalized the proposal, we can now inform the consensus engine
+                        // about it. Otherwise the rest of the transaction batches could be still be
+                        // coming from the network, definitely the proposal fin is still missing for
+                        // sure.
+                        let success = match exec_success {
+                            Some((hnr, commitment)) => {
+                                ComputationSuccess::ConfirmedProposalCommitment(hnr, commitment)
+                            }
+                            None => ComputationSuccess::Continue,
+                        };
+                        Ok(success)
+                    }
+                }?;
+
+                db_tx.commit()?;
+                cons_tx.commit()?;
+                Ok(success)
+            })?;
+
+            match success {
+                ComputationSuccess::Continue => (),
+                ComputationSuccess::IncomingProposalCommitment(height_and_round, commitment) => {
+                    send_proposal_to_consensus(&tx_to_consensus, height_and_round, commitment)
+                        .await;
+                }
+                ComputationSuccess::EventVote(vote) => {
+                    let vote = p2p_vote_to_consensus_vote(vote);
+                    let cmd = ConsensusCommand::Vote(SignedVote {
+                        vote,
+                        signature: Signature::test(),
+                    });
+                    tx_to_consensus
+                        .send(ConsensusTaskEvent::CommandFromP2P(cmd))
+                        .await
+                        .expect("Receiver not to be dropped");
+                }
+                ComputationSuccess::ProposalGossip(height_and_round, proposal_parts) => {
+                    loop {
+                        tracing::info!(
+                            "🖧  🚀 {validator_address} Gossiping proposal for {height_and_round} \
+                             ..."
+                        );
+                        match p2p_client
+                            .gossip_proposal(height_and_round, proposal_parts.clone())
+                            .await
+                        {
+                            Ok(()) => {
+                                tracing::info!(
+                                    "🖧  🚀 {validator_address} Gossiping proposal for \
+                                     {height_and_round} DONE"
+                                );
+                                break;
+                            }
+                            Err(PublishError::InsufficientPeers) => {
+                                tracing::warn!(
+                                    "Insufficient peers to gossip proposal for \
+                                     {height_and_round}, retrying..."
+                                );
+                                tokio::time::sleep(Duration::from_secs(5)).await;
+                            }
+                            Err(error) => {
+                                tracing::error!(
+                                    "Error gossiping proposal for {height_and_round}: {error}"
+                                );
+                                // TODO implement proper error handling policy
+                                Err(error)?;
                             }
                         }
                     }
-                },
-                P2PTaskEvent::CommitBlock(height_and_round, value) => {
-                    finalize_and_commit_block(
-                        validator_address,
-                        height_and_round,
-                        value,
-                        storage.clone(),
-                        consensus_storage.clone(),
-                        &mut my_finalized_blocks_cache,
-                        validator_cache.clone(),
-                    )
-                    .await?;
-
-                    execute_deferred_for_next_height(
-                        height_and_round,
-                        &tx_to_consensus,
-                        validator_cache.clone(),
-                        deferred_executions.clone(),
-                    )
-                    .await?;
+                }
+                ComputationSuccess::GossipVote(vote) => {
+                    loop {
+                        match p2p_client.gossip_vote(vote.clone()).await {
+                            Ok(()) => {
+                                tracing::info!(
+                                    "🖧  ✋ {validator_address} Gossiping vote {vote:?} SUCCESS"
+                                );
+                                break;
+                            }
+                            Err(PublishError::InsufficientPeers) => {
+                                tracing::warn!(
+                                    "Insufficient peers to gossip {vote:?}, retrying..."
+                                );
+                                tokio::time::sleep(Duration::from_secs(5)).await;
+                            }
+                            Err(error) => {
+                                tracing::error!("Error gossiping {vote:?}: {error}");
+                                // TODO implement proper error handling policy
+                                Err(error)?;
+                            }
+                        }
+                    }
+                }
+                ComputationSuccess::ConfirmedProposalCommitment(hnr, commitment) => {
+                    send_proposal_to_consensus(&tx_to_consensus, hnr, commitment).await;
                 }
             }
         }
@@ -385,12 +424,13 @@ impl ValidatorCache {
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn finalize_and_commit_block(
+fn finalize_and_commit_block(
     validator_address: ContractAddress,
     height_and_round: HeightAndRound,
     value: ConsensusValue,
     storage: Storage,
-    consensus_storage: Storage,
+    db_tx: &Transaction<'_>,
+    cons_tx: &Transaction<'_>,
     my_finalized_blocks_cache: &mut HashMap<HeightAndRound, FinalizedBlock>,
     mut validator_cache: ValidatorCache,
 ) -> anyhow::Result<()> {
@@ -411,23 +451,16 @@ async fn finalize_and_commit_block(
         }
     };
 
-    let storage2 = storage.clone();
-    let consensus_storage2 = consensus_storage.clone();
-    util::task::spawn_blocking(move |_| {
-        let finalized_block = match finalized_block {
-            Either::Left(block) => block,
-            Either::Right(validator) => validator.finalize(storage2.clone())?,
-        };
+    let finalized_block = match finalized_block {
+        Either::Left(block) => block,
+        Either::Right(validator) => validator.finalize(db_tx, storage)?,
+    };
 
-        assert_eq!(value.0 .0, finalized_block.header.state_diff_commitment.0);
+    assert_eq!(value.0 .0, finalized_block.header.state_diff_commitment.0);
 
-        commit_finalized_block(storage2, finalized_block.clone())?;
-        // Necessary for proper fake proposal creation at next heights.
-        commit_finalized_block(consensus_storage2, finalized_block)?;
-
-        anyhow::Ok(())
-    })
-    .await??;
+    commit_finalized_block(db_tx, finalized_block.clone())?;
+    // Necessary for proper fake proposal creation at next heights.
+    commit_finalized_block(cons_tx, finalized_block)?;
     tracing::info!(
         "🖧  💾 {validator_address} Finalized and committed block at {height_and_round} to the \
          database in {} ms",
@@ -445,26 +478,15 @@ async fn finalize_and_commit_block(
         height_and_round.height()
     );
 
-    util::task::spawn_blocking(move |_| {
-        let mut db_conn = consensus_storage
-            .connection()
-            .context("Creating database connection")?;
-        let db_tx = db_conn
-            .transaction()
-            .context("Creating database transaction")?;
-        remove_proposal_parts(db_tx, height_and_round.height(), None)?;
-        anyhow::Ok(())
-    })
-    .await??;
+    remove_proposal_parts(cons_tx, height_and_round.height(), None)?;
     Ok(())
 }
 
-async fn execute_deferred_for_next_height(
+fn execute_deferred_for_next_height(
     height_and_round: HeightAndRound,
-    tx_to_consensus: &mpsc::Sender<ConsensusTaskEvent>,
     mut validator_cache: ValidatorCache,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Option<(HeightAndRound, ProposalCommitmentWithOrigin)>> {
     // Retrieve and execute any deferred transactions or proposal finalizations
     // for the next height, if any. Sort by (height, round) in ascending order.
     let deferred = {
@@ -484,11 +506,11 @@ async fn execute_deferred_for_next_height(
         let validator_stage = validator_cache.remove(&hnr)?;
         let mut validator = validator_stage.try_into_transaction_batch_stage()?;
 
-        let (validator, commitment) = util::task::spawn_blocking(move |_| {
+        let (validator, opt_commitment) = {
             // Execute deferred transactions first.
             validator.execute_transactions(deferred.transactions)?;
 
-            anyhow::Ok(if let Some(commitment) = deferred.commitment {
+            if let Some(commitment) = deferred.commitment {
                 // We've executed all transactions at the height, we can now
                 // finalize the proposal.
                 let validator = validator.consensus_finalize(commitment.proposal_commitment)?;
@@ -512,37 +534,23 @@ async fn execute_deferred_for_next_height(
                 // coming from the network, definitely the proposal fin is
                 // still missing for sure.
                 (ValidatorStage::TransactionBatch(validator), None)
-            })
-        })
-        .await??;
+            }
+        };
 
         validator_cache.insert(hnr, validator);
-
-        // If we finalized the proposal, we can now inform the consensus engine
-        // about it. Otherwise the rest of the transaction batches could be still be
-        // coming from the network, definitely the proposal fin is still missing for
-        // sure.
-        if let Some(commitment) = commitment {
-            send_proposal_to_consensus(tx_to_consensus, hnr, commitment).await;
-        }
+        Ok(opt_commitment.map(|commitment| (hnr, commitment)))
+    } else {
+        Ok(None)
     }
-
-    Ok(())
 }
 
 /// Check whether the incoming p2p event is outdated, i.e. it refers to a block
 /// that is already committed to the database. If so, log it and return `true`,
 /// otherwise return `false`.
-async fn is_outdated_p2p_event(storage: Storage, event: &Event) -> anyhow::Result<bool> {
+fn is_outdated_p2p_event(db_tx: &Transaction<'_>, event: &Event) -> anyhow::Result<bool> {
     // Ignore messages that refer to already committed blocks.
     let incoming_height = event.height();
-    let mut db_conn = storage
-        .connection()
-        .context("Creating database connection")?;
-    let db_txn = db_conn
-        .transaction()
-        .context("Creating database transaction")?;
-    let latest_committed = db_txn.block_number(BlockId::Latest)?;
+    let latest_committed = db_tx.block_number(BlockId::Latest)?;
     if let Some(latest_committed) = latest_committed {
         if incoming_height <= latest_committed.get() {
             tracing::info!(
@@ -587,7 +595,10 @@ async fn send_proposal_to_consensus(
 }
 
 /// Commit the given finalized block to the database.
-fn commit_finalized_block(storage: Storage, finalized_block: FinalizedBlock) -> anyhow::Result<()> {
+fn commit_finalized_block(
+    db_txn: &Transaction<'_>,
+    finalized_block: FinalizedBlock,
+) -> anyhow::Result<()> {
     let FinalizedBlock {
         header,
         state_update,
@@ -595,12 +606,6 @@ fn commit_finalized_block(storage: Storage, finalized_block: FinalizedBlock) -> 
         events,
     } = finalized_block;
 
-    let mut db_conn = storage
-        .connection()
-        .context("Creating database connection")?;
-    let db_txn = db_conn
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .context("Creating database transaction")?;
     let block_number = header.number;
     db_txn
         .insert_block_header(&header)
@@ -611,7 +616,6 @@ fn commit_finalized_block(storage: Storage, finalized_block: FinalizedBlock) -> 
     db_txn
         .insert_transaction_data(block_number, &transactions_and_receipts, Some(&events))
         .context("Inserting transactions, receipts and events")?;
-    db_txn.commit().context("Committing database transaction")?;
 
     Ok(())
 }
@@ -663,17 +667,12 @@ fn handle_incoming_proposal_part(
     proposal_part: ProposalPart,
     mut validator_cache: ValidatorCache,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
+    db_tx: &Transaction<'_>,
     storage: Storage,
-    consensus_storage: Storage,
+    cons_tx: &Transaction<'_>,
 ) -> anyhow::Result<Option<ProposalCommitmentWithOrigin>> {
-    let mut db_conn = consensus_storage
-        .connection()
-        .context("Creating database connection")?;
-    let db_tx = db_conn
-        .transaction()
-        .context("Creating database transaction")?;
     let mut parts = foreign_proposal_parts(
-        &db_tx,
+        cons_tx,
         height_and_round.height(),
         height_and_round.round(),
         &validator_address,
@@ -694,7 +693,7 @@ fn handle_incoming_proposal_part(
             parts.push(proposal_part);
             let proposer_address = ContractAddress(proposal_init.proposer.0);
             let updated = persist_proposal_parts(
-                db_tx,
+                cons_tx,
                 height_and_round.height(),
                 height_and_round.round(),
                 &proposer_address,
@@ -727,7 +726,7 @@ fn handle_incoming_proposal_part(
 
             let proposer_address = ContractAddress(proposer.0);
             let updated = persist_proposal_parts(
-                db_tx,
+                cons_tx,
                 height_and_round.height(),
                 height_and_round.round(),
                 &proposer_address,
@@ -768,7 +767,7 @@ fn handle_incoming_proposal_part(
 
             let proposer_address = ContractAddress(proposer.0);
             let updated = persist_proposal_parts(
-                db_tx,
+                cons_tx,
                 height_and_round.height(),
                 height_and_round.round(),
                 &proposer_address,
@@ -779,7 +778,7 @@ fn handle_incoming_proposal_part(
             let validator = defer_or_execute_txn_batch(
                 height_and_round,
                 tx_batch,
-                storage.clone(),
+                db_tx,
                 validator,
                 deferred_executions,
             )?;
@@ -830,7 +829,7 @@ fn handle_incoming_proposal_part(
 
             let proposer_address = ContractAddress(proposer.0);
             let updated = persist_proposal_parts(
-                db_tx,
+                cons_tx,
                 height_and_round.height(),
                 height_and_round.round(),
                 &proposer_address,
@@ -843,7 +842,7 @@ fn handle_incoming_proposal_part(
                 proposal_commitment,
                 proposer,
                 *valid_round,
-                storage,
+                db_tx,
                 validator,
                 deferred_executions,
             )?;
@@ -866,11 +865,11 @@ fn handle_incoming_proposal_part(
 fn defer_or_execute_txn_batch(
     height_and_round: HeightAndRound,
     tx_batch: Vec<p2p_proto::consensus::Transaction>,
-    storage: Storage,
+    db_tx: &Transaction<'_>,
     mut validator: Box<crate::validator::ValidatorTransactionBatchStage>,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
 ) -> Result<Box<crate::validator::ValidatorTransactionBatchStage>, anyhow::Error> {
-    let validator = if should_defer_execution(height_and_round, storage)? {
+    let validator = if should_defer_execution(height_and_round, db_tx)? {
         tracing::debug!(
             "🖧  ⚙️ transaction batch execution for height and round {height_and_round} is deferred"
         );
@@ -927,7 +926,7 @@ fn defer_or_execute_proposal_fin(
     proposal_commitment: Hash,
     proposer: &Address,
     valid_round: Option<u32>,
-    storage: Storage,
+    db_tx: &Transaction<'_>,
     mut validator: Box<crate::validator::ValidatorTransactionBatchStage>,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
 ) -> anyhow::Result<(ValidatorStage, Option<ProposalCommitmentWithOrigin>)> {
@@ -937,7 +936,7 @@ fn defer_or_execute_proposal_fin(
         pol_round: valid_round.map(Round::new).unwrap_or(Round::nil()),
     };
 
-    if should_defer_execution(height_and_round, storage)? {
+    if should_defer_execution(height_and_round, db_tx)? {
         // The proposal cannot be finalized yet, because the previous
         // block is not committed yet. Defer its finalization.
         tracing::debug!(
@@ -979,16 +978,14 @@ fn defer_or_execute_proposal_fin(
 /// be deferred because the previous block is not committed yet.
 fn should_defer_execution(
     height_and_round: HeightAndRound,
-    storage: Storage,
+    db_tx: &Transaction<'_>,
 ) -> anyhow::Result<bool> {
     let parent_block = height_and_round.height().checked_sub(1);
     let defer = if let Some(parent_block) = parent_block {
         let parent_block =
             BlockNumber::new(parent_block).context("Block number is larger than i64::MAX")?;
         let parent_block = BlockId::Number(parent_block);
-        let mut db_conn = storage.connection()?;
-        let db_txn = db_conn.transaction()?;
-        let parent_committed = db_txn.block_exists(parent_block)?;
+        let parent_committed = db_tx.block_exists(parent_block)?;
         !parent_committed
     } else {
         false
@@ -1028,23 +1025,4 @@ fn consensus_vote_to_p2p_vote(
         proposal_commitment: vote.value.map(|v| Hash(v.0 .0)),
         voter: Address(vote.validator_address.0),
     }
-}
-
-fn query_own_proposal_parts(
-    consensus_storage: Storage,
-    height_and_round: HeightAndRound,
-    validator_address: &ContractAddress,
-) -> anyhow::Result<Option<Vec<ProposalPart>>> {
-    let mut db_conn = consensus_storage
-        .connection()
-        .context("Creating database connection")?;
-    let db_tx = db_conn
-        .transaction()
-        .context("Creating database transaction")?;
-    own_proposal_parts(
-        &db_tx,
-        height_and_round.height(),
-        height_and_round.round(),
-        validator_address,
-    )
 }
