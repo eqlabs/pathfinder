@@ -100,6 +100,7 @@ pub fn spawn(
             };
 
             let success = tokio::task::block_in_place(|| {
+                tracing::debug!("creating DB txs");
                 let db_tx = db_conn
                     .transaction_with_behavior(TransactionBehavior::Immediate)
                     .context("Create database transaction")?;
@@ -317,6 +318,7 @@ pub fn spawn(
 
                 db_tx.commit()?;
                 cons_tx.commit()?;
+                tracing::debug!("DB txs committed");
                 Ok(success)
             })?;
 
