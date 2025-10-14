@@ -47,24 +47,24 @@ fn debug_fail_on_impl(
     let marker_file = data_directory.join(format!("fail_on_{prefix}_{failure_height}"));
 
     if marker_file.exists() {
-        std::fs::remove_file(&marker_file).expect(format!(
+        std::fs::remove_file(&marker_file).expect(&format!(
             "Failed to remove marker file {}",
             marker_file.display()
         ));
         tracing::trace!(
-            %marker_file=marker_file.display(),
-            "💥 ❌ Integration testing: removed {}",
+            marker_file=%marker_file.display(),
+            "💥 ❌ Integration testing: removed",
         );
     } else {
-        std::fs::File::create(&marker_file).expect(format!(
+        std::fs::File::create(&marker_file).expect(&format!(
             "Failed to create marker file {}",
             marker_file.display()
         ));
         tracing::trace!(
-            %marker_file=marker_file.display(),
-            "💥 ✅ Integration testing: created {}",
+            marker_file=%marker_file.display(),
+            "💥 ✅ Integration testing: created",
         );
-        tracing::error!(
+        tracing::info!(
             "💥 💥 Integration testing: exiting process with error code 1 at height \
              {failure_height} on {prefix}, as configured"
         );

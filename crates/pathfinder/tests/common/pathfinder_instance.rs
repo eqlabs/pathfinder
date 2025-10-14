@@ -114,6 +114,7 @@ impl PathfinderInstance {
             ));
         }
         if config.name == "Bob" {
+            command.arg("--integration-testing.disable-db-verification=true");
             command.arg("--integration-testing.inject-failure.on-proposal-rx=12");
             // command.arg("--integration-testing.inject-failure.
             // on-proposal-decided=4");
