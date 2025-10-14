@@ -189,7 +189,7 @@ impl BatchExecutionManager {
             );
 
             validator
-                .restore_from_checkpoint(target_checkpoint.clone())
+                .restore_from_checkpoint_mut(target_checkpoint.clone())
                 .context("Failed to restore from checkpoint")?;
 
             // Update state to reflect rollback
@@ -947,7 +947,7 @@ mod tests {
         // Restore from checkpoint1 (should have 1 transaction)
         // BlockExecutor's CachedState contains state from both batch1 and batch2,
         // but we want to restore to the state after batch1 only
-        validator
+        let validator = validator
             .restore_from_checkpoint(checkpoint1.clone())
             .expect("Checkpoint restoration should succeed");
 
@@ -1031,7 +1031,7 @@ mod tests {
             .expect("Failed to create checkpoint 3");
 
         // Test restoration to checkpoint1 (2 transactions)
-        validator
+        let validator = validator
             .restore_from_checkpoint(checkpoint1.clone())
             .expect("Failed to restore from checkpoint 1");
 
@@ -1055,7 +1055,7 @@ mod tests {
         );
 
         // Test restoration to checkpoint2 (3 transactions)
-        validator
+        let validator = validator
             .restore_from_checkpoint(checkpoint2.clone())
             .expect("Failed to restore from checkpoint 2");
 
@@ -1079,7 +1079,7 @@ mod tests {
         );
 
         // Test restoration to checkpoint3 (5 transactions)
-        validator
+        let mut validator = validator
             .restore_from_checkpoint(checkpoint3.clone())
             .expect("Failed to restore from checkpoint 3");
 

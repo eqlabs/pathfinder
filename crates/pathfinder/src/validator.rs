@@ -360,17 +360,6 @@ impl ValidatorTransactionBatchStage {
         })
     }
 
-    /// Reset the BlockExecutor to clean state by creating a new one
-    fn reset_block_executor(&mut self) -> anyhow::Result<()> {
-        // Extract the storage from the current executor
-        let storage = self.extract_storage_from_executor()?;
-
-        // Create a new LazyBlockExecutor with clean state
-        self.block_executor = LazyBlockExecutor::new(self.chain_id, self.block_info, storage);
-
-        Ok(())
-    }
-
     /// Extract storage from the current BlockExecutor
     fn extract_storage_from_executor(&self) -> anyhow::Result<Storage> {
         match &self.block_executor {
@@ -413,22 +402,56 @@ impl ValidatorTransactionBatchStage {
         Ok(())
     }
 
-    /// Restore from a checkpoint
+    /// Restore from a checkpoint, returning a new stage with restored state
     pub fn restore_from_checkpoint(
+        self,
+        checkpoint: ExecutionCheckpoint,
+    ) -> anyhow::Result<ValidatorTransactionBatchStage> {
+        // Extract storage from current executor
+        let storage = self.extract_storage_from_executor()?;
+
+        // Create new stage with restored state
+        let restored_stage = ValidatorTransactionBatchStage {
+            chain_id: self.chain_id,
+            block_info: self.block_info,
+            expected_block_header: self.expected_block_header,
+            block_executor: LazyBlockExecutor::new(self.chain_id, self.block_info, storage),
+            transactions: checkpoint.transactions,
+            receipts: checkpoint.receipts,
+            events: checkpoint.events,
+        };
+
+        // Validate state consistency
+        restored_stage.validate_state_consistency()?;
+
+        Ok(restored_stage)
+    }
+
+    /// Restore from a checkpoint (mutable version for BatchExecutionManager)
+    pub fn restore_from_checkpoint_mut(
         &mut self,
         checkpoint: ExecutionCheckpoint,
     ) -> anyhow::Result<()> {
-        // Reset BlockExecutor to clean state
-        self.reset_block_executor()?;
+        // Extract storage from current executor
+        let storage = self.extract_storage_from_executor()?;
 
-        // Restore validator fields from checkpoint
-        // The checkpoint already contains the final state after execution
-        self.transactions = checkpoint.transactions;
-        self.receipts = checkpoint.receipts;
-        self.events = checkpoint.events;
+        // Create new stage with restored state
+        let restored_stage = ValidatorTransactionBatchStage {
+            chain_id: self.chain_id,
+            block_info: self.block_info,
+            expected_block_header: self.expected_block_header.clone(),
+            block_executor: LazyBlockExecutor::new(self.chain_id, self.block_info, storage),
+            transactions: checkpoint.transactions,
+            receipts: checkpoint.receipts,
+            events: checkpoint.events,
+        };
 
         // Validate state consistency
-        self.validate_state_consistency()?;
+        restored_stage.validate_state_consistency()?;
+
+        // Replace self with the restored stage
+        *self = restored_stage;
+
         Ok(())
     }
 
