@@ -38,6 +38,13 @@ pub struct Config {
     pub pathfinder_bin: PathBuf,
     pub fixture_dir: PathBuf,
     pub test_dir: PathBuf,
+    pub inject_failure: Option<InjectFailure>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum InjectFailure {
+    OnProposalRx(u64),
+    OnProposalDecided(u64),
 }
 
 impl PathfinderInstance {
@@ -113,12 +120,12 @@ impl PathfinderInstance {
                  12D3KooWDJryKaxjwNCk6yTtZ4GbtbLrH7JrEUTngvStaDttLtid"
             ));
         }
-        if config.name == "Bob" {
-            command.arg("--integration-testing.disable-db-verification=true");
-            command.arg("--integration-testing.inject-failure.on-proposal-rx=12");
-            // command.arg("--integration-testing.inject-failure.
-            // on-proposal-decided=4");
-        }
+
+        config.inject_failure.map(|i| {
+            command
+                .arg(i.into_cli_arg())
+                .arg("--integration-testing.disable-db-verification=true")
+        });
 
         let process = command
             .spawn()
@@ -340,8 +347,27 @@ impl Config {
                 test_dir: test_dir.to_path_buf(),
                 pathfinder_bin: pathfinder_bin.to_path_buf(),
                 fixture_dir: fixture_dir.to_path_buf(),
+                inject_failure: None,
             })
             .collect()
+    }
+
+    pub fn with_inject_failure(mut self, inject_failure: Option<InjectFailure>) -> Self {
+        self.inject_failure = inject_failure;
+        self
+    }
+}
+
+impl InjectFailure {
+    pub fn into_cli_arg(&self) -> String {
+        match self {
+            Self::OnProposalRx(n) => {
+                format!("--integration-testing.inject-failure.on-proposal-rx={n}")
+            }
+            Self::OnProposalDecided(n) => {
+                format!("--integration-testing.inject-failure.on-proposal-decided={n}")
+            }
+        }
     }
 }
 
