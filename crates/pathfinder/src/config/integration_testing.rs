@@ -11,6 +11,7 @@ mod enabled {
     pub struct IntegrationTestingCli {
         #[arg(
             long = "integration-testing.disable-db-verification",
+            action = clap::ArgAction::Set,
             default_value = "false"
         )]
         disable_db_verification: bool,
@@ -69,14 +70,12 @@ mod enabled {
             Self {
                 disable_db_verification: cli.disable_db_verification,
                 inject_failure: InjectFailureConfig {
-                    on_proposal_rx: FailureInjection::new(
-                        cli.inject_failure_on_proposal_rx,
-                        "proposal_rx",
-                    ),
-                    on_proposal_decided: FailureInjection::new(
-                        cli.inject_failure_on_proposal_decided,
-                        "proposal_decided",
-                    ),
+                    on_proposal_rx: cli
+                        .inject_failure_on_proposal_rx
+                        .map(|h| FailureInjection::new(h, "proposal_rx")),
+                    on_proposal_decided: cli
+                        .inject_failure_on_proposal_decided
+                        .map(|h| FailureInjection::new(h, "proposal_decided")),
                 },
             }
         }
