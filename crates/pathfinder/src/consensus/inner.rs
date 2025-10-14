@@ -27,6 +27,7 @@ use super::ConsensusTaskHandles;
 use crate::config::{integration_testing, ConsensusConfig};
 use crate::validator::FinalizedBlock;
 
+#[allow(clippy::too_many_arguments)]
 pub fn start(
     config: ConsensusConfig,
     chain_id: ChainId,

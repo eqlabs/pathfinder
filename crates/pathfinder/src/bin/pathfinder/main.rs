@@ -292,7 +292,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     let (consensus_p2p_handle, consensus_p2p_client_and_event_rx) =
         p2p_network::consensus::start(chain_id, config.consensus_p2p.clone()).await;
 
-    let integration_testing_config = config.integration_testing.clone();
+    let integration_testing_config = config.integration_testing;
     let ConsensusTaskHandles {
         consensus_p2p_event_processing_handle,
         consensus_engine_handle,

@@ -47,19 +47,15 @@ fn debug_fail_on_impl(
     let marker_file = data_directory.join(format!("fail_on_{prefix}_{failure_height}"));
 
     if marker_file.exists() {
-        std::fs::remove_file(&marker_file).expect(&format!(
-            "Failed to remove marker file {}",
-            marker_file.display()
-        ));
+        std::fs::remove_file(&marker_file)
+            .unwrap_or_else(|_| panic!("Failed to remove marker file {}", marker_file.display()));
         tracing::trace!(
             marker_file=%marker_file.display(),
             "💥 ❌ Integration testing: removed",
         );
     } else {
-        std::fs::File::create(&marker_file).expect(&format!(
-            "Failed to create marker file {}",
-            marker_file.display()
-        ));
+        std::fs::File::create(&marker_file)
+            .unwrap_or_else(|_| panic!("Failed to create marker file {}", marker_file.display()));
         tracing::trace!(
             marker_file=%marker_file.display(),
             "💥 ✅ Integration testing: created",

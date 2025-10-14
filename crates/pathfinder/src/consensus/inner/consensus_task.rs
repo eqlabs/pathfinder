@@ -77,24 +77,10 @@ pub fn spawn(
     // Does nothing in production builds. Used for integration testing only.
     inject_failure: crate::config::integration_testing::InjectFailureConfig,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
-    let mut db_conn = storage
-        .connection()
-        .context("Creating database connection")
-        .expect("TODO");
-    let db_txn = db_conn
-        .transaction()
-        .context("Creating database transaction")
-        .expect("TODO");
-    let highest_finalized = db_txn
-        .block_number(BlockId::Latest)
-        .expect("TODO")
-        .map(|x| x.get());
-    drop(db_txn);
-    drop(db_conn);
-
     let data_directory = data_directory.to_path_buf();
 
     util::task::spawn(async move {
+        let highest_finalized = highest_finalized(&storage)?;
         // Get the validator address and validator set provider
         let validator_address = config.my_validator_address;
         let validator_set_provider =
@@ -341,19 +327,15 @@ pub fn spawn(
                         // consensus engine is already started for this new height carried in those
                         // messages.
                         ConsensusCommand::Proposal(_) | ConsensusCommand::Vote(_) => {
-                            match cmd {
-                                ConsensusCommand::Proposal(_) =>
-                                // Does nothing in production builds. Used for integration testing
-                                // only.
-                                {
-                                    integration_testing::debug_fail_on(
-                                        cmd_height,
-                                        inject_failure.on_proposal_rx,
-                                        &data_directory,
-                                    )
-                                }
-                                _ => {}
-                            };
+                            if let ConsensusCommand::Proposal(_) = &cmd {
+                                // Does nothing in production builds. Used for
+                                // integration testing only.
+                                integration_testing::debug_fail_on(
+                                    cmd_height,
+                                    inject_failure.on_proposal_rx,
+                                    &data_directory,
+                                )
+                            }
 
                             // TODO catch up with the current height of the consensus network using
                             // sync, for the time being just observe the height in the rebroadcasted
@@ -390,6 +372,17 @@ pub fn spawn(
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     })
+}
+
+fn highest_finalized(storage: &Storage) -> anyhow::Result<Option<u64>> {
+    let mut db_conn = storage
+        .connection()
+        .context("Creating database connection")?;
+    let db_txn = db_conn
+        .transaction()
+        .context("Creating database transaction")?;
+    let highest_finalized = db_txn.block_number(BlockId::Latest)?.map(|x| x.get());
+    Ok(highest_finalized)
 }
 
 fn start_height(

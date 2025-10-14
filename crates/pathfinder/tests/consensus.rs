@@ -16,6 +16,7 @@ mod test {
     use std::time::Duration;
     use std::vec;
 
+    use futures::future::Either;
     use rstest::rstest;
 
     use crate::common::pathfinder_instance::{respawn_on_fail, InjectFailure, PathfinderInstance};
@@ -64,15 +65,16 @@ mod test {
         let bob_client = wait_for_height(&bob, HEIGHT, POLL_HEIGHT);
         let charlie_client = wait_for_height(&charlie, HEIGHT, POLL_HEIGHT);
 
+        // Either to work around clippy: "manual implementation of `Option::map`"
         let _maybe_guard = match inject_failure {
-            Some(_) => Some(respawn_on_fail(
+            Some(_) => Either::Left(respawn_on_fail(
                 bob,
                 bob_cfg,
                 POLL_READY,
                 READY_TIMEOUT,
                 TEST_TIMEOUT,
             )),
-            None => None,
+            None => Either::Right(bob),
         };
 
         utils::wait_for_test_end(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT).await

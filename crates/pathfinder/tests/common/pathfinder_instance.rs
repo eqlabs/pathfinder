@@ -124,7 +124,7 @@ impl PathfinderInstance {
 
         config.inject_failure.map(|i| {
             command
-                .arg(i.into_cli_arg())
+                .arg(i.as_cli_arg())
                 .arg("--integration-testing.disable-db-verification=true")
         });
 
@@ -287,11 +287,11 @@ impl PathfinderInstance {
     }
 }
 
-fn create_log_file(config: &Config, stdout_path: &PathBuf) -> Result<File, anyhow::Error> {
+fn create_log_file(config: &Config, stdout_path: &Path) -> Result<File, anyhow::Error> {
     let stdout_file = OpenOptions::new()
         .append(true)
         .create(true)
-        .open(stdout_path.clone())
+        .open(stdout_path)
         .context(format!(
             "Creating log file {} for Pathfinder instance {}",
             stdout_path.display(),
@@ -362,7 +362,7 @@ impl Config {
 }
 
 impl InjectFailure {
-    pub fn into_cli_arg(&self) -> String {
+    pub fn as_cli_arg(&self) -> String {
         match self {
             Self::OnProposalRx(n) => {
                 format!("--integration-testing.inject-failure.on-proposal-rx={n}")
@@ -405,7 +405,7 @@ pub fn respawn_on_fail(
     let mut child_signal = signal(SignalKind::child()).unwrap();
 
     tokio::spawn(async move {
-        if let Some(_) = child_signal.recv().await {
+        if child_signal.recv().await.is_some() {
             println!("Got SIGCHLD!");
             match instance.exited_with_error() {
                 Ok(true) => {

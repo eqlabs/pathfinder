@@ -492,15 +492,6 @@ impl<
                 }
             };
 
-        tracing::info!(
-            "incomplete_heights: {:#?}",
-            incomplete_heights
-                .iter()
-                .map(|(x, _)| x)
-                .copied()
-                .collect::<Vec<u64>>()
-        );
-
         // Manually recover all incomplete heights.
         for (height, entries) in incomplete_heights {
             tracing::info!(
@@ -516,11 +507,6 @@ impl<
             internal_consensus.recover_from_wal(entries);
             consensus.internal.insert(height, internal_consensus);
         }
-
-        tracing::info!(
-            "consensus.internal.keys(): {:#?}",
-            consensus.internal.keys().copied().collect::<Vec<u64>>()
-        );
 
         tracing::info!(
             validator = ?consensus.config.address,
@@ -734,11 +720,6 @@ impl<
 
     /// Get the current maximum height being tracked by the consensus engine.
     pub fn current_height(&self) -> Option<u64> {
-        tracing::info!(
-            "self.internal.keys(): {:#?}",
-            self.internal.keys().copied().collect::<Vec<u64>>()
-        );
-
         self.internal.keys().max().copied()
     }
 }

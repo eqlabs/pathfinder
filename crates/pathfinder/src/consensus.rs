@@ -29,6 +29,7 @@ impl ConsensusTaskHandles {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn start(
     config: ConsensusConfig,
     chain_id: ChainId,
@@ -56,6 +57,7 @@ pub fn start(
 mod inner {
     use super::*;
 
+    #[allow(clippy::too_many_arguments)]
     pub fn start(
         _: ConsensusConfig,
         _: ChainId,
