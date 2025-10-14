@@ -147,7 +147,7 @@ impl Transaction<'_> {
             .map_err(|e| e.into())
     }
 
-    // always all proposers
+    /// Always all proposers
     pub fn remove_consensus_proposal_parts(
         &self,
         height: u64,
