@@ -1,5 +1,5 @@
-// Note that functions in this module fail on normal pathfinder
-// storage (because they use a consensus-specific table).
+//! Note that functions in this module fail on normal pathfinder
+//! storage (because they use a consensus-specific table).
 
 use anyhow::Context;
 use pathfinder_common::ContractAddress;
