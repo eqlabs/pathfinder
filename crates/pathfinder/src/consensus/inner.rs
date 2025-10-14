@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, watch};
 
 use super::ConsensusTaskHandles;
-use crate::config::ConsensusConfig;
+use crate::config::{integration_testing, ConsensusConfig};
 use crate::validator::FinalizedBlock;
 
 pub fn start(
@@ -35,6 +35,7 @@ pub fn start(
     p2p_client: Client,
     p2p_event_rx: mpsc::UnboundedReceiver<Event>,
     data_directory: &Path,
+    integration_testing_config: integration_testing::IntegrationTestingConfig,
 ) -> ConsensusTaskHandles {
     // Events that are produced by the P2P task and consumed by the consensus task.
     // TODO determine sufficient buffer size. 1 is not enough.
@@ -69,6 +70,7 @@ pub fn start(
         consensus_storage,
         storage,
         data_directory,
+        integration_testing_config,
     );
 
     ConsensusTaskHandles {

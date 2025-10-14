@@ -24,8 +24,6 @@ pub mod p2p;
 use p2p::cli::{P2PConsensusCli, P2PSyncCli};
 use p2p::{P2PConsensusConfig, P2PSyncConfig};
 
-use crate::config::integration_testing::IntegrationTestingConfig;
-
 #[derive(Parser)]
 #[command(name = "Pathfinder")]
 #[command(author = "Equilibrium Labs")]
@@ -855,6 +853,9 @@ pub struct Config {
     pub submission_tracker_time_limit: NonZeroU64,
     pub submission_tracker_size_limit: NonZeroUsize,
     pub consensus: Option<ConsensusConfig>,
+    /// Integration testing config, only available on debug builds with `p2p`
+    /// and `integration-testing` features enabled.
+    pub integration_testing: integration_testing::IntegrationTestingConfig,
 }
 
 pub struct Ethereum {
@@ -899,9 +900,6 @@ pub struct ConsensusConfig {
     pub validator_addresses: Vec<ContractAddress>,
     /// The proposer addresses of all proposers in the proposer set.
     pub proposer_addresses: Vec<ContractAddress>,
-    /// Integration testing config, only available on debug builds with `p2p`
-    /// and `integration-testing` features enabled.
-    pub integration_testing: integration_testing::IntegrationTestingConfig,
 }
 
 #[cfg(not(feature = "p2p"))]
@@ -1011,17 +1009,14 @@ impl NativeExecutionConfig {
 
 #[cfg(not(feature = "p2p"))]
 impl ConsensusConfig {
-    fn parse_or_exit(_: (), _: integration_testing::IntegrationTestingConfig) -> Option<Self> {
+    fn parse_or_exit(_: ()) -> Option<Self> {
         None
     }
 }
 
 #[cfg(feature = "p2p")]
 impl ConsensusConfig {
-    fn parse_or_exit(
-        consensus_cli: ConsensusCli,
-        integration_testing: integration_testing::IntegrationTestingConfig,
-    ) -> Option<Self> {
+    fn parse_or_exit(consensus_cli: ConsensusCli) -> Option<Self> {
         consensus_cli.is_consensus_enabled.then(|| {
             let my_validator_address = consensus_cli
                 .my_validator_address
@@ -1058,7 +1053,6 @@ impl ConsensusConfig {
                     .into_iter()
                     .map(ContractAddress)
                     .collect(),
-                integration_testing,
             }
         })
     }
@@ -1121,9 +1115,9 @@ impl Config {
             native_execution: NativeExecutionConfig::parse(cli.native_execution),
             submission_tracker_time_limit: cli.submission_tracker_time_limit,
             submission_tracker_size_limit: cli.submission_tracker_size_limit,
-            consensus: ConsensusConfig::parse_or_exit(
-                cli.consensus,
-                IntegrationTestingConfig::parse(cli.integration_testing),
+            consensus: ConsensusConfig::parse_or_exit(cli.consensus),
+            integration_testing: integration_testing::IntegrationTestingConfig::parse(
+                cli.integration_testing,
             ),
         }
     }

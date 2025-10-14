@@ -164,6 +164,7 @@ pub fn spawn(
     storage: Storage,
     fake_proposals_storage: Storage,
     data_directory: &Path,
+    integration_testing_config: integration_testing::IntegrationTestingConfig,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     let mut db_conn = storage
         .connection()
@@ -354,7 +355,7 @@ pub fn spawn(
                             fail_on_proposal_decided(
                                 height,
                                 data_directory.clone(),
-                                &config.integration_testing,
+                                &integration_testing_config,
                             );
 
                             let height_and_round = HeightAndRound::new(height, round);
@@ -432,7 +433,7 @@ pub fn spawn(
                                 ConsensusCommand::Proposal(_) => fail_on_proposal_rx(
                                     cmd_height,
                                     data_directory.clone(),
-                                    &config.integration_testing,
+                                    &integration_testing_config,
                                 ),
                                 _ => {}
                             };
