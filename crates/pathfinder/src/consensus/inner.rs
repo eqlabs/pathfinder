@@ -75,7 +75,7 @@ pub fn start(
 
 fn open_consensus_storage(data_directory: &Path) -> anyhow::Result<Storage> {
     let storage_manager =
-        pathfinder_storage::StorageBuilder::file(data_directory.join("consensus.sqlite"))
+        pathfinder_storage::StorageBuilder::file(data_directory.join("consensus.sqlite")) // TODO: https://github.com/eqlabs/pathfinder/issues/3047
             .journal_mode(JournalMode::WAL)
             .trie_prune_mode(Some(TriePruneMode::Archive))
             .blockchain_history_mode(Some(BlockchainHistoryMode::Archive))
