@@ -5,7 +5,7 @@
 //!
 //! Run the test:
 //! ```
-//! cargo test --test consensus_smoke -p pathfinder -F p2p -F integration-testing -- --nocapture
+//! cargo test --test consensus -p pathfinder -F p2p -F integration-testing -- --nocapture
 //! ```
 
 #[cfg(feature = "p2p")]
