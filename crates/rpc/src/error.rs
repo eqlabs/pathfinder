@@ -341,7 +341,7 @@ impl From<pathfinder_consensus_fetcher::ConsensusFetcherError> for ApplicationEr
             InvalidProposerData(msg) => ApplicationError::Custom(anyhow::anyhow!(msg)),
             BlockNotFound => ApplicationError::BlockNotFound,
             UnsupportedNetwork(chain_id) => {
-                ApplicationError::Custom(anyhow::anyhow!("Unsupported network: {}", chain_id))
+                ApplicationError::Custom(anyhow::anyhow!("Unsupported network: {chain_id}"))
             }
         }
     }

@@ -73,7 +73,7 @@ pub mod hex_str {
                 b'0'..=b'9' => Ok(digit - b'0'),
                 b'A'..=b'F' => Ok(digit - b'A' + 10),
                 b'a'..=b'f' => Ok(digit - b'a' + 10),
-                other => Err(anyhow!("invalid hex digit: {}", other)),
+                other => Err(anyhow!("invalid hex digit: {other}")),
             }
         }
 
@@ -87,8 +87,7 @@ pub mod hex_str {
 
         if len > 2 * N {
             return Err(anyhow!(
-                "hex string too long: expected at most 64 characters, got {}",
-                len
+                "hex string too long: expected at most 64 characters, got {len}",
             ));
         }
 
@@ -102,8 +101,7 @@ pub mod hex_str {
             }
         } else if len != 2 * N {
             return Err(anyhow!(
-                "hex string too short: expected 64 characters, got {}",
-                len
+                "hex string too short: expected 64 characters, got {len}"
             ));
         }
 

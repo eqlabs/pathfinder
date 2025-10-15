@@ -84,7 +84,7 @@ impl From<StateError> for CallError {
     fn from(e: StateError) -> Self {
         match e {
             StateError::StateReadError(_) => Self::Internal(e.into()),
-            _ => Self::Custom(anyhow::anyhow!("State error: {}", e)),
+            _ => Self::Custom(anyhow::anyhow!("State error: {e}")),
         }
     }
 }
@@ -156,8 +156,7 @@ impl From<TransactionExecutorError> for TransactionExecutionError {
                 TransactionExecutionError::new(error.transaction_index, err)
             }
             _ => TransactionExecutionError::Custom(anyhow::anyhow!(
-                "Transaction execution error: {}",
-                error
+                "Transaction execution error: {error}"
             )),
         }
     }
@@ -167,7 +166,7 @@ impl From<StateError> for TransactionExecutionError {
     fn from(e: StateError) -> Self {
         match e {
             StateError::StateReadError(_) => Self::Internal(e.into()),
-            _ => Self::Custom(anyhow::anyhow!("State error: {}", e)),
+            _ => Self::Custom(anyhow::anyhow!("State error: {e}")),
         }
     }
 }

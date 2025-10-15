@@ -859,8 +859,7 @@ fn verify_networks(starknet: Chain, ethereum: EthereumChain) -> anyhow::Result<(
         anyhow::ensure!(
             ethereum == expected,
             "Incorrect Ethereum network detected. Found {ethereum:?} but expected {expected:?} \
-             for {} Starknet",
-            starknet
+             for {starknet} Starknet"
         );
     }
 
@@ -906,16 +905,13 @@ async fn verify_database(
 
                 anyhow::ensure!(
                     database_genesis == gateway_hash,
-                    "Database genesis block {} does not match gateway {}.",
-                    database_genesis,
-                    gateway_hash
+                    "Database genesis block {database_genesis} does not match gateway \
+                     {gateway_hash}."
                 );
             }
             (network, db_network) => anyhow::ensure!(
                 network == db_network,
-                "Database ({}) does not match the expected network ({})",
-                db_network,
-                network
+                "Database ({db_network}) does not match the expected network ({network})"
             ),
         }
     }
@@ -933,16 +929,15 @@ fn handle_critical_task_result(
             task_result
         }
         Err(error) if error.is_panic() => {
-            tracing::error!(%error, "{} task panicked", task_name);
-            Err(anyhow::anyhow!("{} task panicked", task_name))
+            tracing::error!(%error, %task_name, "Task panicked");
+            Err(anyhow::anyhow!("{task_name} task panicked"))
         }
         // Cancelling all tracked tasks via [`util::task::tracker::close()`] does not cause join
         // errors on registered task handles, so this is unexpected and we should threat it as error
         Err(_) => {
-            tracing::error!("{} task was cancelled unexpectedly", task_name);
+            tracing::error!(%task_name, "Task was cancelled unexpectedly");
             Err(anyhow::anyhow!(
-                "{} task was cancelled unexpectedly",
-                task_name
+                "{task_name} task was cancelled unexpectedly"
             ))
         }
     }

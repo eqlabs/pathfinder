@@ -813,8 +813,8 @@ fn handle_incoming_proposal_part(
 
             if !validator.has_proposal_commitment() {
                 anyhow::bail!(
-                    "Transaction batch missing proposal commitment for height and round {}",
-                    height_and_round
+                    "Transaction batch missing proposal commitment for height and round \
+                     {height_and_round}"
                 );
             }
 

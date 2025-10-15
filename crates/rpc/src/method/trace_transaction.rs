@@ -259,9 +259,7 @@ impl From<TransactionExecutionError> for TraceTransactionError {
                 error,
                 error_stack: _,
             } => Self::Custom(anyhow::anyhow!(
-                "Transaction execution failed at index {}: {}",
-                transaction_index,
-                error
+                "Transaction execution failed at index {transaction_index}: {error}"
             )),
             Internal(e) => Self::Internal(e),
             Custom(e) => Self::Custom(e),

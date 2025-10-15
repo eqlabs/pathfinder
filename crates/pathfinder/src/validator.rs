@@ -371,9 +371,7 @@ impl ValidatorTransactionBatchStage {
             Ok(next_stage)
         } else {
             Err(anyhow::anyhow!(
-                "expected {}, actual {}",
-                expected_proposal_commitment,
-                actual_proposal_commitment
+                "expected {expected_proposal_commitment}, actual {actual_proposal_commitment}"
             ))
         }
     }
@@ -451,7 +449,7 @@ impl ValidatorTransactionBatchStage {
 
         if let Some(expected_header) = expected_block_header {
             if header != expected_header {
-                anyhow::bail!("expected {:?}, actual {:?}", expected_header, header);
+                anyhow::bail!("expected {expected_header:?}, actual {header:?}");
             }
         }
 

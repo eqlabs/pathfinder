@@ -33,9 +33,9 @@ pub fn compile_to_casm(sierra_definition: &[u8]) -> anyhow::Result<Vec<u8>> {
 
 fn panic_error(e: Box<dyn std::any::Any>) -> anyhow::Error {
     match e.downcast_ref::<&str>() {
-        Some(e) => anyhow::anyhow!("Compiler panicked: {}", e),
+        Some(e) => anyhow::anyhow!("Compiler panicked: {e}"),
         None => match e.downcast_ref::<String>() {
-            Some(e) => anyhow::anyhow!("Compiler panicked: {}", e),
+            Some(e) => anyhow::anyhow!("Compiler panicked: {e}"),
             None => anyhow::anyhow!("Compiler panicked"),
         },
     }

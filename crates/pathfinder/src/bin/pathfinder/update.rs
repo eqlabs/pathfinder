@@ -156,10 +156,7 @@ async fn fetch_latest_github_release(
                 Err(e) => UpdateResult::ReqwestError(e),
             }
         }
-        other => UpdateResult::Other(anyhow::anyhow!(
-            "Unexpected response status code: {}",
-            other
-        )),
+        other => UpdateResult::Other(anyhow::anyhow!("Unexpected response status code: {other}")),
     }
 }
 
