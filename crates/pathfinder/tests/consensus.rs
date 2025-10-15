@@ -23,6 +23,35 @@ mod test {
     use crate::common::rpc_client::wait_for_height;
     use crate::common::utils;
 
+    // TODO Test cases that should be supported by the integration tests:
+    // - proposals:
+    //   - non-empty proposals (L1 handlers + transactions that modify storage),
+    //   - empty proposals, which follow the spec, ie. no transaction batches:
+    //      - ProposalInit,
+    //      - ProposalCommitment,
+    //      - ProposalFin,
+    //   - consider supporting empty proposals with an empty transaction batch, not
+    //     fully following the spec:
+    //      - ProposalInit,
+    //      - BlockInfo,
+    //      - TransactionBatch([]),
+    //      - TransactionsFin,
+    //      - ProposalCommitment,
+    //      - ProposalFin,
+    // - node set sizes:
+    //   - 3 nodes, network stalls if 1 node fails,
+    //   - 4 nodes, network continues if 1 node fails, catchup via sync mechanism is
+    //     activated,
+    // - failure injection (tests recovery from crashes/terminations at different
+    //   stages):
+    //   - none (happy path),
+    //   - fail on the first part of a proposal received,
+    //   - fail before transactions fin received,
+    //   - fail before proposal commitment received,
+    //   - fail on proposal decided but not committed,
+    //   - fail on proposal committed,
+    //   - fail on prevote received,
+    //   - fail on precommit received.
     #[rstest]
     #[case::happy_path(None)]
     #[case::fail_on_proposal_rx(Some(InjectFailure::OnProposalRx(12)))]
