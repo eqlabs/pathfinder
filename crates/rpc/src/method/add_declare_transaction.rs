@@ -317,7 +317,7 @@ pub async fn add_declare_transaction(
             let contract_definition: CairoContractDefinition = tx
                 .contract_class
                 .try_into()
-                .map_err(|e| anyhow::anyhow!("Failed to convert contract definition: {}", e))?;
+                .map_err(|e| anyhow::anyhow!("Failed to convert contract definition: {e}"))?;
 
             let response = context
                 .sequencer
@@ -355,7 +355,7 @@ pub async fn add_declare_transaction(
             let contract_definition: SierraContractDefinition = tx
                 .contract_class
                 .try_into()
-                .map_err(|e| anyhow::anyhow!("Failed to convert contract definition: {}", e))?;
+                .map_err(|e| anyhow::anyhow!("Failed to convert contract definition: {e}"))?;
 
             let response = context
                 .sequencer
@@ -394,7 +394,7 @@ pub async fn add_declare_transaction(
             let contract_definition: SierraContractDefinition = tx
                 .contract_class
                 .try_into()
-                .map_err(|e| anyhow::anyhow!("Failed to convert contract definition: {}", e))?;
+                .map_err(|e| anyhow::anyhow!("Failed to convert contract definition: {e}"))?;
 
             let response = context
                 .sequencer
