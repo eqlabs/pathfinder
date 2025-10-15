@@ -47,7 +47,7 @@ mod test {
     //   - none (happy path),
     //   - fail on the first part of a proposal received,
     //   - fail before transactions fin received,
-    //   - fail before proposal commitment received,
+    //   - fail before proposal fin received,
     //   - fail on proposal decided but not committed,
     //   - fail on proposal committed,
     //   - fail on prevote received,
