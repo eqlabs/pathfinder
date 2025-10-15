@@ -29,11 +29,7 @@ members = [
     "crates/util",
     "crates/version",
 ]
-exclude = [
-    "crates/load-test",
-    "crates/stark_hash_python",
-    "utils/pathfinder-probe",
-]
+exclude = ["crates/load-test", "utils/pathfinder-probe"]
 resolver = "2"
 
 [workspace.package]
