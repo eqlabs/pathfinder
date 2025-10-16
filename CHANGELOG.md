@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `starknet_estimateFee` fails if the validate entry point runs ouf of gas during L2 fee binary search.
 - Pathfinder stops syncing for a minute after logging an "L2 sync process terminated with: Download block from sequencer" error.
+- `starknet_simulateTransactions` sometimes fails for `DEPLOY_ACCOUNT` transactions if the `SKIP_FEE_CHARGE` simulation flag is not set. This happens even though the account address has the sufficient funds to execute the transaction.
 
 ## [0.20.4] - 2025-09-25
 
