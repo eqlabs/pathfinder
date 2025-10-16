@@ -19,6 +19,7 @@ use pathfinder_common::{
     BlockNumber,
     BlockTimestamp,
     ChainId,
+    ClassHash,
     EntryPoint,
     EventCommitment,
     L1DataAvailabilityMode,
@@ -53,6 +54,8 @@ pub fn new(
     ValidatorBlockInfoStage::new(chain_id, proposal_init)
 }
 
+/// Validates the basic block metadata and proposal information before any
+/// transaction processing.
 #[derive(Debug)]
 pub struct ValidatorBlockInfoStage {
     chain_id: ChainId,
@@ -143,6 +146,7 @@ impl ValidatorBlockInfoStage {
     }
 }
 
+/// Executes transactions and manages the block execution state.
 pub struct ValidatorTransactionBatchStage {
     chain_id: ChainId,
     block_info: pathfinder_executor::types::BlockInfo,
@@ -151,6 +155,21 @@ pub struct ValidatorTransactionBatchStage {
     transactions: Vec<Transaction>,
     receipts: Vec<Receipt>,
     events: Vec<Vec<Event>>,
+}
+
+/// Checkpoint of execution state after a batch.
+#[derive(Clone, Debug)]
+pub struct ExecutionCheckpoint {
+    /// All transactions executed up to this point
+    pub transactions: Vec<Transaction>,
+    /// All receipts generated up to this point
+    pub receipts: Vec<Receipt>,
+    /// All events generated up to this point
+    pub events: Vec<Vec<Event>>,
+    /// Transaction index for the next batch
+    pub next_txn_idx: usize,
+    /// Declared deprecated classes up to this point
+    pub declared_deprecated_classes: Vec<ClassHash>,
 }
 
 enum LazyBlockExecutor {
@@ -166,8 +185,12 @@ enum LazyBlockExecutor {
     /// the `BlockExecutor` and occurs only briefly in
     /// [`get_or_init()`](Self::get_or_init).
     Initializing,
-    /// This variant holds the initialized `BlockExecutor`.
-    Initialized(Box<BlockExecutor>),
+    /// This variant holds the initialized `BlockExecutor` and keeps the storage
+    /// reference for potential restoration.
+    Initialized {
+        executor: Box<BlockExecutor>,
+        storage: Storage,
+    },
 }
 
 impl LazyBlockExecutor {
@@ -184,8 +207,8 @@ impl LazyBlockExecutor {
     }
 
     fn get_or_init(&mut self) -> anyhow::Result<&mut BlockExecutor> {
-        if let LazyBlockExecutor::Initialized(be) = self {
-            Ok(be)
+        if let LazyBlockExecutor::Initialized { executor, .. } = self {
+            Ok(executor)
         } else {
             let this = std::mem::replace(self, Self::Initializing);
             let LazyBlockExecutor::Uninitialized {
@@ -206,11 +229,14 @@ impl LazyBlockExecutor {
                 db_conn,
             )
             .context("Creating BlockExecutor")?;
-            *self = LazyBlockExecutor::Initialized(Box::new(be));
-            let LazyBlockExecutor::Initialized(be) = self else {
+            *self = LazyBlockExecutor::Initialized {
+                executor: Box::new(be),
+                storage,
+            };
+            let LazyBlockExecutor::Initialized { executor, .. } = self else {
                 unreachable!("Block executor is initialized");
             };
-            Ok(be)
+            Ok(executor)
         }
     }
 
@@ -218,10 +244,10 @@ impl LazyBlockExecutor {
     /// [`get_or_init()`](Self::get_or_init) if necessary.
     fn take(mut self) -> anyhow::Result<Box<BlockExecutor>> {
         self.get_or_init()?;
-        let LazyBlockExecutor::Initialized(be) = self else {
+        let LazyBlockExecutor::Initialized { executor, .. } = self else {
             unreachable!("Block executor is initialized");
         };
-        Ok(be)
+        Ok(executor)
     }
 }
 
@@ -313,6 +339,120 @@ impl ValidatorTransactionBatchStage {
 
     pub fn has_proposal_commitment(&self) -> bool {
         self.expected_block_header.is_some()
+    }
+
+    /// Create a checkpoint of the current execution state
+    pub fn create_checkpoint(&self) -> anyhow::Result<ExecutionCheckpoint> {
+        // TODO: Assumption... We should get the actual next transaction
+        // index from the executor rather than just counting stored transactions
+        let next_txn_idx = self.transactions.len();
+
+        // TODO: Assumption... We should track declared deprecated classes
+        // during execution to ensure accurate rollback state
+        let declared_deprecated_classes = Vec::new();
+
+        Ok(ExecutionCheckpoint {
+            transactions: self.transactions.clone(),
+            receipts: self.receipts.clone(),
+            events: self.events.clone(),
+            next_txn_idx,
+            declared_deprecated_classes,
+        })
+    }
+
+    /// Extract storage from the current BlockExecutor
+    fn extract_storage_from_executor(&self) -> anyhow::Result<Storage> {
+        match &self.block_executor {
+            LazyBlockExecutor::Uninitialized { storage, .. } => Ok(storage.clone()),
+            LazyBlockExecutor::Initialized { storage, .. } => Ok(storage.clone()),
+            LazyBlockExecutor::Initializing => {
+                Err(anyhow::anyhow!("Cannot extract storage while initializing"))
+            }
+        }
+    }
+
+    /// Validate that the validator state is consistent
+    pub fn validate_state_consistency(&self) -> anyhow::Result<()> {
+        // Validate that receipts and events match transaction count
+        if self.receipts.len() != self.transactions.len() {
+            return Err(anyhow::anyhow!(
+                "State inconsistency: {} receipts but {} transactions",
+                self.receipts.len(),
+                self.transactions.len()
+            ));
+        }
+
+        if self.events.len() != self.transactions.len() {
+            return Err(anyhow::anyhow!(
+                "State inconsistency: {} event arrays but {} transactions",
+                self.events.len(),
+                self.transactions.len()
+            ));
+        }
+
+        // Validate that BlockExecutor is in a valid state
+        // After restoration, it should be either Uninitialized (clean) or Initialized
+        // (clean)
+        if matches!(self.block_executor, LazyBlockExecutor::Initializing) {
+            return Err(anyhow::anyhow!(
+                "BlockExecutor is in invalid initializing state"
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Restore from a checkpoint, returning a new stage with restored state
+    pub fn restore_from_checkpoint(
+        self,
+        checkpoint: ExecutionCheckpoint,
+    ) -> anyhow::Result<ValidatorTransactionBatchStage> {
+        // Extract storage from current executor
+        let storage = self.extract_storage_from_executor()?;
+
+        // Create new stage with restored state
+        let restored_stage = ValidatorTransactionBatchStage {
+            chain_id: self.chain_id,
+            block_info: self.block_info,
+            expected_block_header: self.expected_block_header,
+            block_executor: LazyBlockExecutor::new(self.chain_id, self.block_info, storage),
+            transactions: checkpoint.transactions,
+            receipts: checkpoint.receipts,
+            events: checkpoint.events,
+        };
+
+        // Validate state consistency
+        restored_stage.validate_state_consistency()?;
+
+        Ok(restored_stage)
+    }
+
+    /// Restore from a checkpoint (mutable version for BatchExecutionManager)
+    pub fn restore_from_checkpoint_mut(
+        &mut self,
+        checkpoint: ExecutionCheckpoint,
+    ) -> anyhow::Result<()> {
+        // Extract storage from current executor
+        let storage = self.extract_storage_from_executor()?;
+
+        // Create new stage with restored state
+        let restored_stage = ValidatorTransactionBatchStage {
+            chain_id: self.chain_id,
+            block_info: self.block_info,
+            expected_block_header: self.expected_block_header.clone(),
+            block_executor: LazyBlockExecutor::new(self.chain_id, self.block_info, storage),
+            transactions: checkpoint.transactions,
+            receipts: checkpoint.receipts,
+            events: checkpoint.events,
+        };
+
+        // Validate state consistency
+        restored_stage.validate_state_consistency()?;
+
+        // Replace self with the restored stage
+        *self = restored_stage;
+
+        Ok(())
     }
 
     pub fn record_proposal_commitment(
@@ -463,6 +603,7 @@ impl ValidatorTransactionBatchStage {
     }
 }
 
+/// Finalizes the block by computing commitments and updating the database.
 pub struct ValidatorFinalizeStage {
     header: BlockHeader,
     state_update: StateUpdateData,
