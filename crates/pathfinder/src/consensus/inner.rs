@@ -1,3 +1,4 @@
+mod batch_execution;
 mod consensus_task;
 mod conv;
 mod dto;
@@ -5,6 +6,9 @@ mod fetch_proposers;
 mod fetch_validators;
 mod p2p_task;
 mod persist_proposals;
+
+#[cfg(test)]
+mod test_helpers;
 
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
