@@ -173,6 +173,12 @@ pub(crate) fn find_l2_gas_limit_and_execute_transaction(
             .os_constants
             .execute_max_sierra_gas
     };
+
+    tracing::trace!(
+        l2_gas_limit=%initial_l2_gas_limit,
+        max_l2_gas_limit=%max_l2_gas_limit,
+        "L2 gas limits to use for fee estimation"
+    );
     set_l2_gas_limit(tx, max_l2_gas_limit);
 
     let (output, saved_state) =
@@ -616,41 +622,33 @@ fn get_max_l2_gas_amount_covered_by_balance(
 
     match tx {
         Transaction::Account(account_transaction) => {
-            match account_transaction.tx {
-                starknet_api::executable_transaction::AccountTransaction::Declare(_)
-                | starknet_api::executable_transaction::AccountTransaction::Invoke(_) => {
-                    let fee_token_address = block_context
-                        .chain_info()
-                        .fee_token_address(&account_transaction.fee_type());
-                    let balance = state.get_fee_token_balance(
-                        account_transaction.sender_address(),
-                        fee_token_address,
-                    )?;
-                    let balance = (balance.1.to_biguint() << 128) + balance.0.to_biguint();
+            let fee_token_address = block_context
+                .chain_info()
+                .fee_token_address(&account_transaction.fee_type());
+            let (balance_low, balance_high) = state
+                .get_fee_token_balance(account_transaction.sender_address(), fee_token_address)?;
+            let balance = balance_from_felt_pair(balance_low, balance_high);
 
-                    tracing::trace!(%balance, "Balance");
+            tracing::trace!(%balance, "Balance");
 
-                    if balance > max_possible_fee_without_l2_gas.0.into() {
-                        // The maximum amount of L2 gas that can be bought with the balance.
-                        let max_amount = (balance - max_possible_fee_without_l2_gas.0)
-                            / initial_resource_bounds
-                                .l2_gas
-                                .max_price_per_unit
-                                .0
-                                .max(1u64.into());
-                        Ok(u64::try_from(max_amount).unwrap_or(u64::MAX).into())
-                    } else {
-                        // Balance is less than committed L1 gas and L1 data gas, tx will fail
-                        // anyway. Let it pass through here so that
-                        // execution returns a detailed error.
-                        Ok(GasAmount::ZERO)
-                    }
-                }
-                starknet_api::executable_transaction::AccountTransaction::DeployAccount(_) => {
-                    Ok(block_context
-                        .versioned_constants()
-                        .initial_gas_no_user_l2_bound())
-                }
+            if balance > max_possible_fee_without_l2_gas.0.into() {
+                // The maximum amount of L2 gas that can be bought with the balance.
+                let max_amount = (balance - max_possible_fee_without_l2_gas.0)
+                    / initial_resource_bounds
+                        .l2_gas
+                        .max_price_per_unit
+                        .0
+                        .max(1u64.into());
+                Ok(u64::try_from(max_amount).unwrap_or(u64::MAX).into())
+            } else {
+                // Balance is less than committed L1 gas and L1 data gas, tx will fail
+                // anyway. Let it pass through here so that
+                // execution returns a detailed error.
+                tracing::trace!(
+                    %balance,
+                    "Balance does not cover committed L1 gas and L1 data gas"
+                );
+                Ok(GasAmount::ZERO)
             }
         }
         Transaction::L1Handler(_) => {
@@ -658,6 +656,18 @@ fn get_max_l2_gas_amount_covered_by_balance(
             Err(anyhow::anyhow!("L1 handler transactions don't have L2 gas").into())
         }
     }
+}
+
+/// Combines two `Felt252` values (low and high) into a `BigUint` balance.
+///
+/// Cairo U256 values are represented as a pair of `Felt252` values, where the
+/// first element is the low 128 bits and the second element is the high 128
+/// bits.
+///
+/// Note that we return `num_bigint::BigUint` here instead of U256 because we
+/// want to be able to perform further arithmetic operations on the result.
+fn balance_from_felt_pair(low: cairo_vm::Felt252, high: cairo_vm::Felt252) -> num_bigint::BigUint {
+    (high.to_biguint() << 128) + low.to_biguint()
 }
 
 const OUT_OF_GAS_CAIRO_STRING: &str = "0x4f7574206f6620676173 ('Out of gas')";

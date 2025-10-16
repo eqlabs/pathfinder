@@ -8715,6 +8715,7 @@ dependencies = [
  "cairo-native",
  "cairo-vm",
  "metrics 0.20.1",
+ "num-bigint 0.4.6",
  "pathfinder-common",
  "pathfinder-crypto",
  "pathfinder-storage",

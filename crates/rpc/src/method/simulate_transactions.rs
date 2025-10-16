@@ -244,10 +244,13 @@ pub(crate) mod tests {
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
+    use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBound, ResourceBounds};
     use pathfinder_crypto::Felt;
     use pathfinder_executor::types::{
         DeclareTransactionExecutionInfo,
         DeployAccountTransactionExecutionInfo,
+        FeeEstimate,
+        PriceUnit,
     };
     use pathfinder_storage::Storage;
     use starknet_gateway_test_fixtures::class_definitions::ERC20_CONTRACT_DEFINITION_CLASS_HASH;
@@ -263,6 +266,7 @@ pub(crate) mod tests {
     use crate::types::request::{
         BroadcastedDeclareTransaction,
         BroadcastedDeclareTransactionV1,
+        BroadcastedDeployAccountTransactionV3,
         BroadcastedTransaction,
     };
     use crate::types::BlockId;
@@ -2635,6 +2639,137 @@ pub(crate) mod tests {
             version,
             "simulations/declare_deploy_and_invoke_sierra_class_starknet_0_14_0.json"
         );
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn deploy_account_starknet_0_14_0() {
+        let starknet_version = StarknetVersion::new(0, 14, 0, 0);
+        // Pre-seed STRK tokens to the account being deployed to cover fees.
+        let deployed_account_erc20_balance_key =
+            storage_address!("0x07fd991b677088b72fa071c034518197fa970df7f7e635faf86b5d91116fd465");
+        let (storage, last_block_header, _, _) =
+            crate::test_setup::test_storage(starknet_version, |state_update| {
+                state_update.with_storage_update(
+                    crate::context::STRK_FEE_TOKEN_ADDRESS,
+                    deployed_account_erc20_balance_key,
+                    storage_value!("0x10000000000000000000000000000"),
+                )
+            })
+            .await;
+        let context = RpcContext::for_tests().with_storage(storage);
+
+        let deploy_account = crate::types::request::BroadcastedDeployAccountTransaction::V3(
+            BroadcastedDeployAccountTransactionV3 {
+                version: TransactionVersion::THREE,
+                signature: vec![],
+                nonce: transaction_nonce!("0x0"),
+                resource_bounds: ResourceBounds {
+                    l1_gas: ResourceBound {
+                        max_amount: ResourceAmount(0x100000),
+                        max_price_per_unit: ResourcePricePerUnit(2),
+                    },
+                    l2_gas: ResourceBound {
+                        max_amount: ResourceAmount(0x100000),
+                        max_price_per_unit: ResourcePricePerUnit(1),
+                    },
+                    l1_data_gas: Some(ResourceBound {
+                        max_amount: ResourceAmount(0x100000),
+                        max_price_per_unit: ResourcePricePerUnit(2),
+                    }),
+                },
+                tip: Tip(0),
+                paymaster_data: vec![],
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+                contract_address_salt: contract_address_salt!("0x1"),
+                constructor_calldata: vec![call_param!("0xdeadbeef")],
+                class_hash: crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH,
+            },
+        );
+
+        let input = SimulateTransactionInput {
+            transactions: vec![BroadcastedTransaction::DeployAccount(deploy_account)],
+            simulation_flags: crate::dto::SimulationFlags(vec![
+                crate::dto::SimulationFlag::SkipValidate,
+            ]),
+            block_id: BlockId::Number(last_block_header.number),
+        };
+        let result = super::simulate_transactions(context, input, RpcVersion::V09)
+            .await
+            .unwrap();
+
+        let expected_fee_estimate = FeeEstimate {
+            l1_gas_consumed: 0.into(),
+            l1_gas_price: 2.into(),
+            l1_data_gas_consumed: 0x1c0.into(),
+            l1_data_gas_price: 2.into(),
+            l2_gas_consumed: 0xb9362.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 0xb96e2.into(),
+            unit: PriceUnit::Fri,
+        };
+        assert_eq!(result.0[0].fee_estimation, expected_fee_estimate);
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn deploy_account_starknet_0_14_0_with_skip_fee_charge() {
+        let starknet_version = StarknetVersion::new(0, 14, 0, 0);
+        // With SKIP_FEE_CHARGE, the account does not need to be pre-funded.
+        let (context, last_block_header, _account_contract_address, _universal_deployer_address) =
+            crate::test_setup::test_context_with_starknet_version(starknet_version).await;
+
+        let deploy_account = crate::types::request::BroadcastedDeployAccountTransaction::V3(
+            BroadcastedDeployAccountTransactionV3 {
+                version: TransactionVersion::THREE,
+                signature: vec![],
+                nonce: transaction_nonce!("0x0"),
+                resource_bounds: ResourceBounds {
+                    l1_gas: ResourceBound {
+                        max_amount: ResourceAmount(0x100000),
+                        max_price_per_unit: ResourcePricePerUnit(2),
+                    },
+                    l2_gas: ResourceBound {
+                        max_amount: ResourceAmount(0x100000),
+                        max_price_per_unit: ResourcePricePerUnit(1),
+                    },
+                    l1_data_gas: Some(ResourceBound {
+                        max_amount: ResourceAmount(0x100000),
+                        max_price_per_unit: ResourcePricePerUnit(2),
+                    }),
+                },
+                tip: Tip(0),
+                paymaster_data: vec![],
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+                contract_address_salt: contract_address_salt!("0x1"),
+                constructor_calldata: vec![call_param!("0xdeadbeef")],
+                class_hash: crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH,
+            },
+        );
+
+        let input = SimulateTransactionInput {
+            transactions: vec![BroadcastedTransaction::DeployAccount(deploy_account)],
+            simulation_flags: crate::dto::SimulationFlags(vec![
+                crate::dto::SimulationFlag::SkipValidate,
+                crate::dto::SimulationFlag::SkipFeeCharge,
+            ]),
+            block_id: BlockId::Number(last_block_header.number),
+        };
+        let result = super::simulate_transactions(context, input, RpcVersion::V09)
+            .await
+            .unwrap();
+
+        let expected_fee_estimate = FeeEstimate {
+            l1_gas_consumed: 0.into(),
+            l1_gas_price: 2.into(),
+            l1_data_gas_consumed: 0x1c0.into(),
+            l1_data_gas_price: 2.into(),
+            l2_gas_consumed: 0xb9362.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 0xb96e2.into(),
+            unit: PriceUnit::Fri,
+        };
+        assert_eq!(result.0[0].fee_estimation, expected_fee_estimate);
     }
 
     const RPC_VERSION: RpcVersion = RpcVersion::V09;

@@ -17,6 +17,7 @@ cairo-lang-starknet-classes = { workspace = true }
 cairo-native = { workspace = true, optional = true }
 cairo-vm = { workspace = true }
 metrics = { workspace = true }
+num-bigint = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
 pathfinder-storage = { path = "../storage" }
