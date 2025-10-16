@@ -104,7 +104,7 @@ pub fn spawn(
                 let mut db_tx = db_conn
                     .transaction_with_behavior(TransactionBehavior::Immediate)
                     .context("Create database transaction")?;
-                let cons_tx = cons_conn
+                let mut cons_tx = cons_conn
                     .transaction_with_behavior(TransactionBehavior::Immediate)
                     .context("Create database transaction")?;
 
@@ -326,6 +326,12 @@ pub fn spawn(
                             commit_finalized_block(&db_tx, finalized_block.clone())?;
                             // Necessary for proper fake proposal creation at next heights.
                             commit_finalized_block(&cons_tx, finalized_block)?;
+                            cons_tx
+                                .commit()
+                                .context("Committing database transaction")?;
+                            cons_tx = cons_conn
+                                .transaction_with_behavior(TransactionBehavior::Immediate)
+                                .context("Create consensus database transaction")?;
                             tracing::info!(
                                 "🖧  💾 {validator_address} Finalized and committed block at \
                                  {height_and_round} to the database in {} ms",
