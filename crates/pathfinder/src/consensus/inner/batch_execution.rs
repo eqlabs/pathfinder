@@ -17,12 +17,17 @@ use crate::validator::{ExecutionCheckpoint, ValidatorTransactionBatchStage};
 
 /// Manages batch execution with checkpoint-based rollback for TransactionsFin
 /// support
+#[derive(Debug, Clone)]
 pub struct BatchExecutionManager {
     /// Tracks execution state for each height/round
     executions: HashMap<HeightAndRound, BatchExecutionState>,
 }
 
+// TODO: Consider making this BatchExecutionManager thread-safe to avoid cloning
+// it around after the db refactor changed the p2p_task event handling...
+
 /// State for a single proposal's batch execution
+#[derive(Debug, Clone)]
 struct BatchExecutionState {
     /// Whether each batch has been executed (indexed by arrival order)
     batch_executed: Vec<bool>,
@@ -53,7 +58,7 @@ impl BatchExecutionManager {
 
     /// Process a transaction batch with deferral and checkpoint support
     /// This is the main method that should be used by the P2P task
-    pub async fn process_batch_with_deferral(
+    pub fn process_batch_with_deferral(
         &mut self,
         height_and_round: HeightAndRound,
         transactions: Vec<Transaction>,
@@ -62,7 +67,7 @@ impl BatchExecutionManager {
         deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
     ) -> anyhow::Result<()> {
         // Check if execution should be deferred
-        if should_defer_execution(height_and_round, storage.clone()).await? {
+        if should_defer_execution(height_and_round, storage.clone())? {
             tracing::debug!(
                 "🖧  ⚙️ transaction batch execution for height and round {height_and_round} is \
                  deferred"
@@ -154,7 +159,7 @@ impl BatchExecutionManager {
     }
 
     /// Process TransactionsFin message
-    pub async fn process_transactions_fin(
+    pub fn process_transactions_fin(
         &mut self,
         height_and_round: HeightAndRound,
         transactions_fin: TransactionsFin,
@@ -299,26 +304,22 @@ impl Default for ProposalCommitmentWithOrigin {
 
 /// Determine whether execution of proposal parts for `height_and_round` should
 /// be deferred because the previous block is not committed yet.
-pub async fn should_defer_execution(
+pub fn should_defer_execution(
     height_and_round: HeightAndRound,
     storage: Storage,
 ) -> anyhow::Result<bool> {
-    let defer = util::task::spawn_blocking(move |_| {
-        let parent_block = height_and_round.height().checked_sub(1);
-        let defer = if let Some(parent_block) = parent_block {
-            let parent_block =
-                BlockNumber::new(parent_block).context("Block number is larger than i64::MAX")?;
-            let parent_block = BlockId::Number(parent_block);
-            let mut db_conn = storage.connection()?;
-            let db_txn = db_conn.transaction()?;
-            let parent_committed = db_txn.block_exists(parent_block)?;
-            !parent_committed
-        } else {
-            false
-        };
-        anyhow::Ok(defer)
-    })
-    .await??;
+    let parent_block = height_and_round.height().checked_sub(1);
+    let defer = if let Some(parent_block) = parent_block {
+        let parent_block =
+            BlockNumber::new(parent_block).context("Block number is larger than i64::MAX")?;
+        let parent_block = BlockId::Number(parent_block);
+        let mut db_conn = storage.connection()?;
+        let db_txn = db_conn.transaction()?;
+        let parent_committed = db_txn.block_exists(parent_block)?;
+        !parent_committed
+    } else {
+        false
+    };
     Ok(defer)
 }
 
@@ -436,7 +437,6 @@ mod tests {
         };
         manager
             .process_transactions_fin(height_and_round, transactions_fin, &mut validator)
-            .await
             .expect("Failed to process TransactionsFin");
 
         // Verify final state
@@ -666,7 +666,6 @@ mod tests {
         let transactions_fin = create_transactions_fin(5);
         manager
             .process_transactions_fin(height_and_round, transactions_fin, &mut validator)
-            .await
             .expect("Failed to process TransactionsFin");
 
         // Verify final state
@@ -859,15 +858,13 @@ mod tests {
 
         // Test deferral mechanism
         let batch = vec![transactions[0].clone()];
-        let result = manager
-            .process_batch_with_deferral(
-                height_and_round,
-                batch,
-                &mut validator,
-                storage,
-                &mut deferred_executions,
-            )
-            .await;
+        let result = manager.process_batch_with_deferral(
+            height_and_round,
+            batch,
+            &mut validator,
+            storage,
+            &mut deferred_executions,
+        );
 
         // Should succeed (either execute or defer)
         assert!(result.is_ok());
