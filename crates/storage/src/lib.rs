@@ -28,6 +28,16 @@ use pathfinder_common::BlockNumber;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{OpenFlags, OptionalExtension};
+pub use transaction::dto::{
+    DataAvailabilityMode,
+    DeclareTransactionV4,
+    DeployAccountTransactionV4,
+    InvokeTransactionV4,
+    L1HandlerTransactionV0,
+    MinimalFelt,
+    ResourceBound,
+    ResourceBoundsV1,
+};
 
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";

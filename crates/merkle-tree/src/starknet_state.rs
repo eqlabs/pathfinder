@@ -38,8 +38,7 @@ pub fn update_starknet_state(
                             Ok(connection) => connection,
                             Err(e) => {
                                 return Err(anyhow::anyhow!(
-                                    "Failed to create database connection in rayon thread: {}",
-                                    e
+                                    "Failed to create database connection in rayon thread: {e}"
                                 )
                                 .into())
                             }
