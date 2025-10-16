@@ -101,7 +101,7 @@ pub fn spawn(
 
             let success = tokio::task::block_in_place(|| {
                 tracing::debug!("creating DB txs");
-                let db_tx = db_conn
+                let mut db_tx = db_conn
                     .transaction_with_behavior(TransactionBehavior::Immediate)
                     .context("Create database transaction")?;
                 let cons_tx = cons_conn
@@ -286,16 +286,70 @@ pub fn spawn(
                     },
 
                     P2PTaskEvent::CommitBlock(height_and_round, value) => {
-                        finalize_and_commit_block(
-                            validator_address,
-                            height_and_round,
-                            value,
-                            readonly_storage.clone(),
-                            &db_tx,
-                            &cons_tx,
-                            &mut my_finalized_blocks_cache,
-                            validator_cache.clone(),
-                        )?;
+                        {
+                            let storage = readonly_storage.clone();
+                            let mut validator_cache = validator_cache.clone();
+                            tracing::info!(
+                                "🖧  💾 {validator_address} Finalizing and committing block at \
+                                 {height_and_round} to the database ...",
+                            );
+                            let stopwatch = std::time::Instant::now();
+
+                            let finalized_block = match my_finalized_blocks_cache
+                                .remove(&height_and_round)
+                            {
+                                // Our own proposal is already executed and finalized.
+                                Some(block) => Either::Left(block),
+                                // Incoming proposal has been executed and needs to be finalized
+                                // now.
+                                None => {
+                                    let validator_stage =
+                                        validator_cache.remove(&height_and_round)?;
+                                    let validator = validator_stage.try_into_finalize_stage()?;
+                                    Either::Right(validator)
+                                }
+                            };
+
+                            let finalized_block = match finalized_block {
+                                Either::Left(block) => block,
+                                Either::Right(validator) => {
+                                    let block = validator.finalize(db_tx, storage)?;
+                                    db_tx = db_conn
+                                        .transaction_with_behavior(TransactionBehavior::Immediate)
+                                        .context("Create database transaction")?;
+                                    block
+                                }
+                            };
+
+                            assert_eq!(value.0 .0, finalized_block.header.state_diff_commitment.0);
+
+                            commit_finalized_block(&db_tx, finalized_block.clone())?;
+                            // Necessary for proper fake proposal creation at next heights.
+                            commit_finalized_block(&cons_tx, finalized_block)?;
+                            tracing::info!(
+                                "🖧  💾 {validator_address} Finalized and committed block at \
+                                 {height_and_round} to the database in {} ms",
+                                stopwatch.elapsed().as_millis()
+                            );
+
+                            let removed = my_finalized_blocks_cache
+                                .iter()
+                                .filter_map(|(hnr, _)| {
+                                    (hnr.height() == height_and_round.height())
+                                        .then_some(hnr.round())
+                                })
+                                .collect::<Vec<_>>();
+                            my_finalized_blocks_cache
+                                .retain(|hnr, _| hnr.height() != height_and_round.height());
+                            tracing::debug!(
+                                "🖧  🗑️ {validator_address} removed my finalized blocks from cache \
+                                 for height {} and rounds: {removed:?}",
+                                height_and_round.height()
+                            );
+
+                            remove_proposal_parts(&cons_tx, height_and_round.height(), None)?;
+                            anyhow::Ok(())
+                        }?;
 
                         let exec_success = execute_deferred_for_next_height(
                             height_and_round,
@@ -423,65 +477,6 @@ impl ValidatorCache {
             .remove(hnr)
             .context(format!("No ValidatorStage for height and round {hnr}"))
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn finalize_and_commit_block(
-    validator_address: ContractAddress,
-    height_and_round: HeightAndRound,
-    value: ConsensusValue,
-    storage: Storage,
-    db_tx: &Transaction<'_>,
-    cons_tx: &Transaction<'_>,
-    my_finalized_blocks_cache: &mut HashMap<HeightAndRound, FinalizedBlock>,
-    mut validator_cache: ValidatorCache,
-) -> anyhow::Result<()> {
-    tracing::info!(
-        "🖧  💾 {validator_address} Finalizing and committing block at {height_and_round} to the \
-         database ...",
-    );
-    let stopwatch = std::time::Instant::now();
-
-    let finalized_block = match my_finalized_blocks_cache.remove(&height_and_round) {
-        // Our own proposal is already executed and finalized.
-        Some(block) => Either::Left(block),
-        // Incoming proposal has been executed and needs to be finalized now.
-        None => {
-            let validator_stage = validator_cache.remove(&height_and_round)?;
-            let validator = validator_stage.try_into_finalize_stage()?;
-            Either::Right(validator)
-        }
-    };
-
-    let finalized_block = match finalized_block {
-        Either::Left(block) => block,
-        Either::Right(validator) => validator.finalize(db_tx, storage)?,
-    };
-
-    assert_eq!(value.0 .0, finalized_block.header.state_diff_commitment.0);
-
-    commit_finalized_block(db_tx, finalized_block.clone())?;
-    // Necessary for proper fake proposal creation at next heights.
-    commit_finalized_block(cons_tx, finalized_block)?;
-    tracing::info!(
-        "🖧  💾 {validator_address} Finalized and committed block at {height_and_round} to the \
-         database in {} ms",
-        stopwatch.elapsed().as_millis()
-    );
-
-    let removed = my_finalized_blocks_cache
-        .iter()
-        .filter_map(|(hnr, _)| (hnr.height() == height_and_round.height()).then_some(hnr.round()))
-        .collect::<Vec<_>>();
-    my_finalized_blocks_cache.retain(|hnr, _| hnr.height() != height_and_round.height());
-    tracing::debug!(
-        "🖧  🗑️ {validator_address} removed my finalized blocks from cache for height {} and \
-         rounds: {removed:?}",
-        height_and_round.height()
-    );
-
-    remove_proposal_parts(cons_tx, height_and_round.height(), None)?;
-    Ok(())
 }
 
 fn execute_deferred_for_next_height(

@@ -488,7 +488,7 @@ impl ValidatorFinalizeStage {
     /// and IO intensive.
     pub fn finalize(
         self,
-        db_tx: &DbTransaction<'_>,
+        db_tx: DbTransaction<'_>,
         storage: Storage,
     ) -> anyhow::Result<FinalizedBlock> {
         #[cfg(debug_assertions)]
@@ -521,12 +521,14 @@ impl ValidatorFinalizeStage {
         }
 
         let (storage_commitment, class_commitment) = update_starknet_state(
-            db_tx,
+            &db_tx,
             (&state_update).into(),
             VERIFY_HASHES,
             header.number,
             storage.clone(),
         )?;
+
+        db_tx.commit().context("Committing database transaction")?;
 
         debug!(
             "Block {} tries updated in {} ms",

@@ -412,8 +412,7 @@ fn create_empty_proposal(
     let db_txn = db_conn
         .transaction()
         .context("Create database transaction")?;
-    let finalized_block = validator.finalize(&db_txn, storage.clone())?;
-    db_txn.commit()?;
+    let finalized_block = validator.finalize(db_txn, storage.clone())?;
     let proposal_commitment_hash = Hash(finalized_block.header.state_diff_commitment.0);
 
     // The only version handled by consensus, so far
