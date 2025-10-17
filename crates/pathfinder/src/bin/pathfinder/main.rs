@@ -203,13 +203,15 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         )?;
 
     info!(location=?pathfinder_context.database, "Database migrated.");
-    verify_database(
-        &sync_storage,
-        pathfinder_context.network,
-        &pathfinder_context.gateway,
-    )
-    .await
-    .context("Verifying database")?;
+    if !config.integration_testing.is_db_verification_disabled() {
+        verify_database(
+            &sync_storage,
+            pathfinder_context.network,
+            &pathfinder_context.gateway,
+        )
+        .await
+        .context("Verifying database")?;
+    }
 
     sync_storage
         .connection()
@@ -290,6 +292,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     let (consensus_p2p_handle, consensus_p2p_client_and_event_rx) =
         p2p_network::consensus::start(chain_id, config.consensus_p2p.clone()).await;
 
+    let integration_testing_config = config.integration_testing;
     let ConsensusTaskHandles {
         consensus_p2p_event_processing_handle,
         consensus_engine_handle,
@@ -312,6 +315,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
                 client,
                 event_rx,
                 &config.data_directory,
+                // Does nothing in production builds. Used for integration testing only.
+                integration_testing_config.inject_failure_config(),
             )
         } else {
             ConsensusTaskHandles::pending()

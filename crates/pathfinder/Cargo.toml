@@ -12,6 +12,7 @@ path = "src/lib.rs"
 
 [features]
 cairo-native = ["pathfinder-executor/cairo-native"]
+integration-testing = []
 tokio-console = ["console-subscriber", "tokio/tracing"]
 p2p = ["pathfinder-consensus"]
 

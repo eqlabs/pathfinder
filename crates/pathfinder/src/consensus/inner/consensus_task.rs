@@ -10,7 +10,7 @@
 //!    vote
 
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use std::vec;
@@ -27,6 +27,7 @@ use p2p_proto::consensus::{
 };
 use pathfinder_common::{
     BlockHash,
+    BlockId,
     BlockNumber,
     ChainId,
     ConsensusInfo,
@@ -60,6 +61,8 @@ use crate::state::block_hash::{
 };
 use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage};
 
+mod integration_testing;
+
 #[allow(clippy::too_many_arguments)]
 pub fn spawn(
     chain_id: pathfinder_common::ChainId,
@@ -70,8 +73,14 @@ pub fn spawn(
     info_watch_tx: watch::Sender<Option<ConsensusInfo>>,
     storage: Storage,
     fake_proposals_storage: Storage,
+    data_directory: &Path,
+    // Does nothing in production builds. Used for integration testing only.
+    inject_failure: crate::config::integration_testing::InjectFailureConfig,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+    let data_directory = data_directory.to_path_buf();
+
     util::task::spawn(async move {
+        let highest_finalized = highest_finalized(&storage)?;
         // Get the validator address and validator set provider
         let validator_address = config.my_validator_address;
         let validator_set_provider =
@@ -81,7 +90,7 @@ pub fn spawn(
         let proposer_selector = L2ProposerSelector::new(storage.clone(), chain_id, config.clone());
 
         let mut consensus =
-            Consensus::<ConsensusValue, ContractAddress, L2ProposerSelector>::recover(
+            Consensus::<ConsensusValue, ContractAddress, L2ProposerSelector>::recover_with_proposal_selector(
                 Config::new(validator_address)
                     .with_wal_dir(wal_directory)
                     .with_history_depth(
@@ -95,8 +104,9 @@ pub fn spawn(
                 // TODO use a dynamic validator set provider, once fetching the validator set from
                 // the staking contract is implemented. Related issue: https://github.com/eqlabs/pathfinder/issues/2936
                 Arc::new(validator_set_provider.clone()),
-            )?
-            .with_proposer_selector(proposer_selector);
+                proposer_selector,
+                highest_finalized,
+            )?;
 
         // Get the current height
         let mut current_height = consensus.current_height().unwrap_or_default();
@@ -107,6 +117,11 @@ pub fn spawn(
         // Related issue: https://github.com/eqlabs/pathfinder/issues/2934
         let mut last_nil_vote_height = None;
 
+        // TODO FIXME this should be taken from WAL & DB
+        // This set is used to make sure we only start each height once and is used when
+        // a new height needs to be started upon a proposal or vote for H arriving
+        // before H-1 has been decided upon. Such race conditions occur very often in a
+        // network with low latency.
         let mut started_heights = HashSet::new();
 
         start_height(
@@ -234,6 +249,13 @@ pub fn spawn(
                                  round {round}",
                             );
 
+                            // Does nothing in production builds. Used for integration testing only.
+                            integration_testing::debug_fail_on(
+                                height,
+                                inject_failure.on_proposal_decided,
+                                &data_directory,
+                            );
+
                             let height_and_round = HeightAndRound::new(height, round);
 
                             tx_to_p2p
@@ -305,6 +327,16 @@ pub fn spawn(
                         // consensus engine is already started for this new height carried in those
                         // messages.
                         ConsensusCommand::Proposal(_) | ConsensusCommand::Vote(_) => {
+                            if let ConsensusCommand::Proposal(_) = &cmd {
+                                // Does nothing in production builds. Used for
+                                // integration testing only.
+                                integration_testing::debug_fail_on(
+                                    cmd_height,
+                                    inject_failure.on_proposal_rx,
+                                    &data_directory,
+                                )
+                            }
+
                             // TODO catch up with the current height of the consensus network using
                             // sync, for the time being just observe the height in the rebroadcasted
                             // votes or in the proposals.
@@ -340,6 +372,17 @@ pub fn spawn(
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     })
+}
+
+fn highest_finalized(storage: &Storage) -> anyhow::Result<Option<u64>> {
+    let mut db_conn = storage
+        .connection()
+        .context("Creating database connection")?;
+    let db_txn = db_conn
+        .transaction()
+        .context("Creating database transaction")?;
+    let highest_finalized = db_txn.block_number(BlockId::Latest)?.map(|x| x.get());
+    Ok(highest_finalized)
 }
 
 fn start_height(
