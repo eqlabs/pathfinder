@@ -117,6 +117,132 @@ mod test {
         test_result
     }
 
+    #[tokio::test]
+    #[ignore = "incomplete"]
+    async fn consensus_with_catch_up_smoke_test() -> anyhow::Result<()> {
+        PathfinderInstance::enable_log_dump(
+            std::env::var_os("PATHFINDER_CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL").is_some(),
+        );
+
+        const NUM_NODES: usize = 4;
+        const MIN_REQUIRED_DECIDED_HEIGHT: u64 = 20;
+        const READY_TIMEOUT: Duration = Duration::from_secs(20);
+        const TEST_TIMEOUT: Duration = Duration::from_secs(120);
+        const READY_POLL_INTERVAL: Duration = Duration::from_millis(500);
+        const HEIGHT_POLL_INTERVAL: Duration = Duration::from_secs(1);
+
+        let stopwatch = Instant::now();
+
+        let pathfinder_bin = pathfinder_bin();
+        let fixture_dir = fixture_dir();
+        let test_dir = tempfile::Builder::new()
+            .disable_cleanup(true)
+            .tempdir()
+            .context("Creating temporary directory for test artifacts")?;
+        println!(
+            "Test artifacts will be stored in {}",
+            test_dir.path().display()
+        );
+
+        assert!(pathfinder_bin.exists(), "Pathfinder binary not found");
+        assert!(fixture_dir.exists(), "Fixture directory not found");
+
+        let mut configs =
+            Config::for_set(NUM_NODES, &pathfinder_bin, &fixture_dir, test_dir.path()).into_iter();
+
+        let alice = PathfinderInstance::spawn(configs.next().unwrap())?;
+        alice
+            .wait_for_ready(READY_POLL_INTERVAL, READY_TIMEOUT)
+            .await?;
+
+        let bob = PathfinderInstance::spawn(configs.next().unwrap())?;
+        let charlie = PathfinderInstance::spawn(configs.next().unwrap())?;
+
+        let (bob_rdy, charlie_rdy) = tokio::join!(
+            bob.wait_for_ready(READY_POLL_INTERVAL, READY_TIMEOUT),
+            charlie.wait_for_ready(READY_POLL_INTERVAL, READY_TIMEOUT)
+        );
+        bob_rdy?;
+        charlie_rdy?;
+
+        let spawn_rpc_client = |rpc_port| {
+            tokio::spawn(wait_for_height(
+                rpc_port,
+                MIN_REQUIRED_DECIDED_HEIGHT,
+                HEIGHT_POLL_INTERVAL,
+            ))
+        };
+
+        println!(
+            "All RPC clients and nodes spawned and ready after {} s",
+            stopwatch.elapsed().as_secs()
+        );
+
+        let alice_client = spawn_rpc_client(alice.rpc_port);
+        let bob_client = spawn_rpc_client(bob.rpc_port);
+        let charlie_client = spawn_rpc_client(charlie.rpc_port);
+
+        tokio::select! {
+            _ = sleep(TEST_TIMEOUT) => {
+                eprintln!("Test timed out after {TEST_TIMEOUT:?}");
+                Err(anyhow::anyhow!("Test timed out after {TEST_TIMEOUT:?}"))
+            }
+
+            test_result = async {
+                tokio::join!(alice_client, bob_client, charlie_client)
+            } => {
+                let (a, b, c) = test_result;
+                a.context("Joining Alice's RPC client task")?;
+                b.context("Joining Bob's RPC client task")?;
+                c.context("Joining Charlie's RPC client task")?;
+                // Don't dump logs if the test succeeded.
+                PathfinderInstance::enable_log_dump(false);
+                Ok(())
+            }
+
+            _ = tokio::signal::ctrl_c() => {
+                eprintln!("Received Ctrl-C, terminating test early");
+                Err(anyhow::anyhow!("Test interrupted by user"))
+            }
+        }?;
+
+        let alice_has_genesis = block_exists(alice.rpc_port, 0).await.unwrap();
+        assert!(alice_has_genesis);
+
+        // Spawn an additional client, wait for it to reach same height as other peers
+        // then check that it also contains earlier blocks such as genesis.
+
+        let dan = PathfinderInstance::spawn(configs.next().unwrap())?;
+        dan.wait_for_ready(READY_POLL_INTERVAL, READY_TIMEOUT)
+            .await?;
+
+        let dan_client = spawn_rpc_client(dan.rpc_port);
+
+        tokio::select! {
+            _ = sleep(TEST_TIMEOUT) => {
+                eprintln!("Test timed out after {TEST_TIMEOUT:?}");
+                Err(anyhow::anyhow!("Test timed out after {TEST_TIMEOUT:?}"))
+            }
+
+            test_result = dan_client => {
+                test_result.context("Joining Dan's RPC client task")?;
+                // Don't dump logs if the test succeeded.
+                 PathfinderInstance::enable_log_dump(false);
+                Ok(())
+            }
+
+            _ = tokio::signal::ctrl_c() => {
+                eprintln!("Received Ctrl-C, terminating test early");
+                Err(anyhow::anyhow!("Test interrupted by user"))
+            }
+        }?;
+
+        let dan_synced_genesis = block_exists(dan.rpc_port, 0).await.unwrap();
+        assert!(dan_synced_genesis);
+
+        Ok(())
+    }
+
     async fn wait_for_height(rpc_port: u16, height: u64, poll_interval: Duration) {
         loop {
             // Sleeping first actually makes sense here, because the node will likely not
@@ -162,6 +288,37 @@ mod test {
         highest_decided_height: Option<u64>,
     }
 
+    async fn block_exists(rpc_port: u16, block_number: u64) -> anyhow::Result<bool> {
+        let response_block_number = reqwest::Client::new()
+            .post(format!("http://127.0.0.1:{rpc_port}/rpc/v0_9"))
+            .body(
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 0,
+                    "method": "starknet_getBlockWithTxs",
+                    "params": {
+                        "block_id": { "block_number": block_number }
+                    }
+                })
+                .to_string(),
+            )
+            .header("Content-Type", "application/json")
+            .send()
+            .await?
+            .json::<serde_json::Value>()
+            .await
+            .map(|body| {
+                body.get("result")
+                    .unwrap()
+                    .get("block_number")
+                    .unwrap()
+                    .as_u64()
+                    .unwrap()
+            })
+            .context("Fetching block")?;
+        Ok(response_block_number == block_number)
+    }
+
     /// Successfully spawned pathfinder instance is terminated when dropped.
     struct PathfinderInstance {
         process: Child,
@@ -177,8 +334,10 @@ mod test {
         pub name: &'static str,
         pub monitor_port: u16,
         pub rpc_port: u16,
-        pub p2p_port: u16,
-        pub boot_port: Option<u16>,
+        pub p2p_consensus_port: u16,
+        pub p2p_sync_port: u16,
+        pub consensus_boot_port: Option<u16>,
+        pub sync_boot_port: Option<u16>,
         pub my_validator_address: u8,
         pub validator_addresses: Vec<u8>,
         pub pathfinder_bin: &'a PathBuf,
@@ -206,8 +365,8 @@ mod test {
                 .stderr(stderr_file)
                 .env(
                     "RUST_LOG",
-                    "pathfinder_lib=trace,pathfinder=trace,pathfinder_consensus=trace,p2p=off,\
-                     informalsystems_malachitebft_core_consensus=trace",
+                    "pathfinder_lib=trace,pathfinder=trace,pathfinder_consensus=off,p2p=trace,\
+                     informalsystems_malachitebft_core_consensus=off",
                 )
                 .args([
                     "--ethereum.url=https://ethereum-sepolia-rpc.publicnode.com",
@@ -216,10 +375,10 @@ mod test {
                     "--debug.pretty-log=true",
                     "--color=never",
                     format!("--monitor-address=127.0.0.1:{}", config.monitor_port).as_str(),
-                    "--sync.enable=false",
                     "--rpc.enable=true",
                     format!("--http-rpc=127.0.0.1:{}", config.rpc_port).as_str(),
                     "--consensus.enable=true",
+                    "--sync.enable=true",
                     // Currently the proposer address always points to Alice (0x1).
                     "--consensus.proposer-addresses=0x1",
                     format!(
@@ -238,18 +397,34 @@ mod test {
                     )
                     .as_str(),
                     format!("--p2p.consensus.identity-config-file={}", id_file.display()).as_str(),
+                    format!("--p2p.sync.identity-config-file={}", id_file.display()).as_str(),
                     format!(
                         "--p2p.consensus.listen-on=/ip4/127.0.0.1/tcp/{}",
-                        config.p2p_port
+                        config.p2p_consensus_port
+                    )
+                    .as_str(),
+                    format!(
+                        "--p2p.sync.listen-on=/ip4/127.0.0.1/tcp/{}",
+                        config.p2p_sync_port
                     )
                     .as_str(),
                     "--p2p.consensus.experimental.direct-connection-timeout=1",
                     "--p2p.consensus.experimental.eviction-timeout=1",
+                    "--p2p.sync.experimental.direct-connection-timeout=1",
+                    "--p2p.sync.experimental.eviction-timeout=1",
                 ]);
-            if let Some(boot_port) = config.boot_port {
+            if let Some(consensus_boot_port) = config.consensus_boot_port {
+                let sync_boot_port = config
+                    .sync_boot_port
+                    .expect("boot ports should be set together");
+
                 // Peer ID from `fixtures/id_Alice.json`.
                 command.arg(format!(
-                    "--p2p.consensus.bootstrap-addresses=/ip4/127.0.0.1/tcp/{boot_port}/p2p/\
+                    "--p2p.consensus.bootstrap-addresses=/ip4/127.0.0.1/tcp/{consensus_boot_port}/\
+                     p2p/12D3KooWDJryKaxjwNCk6yTtZ4GbtbLrH7JrEUTngvStaDttLtid"
+                ));
+                command.arg(format!(
+                    "--p2p.sync.bootstrap-addresses=/ip4/127.0.0.1/tcp/{sync_boot_port}/p2p/\
                      12D3KooWDJryKaxjwNCk6yTtZ4GbtbLrH7JrEUTngvStaDttLtid"
                 ));
             }
@@ -401,8 +576,10 @@ mod test {
                     name: Self::NAMES[i],
                     monitor_port: 9090 + i as u16,
                     rpc_port: 9545 + i as u16,
-                    p2p_port: 50001 + i as u16,
-                    boot_port: if i == 0 { None } else { Some(50001) },
+                    p2p_consensus_port: 50001 + i as u16,
+                    p2p_sync_port: 60001 + i as u16,
+                    consensus_boot_port: if i == 0 { None } else { Some(50001) },
+                    sync_boot_port: if i == 0 { None } else { Some(60001) },
                     my_validator_address: (i + 1) as u8,
                     // The set is deduplicated when consensus task is started, so including the own
                     // validator address is fine.
