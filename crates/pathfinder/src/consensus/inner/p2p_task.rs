@@ -50,6 +50,8 @@ use crate::consensus::inner::persist_proposals::{
 use crate::consensus::inner::ConsensusValue;
 use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage, ValidatorStage};
 
+const EVENT_CHANNEL_SIZE_LIMIT: usize = 1024;
+
 #[allow(clippy::too_many_arguments)]
 pub fn spawn(
     chain_id: ChainId,
@@ -72,11 +74,25 @@ pub fn spawn(
     // Manages batch execution with checkpoint-based rollback for TransactionsFin
     // support
     let mut batch_execution_manager = BatchExecutionManager::new();
+    // Keep track of whether we've already emitted a warning about the
+    // event channel size exceeding the limit, to avoid spamming the logs.
+    let mut channel_size_warning_emitted = false;
 
     util::task::spawn(async move {
         loop {
             let p2p_task_event = tokio::select! {
                 p2p_event = p2p_event_rx.recv() => {
+                    // Unbounded channel size monitoring.
+                    let channel_size = p2p_event_rx.len();
+                    if channel_size > EVENT_CHANNEL_SIZE_LIMIT {
+                        if !channel_size_warning_emitted {
+                            tracing::warn!(%channel_size, "Event channel size exceeded limit");
+                            channel_size_warning_emitted = true;
+                        }
+                    } else {
+                        channel_size_warning_emitted = false;
+                    }
+
                     match p2p_event {
                         Some(event) => P2PTaskEvent::P2PEvent(event),
                         None => {
