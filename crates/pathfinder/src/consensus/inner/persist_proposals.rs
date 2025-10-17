@@ -7,7 +7,7 @@ use crate::consensus::inner::conv::{IntoProto, TryIntoDto};
 use crate::consensus::inner::dto;
 
 pub fn persist_proposal_parts(
-    db_tx: Transaction<'_>,
+    db_tx: &Transaction<'_>,
     height: u64,
     round: u32,
     proposer: &ContractAddress,
@@ -21,7 +21,6 @@ pub fn persist_proposal_parts(
     let buf = bincode::serde::encode_to_vec(proposal_parts, bincode::config::standard())
         .context("Serializing proposal parts")?;
     let updated = db_tx.persist_consensus_proposal_parts(height, round, proposer, &buf[..])?;
-    db_tx.commit()?;
     Ok(updated)
 }
 
@@ -78,10 +77,9 @@ fn decode_proposal_parts(buf: &[u8]) -> anyhow::Result<Vec<ProposalPart>> {
 }
 
 pub fn remove_proposal_parts(
-    db_tx: Transaction<'_>,
+    db_tx: &Transaction<'_>,
     height: u64,
     round: Option<u32>,
 ) -> anyhow::Result<()> {
-    db_tx.remove_consensus_proposal_parts(height, round)?;
-    db_tx.commit()
+    db_tx.remove_consensus_proposal_parts(height, round)
 }
