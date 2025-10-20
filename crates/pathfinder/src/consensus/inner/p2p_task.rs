@@ -534,6 +534,7 @@ fn execute_deferred_for_next_height(
             validator.execute_transactions(deferred.transactions)?;
 
             if let Some(commitment) = deferred.commitment {
+                tracing::trace!(height_and_round=?height_and_round, hnr=?hnr, "validating in execute_deferred_for_next_height");
                 // We've executed all transactions at the height, we can now
                 // finalize the proposal.
                 let validator = validator.consensus_finalize(commitment.proposal_commitment)?;
@@ -918,6 +919,7 @@ fn defer_or_execute_proposal_fin(
         if let Some(DeferredExecution { transactions, .. }) = deferred {
             validator.execute_transactions(transactions)?;
         }
+        tracing::trace!("validating in defer_or_execute_proposal_fin");
         let validator = validator.consensus_finalize(commitment.proposal_commitment)?;
 
         tracing::debug!(
