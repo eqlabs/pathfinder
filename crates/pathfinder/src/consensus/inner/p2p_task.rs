@@ -48,6 +48,7 @@ use crate::consensus::inner::persist_proposals::{
     remove_proposal_parts,
 };
 use crate::consensus::inner::ConsensusValue;
+use crate::sync;
 use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage, ValidatorStage};
 
 const EVENT_CHANNEL_SIZE_LIMIT: usize = 1024;
@@ -59,9 +60,11 @@ pub fn spawn(
     p2p_client: Client,
     storage: Storage,
     mut p2p_event_rx: mpsc::UnboundedReceiver<Event>,
+    mut sync_event_rx: mpsc::Receiver<crate::state::SyncEvent>,
     tx_to_consensus: mpsc::Sender<ConsensusTaskEvent>,
     mut rx_from_consensus: mpsc::Receiver<P2PTaskEvent>,
     consensus_storage: Storage,
+    verify_tree_hashes: bool,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     // Cache for finalized blocks that we created from our proposals and are
     // waiting to be committed to the database once consensus is reached.
@@ -102,7 +105,15 @@ pub fn spawn(
                     }
                 }
                 from_consensus = rx_from_consensus.recv() => {
-                    from_consensus.expect("Receiver not to be dropped")
+                    from_consensus.expect("Sender not to be dropped")
+                }
+                sync_event = sync_event_rx.recv() => {
+                    if let Some(event) = sync_event {
+                        P2PTaskEvent::ConsumeSyncEvent(event)
+                    } else {
+                        tracing::warn!("Sync event receiver was dropped, exiting P2P task");
+                        anyhow::bail!("Sync event receiver was dropped, exiting P2P task");
+                    }
                 }
             };
 
@@ -385,6 +396,14 @@ pub fn spawn(
                         deferred_executions.clone(),
                     )
                     .await?;
+                }
+                P2PTaskEvent::ConsumeSyncEvent(sync_event) => {
+                    sync::catch_up::gateway::consume_event(
+                        sync_event,
+                        storage.clone(),
+                        verify_tree_hashes,
+                    )
+                    .await?
                 }
             }
         }
