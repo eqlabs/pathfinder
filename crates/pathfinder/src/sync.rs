@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
-use catch_up::BlockData;
 use error::SyncError;
 use futures::{pin_mut, Stream, StreamExt};
 use p2p::sync::client::peer_agnostic::traits::{

@@ -25,7 +25,7 @@ use tokio::sync::{mpsc, watch};
 
 use super::{ConsensusChannels, ConsensusTaskHandles};
 use crate::config::ConsensusConfig;
-use crate::sync::catch_up::BlockData;
+use crate::state::SyncEvent;
 use crate::validator::FinalizedBlock;
 
 #[allow(clippy::too_many_arguments)]
@@ -48,7 +48,8 @@ pub fn start(
     // Channel between the P2P and catch-up sync task. Sync task sends synced block
     // data to the P2P task to store them. Done this way to keep consensus
     // related database writes in a single task (P2P).
-    let (store_synced_block_tx, store_synced_block_rx) = mpsc::channel::<BlockData>(10);
+    let (store_synced_block_tx, store_synced_block_rx) =
+        mpsc::channel::<crate::state::SyncEvent>(10);
 
     let consensus_storage =
         open_consensus_storage(data_directory).expect("Consensus storage cannot be opened");
@@ -87,7 +88,7 @@ pub fn start(
         consensus_channels: Some(ConsensusChannels {
             consensus_info_watch,
             catch_up_rx,
-            store_synced_block_tx,
+            sync_event_tx: store_synced_block_tx,
         }),
     }
 }
@@ -138,6 +139,8 @@ enum P2PTaskEvent {
     /// Commit the given block and state update to the database. All proposals
     /// for this height are removed from the cache.
     CommitBlock(HeightAndRound, ConsensusValue),
+    /// Events coming in from the [catch-up sync](crate::sync::catch_up) task.
+    ConsumeSyncEvent(SyncEvent),
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

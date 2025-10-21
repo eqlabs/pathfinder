@@ -6,7 +6,6 @@ use pathfinder_storage::Storage;
 use tokio::sync::{mpsc, watch};
 
 use crate::config::ConsensusConfig;
-use crate::sync::catch_up::BlockData;
 
 #[cfg(feature = "p2p")]
 mod inner;
@@ -34,7 +33,9 @@ pub struct ConsensusChannels {
     ///
     /// Intended to be used by the [catch up sync](crate::sync::catch_up) task.
     /// This is done in order to keep all database writes in a single place.
-    pub store_synced_block_tx: mpsc::Sender<BlockData>,
+    // TODO: P2P variant of catch up sync is not ready yet.
+    // pub store_synced_block_tx: mpsc::Sender<crate::sync::catch_up::p2p::BlockData>,
+    pub sync_event_tx: mpsc::Sender<crate::state::SyncEvent>,
 }
 
 impl ConsensusTaskHandles {

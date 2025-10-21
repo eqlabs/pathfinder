@@ -5,12 +5,12 @@ use anyhow::{anyhow, Context};
 use futures::{StreamExt, TryStreamExt};
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
-use pathfinder_common::Chain;
+use pathfinder_common::{Chain, ConsensusInfo};
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::reply::{Block, BlockSignature, Status};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tracing::Instrument;
 
 use crate::state::block_hash::{
@@ -280,6 +280,274 @@ where
                         Err(err) => {
                                             return Err(err)
                             .context(format!("Fetch signature for block {next:?} from sequencer"))
+                        }
+                    }
+                };
+                (signature, t_signature.elapsed())
+            }
+            Err(err) => {
+                return Err(err)
+                    .context(format!("Fetch signature for block {next:?} from sequencer"))
+            }
+        };
+
+        // An extra sanity check for the signature API.
+        anyhow::ensure!(
+            block.block_hash == signature.block_hash,
+            "Signature block hash mismatch, actual {:x}, expected {:x}",
+            signature.block_hash.0,
+            block.block_hash.0,
+        );
+
+        // Check block commitment signature
+        let signature: BlockCommitmentSignature = signature.signature();
+        let (signature, state_update) = match block_validation_mode {
+            BlockValidationMode::Strict => {
+                let block_hash = block.block_hash;
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                rayon::spawn(move || {
+                    let verify_result = signature.verify(sequencer_public_key, block_hash);
+                    let _ = tx.send((verify_result, signature, state_update));
+                });
+                let (verify_result, signature, state_update) =
+                    rx.await.context("Panic on rayon thread")?;
+
+                if let Err(error) = verify_result {
+                    tracing::warn!(%error, block_number=%block.block_number, "Block commitment signature mismatch");
+                }
+                (signature, state_update)
+            }
+            BlockValidationMode::AllowMismatch => (signature, state_update),
+        };
+
+        head = Some((next, block.block_hash, state_update.state_commitment));
+        blocks.push(next, block.block_hash, state_update.state_commitment);
+
+        let timings = Timings {
+            block_download: t_block,
+            class_declaration: t_declare,
+            signature_download: t_signature,
+        };
+
+        tx_event
+            .send(SyncEvent::Block(
+                (block, commitments),
+                state_update,
+                Box::new(signature),
+                Box::new(state_diff_commitment),
+                timings,
+            ))
+            .await
+            .context("Event channel closed")?;
+    }
+}
+
+pub async fn catch_up<GatewayClient>(
+    context: L2SyncContext<GatewayClient>,
+    tx_event: mpsc::Sender<SyncEvent>,
+    mut consensus_info_rx: watch::Receiver<Option<ConsensusInfo>>,
+    mut head: Option<(BlockNumber, BlockHash, StateCommitment)>,
+    mut blocks: BlockChain,
+) -> anyhow::Result<()>
+where
+    GatewayClient: GatewayApi + Clone + Send + 'static,
+{
+    // Phase 1: catch up to the current highest height block.
+    let bulk_tail = consensus_info_rx
+        .borrow()
+        // TODO: This never happens for a node that joins the network late.
+        .expect("consensus info should be available when catching up")
+        .highest_decided_height;
+    bulk_sync(
+        tx_event.clone(),
+        context.clone(),
+        &mut blocks,
+        &mut head,
+        bulk_tail,
+    )
+    .await?;
+
+    let L2SyncContext {
+        sequencer,
+        chain,
+        chain_id,
+        block_validation_mode,
+        storage,
+        sequencer_public_key,
+        fetch_concurrency: _,
+        fetch_casm_from_fgw,
+    } = context;
+
+    // Start polling head of chain
+    'outer: loop {
+        // Get the next block from L2.
+        let (next, head_meta) = match &head {
+            Some(head) => (head.0 + 1, Some(head)),
+            None => (BlockNumber::GENESIS, None),
+        };
+
+        let consensus_height = consensus_info_rx
+            .borrow()
+            // TODO: This never happens for a node that joins the network late.
+            .expect("consensus info should be available when catching up")
+            .highest_decided_height;
+
+        if next >= consensus_height {
+            // We've caught up to consensus, exit.
+            tracing::debug!("Caught up to consensus height {consensus_height}, exiting");
+            return Ok(());
+        }
+
+        // We start downloading the signature for the block
+        let signature_handle = util::task::spawn({
+            let sequencer = sequencer.clone();
+            async move {
+                let t_signature = std::time::Instant::now();
+                let result = sequencer.signature(next.into()).await;
+                let t_signature = t_signature.elapsed();
+
+                Ok((result, t_signature))
+            }
+        });
+
+        let t_block = std::time::Instant::now();
+
+        let (block, commitments, state_update, state_diff_commitment) = loop {
+            match download_block(
+                next,
+                chain,
+                chain_id,
+                head_meta.map(|h| h.1),
+                &sequencer,
+                &blocks,
+                block_validation_mode,
+            )
+            .await?
+            {
+                DownloadBlock::Block(block, commitments, state_update, state_diff_commitment) => {
+                    break (block, commitments, state_update, state_diff_commitment)
+                }
+                DownloadBlock::Wait => {
+                    // Wait for the latest block to change.
+                    if consensus_info_rx
+                        .wait_for(|consensus_info| {
+                            consensus_info.is_some_and(|ci| {
+                                // TODO: Maybe bring back block hash
+                                ci.highest_decided_height != head.unwrap_or_default().0
+                            })
+                        })
+                        .await
+                        .is_err()
+                    {
+                        tracing::debug!("Latest tracking channel closed, exiting");
+                        return Ok(());
+                    }
+                }
+                DownloadBlock::Retry => {}
+                DownloadBlock::Reorg => {
+                    head = match head {
+                        Some(some_head) => reorg(
+                            &some_head,
+                            chain,
+                            chain_id,
+                            &tx_event,
+                            &sequencer,
+                            &blocks,
+                            block_validation_mode,
+                        )
+                        .await
+                        .context("L2 reorg")?,
+                        None => None,
+                    };
+
+                    match &head {
+                        Some((number, hash, commitment)) => {
+                            blocks.push(*number, *hash, *commitment)
+                        }
+                        None => blocks.reset_to_genesis(),
+                    }
+
+                    continue 'outer;
+                }
+            }
+        };
+        let t_block = t_block.elapsed();
+
+        if let Some(some_head) = &head {
+            if some_head.1 != block.parent_block_hash {
+                head = reorg(
+                    some_head,
+                    chain,
+                    chain_id,
+                    &tx_event,
+                    &sequencer,
+                    &blocks,
+                    block_validation_mode,
+                )
+                .await
+                .context("L2 reorg")?;
+
+                match &head {
+                    Some((number, hash, commitment)) => blocks.push(*number, *hash, *commitment),
+                    None => blocks.reset_to_genesis(),
+                }
+
+                continue 'outer;
+            }
+        }
+
+        // Download and emit newly declared classes.
+        let t_declare = std::time::Instant::now();
+        let downloaded_classes = download_new_classes(
+            &state_update,
+            &sequencer,
+            storage.clone(),
+            fetch_casm_from_fgw,
+        )
+        .await
+        .with_context(|| format!("Handling newly declared classes for block {next:?}"))?;
+        emit_events_for_downloaded_classes(
+            &tx_event,
+            downloaded_classes,
+            &state_update.declared_sierra_classes,
+        )
+        .await?;
+        let t_declare = t_declare.elapsed();
+
+        // Download signature
+        let (signature_result, t_signature) = signature_handle
+            .await
+            .context("Joining signature task")?
+            .context("Task cancelled")?;
+        let (signature, t_signature) = match signature_result {
+            Ok(signature) => (signature, t_signature),
+            Err(SequencerError::StarknetError(err))
+                if err.code
+                    == starknet_gateway_types::error::KnownStarknetErrorCode::BlockNotFound
+                        .into() =>
+            {
+                // There is a race condition here: if the query for the signature was made
+                // _before_ the block was published -- but by the time we
+                // actually queried for the block it was there. In this case
+                // we just retry the signature download until we get it.
+                let t_signature = std::time::Instant::now();
+                let signature = loop {
+                    match sequencer.signature(next.into()).await {
+                        Ok(s) => {
+                            break s;
+                        }
+                        Err(SequencerError::StarknetError(err))
+                            if err.code
+                                == starknet_gateway_types::error::KnownStarknetErrorCode::BlockNotFound
+                                    .into() =>
+                        {
+                            // Wait a bit and retry
+                            tokio::time::sleep(Duration::from_millis(500)).await;
+                            continue;
+                        }
+                        Err(err) => {
+                            return Err(err)
+                                .context(format!("Fetch signature for block {next:?} from sequencer"))
                         }
                     }
                 };

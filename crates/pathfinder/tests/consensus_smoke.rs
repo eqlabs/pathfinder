@@ -18,6 +18,7 @@ mod test {
 
     use anyhow::Context;
     use http::StatusCode;
+    use pathfinder_common::BlockNumber;
     use serde::Deserialize;
     use tokio::time::sleep;
 
@@ -126,10 +127,15 @@ mod test {
 
         const NUM_NODES: usize = 4;
         const MIN_REQUIRED_DECIDED_HEIGHT: u64 = 20;
-        const READY_TIMEOUT: Duration = Duration::from_secs(20);
         const TEST_TIMEOUT: Duration = Duration::from_secs(120);
+
         const READY_POLL_INTERVAL: Duration = Duration::from_millis(500);
+        const READY_TIMEOUT: Duration = Duration::from_secs(20);
+
         const HEIGHT_POLL_INTERVAL: Duration = Duration::from_secs(1);
+
+        const BLOCK_SYNCED_POLL_INTERVAL: Duration = Duration::from_millis(500);
+        const BLOCK_SYNCED_TIMEOUT: Duration = Duration::from_secs(30);
 
         let stopwatch = Instant::now();
 
@@ -206,7 +212,9 @@ mod test {
             }
         }?;
 
-        let alice_has_genesis = block_exists(alice.rpc_port, 0).await.unwrap();
+        let alice_has_genesis = node_has_block_in_db(alice.rpc_port, BlockNumber::GENESIS)
+            .await
+            .unwrap();
         assert!(alice_has_genesis);
 
         // Spawn an additional client, wait for it to reach same height as other peers
@@ -216,29 +224,13 @@ mod test {
         dan.wait_for_ready(READY_POLL_INTERVAL, READY_TIMEOUT)
             .await?;
 
-        let dan_client = spawn_rpc_client(dan.rpc_port);
-
-        tokio::select! {
-            _ = sleep(TEST_TIMEOUT) => {
-                eprintln!("Test timed out after {TEST_TIMEOUT:?}");
-                Err(anyhow::anyhow!("Test timed out after {TEST_TIMEOUT:?}"))
-            }
-
-            test_result = dan_client => {
-                test_result.context("Joining Dan's RPC client task")?;
-                // Don't dump logs if the test succeeded.
-                 PathfinderInstance::enable_log_dump(false);
-                Ok(())
-            }
-
-            _ = tokio::signal::ctrl_c() => {
-                eprintln!("Received Ctrl-C, terminating test early");
-                Err(anyhow::anyhow!("Test interrupted by user"))
-            }
-        }?;
-
-        let dan_synced_genesis = block_exists(dan.rpc_port, 0).await.unwrap();
-        assert!(dan_synced_genesis);
+        wait_for_block_synced(
+            dan.rpc_port,
+            BlockNumber::GENESIS,
+            BLOCK_SYNCED_POLL_INTERVAL,
+            BLOCK_SYNCED_TIMEOUT,
+        )
+        .await?;
 
         Ok(())
     }
@@ -278,6 +270,37 @@ mod test {
         }
     }
 
+    async fn wait_for_block_synced(
+        rpc_port: u16,
+        block_number: BlockNumber,
+        block_synced_poll_interval: Duration,
+        block_synced_timeout: Duration,
+    ) -> anyhow::Result<()> {
+        let fut = async move {
+            loop {
+                // Sleep first because catch-up sync just kicked off.
+                sleep(block_synced_poll_interval).await;
+
+                if node_has_block_in_db(rpc_port, block_number).await.unwrap() {
+                    println!("Node on port {rpc_port} has block {block_number}");
+                    return;
+                } else {
+                    println!("Node on port {rpc_port} does not have block {block_number} yet");
+                }
+            }
+        };
+        if tokio::time::timeout(block_synced_timeout, fut)
+            .await
+            .is_err()
+        {
+            anyhow::bail!(
+                "Timeout waiting for block {block_number} to be synced on node at port {rpc_port}"
+            );
+        }
+
+        Ok(())
+    }
+
     #[derive(Deserialize)]
     struct Reply {
         result: Height,
@@ -288,8 +311,11 @@ mod test {
         highest_decided_height: Option<u64>,
     }
 
-    async fn block_exists(rpc_port: u16, block_number: u64) -> anyhow::Result<bool> {
-        let response_block_number = reqwest::Client::new()
+    async fn node_has_block_in_db(
+        rpc_port: u16,
+        target_block_num: BlockNumber,
+    ) -> anyhow::Result<bool> {
+        let response = reqwest::Client::new()
             .post(format!("http://127.0.0.1:{rpc_port}/rpc/v0_9"))
             .body(
                 serde_json::json!({
@@ -297,7 +323,7 @@ mod test {
                     "id": 0,
                     "method": "starknet_getBlockWithTxs",
                     "params": {
-                        "block_id": { "block_number": block_number }
+                        "block_id": { "block_number": target_block_num }
                     }
                 })
                 .to_string(),
@@ -308,15 +334,20 @@ mod test {
             .json::<serde_json::Value>()
             .await
             .map(|body| {
-                body.get("result")
-                    .unwrap()
-                    .get("block_number")
-                    .unwrap()
+                let Some(result) = body.get("result") else {
+                    println!("starknet_getBlockWithTxs failed, got response: {body}");
+                    return None;
+                };
+
+                let block_number = result
+                    .get("block_number")?
                     .as_u64()
-                    .unwrap()
+                    .map(BlockNumber::new_or_panic)?;
+
+                Some(block_number)
             })
             .context("Fetching block")?;
-        Ok(response_block_number == block_number)
+        Ok(response.is_some_and(|resp_block| resp_block == target_block_num))
     }
 
     /// Successfully spawned pathfinder instance is terminated when dropped.
