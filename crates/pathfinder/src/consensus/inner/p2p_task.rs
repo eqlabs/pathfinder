@@ -352,6 +352,10 @@ pub fn spawn(
                             assert_eq!(value.0 .0, finalized_block.header.state_diff_commitment.0);
 
                             commit_finalized_block(&db_tx, finalized_block.clone())?;
+                            db_tx.commit().context("Committing database transaction")?;
+                            db_tx = db_conn
+                                .transaction()
+                                .context("Create unused database transaction")?;
                             // Necessary for proper fake proposal creation at next heights.
                             commit_finalized_block(&cons_tx, finalized_block)?;
                             cons_tx
