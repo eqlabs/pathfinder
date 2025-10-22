@@ -813,6 +813,7 @@ pub(crate) mod tests {
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
     #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
     #[tokio::test]
     async fn test_multiple_transactions(#[case] version: RpcVersion) -> anyhow::Result<()> {
         let (context, next_block_header, _) = setup_multi_tx_trace_test().await?;
@@ -1282,6 +1283,7 @@ pub(crate) mod tests {
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
     #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
     #[tokio::test]
     async fn test_multiple_pending_transactions(#[case] version: RpcVersion) -> anyhow::Result<()> {
         let (context, next_block_header, _) = setup_multi_tx_trace_test().await?;
