@@ -331,6 +331,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         config::RootRpcVersion::V07 => pathfinder_rpc::RpcVersion::V07,
         config::RootRpcVersion::V08 => pathfinder_rpc::RpcVersion::V08,
         config::RootRpcVersion::V09 => pathfinder_rpc::RpcVersion::V09,
+        config::RootRpcVersion::V10 => pathfinder_rpc::RpcVersion::V10,
     };
 
     let rpc_server = pathfinder_rpc::RpcServer::new(config.rpc_address, context, default_version);
