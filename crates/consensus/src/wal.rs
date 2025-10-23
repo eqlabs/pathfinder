@@ -234,6 +234,7 @@ pub(crate) mod recovery {
     #[allow(clippy::type_complexity)]
     pub(crate) fn recover_incomplete_heights<V, A>(
         wal_dir: &Path,
+        highest_finalized: Option<u64>,
     ) -> Result<Vec<(u64, Vec<WalEntry<V, A>>)>, std::io::Error>
     where
         V: for<'de> Deserialize<'de>,
@@ -258,9 +259,23 @@ pub(crate) mod recovery {
         // not finalized.
         for (height, path) in files {
             let entries = read_entries(&path)?;
-            let is_finalized = entries
-                .iter()
-                .any(|e| matches!(e, WalEntry::Decision { .. }));
+            // `WalEntry::Decision` indicates that a decision has been reached at this
+            // height by the consensus engine. But it's probable that the proposal itself
+            // hasn't fully been executed and committed to the DB locally yet, or it has
+            // been executed but it just hasn't been committed to the DB yet. Any of these
+            // scenarios means that the consensus engine for this height is not started but
+            // some work with the persisted proposal is still required, outside of the WAL
+            // framework itself.
+            //
+            // The latter condition indicates that the executed proposal for this height has
+            // indeed been executed, finalized, and committed to the DB locally, so there
+            // will be no additional work required for this height outside of the WAL
+            // framework.
+            let is_finalized = entries.iter().any(|e| {
+                matches!(e, WalEntry::Decision { .. })
+                    || highest_finalized
+                        .is_some_and(|highest_finalized| height <= highest_finalized)
+            });
             if is_finalized {
                 tracing::debug!(
                     height = %height,

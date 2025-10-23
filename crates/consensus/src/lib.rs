@@ -107,7 +107,7 @@
 //!
 //!     // Create consensus engine with custom proposer selector
 //!     let proposer_selector = WeightedProposerSelector;
-//!     let mut consensus = Consensus::new(config).with_proposer_selector(proposer_selector);
+//!     let mut consensus = Consensus::with_proposer_selector(config, proposer_selector);
 //!
 //!     // Or use the default round-robin selector (no additional configuration needed)
 //!     // let mut consensus = Consensus::new(config);
@@ -306,7 +306,7 @@ impl<T> ValuePayload for T where
 /// ```rust
 /// let config = Config::new(my_address);
 /// let custom_selector = WeightedProposerSelector;
-/// let mut consensus = Consensus::new(config).with_proposer_selector(custom_selector);
+/// let mut consensus = Consensus::with_proposer_selector(config, custom_selector);
 /// ```
 ///
 /// ## Crash Recovery
@@ -358,13 +358,13 @@ impl<
         }
     }
 
-    /// Set the proposer selector for this consensus engine.
-    ///
-    /// This method consumes `self` and returns a new `Consensus` instance
-    /// with the specified proposer selector.
+    /// Create a new consensus engine with a custom proposer selector for this
+    /// consensus engine.
     ///
     /// ## Arguments
     ///
+    /// - `config`: The consensus configuration containing validator address,
+    ///   timeouts, and other settings
     /// - `proposer_selector`: The proposer selection algorithm to use
     ///
     /// ## Example
@@ -372,18 +372,18 @@ impl<
     /// ```rust
     /// let config = Config::new(my_address);
     /// let custom_selector = WeightedProposerSelector;
-    /// let mut consensus = Consensus::new(config).with_proposer_selector(custom_selector);
+    /// let mut consensus = Consensus::with_proposer_selector(config, custom_selector);
     /// ```
     pub fn with_proposer_selector<PS: ProposerSelector<A> + Send + Sync + 'static>(
-        self,
+        config: Config<A>,
         proposer_selector: PS,
     ) -> Consensus<V, A, PS> {
         Consensus {
             internal: HashMap::new(),
             event_queue: VecDeque::new(),
-            config: self.config,
+            config,
             proposer_selector,
-            min_kept_height: self.min_kept_height,
+            min_kept_height: None,
         }
     }
 
@@ -407,7 +407,61 @@ impl<
     pub fn recover<VS: ValidatorSetProvider<A> + 'static>(
         config: Config<A>,
         validator_sets: Arc<VS>,
+        highest_finalized: Option<u64>,
     ) -> anyhow::Result<DefaultConsensus<V, A>> {
+        Self::recover_inner(
+            Self::new(config.clone()),
+            config,
+            validator_sets,
+            highest_finalized,
+        )
+    }
+
+    /// Recover recent heights from the write-ahead log with a custom proposer
+    /// selector for this consensus engine.
+    ///
+    /// This method is used to recover consensus state after a crash or restart.
+    /// It reads the write-ahead log and reconstructs the consensus state for
+    /// all incomplete heights.
+    ///
+    /// ## Arguments
+    ///
+    /// - `config`: The consensus configuration
+    /// - `validator_sets`: A provider for validator sets at different heights
+    /// - `proposer_selector`: The proposer selection algorithm to use
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// let validator_sets = Arc::new(StaticValidatorSetProvider::new(validator_set));
+    /// let mut consensus = Consensus::recover(config, validator_sets)?;
+    /// ```
+    pub fn recover_with_proposal_selector<
+        VS: ValidatorSetProvider<A> + 'static,
+        PS: ProposerSelector<A> + Send + Sync + 'static,
+    >(
+        config: Config<A>,
+        validator_sets: Arc<VS>,
+        proposer_selector: PS,
+        highest_finalized: Option<u64>,
+    ) -> anyhow::Result<Consensus<V, A, PS>> {
+        Self::recover_inner(
+            Self::with_proposer_selector(config.clone(), proposer_selector),
+            config,
+            validator_sets,
+            highest_finalized,
+        )
+    }
+
+    fn recover_inner<
+        VS: ValidatorSetProvider<A> + 'static,
+        PS: ProposerSelector<A> + Send + Sync + 'static,
+    >(
+        mut consensus: Consensus<V, A, PS>,
+        config: Config<A>,
+        validator_sets: Arc<VS>,
+        highest_finalized: Option<u64>,
+    ) -> anyhow::Result<Consensus<V, A, PS>> {
         use crate::wal::recovery;
 
         tracing::info!(
@@ -417,28 +471,26 @@ impl<
         );
 
         // Read the write-ahead log and recover all incomplete heights.
-        let incomplete_heights = match recovery::recover_incomplete_heights(&config.wal_dir) {
-            Ok(heights) => {
-                tracing::info!(
-                    validator = ?config.address,
-                    incomplete_heights = heights.len(),
-                    "Found incomplete heights to recover"
-                );
-                heights
-            }
-            Err(e) => {
-                tracing::error!(
-                    validator = ?config.address,
-                    wal_dir = %config.wal_dir.display(),
-                    error = %e,
-                    "Failed to recover incomplete heights from WAL"
-                );
-                Vec::new()
-            }
-        };
-
-        // Create a new consensus engine.
-        let mut consensus = Self::new(config);
+        let incomplete_heights =
+            match recovery::recover_incomplete_heights(&config.wal_dir, highest_finalized) {
+                Ok(heights) => {
+                    tracing::info!(
+                        validator = ?config.address,
+                        incomplete_heights = heights.len(),
+                        "Found incomplete heights to recover"
+                    );
+                    heights
+                }
+                Err(e) => {
+                    tracing::error!(
+                        validator = ?config.address,
+                        wal_dir = %config.wal_dir.display(),
+                        error = %e,
+                        "Failed to recover incomplete heights from WAL"
+                    );
+                    Vec::new()
+                }
+            };
 
         // Manually recover all incomplete heights.
         for (height, entries) in incomplete_heights {

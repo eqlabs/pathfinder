@@ -5,7 +5,7 @@ use pathfinder_common::{ChainId, ConsensusInfo};
 use pathfinder_storage::Storage;
 use tokio::sync::{mpsc, watch};
 
-use crate::config::ConsensusConfig;
+use crate::config::{integration_testing, ConsensusConfig};
 
 #[cfg(feature = "p2p")]
 mod inner;
@@ -29,6 +29,7 @@ impl ConsensusTaskHandles {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn start(
     config: ConsensusConfig,
     chain_id: ChainId,
@@ -37,6 +38,8 @@ pub fn start(
     p2p_client: Client,
     p2p_event_rx: mpsc::UnboundedReceiver<Event>,
     data_directory: &Path,
+    // Does nothing in production builds. Used for integration testing only.
+    inject_failure_config: integration_testing::InjectFailureConfig,
 ) -> ConsensusTaskHandles {
     inner::start(
         config,
@@ -46,6 +49,7 @@ pub fn start(
         p2p_client,
         p2p_event_rx,
         data_directory,
+        inject_failure_config,
     )
 }
 
@@ -53,6 +57,7 @@ pub fn start(
 mod inner {
     use super::*;
 
+    #[allow(clippy::too_many_arguments)]
     pub fn start(
         _: ConsensusConfig,
         _: ChainId,
@@ -61,6 +66,7 @@ mod inner {
         _: Client,
         _: mpsc::UnboundedReceiver<Event>,
         _: &Path,
+        _: integration_testing::InjectFailureConfig,
     ) -> ConsensusTaskHandles {
         ConsensusTaskHandles::pending()
     }
