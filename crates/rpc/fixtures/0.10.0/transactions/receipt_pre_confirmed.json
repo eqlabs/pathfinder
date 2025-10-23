@@ -1,0 +1,41 @@
+{
+  "actual_fee": {
+    "amount": "0x0",
+    "unit": "WEI"
+  },
+  "block_number": 3,
+  "events": [
+    {
+      "data": [],
+      "from_address": "0xabcddddddd",
+      "keys": [
+        "0x707265636f6e6669726d6564206b6579"
+      ]
+    },
+    {
+      "data": [],
+      "from_address": "0xabcddddddd",
+      "keys": [
+        "0x707265636f6e6669726d6564206b6579",
+        "0x7365636f6e6420707265636f6e6669726d6564206b6579"
+      ]
+    },
+    {
+      "data": [],
+      "from_address": "0xabcaaaaaaa",
+      "keys": [
+        "0x707265636f6e6669726d6564206b65792032"
+      ]
+    }
+  ],
+  "execution_resources": {
+    "l1_data_gas": 0,
+    "l1_gas": 0,
+    "l2_gas": 0
+  },
+  "execution_status": "SUCCEEDED",
+  "finality_status": "PRE_CONFIRMED",
+  "messages_sent": [],
+  "transaction_hash": "0x707265636f6e6669726d656420747820686173682030",
+  "type": "INVOKE"
+}

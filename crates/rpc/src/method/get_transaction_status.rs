@@ -263,6 +263,7 @@ mod tests {
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
     #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
     #[tokio::test]
     async fn l2_accepted(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests();
@@ -289,6 +290,7 @@ mod tests {
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
     #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
     #[tokio::test]
     async fn pending(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests_with_pending().await;
@@ -314,6 +316,7 @@ mod tests {
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
     #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
     #[tokio::test]
     async fn pre_confirmed(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests_with_pre_confirmed().await;
@@ -324,6 +327,7 @@ mod tests {
         let result = get_transaction_status(context, input, version).await;
 
         match version {
+            RpcVersion::PathfinderV01 => unreachable!(),
             RpcVersion::V06 | RpcVersion::V07 | RpcVersion::V08 => {
                 assert_matches::assert_matches!(result, Err(Error::TxnHashNotFound));
             }
@@ -335,7 +339,14 @@ mod tests {
                 .unwrap();
                 assert_eq!(output_json, expected_json);
             }
-            _ => unreachable!(),
+            RpcVersion::V10 => {
+                let output_json = result.unwrap().serialize(Serializer { version }).unwrap();
+                let expected_json: serde_json::Value = serde_json::from_str(include_str!(
+                    "../../fixtures/0.10.0/transactions/status_pre_confirmed.json"
+                ))
+                .unwrap();
+                assert_eq!(output_json, expected_json);
+            }
         }
     }
 
@@ -344,6 +355,7 @@ mod tests {
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
     #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
     #[tokio::test]
     async fn pre_latest(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests_with_pre_latest_and_pre_confirmed().await;
@@ -354,6 +366,7 @@ mod tests {
         let result = get_transaction_status(context, input, version).await;
 
         match version {
+            RpcVersion::PathfinderV01 => unreachable!(),
             RpcVersion::V06 | RpcVersion::V07 | RpcVersion::V08 => {
                 assert_matches::assert_matches!(result, Err(Error::TxnHashNotFound));
             }
@@ -365,7 +378,14 @@ mod tests {
                 .unwrap();
                 assert_eq!(output_json, expected_json);
             }
-            _ => unreachable!(),
+            RpcVersion::V10 => {
+                let output_json = result.unwrap().serialize(Serializer { version }).unwrap();
+                let expected_json: serde_json::Value = serde_json::from_str(include_str!(
+                    "../../fixtures/0.10.0/transactions/status_pre_latest.json"
+                ))
+                .unwrap();
+                assert_eq!(output_json, expected_json);
+            }
         }
     }
 
@@ -374,6 +394,7 @@ mod tests {
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
     #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
     #[tokio::test]
     async fn candidate(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests_with_pre_confirmed().await;
@@ -384,6 +405,7 @@ mod tests {
         let result = get_transaction_status(context, input, version).await;
 
         match version {
+            RpcVersion::PathfinderV01 => unreachable!(),
             RpcVersion::V06 | RpcVersion::V07 | RpcVersion::V08 => {
                 assert_matches::assert_matches!(result, Err(Error::TxnHashNotFound));
             }
@@ -395,7 +417,14 @@ mod tests {
                 .unwrap();
                 assert_eq!(output_json, expected_json);
             }
-            _ => unreachable!(),
+            RpcVersion::V10 => {
+                let output_json = result.unwrap().serialize(Serializer { version }).unwrap();
+                let expected_json: serde_json::Value = serde_json::from_str(include_str!(
+                    "../../fixtures/0.10.0/transactions/status_candidate.json"
+                ))
+                .unwrap();
+                assert_eq!(output_json, expected_json);
+            }
         }
     }
 
@@ -466,6 +495,7 @@ mod tests {
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
     #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
     #[tokio::test]
     async fn reverted(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests_with_pending().await;

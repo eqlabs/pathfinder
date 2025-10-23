@@ -375,6 +375,7 @@ mod tests {
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
     #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
     #[tokio::test]
     async fn test_estimate_message_fee(#[case] version: RpcVersion) {
         let rpc = setup(Setup::Full).await.expect("RPC context");

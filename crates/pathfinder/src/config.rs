@@ -431,6 +431,7 @@ pub enum RootRpcVersion {
     V07,
     V08,
     V09,
+    V10,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
