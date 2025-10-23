@@ -402,6 +402,7 @@ mod tests {
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
     #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
     #[tokio::test]
     async fn declare_deploy_and_invoke_sierra_class_starknet_0_13_1(#[case] version: RpcVersion) {
         let (context, last_block_header, account_contract_address, universal_deployer_address) =
@@ -448,6 +449,7 @@ mod tests {
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
     #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
     #[tokio::test]
     async fn declare_deploy_and_invoke_sierra_class_starknet_0_13_1_1(#[case] version: RpcVersion) {
         let (context, last_block_header, account_contract_address, universal_deployer_address) =
@@ -494,6 +496,7 @@ mod tests {
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
     #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
     #[tokio::test]
     async fn declare_deploy_and_invoke_sierra_class_starknet_0_13_2(#[case] version: RpcVersion) {
         let (context, last_block_header, account_contract_address, universal_deployer_address) =
@@ -542,6 +545,7 @@ mod tests {
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
     #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
     #[tokio::test]
     async fn declare_deploy_and_invoke_sierra_class_starknet_0_13_2_1(#[case] version: RpcVersion) {
         let (context, last_block_header, account_contract_address, universal_deployer_address) =
