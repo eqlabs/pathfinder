@@ -85,7 +85,7 @@ pub async fn estimate_message_fee(
 
                 (
                     pending.pending_header(),
-                    Some(pending.pending_state_update()),
+                    Some(pending.aggregated_state_update()),
                 )
             }
             other => {

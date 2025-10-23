@@ -312,6 +312,49 @@ impl StateUpdate {
         len += self.declared_cairo_classes.len() + self.declared_sierra_classes.len();
         len.try_into().expect("ptr size is 64bits")
     }
+
+    /// Apply another state update on top of this one.
+    pub fn apply(mut self, other: &StateUpdate) -> Self {
+        self.block_hash = other.block_hash;
+        self.parent_state_commitment = other.parent_state_commitment;
+        self.state_commitment = other.state_commitment;
+
+        for (contract, other_update) in &other.contract_updates {
+            let update = self.contract_updates.entry(*contract).or_default();
+
+            // Merge storage updates.
+            for (key, value) in &other_update.storage {
+                update.storage.insert(*key, *value);
+            }
+
+            // Merge class updates.
+            if let Some(class_update) = &other_update.class {
+                update.class = Some(*class_update);
+            }
+
+            // Merge nonce updates.
+            if let Some(nonce) = other_update.nonce {
+                update.nonce = Some(nonce);
+            }
+        }
+
+        for (contract, other_update) in &other.system_contract_updates {
+            let update = self.system_contract_updates.entry(*contract).or_default();
+
+            // Merge storage updates.
+            for (key, value) in &other_update.storage {
+                update.storage.insert(*key, *value);
+            }
+        }
+
+        // Merge declared classes.
+        self.declared_cairo_classes
+            .extend(other.declared_cairo_classes.iter().copied());
+        self.declared_sierra_classes
+            .extend(other.declared_sierra_classes.iter().map(|(k, v)| (*k, *v)));
+
+        self
+    }
 }
 
 impl StateUpdateData {
@@ -923,5 +966,73 @@ mod tests {
                 &declared_sierra_classes,
             )
         );
+    }
+
+    #[test]
+    fn apply() {
+        let state_update = StateUpdate::default()
+            .with_contract_nonce(contract_address!("0x1"), contract_nonce!("0x2"))
+            .with_contract_nonce(contract_address!("0x4"), contract_nonce!("0x5"))
+            .with_declared_cairo_class(class_hash!("0x3"))
+            .with_declared_sierra_class(sierra_hash!("0x4"), casm_hash!("0x5"))
+            .with_deployed_contract(contract_address!("0x1"), class_hash!("0x3"))
+            .with_replaced_class(contract_address!("0x33"), class_hash!("0x35"))
+            .with_system_storage_update(
+                ContractAddress::ONE,
+                storage_address!("0x10"),
+                storage_value!("0x99"),
+            )
+            .with_storage_update(
+                contract_address!("0x33"),
+                storage_address!("0x10"),
+                storage_value!("0x99"),
+            );
+
+        let second_state_update = StateUpdate::default()
+            .with_contract_nonce(contract_address!("0x1"), contract_nonce!("0x3"))
+            .with_contract_nonce(contract_address!("0x5"), contract_nonce!("0x5"))
+            .with_declared_cairo_class(class_hash!("0x6"))
+            .with_declared_sierra_class(sierra_hash!("0x7"), casm_hash!("0x8"))
+            .with_deployed_contract(contract_address!("0x9"), class_hash!("0x7"))
+            .with_replaced_class(contract_address!("0x33"), class_hash!("0x37"))
+            .with_system_storage_update(
+                ContractAddress::ONE,
+                storage_address!("0x11"),
+                storage_value!("0x100"),
+            )
+            .with_storage_update(
+                contract_address!("0x33"),
+                storage_address!("0x10"),
+                storage_value!("0x100"),
+            );
+
+        let combined = state_update.apply(&second_state_update);
+        let expected = StateUpdate::default()
+            .with_contract_nonce(contract_address!("0x1"), contract_nonce!("0x3"))
+            .with_contract_nonce(contract_address!("0x4"), contract_nonce!("0x5"))
+            .with_contract_nonce(contract_address!("0x5"), contract_nonce!("0x5"))
+            .with_declared_cairo_class(class_hash!("0x3"))
+            .with_declared_cairo_class(class_hash!("0x6"))
+            .with_declared_sierra_class(sierra_hash!("0x4"), casm_hash!("0x5"))
+            .with_declared_sierra_class(sierra_hash!("0x7"), casm_hash!("0x8"))
+            .with_deployed_contract(contract_address!("0x1"), class_hash!("0x3"))
+            .with_deployed_contract(contract_address!("0x9"), class_hash!("0x7"))
+            .with_replaced_class(contract_address!("0x33"), class_hash!("0x37"))
+            .with_system_storage_update(
+                ContractAddress::ONE,
+                storage_address!("0x10"),
+                storage_value!("0x99"),
+            )
+            .with_system_storage_update(
+                ContractAddress::ONE,
+                storage_address!("0x11"),
+                storage_value!("0x100"),
+            )
+            .with_storage_update(
+                contract_address!("0x33"),
+                storage_address!("0x10"),
+                storage_value!("0x100"),
+            );
+        assert_eq!(combined, expected);
     }
 }
