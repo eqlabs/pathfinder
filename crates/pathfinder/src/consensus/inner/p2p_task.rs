@@ -61,7 +61,6 @@ pub fn spawn(
     mut p2p_event_rx: mpsc::UnboundedReceiver<Event>,
     tx_to_consensus: mpsc::Sender<ConsensusTaskEvent>,
     mut rx_from_consensus: mpsc::Receiver<P2PTaskEvent>,
-    consensus_storage: Storage,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     // Cache for finalized blocks that we created from our proposals and are
     // waiting to be committed to the database once consensus is reached.
@@ -120,7 +119,6 @@ pub fn spawn(
                             let vcache = validator_cache.clone();
                             let dex = deferred_executions.clone();
                             let storage = storage.clone();
-                            let consensus_storage2 = consensus_storage.clone();
                             let mut batch_execution_manager_inner = batch_execution_manager.clone();
                             let result = util::task::spawn_blocking(move |_| {
                                 handle_incoming_proposal_part(
@@ -131,7 +129,6 @@ pub fn spawn(
                                     vcache,
                                     dex,
                                     storage,
-                                    consensus_storage2,
                                     &mut batch_execution_manager_inner,
                                 )
                             })
@@ -190,9 +187,9 @@ pub fn spawn(
                          hash {proposal_commitment}"
                     );
 
-                    let consensus_storage2 = consensus_storage.clone();
+                    let storage2 = storage.clone();
                     let duplicate_encountered = util::task::spawn_blocking(move |_| {
-                        let mut db_conn = consensus_storage2
+                        let mut db_conn = storage2
                             .connection()
                             .context("Creating database connection")?;
                         let db_tx = db_conn
@@ -225,12 +222,11 @@ pub fn spawn(
                             proposal.round.as_u32().expect("Valid round"),
                         );
 
-                        let consensus_storage2 = consensus_storage.clone();
-                        let consensus_storage3 = consensus_storage.clone();
+                        let storage2 = storage.clone();
                         let proposal_parts = util::task::spawn_blocking(move |_| {
                             let proposal_parts = if let Some(proposal_parts) =
                                 query_own_proposal_parts(
-                                    consensus_storage2,
+                                    &storage2,
                                     height_and_round,
                                     &validator_address,
                                 )? {
@@ -255,7 +251,7 @@ pub fn spawn(
                                 // For now we just choose the proposal from the previous round, and
                                 // the rest are kept for debugging
                                 // purposes.
-                                let mut db_conn = consensus_storage3
+                                let mut db_conn = storage2
                                     .connection()
                                     .context("Creating database connection")?;
                                 let db_tx = db_conn
@@ -371,7 +367,6 @@ pub fn spawn(
                         height_and_round,
                         value,
                         storage.clone(),
-                        consensus_storage.clone(),
                         &mut my_finalized_blocks_cache,
                         validator_cache.clone(),
                         &mut batch_execution_manager,
@@ -418,7 +413,6 @@ async fn finalize_and_commit_block(
     height_and_round: HeightAndRound,
     value: ConsensusValue,
     storage: Storage,
-    consensus_storage: Storage,
     my_finalized_blocks_cache: &mut HashMap<HeightAndRound, FinalizedBlock>,
     mut validator_cache: ValidatorCache,
     batch_execution_manager: &mut BatchExecutionManager,
@@ -441,7 +435,6 @@ async fn finalize_and_commit_block(
     };
 
     let storage2 = storage.clone();
-    let consensus_storage2 = consensus_storage.clone();
     util::task::spawn_blocking(move |_| {
         let finalized_block = match finalized_block {
             Either::Left(block) => block,
@@ -450,9 +443,7 @@ async fn finalize_and_commit_block(
 
         assert_eq!(value.0 .0, finalized_block.header.state_diff_commitment.0);
 
-        commit_finalized_block(storage2, finalized_block.clone())?;
-        // Necessary for proper fake proposal creation at next heights.
-        commit_finalized_block(consensus_storage2, finalized_block)?;
+        commit_finalized_block(storage2, finalized_block)?;
 
         anyhow::Ok(())
     })
@@ -482,7 +473,7 @@ async fn finalize_and_commit_block(
     );
 
     util::task::spawn_blocking(move |_| {
-        let mut db_conn = consensus_storage
+        let mut db_conn = storage
             .connection()
             .context("Creating database connection")?;
         let db_tx = db_conn
@@ -672,10 +663,9 @@ fn handle_incoming_proposal_part(
     mut validator_cache: ValidatorCache,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     storage: Storage,
-    consensus_storage: Storage,
     batch_execution_manager: &mut BatchExecutionManager,
 ) -> anyhow::Result<Option<ProposalCommitmentWithOrigin>> {
-    let mut db_conn = consensus_storage
+    let mut db_conn = storage
         .connection()
         .context("Creating database connection")?;
     let db_tx = db_conn
@@ -981,11 +971,11 @@ fn consensus_vote_to_p2p_vote(
 }
 
 fn query_own_proposal_parts(
-    consensus_storage: Storage,
+    storage: &Storage,
     height_and_round: HeightAndRound,
     validator_address: &ContractAddress,
 ) -> anyhow::Result<Option<Vec<ProposalPart>>> {
-    let mut db_conn = consensus_storage
+    let mut db_conn = storage
         .connection()
         .context("Creating database connection")?;
     let db_tx = db_conn

@@ -72,7 +72,6 @@ pub fn spawn(
     mut rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
     info_watch_tx: watch::Sender<Option<ConsensusInfo>>,
     storage: Storage,
-    fake_proposals_storage: Storage,
     data_directory: &Path,
     // Does nothing in production builds. Used for integration testing only.
     inject_failure: crate::config::integration_testing::InjectFailureConfig,
@@ -160,7 +159,7 @@ pub fn spawn(
                                  {round}",
                             );
 
-                            let fake_proposals_storage = fake_proposals_storage.clone();
+                            let fake_proposals_storage = storage.clone();
                             let (wire_proposal, finalized_block) =
                                 util::task::spawn_blocking(move |_| {
                                     create_empty_proposal(
