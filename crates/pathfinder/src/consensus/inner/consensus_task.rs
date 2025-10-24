@@ -449,7 +449,13 @@ fn create_empty_proposal(
     let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())?
         .validate_consensus_block_info(block_info.clone(), storage.clone())?;
     let validator = validator.consensus_finalize0()?;
-    let finalized_block = validator.finalize(storage.clone())?;
+    let mut db_conn = storage
+        .connection()
+        .context("Creating database connection")?;
+    let db_txn = db_conn
+        .transaction()
+        .context("Create database transaction")?;
+    let finalized_block = validator.finalize(db_txn, storage.clone())?;
     let proposal_commitment_hash = Hash(finalized_block.header.state_diff_commitment.0);
 
     // The only version handled by consensus, so far
