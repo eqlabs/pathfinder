@@ -15,7 +15,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Context;
-use futures::future::Either;
 use p2p::consensus::{Client, Event, HeightAndRound};
 use p2p::libp2p::gossipsub::PublishError;
 use p2p_proto::common::{Address, Hash};
@@ -44,7 +43,10 @@ use crate::consensus::inner::persist_proposals::{
     foreign_proposal_parts,
     last_proposal_parts,
     own_proposal_parts,
+    persist_finalized_block,
     persist_proposal_parts,
+    read_finalized_block,
+    remove_finalized_blocks,
     remove_proposal_parts,
 };
 use crate::consensus::inner::ConsensusValue;
@@ -63,9 +65,6 @@ pub fn spawn(
     mut rx_from_consensus: mpsc::Receiver<P2PTaskEvent>,
     consensus_storage: Storage,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
-    // Cache for finalized blocks that we created from our proposals and are
-    // waiting to be committed to the database once consensus is reached.
-    let mut my_finalized_blocks_cache = HashMap::new();
     // TODO validators are long-lived but not persisted
     let validator_cache = ValidatorCache::new();
     // Contains transaction batches and proposal finalizations that are
@@ -206,11 +205,20 @@ pub fn spawn(
                             &proposal_parts,
                         )?;
 
+                        let db_tx = db_conn
+                            .transaction()
+                            .context("Creating database transaction")?;
+                        persist_finalized_block(
+                            db_tx,
+                            height_and_round.height(),
+                            height_and_round.round(),
+                            finalized_block,
+                        )?;
+
                         anyhow::Ok(duplicate_encountered)
                     })
                     .await??;
 
-                    my_finalized_blocks_cache.insert(height_and_round, finalized_block);
                     if duplicate_encountered {
                         tracing::warn!("Duplicate proposal cache request for {height_and_round}!");
                     }
@@ -372,7 +380,6 @@ pub fn spawn(
                         value,
                         storage.clone(),
                         consensus_storage.clone(),
-                        &mut my_finalized_blocks_cache,
                         validator_cache.clone(),
                         &mut batch_execution_manager,
                     )
@@ -419,7 +426,6 @@ async fn finalize_and_commit_block(
     value: ConsensusValue,
     storage: Storage,
     consensus_storage: Storage,
-    my_finalized_blocks_cache: &mut HashMap<HeightAndRound, FinalizedBlock>,
     mut validator_cache: ValidatorCache,
     batch_execution_manager: &mut BatchExecutionManager,
 ) -> anyhow::Result<()> {
@@ -427,26 +433,29 @@ async fn finalize_and_commit_block(
         "🖧  💾 {validator_address} Finalizing and committing block at {height_and_round} to the \
          database ...",
     );
-    let stopwatch = std::time::Instant::now();
-
-    let finalized_block = match my_finalized_blocks_cache.remove(&height_and_round) {
-        // Our own proposal is already executed and finalized.
-        Some(block) => Either::Left(block),
-        // Incoming proposal has been executed and needs to be finalized now.
-        None => {
-            let validator_stage = validator_cache.remove(&height_and_round)?;
-            let validator = validator_stage.try_into_finalize_stage()?;
-            Either::Right(validator)
-        }
-    };
-
     let storage2 = storage.clone();
     let consensus_storage2 = consensus_storage.clone();
     util::task::spawn_blocking(move |_| {
-        let finalized_block = match finalized_block {
-            Either::Left(block) => block,
-            Either::Right(validator) => validator.finalize(storage2.clone())?,
-        };
+        let stopwatch = std::time::Instant::now();
+
+        let mut db_conn = consensus_storage2
+            .connection()
+            .context("Creating database connection")?;
+        let db_tx = db_conn
+            .transaction()
+            .context("Creating database transaction")?;
+        let finalized_block =
+            match read_finalized_block(db_tx, height_and_round.height(), height_and_round.round())?
+            {
+                // Our own proposal is already executed and finalized.
+                Some(block) => block,
+                // Incoming proposal has been executed and needs to be finalized now.
+                None => {
+                    let validator_stage = validator_cache.remove(&height_and_round)?;
+                    let validator = validator_stage.try_into_finalize_stage()?;
+                    validator.finalize(storage2.clone())?
+                }
+            };
 
         assert_eq!(value.0 .0, finalized_block.header.state_diff_commitment.0);
 
@@ -454,25 +463,24 @@ async fn finalize_and_commit_block(
         // Necessary for proper fake proposal creation at next heights.
         commit_finalized_block(consensus_storage2, finalized_block)?;
 
+        tracing::info!(
+            "🖧  💾 {validator_address} Finalized and committed block at {height_and_round} to the \
+             database in {} ms",
+            stopwatch.elapsed().as_millis()
+        );
+
+        let db_tx = db_conn
+            .transaction()
+            .context("Creating database transaction")?;
+        remove_finalized_blocks(db_tx, height_and_round.height())?;
+        tracing::debug!(
+            "🖧  🗑️ {validator_address} removed finalized blocks for height {}",
+            height_and_round.height()
+        );
+
         anyhow::Ok(())
     })
     .await??;
-    tracing::info!(
-        "🖧  💾 {validator_address} Finalized and committed block at {height_and_round} to the \
-         database in {} ms",
-        stopwatch.elapsed().as_millis()
-    );
-
-    let removed = my_finalized_blocks_cache
-        .iter()
-        .filter_map(|(hnr, _)| (hnr.height() == height_and_round.height()).then_some(hnr.round()))
-        .collect::<Vec<_>>();
-    my_finalized_blocks_cache.retain(|hnr, _| hnr.height() != height_and_round.height());
-    tracing::debug!(
-        "🖧  🗑️ {validator_address} removed my finalized blocks from cache for height {} and \
-         rounds: {removed:?}",
-        height_and_round.height()
-    );
 
     // Clean up batch execution state for this height
     batch_execution_manager.cleanup(&height_and_round);
