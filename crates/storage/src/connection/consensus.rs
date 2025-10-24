@@ -7,20 +7,6 @@ use pathfinder_common::ContractAddress;
 use crate::prelude::*;
 
 impl Transaction<'_> {
-    pub fn ensure_consensus_proposals_table_exists(&self) -> anyhow::Result<()> {
-        self.inner().execute(
-            r"CREATE TABLE IF NOT EXISTS consensus_proposals (
-                    height      INTEGER NOT NULL,
-                    round       INTEGER NOT NULL,
-                    proposer    BLOB NOT NULL,
-                    parts       BLOB NOT NULL,
-                    UNIQUE(height, round, proposer)
-            )",
-            [],
-        )?;
-        Ok(())
-    }
-
     pub fn persist_consensus_proposal_parts(
         &self,
         height: u64,
