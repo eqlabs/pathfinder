@@ -24,9 +24,10 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, watch};
 
 use super::ConsensusTaskHandles;
-use crate::config::ConsensusConfig;
+use crate::config::{integration_testing, ConsensusConfig};
 use crate::validator::FinalizedBlock;
 
+#[allow(clippy::too_many_arguments)]
 pub fn start(
     config: ConsensusConfig,
     chain_id: ChainId,
@@ -35,6 +36,7 @@ pub fn start(
     p2p_client: Client,
     p2p_event_rx: mpsc::UnboundedReceiver<Event>,
     data_directory: &Path,
+    inject_failure_config: integration_testing::InjectFailureConfig,
 ) -> ConsensusTaskHandles {
     // Events that are produced by the P2P task and consumed by the consensus task.
     // TODO determine sufficient buffer size. 1 is not enough.
@@ -68,6 +70,8 @@ pub fn start(
         info_watch_tx,
         consensus_storage,
         storage,
+        data_directory,
+        inject_failure_config,
     );
 
     ConsensusTaskHandles {
