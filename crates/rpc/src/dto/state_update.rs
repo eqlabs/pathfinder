@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use pathfinder_common::prelude::*;
 
-use crate::dto;
 use crate::dto::{SerializeForVersion, Serializer};
+use crate::{dto, RpcVersion};
 
 pub struct StateUpdate<'a>(pub &'a pathfinder_common::StateUpdate);
 pub struct PendingStateUpdate<'a>(pub &'a pathfinder_common::StateUpdate);
@@ -35,7 +35,10 @@ impl SerializeForVersion for PendingStateUpdate<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("old_root", &self.0.parent_state_commitment.0)?;
+        if serializer.version < RpcVersion::V10 {
+            serializer.serialize_field("old_root", &self.0.parent_state_commitment.0)?;
+        }
+
         serializer.serialize_field("state_diff", &StateDiff(self.0))?;
 
         serializer.end()
