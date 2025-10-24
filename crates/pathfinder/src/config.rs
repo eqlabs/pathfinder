@@ -405,11 +405,19 @@ This should only be enabled for debugging purposes as it adds substantial proces
     fee_estimation_epsilon: Percentage,
 
     #[cfg_attr(
-        all(feature = "integration-testing", feature = "p2p", debug_assertions),
+        all(
+            feature = "consensus-integration-tests",
+            feature = "p2p",
+            debug_assertions
+        ),
         clap(flatten)
     )]
     #[cfg_attr(
-        not(all(feature = "integration-testing", feature = "p2p", debug_assertions)),
+        not(all(
+            feature = "consensus-integration-tests",
+            feature = "p2p",
+            debug_assertions
+        )),
         clap(skip)
     )]
     integration_testing: integration_testing::IntegrationTestingCli,
@@ -855,7 +863,7 @@ pub struct Config {
     pub submission_tracker_size_limit: NonZeroUsize,
     pub consensus: Option<ConsensusConfig>,
     /// Integration testing config, only available on debug builds with `p2p`
-    /// and `integration-testing` features enabled.
+    /// and `consensus-integration-tests` features enabled.
     pub integration_testing: integration_testing::IntegrationTestingConfig,
 }
 

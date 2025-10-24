@@ -10,14 +10,15 @@ mod tests {
     use rstest::rstest;
 
     /// Values passed with these CLI arguments will not cause errors in a debug
-    /// build built with features `p2p` and `integration-testing` enabled.
+    /// build built with features `p2p` and `consensus-integration-tests`
+    /// enabled.
     #[rstest]
     #[case::inject_failure_on_proposal_rx(
-        "--integration-testing.inject-failure.on-proposal-rx",
+        "--integration-tests.inject-failure.on-proposal-rx",
         "=1"
     )]
     #[case::inject_failure_on_proposal_decided(
-        "--integration-testing.inject-failure.on-proposal-decided",
+        "--integration-tests.inject-failure.on-proposal-decided",
         "=1"
     )]
     #[test]

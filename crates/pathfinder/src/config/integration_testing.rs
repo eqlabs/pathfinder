@@ -1,28 +1,40 @@
-#[cfg(not(all(feature = "p2p", feature = "integration-testing", debug_assertions)))]
+#[cfg(not(all(
+    feature = "p2p",
+    feature = "consensus-integration-tests",
+    debug_assertions
+)))]
 pub use disabled::*;
-#[cfg(all(feature = "p2p", feature = "integration-testing", debug_assertions))]
+#[cfg(all(
+    feature = "p2p",
+    feature = "consensus-integration-tests",
+    debug_assertions
+))]
 pub use enabled::*;
 
-#[cfg(all(feature = "p2p", feature = "integration-testing", debug_assertions))]
+#[cfg(all(
+    feature = "p2p",
+    feature = "consensus-integration-tests",
+    debug_assertions
+))]
 mod enabled {
     use clap::builder::RangedU64ValueParser;
 
     #[derive(clap::Args)]
     pub struct IntegrationTestingCli {
         #[arg(
-            long = "integration-testing.disable-db-verification",
+            long = "integration-tests.disable-db-verification",
             action = clap::ArgAction::Set,
             default_value = "false"
         )]
         disable_db_verification: bool,
         #[arg(
-            long = "integration-testing.inject-failure.on-proposal-rx",
+            long = "integration-tests.inject-failure.on-proposal-rx",
             action = clap::ArgAction::Set,
             value_parser = up_to_15_height_parser(),
         )]
         inject_failure_on_proposal_rx: Option<u64>,
         #[arg(
-            long = "integration-testing.inject-failure.on-proposal-decided",
+            long = "integration-tests.inject-failure.on-proposal-decided",
             action = clap::ArgAction::Set,
             value_parser = up_to_15_height_parser(),
         )]
@@ -90,7 +102,11 @@ mod enabled {
     }
 }
 
-#[cfg(not(all(feature = "p2p", feature = "integration-testing", debug_assertions)))]
+#[cfg(not(all(
+    feature = "p2p",
+    feature = "consensus-integration-tests",
+    debug_assertions
+)))]
 mod disabled {
     #[derive(Default)]
     pub struct IntegrationTestingCli;
