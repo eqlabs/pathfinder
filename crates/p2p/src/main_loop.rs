@@ -1,13 +1,15 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
+use std::path::PathBuf;
 
 use futures::StreamExt;
 use libp2p::kad::{self, BootstrapError, BootstrapOk, QueryId, QueryResult};
-use libp2p::multiaddr::Protocol;
+use libp2p::multiaddr::{Multiaddr, Protocol};
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{NetworkBehaviour, SwarmEvent};
 use libp2p::{identify, PeerId};
+use pathfinder_common::integration_testing;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 
@@ -59,6 +61,8 @@ where
     /// Keeps track of pending queries and allows us to send the response
     /// payloads back to the caller.
     pending_queries: PendingQueries,
+    /// Data directory for Pathfinder.
+    data_directory: PathBuf,
     /// State of the application behaviour.
     state: State<B>,
     _test_event_sender: mpsc::Sender<TestEvent>,
@@ -98,11 +102,12 @@ where
     ///
     /// * `swarm` - The libp2p swarm, including the network behaviour for this
     ///   loop.
-    /// * `command_receiver` - The receiver for commands from the outside world.
     /// * `event_sender` - The sender for events to the outside world.
+    /// * `data_directory` - The data directory for Pathfinder.
     pub fn new(
         swarm: libp2p::swarm::Swarm<Behaviour<B>>,
         event_sender: mpsc::UnboundedSender<<B as ApplicationBehaviour>::Event>,
+        data_directory: PathBuf,
     ) -> (
         Self,
         mpsc::UnboundedSender<Command<<B as ApplicationBehaviour>::Command>>,
@@ -125,6 +130,7 @@ where
                 pending_dials: Default::default(),
                 pending_queries: Default::default(),
                 state: Default::default(),
+                data_directory,
                 _test_event_sender,
                 _test_event_receiver: Some(rx),
                 _pending_test_queries: Default::default(),
@@ -465,8 +471,8 @@ where
                 match &event {
                     SwarmEvent::NewListenAddr { address, .. } => {
                         let my_peerid = *self.swarm.local_peer_id();
+                        self.debug_create_port_marker_file(address);
                         let address = address.clone().with(Protocol::P2p(my_peerid));
-
                         tracing::debug!(%address, "New listen");
                     }
                     _ => tracing::trace!(?event, "Ignoring event"),
@@ -474,6 +480,35 @@ where
                 self.handle_event_for_test(event).await;
             }
         }
+    }
+
+    /// ## Important
+    /// This function does nothing in production builds.
+    ///
+    /// ## Integration testing
+    /// Extracts the TCP port from the given multiaddress and creates
+    /// a marker file in the data directory indicating that the port has been
+    /// assigned.
+    ///
+    /// ## Panics
+    /// The function will panic if it fails to create the marker file.
+    fn debug_create_port_marker_file(&self, address: &Multiaddr) {
+        address
+            .iter()
+            .find_map(|p| {
+                if let Protocol::Tcp(port) = p {
+                    Some(port)
+                } else {
+                    None
+                }
+            })
+            .map(|_port| {
+                integration_testing::debug_create_port_marker_file(
+                    B::domain(),
+                    _port,
+                    &self.data_directory,
+                );
+            });
     }
 
     /// Handles a command from the outside world.

@@ -98,6 +98,10 @@ pub trait ApplicationBehaviour: NetworkBehaviour {
         state: &mut Self::State,
         event_sender: mpsc::UnboundedSender<Self::Event>,
     ) -> impl Future<Output = ()> + Send;
+
+    /// Returns the domain string used for marker file creation in integration
+    /// testing, for example "sync" or "consensus".
+    fn domain() -> &'static str;
 }
 
 type EmptyResultSender = oneshot::Sender<anyhow::Result<()>>;

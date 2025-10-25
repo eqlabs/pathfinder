@@ -20,6 +20,7 @@ pub mod consts;
 pub mod event;
 pub mod hash;
 mod header;
+pub mod integration_testing;
 mod l1;
 mod macros;
 pub mod prelude;

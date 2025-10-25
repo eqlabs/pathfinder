@@ -145,6 +145,10 @@ impl ApplicationBehaviour for Behaviour {
             }
         }
     }
+
+    fn domain() -> &'static str {
+        "consensus"
+    }
 }
 
 impl Behaviour {

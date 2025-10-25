@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use p2p::consensus::{Client, Event};
 use pathfinder_common::ChainId;
 use tokio::sync::mpsc;
@@ -10,8 +12,12 @@ type ConsensusHandle = (
     Option<(mpsc::UnboundedReceiver<Event>, Client)>,
 );
 
-pub async fn start(chain_id: ChainId, config: P2PConsensusConfig) -> ConsensusHandle {
-    inner::start(chain_id, config)
+pub async fn start(
+    chain_id: ChainId,
+    config: P2PConsensusConfig,
+    data_directory: PathBuf,
+) -> ConsensusHandle {
+    inner::start(chain_id, config, data_directory)
         .await
         .unwrap_or_else(|error| {
             (
@@ -25,6 +31,7 @@ pub async fn start(chain_id: ChainId, config: P2PConsensusConfig) -> ConsensusHa
 
 #[cfg(feature = "p2p")]
 mod inner {
+    use std::path::PathBuf;
     use std::time::Duration;
 
     use anyhow::Context;
@@ -41,6 +48,7 @@ mod inner {
     pub(super) async fn start(
         chain_id: ChainId,
         config: P2PConsensusConfig,
+        data_directory: PathBuf,
     ) -> anyhow::Result<ConsensusHandle> {
         let core_config = p2p::core::Config {
             direct_connection_timeout: config.core.direct_connection_timeout,
@@ -58,6 +66,7 @@ mod inner {
             max_read_bytes_per_sec: config.core.max_read_bytes_per_sec,
             max_write_bytes_per_sec: config.core.max_write_bytes_per_sec,
             kad_name: config.core.kad_name,
+            data_directory,
         };
         let keypair = identity::load_or_generate(config.core.identity_config_file.clone())
             .context(format!(
@@ -119,6 +128,7 @@ mod inner {
     pub(super) async fn start(
         _: ChainId,
         _: P2PConsensusConfig,
+        _: PathBuf,
     ) -> anyhow::Result<(
         JoinHandle<anyhow::Result<()>>,
         Option<(mpsc::UnboundedReceiver<Event>, Client)>,

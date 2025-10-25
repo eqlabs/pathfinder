@@ -20,6 +20,7 @@ pub mod v09;
 pub mod v10;
 
 use std::net::SocketAddr;
+use std::path::Path;
 use std::result::Result;
 
 use anyhow::Context;
@@ -30,7 +31,7 @@ use context::RpcContext;
 pub use executor::compose_executor_transaction;
 use http_body::Body;
 pub use jsonrpc::{Notifications, Reorg};
-use pathfinder_common::AllowedOrigins;
+use pathfinder_common::{integration_testing, AllowedOrigins};
 pub use pending::{FinalizedTxData, PendingBlockVariant, PendingData};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
@@ -105,6 +106,7 @@ impl RpcServer {
     /// Starts the HTTP-RPC server.
     pub async fn spawn(
         self,
+        data_directory: &Path,
     ) -> Result<(JoinHandle<anyhow::Result<()>>, SocketAddr), anyhow::Error> {
         use axum::routing::{get, post};
 
@@ -125,6 +127,7 @@ impl RpcServer {
         let addr = listener
             .local_addr()
             .context("Getting local address from listener")?;
+        integration_testing::debug_create_port_marker_file("rpc", addr.port(), data_directory);
 
         async fn handle_middleware_errors(err: axum::BoxError) -> (http::StatusCode, String) {
             use http::StatusCode;
@@ -1435,6 +1438,8 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use dto::DeserializeForVersion;
     use serde_json::json;
 
@@ -1472,7 +1477,7 @@ mod tests {
         let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
         let context = RpcContext::for_tests();
         let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V07)
-            .spawn()
+            .spawn(&PathBuf::default())
             .await
             .unwrap();
 
@@ -1709,7 +1714,7 @@ mod tests {
             ));
         }
         let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V07)
-            .spawn()
+            .spawn(&PathBuf::default()) 
             .await
             .unwrap();
 

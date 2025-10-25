@@ -18,6 +18,8 @@ pub fn with_allowed_origins(allowed_origins: AllowedOrigins) -> CorsLayer {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use reqwest::header::HeaderValue;
 
     use crate::context::RpcContext;
@@ -41,7 +43,7 @@ mod tests {
                 None => server,
             };
 
-            let (_server_handle, address) = server.spawn().await.unwrap();
+            let (_server_handle, address) = server.spawn(&PathBuf::default()).await.unwrap();
 
             let resp = reqwest::Client::new()
                 .request(reqwest::Method::OPTIONS, format!("http://{address}"))

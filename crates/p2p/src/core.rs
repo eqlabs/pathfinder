@@ -70,6 +70,7 @@ pub enum TestEvent {
 /// Configuration for the core p2p network.
 pub mod config {
     use std::num::NonZeroU32;
+    use std::path::PathBuf;
     use std::time::Duration;
 
     use ipnet::IpNet;
@@ -102,6 +103,8 @@ pub mod config {
         pub max_write_bytes_per_sec: Option<NonZeroU32>,
         /// Custom protocol name for Kademlia
         pub kad_name: Option<String>,
+        /// Data directory for Pathfinder.
+        pub data_directory: PathBuf,
     }
 
     /// Rate limit for inbound connections.
@@ -130,6 +133,7 @@ pub mod config {
                 max_read_bytes_per_sec: None,
                 max_write_bytes_per_sec: None,
                 kad_name: Default::default(),
+                data_directory: PathBuf::default(),
             }
         }
     }
