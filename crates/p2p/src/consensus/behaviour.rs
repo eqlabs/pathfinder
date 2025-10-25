@@ -147,7 +147,7 @@ impl ApplicationBehaviour for Behaviour {
     }
 
     fn domain() -> &'static str {
-        "consensus"
+        "p2p_consensus"
     }
 }
 

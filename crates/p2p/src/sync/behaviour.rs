@@ -305,6 +305,6 @@ impl ApplicationBehaviour for Behaviour {
     }
 
     fn domain() -> &'static str {
-        "sync"
+        "p2p_sync"
     }
 }
