@@ -1,5 +1,7 @@
 #[cfg(feature = "p2p")]
 mod sync_handlers;
+use std::path::PathBuf;
+
 use p2p::sync::client::peer_agnostic::Client;
 use pathfinder_common::ChainId;
 use pathfinder_storage::Storage;
@@ -11,8 +13,9 @@ pub async fn start(
     chain_id: ChainId,
     storage: Storage,
     config: P2PSyncConfig,
+    data_directory: PathBuf,
 ) -> (JoinHandle<anyhow::Result<()>>, Option<Client>) {
-    inner::start(chain_id, storage, config)
+    inner::start(chain_id, storage, config, data_directory)
         .await
         .unwrap_or_else(|error| {
             (
@@ -26,6 +29,7 @@ pub async fn start(
 
 #[cfg(feature = "p2p")]
 mod inner {
+    use std::path::PathBuf;
     use std::time::Duration;
 
     use anyhow::Context;
@@ -56,6 +60,7 @@ mod inner {
         chain_id: ChainId,
         storage: Storage,
         config: P2PSyncConfig,
+        data_directory: PathBuf,
     ) -> anyhow::Result<(JoinHandle<anyhow::Result<()>>, Option<Client>)> {
         let core_config = p2p::core::Config {
             direct_connection_timeout: config.core.direct_connection_timeout,
@@ -73,6 +78,7 @@ mod inner {
             max_read_bytes_per_sec: config.core.max_read_bytes_per_sec,
             max_write_bytes_per_sec: config.core.max_write_bytes_per_sec,
             kad_name: config.core.kad_name,
+            data_directory,
         };
         let sync_config = p2p::sync::Config {
             stream_timeout: config.stream_timeout,
@@ -209,6 +215,7 @@ mod inner {
         _: ChainId,
         _: Storage,
         _: P2PSyncConfig,
+        _: PathBuf,
     ) -> anyhow::Result<(JoinHandle<anyhow::Result<()>>, Option<Client>)> {
         Ok((tokio::task::spawn(futures::future::pending()), None))
     }
