@@ -143,6 +143,6 @@ impl ApplicationBehaviour for dummy::Behaviour {
     ) {
     }
     fn domain() -> &'static str {
-        "dummy"
+        "p2p_dummy"
     }
 }

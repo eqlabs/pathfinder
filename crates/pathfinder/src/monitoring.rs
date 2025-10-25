@@ -35,7 +35,7 @@ pub async fn spawn_server(
         });
     let listener = tokio::net::TcpListener::bind(addr.into()).await?;
     let addr = listener.local_addr()?;
-    debug_create_port_marker_file("monitoring", addr.port(), data_directory);
+    debug_create_port_marker_file("monitor", addr.port(), data_directory);
     let spawn = util::task::spawn(async move {
         axum::serve(listener, app.into_make_service())
             .with_graceful_shutdown(util::task::cancellation_token().cancelled_owned())

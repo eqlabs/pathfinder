@@ -2,7 +2,9 @@
 
 use std::time::Duration;
 
+use anyhow::Context;
 use serde::Deserialize;
+use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 
@@ -15,10 +17,10 @@ pub fn wait_for_height(
     instance: &PathfinderInstance,
     height: u64,
     poll_interval: Duration,
-) -> JoinHandle<()> {
+) -> JoinHandle<anyhow::Result<()>> {
     tokio::spawn(wait_for_height_fut(
         instance.name(),
-        instance.rpc_port(),
+        instance.rpc_port_watch_rx().clone(),
         height,
         poll_interval,
     ))
@@ -28,11 +30,18 @@ pub fn wait_for_height(
 /// Polls every `poll_interval`.
 async fn wait_for_height_fut(
     name: &'static str,
-    rpc_port: u16,
+    mut rpc_port_watch_rx: watch::Receiver<u16>,
     height: u64,
     poll_interval: Duration,
-) {
+) -> anyhow::Result<()> {
+    rpc_port_watch_rx
+        .wait_for(|port| *port != 0)
+        .await
+        .context("Waiting for port to change from 0")?;
+
     loop {
+        let rpc_port = *rpc_port_watch_rx.borrow();
+
         // Sleeping first actually makes sense here, because the node will likely not
         // have any decided heights immediately after the RPC server is ready.
         sleep(poll_interval).await;
@@ -60,7 +69,7 @@ async fn wait_for_height_fut(
 
         if let Some(highest_decided_height) = highest_decided_height {
             if highest_decided_height >= height {
-                return;
+                return Ok(());
             }
         }
     }

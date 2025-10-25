@@ -1,15 +1,16 @@
 //! Utilities for spawning and managing Pathfinder instances.
 
 use std::fs::{File, OpenOptions};
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
 use http::StatusCode;
-use rand::Rng;
 use tokio::signal::unix::{signal, SignalKind};
+use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 
@@ -17,8 +18,11 @@ use tokio::time::sleep;
 pub struct PathfinderInstance {
     process: Child,
     name: &'static str,
-    monitor_port: u16,
-    rpc_port: u16,
+    monitor_port: AtomicU16,
+    consensus_p2p_port: AtomicU16,
+    rpc_port_watch_tx: watch::Sender<u16>,
+    rpc_port_watch_rx: watch::Receiver<u16>,
+    db_dir: PathBuf,
     stdout_path: PathBuf,
     stderr_path: PathBuf,
     /// `true` if [`PathfinderInstance::exited_wit_error`] returned
@@ -30,9 +34,6 @@ pub struct PathfinderInstance {
 #[derive(Debug, Clone)]
 pub struct Config {
     pub name: &'static str,
-    pub monitor_port: u16,
-    pub rpc_port: u16,
-    pub p2p_port: u16,
     pub boot_port: Option<u16>,
     pub my_validator_address: u8,
     pub validator_addresses: Vec<u8>,
@@ -62,7 +63,7 @@ impl PathfinderInstance {
     /// returned `Ok(_)`, which means that the instance has already exited.
     pub fn spawn(config: Config) -> anyhow::Result<Self> {
         let id_file = config.fixture_dir.join(format!("id_{}.json", config.name));
-        let db_file = config.test_dir.join(format!("db-{}", config.name));
+        let db_dir = config.test_dir.join(format!("db-{}", config.name));
         let stdout_path = config.test_dir.join(format!("{}_stdout.log", config.name));
         let stdout_file = create_log_file(&config, &stdout_path)?;
         let stderr_path = config.test_dir.join(format!("{}_stderr.log", config.name));
@@ -80,13 +81,13 @@ impl PathfinderInstance {
             .args([
                 "--ethereum.url=https://ethereum-sepolia-rpc.publicnode.com",
                 "--network=sepolia-testnet",
-                format!("--data-directory={}", db_file.display()).as_str(),
+                format!("--data-directory={}", db_dir.display()).as_str(),
                 "--debug.pretty-log=true",
                 "--color=never",
-                format!("--monitor-address=127.0.0.1:{}", config.monitor_port).as_str(),
+                "--monitor-address=127.0.0.1:0",
                 "--sync.enable=false",
                 "--rpc.enable=true",
-                format!("--http-rpc=127.0.0.1:{}", config.rpc_port).as_str(),
+                "--http-rpc=127.0.0.1:0",
                 "--consensus.enable=true",
                 // Currently the proposer address always points to Alice (0x1).
                 "--consensus.proposer-addresses=0x1",
@@ -106,11 +107,7 @@ impl PathfinderInstance {
                 )
                 .as_str(),
                 format!("--p2p.consensus.identity-config-file={}", id_file.display()).as_str(),
-                format!(
-                    "--p2p.consensus.listen-on=/ip4/127.0.0.1/tcp/{}",
-                    config.p2p_port
-                )
-                .as_str(),
+                "--p2p.consensus.listen-on=/ip4/127.0.0.1/tcp/0",
                 "--p2p.consensus.experimental.direct-connection-timeout=1",
                 "--p2p.consensus.experimental.eviction-timeout=1",
             ]);
@@ -138,15 +135,29 @@ impl PathfinderInstance {
             process.id()
         );
 
+        let (rpc_port_watch_tx, rpc_port_watch_rx) = watch::channel(0u16);
+
         Ok(Self {
             process,
             name: config.name,
-            monitor_port: config.monitor_port,
-            rpc_port: config.rpc_port,
+            monitor_port: AtomicU16::new(0),
+            consensus_p2p_port: AtomicU16::new(0),
+            rpc_port_watch_tx,
+            rpc_port_watch_rx,
+            db_dir,
             stdout_path,
             stderr_path,
             is_terminated: false,
         })
+    }
+
+    pub fn with_rpc_port_watch(
+        mut self,
+        (tx, rx): (watch::Sender<u16>, watch::Receiver<u16>),
+    ) -> Self {
+        self.rpc_port_watch_tx = tx;
+        self.rpc_port_watch_rx = rx;
+        self
     }
 
     /// Checks if the instance has exited with a non-zero exit code.
@@ -178,15 +189,26 @@ impl PathfinderInstance {
     ) -> anyhow::Result<()> {
         let fut = async move {
             let stopwatch = Instant::now();
+            let pid = self.process.id();
+            let (monitor_port, rpc_port, p2p_port) = tokio::join!(
+                Self::wait_for_port(pid, "monitor", &self.db_dir, poll_interval),
+                Self::wait_for_port(pid, "rpc", &self.db_dir, poll_interval),
+                Self::wait_for_port(pid, "p2p_consensus", &self.db_dir, poll_interval),
+            );
+            let monitor_port = monitor_port?;
+            self.monitor_port.store(monitor_port, Ordering::Relaxed);
+            self.rpc_port_watch_tx.send(rpc_port?)?;
+            self.consensus_p2p_port.store(p2p_port?, Ordering::Relaxed);
+
             loop {
-                match reqwest::get(format!("http://127.0.0.1:{}/ready", self.monitor_port)).await {
+                match reqwest::get(format!("http://127.0.0.1:{}/ready", monitor_port)).await {
                     Ok(response) if response.status() == StatusCode::OK => {
                         println!(
                             "Pathfinder instance {:<7} ready after {} s",
                             self.name,
                             stopwatch.elapsed().as_secs()
                         );
-                        return;
+                        return anyhow::Ok(());
                     }
                     _ => println!("Pathfinder instance {:<7} not ready yet", self.name),
                 }
@@ -194,21 +216,66 @@ impl PathfinderInstance {
                 sleep(poll_interval).await;
             }
         };
-        if tokio::time::timeout(timeout, fut).await.is_err() {
-            anyhow::bail!(
-                "Timeout waiting for Pathfinder instance {} to be ready",
-                self.name
-            );
+        match tokio::time::timeout(timeout, fut).await {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(e)) => return Err(e),
+            Err(_) => {
+                anyhow::bail!(
+                    "Timeout waiting for Pathfinder instance {} to be ready",
+                    self.name
+                )
+            }
         }
-        Ok(())
+    }
+
+    async fn wait_for_port(
+        pid: u32,
+        port_name: &str,
+        db_dir: &Path,
+        poll_interval: Duration,
+    ) -> anyhow::Result<u16> {
+        let port_file = db_dir.join(format!("pid_{pid}_{port_name}_port"));
+        loop {
+            match tokio::fs::read_to_string(&port_file).await {
+                Ok(port_str) => {
+                    let port = port_str
+                        .trim()
+                        .parse::<u16>()
+                        .context(format!("Parsing port value in {}", port_file.display()))?;
+                    return Ok(port);
+                }
+                Err(e) if e.kind() == ErrorKind::NotFound => {
+                    // File not found yet, continue polling.
+                }
+                Err(e) => {
+                    return Err(anyhow::anyhow!(
+                        "Error reading port file {}: {e}",
+                        port_file.display()
+                    ));
+                }
+            }
+
+            sleep(poll_interval).await;
+        }
     }
 
     pub fn name(&self) -> &'static str {
         self.name
     }
 
-    pub fn rpc_port(&self) -> u16 {
-        self.rpc_port
+    pub fn rpc_port_watch_rx(&self) -> watch::Receiver<u16> {
+        self.rpc_port_watch_rx.clone()
+    }
+
+    pub fn rpc_port_watch(&self) -> (watch::Sender<u16>, watch::Receiver<u16>) {
+        (
+            self.rpc_port_watch_tx.clone(),
+            self.rpc_port_watch_rx.clone(),
+        )
+    }
+
+    pub fn consensus_p2p_port(&self) -> u16 {
+        self.consensus_p2p_port.load(Ordering::Relaxed)
     }
 
     fn terminate(&mut self) {
@@ -334,15 +401,10 @@ impl Config {
             "Max {} instances supported",
             Self::NAMES.len()
         );
-        // Randomize ports a bit to avoid collisions when running tests in parallel.
-        let base = rand::rngs::ThreadRng::default().gen_range(0..400u16);
         (0..set_size)
             .map(|i| Self {
                 name: Self::NAMES[i],
-                monitor_port: 9090 + base + i as u16,
-                rpc_port: 9545 + base + i as u16,
-                p2p_port: 50001 + base + i as u16,
-                boot_port: if i == 0 { None } else { Some(50001 + base) },
+                boot_port: None,
                 my_validator_address: (i + 1) as u8,
                 // The set is deduplicated when consensus task is started, so including the own
                 // validator address is fine.
@@ -357,6 +419,11 @@ impl Config {
 
     pub fn with_inject_failure(mut self, inject_failure: Option<InjectFailure>) -> Self {
         self.inject_failure = inject_failure;
+        self
+    }
+
+    pub fn with_boot_port(mut self, port: u16) -> Self {
+        self.boot_port = Some(port);
         self
     }
 }
@@ -376,7 +443,7 @@ impl InjectFailure {
 
 /// A guard that aborts the task when dropped.
 pub struct AbortGuard {
-    jh: tokio::task::JoinHandle<()>,
+    jh: tokio::task::JoinHandle<anyhow::Result<()>>,
 }
 
 impl Drop for AbortGuard {
@@ -385,8 +452,8 @@ impl Drop for AbortGuard {
     }
 }
 
-impl From<JoinHandle<()>> for AbortGuard {
-    fn from(jh: JoinHandle<()>) -> Self {
+impl From<JoinHandle<anyhow::Result<()>>> for AbortGuard {
+    fn from(jh: JoinHandle<anyhow::Result<()>>) -> Self {
         Self { jh }
     }
 }
@@ -410,12 +477,12 @@ pub fn respawn_on_fail(
             match instance.exited_with_error() {
                 Ok(true) => {
                     println!("Respawning {}...", instance.name());
+                    let watch = instance.rpc_port_watch();
                     drop(instance);
-                    let instance = PathfinderInstance::spawn(config).unwrap();
+                    let instance = PathfinderInstance::spawn(config)?.with_rpc_port_watch(watch);
                     instance
                         .wait_for_ready(ready_poll_interval, ready_timeout)
-                        .await
-                        .unwrap();
+                        .await?;
                     println!("{} is ready again", instance.name());
                     // Let the instance exist for the rest of the test.
                     tokio::time::sleep(test_timeout).await;
@@ -431,6 +498,8 @@ pub fn respawn_on_fail(
                 }
             }
         }
+
+        Ok(())
     })
     .into()
 }
