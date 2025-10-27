@@ -114,46 +114,6 @@ impl BatchExecutionManager {
         Ok(())
     }
 
-    /// Process a new transaction batch (test-only version without deferral)
-    ///
-    /// This is a simplified version for testing that doesn't involve
-    /// complex database operations or deferral logic.
-    #[cfg(test)]
-    pub async fn process_batch_test(
-        &mut self,
-        height_and_round: HeightAndRound,
-        transactions: Vec<proto_consensus::Transaction>,
-        validator: &mut ValidatorTransactionBatchStage,
-    ) -> anyhow::Result<()> {
-        let state =
-            self.executions
-                .entry(height_and_round)
-                .or_insert_with(|| BatchExecutionState {
-                    batch_executed: Vec::new(),
-                    current_state: ExecutionState::Collecting,
-                    total_executed: 0,
-                });
-
-        let batch_index = state.batch_executed.len();
-        state.batch_executed.push(false);
-
-        // Execute the batch immediately (optimistic execution)
-        validator
-            .execute_transactions(transactions)
-            .context("Failed to execute transaction batch")?;
-
-        state.batch_executed[batch_index] = true;
-        state.total_executed += 1;
-
-        tracing::debug!(
-            "Executed batch {} for {height_and_round}, total executed: {}",
-            batch_index,
-            state.total_executed
-        );
-
-        Ok(())
-    }
-
     /// Process TransactionsFin message
     pub fn process_transactions_fin(
         &mut self,

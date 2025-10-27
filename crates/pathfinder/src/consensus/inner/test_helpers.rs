@@ -90,13 +90,6 @@ pub fn create_test_proposal(
     (proposal_init, block_info)
 }
 
-/// Creates a TransactionsFin message
-pub fn create_transactions_fin(executed_count: u32) -> proto_consensus::TransactionsFin {
-    proto_consensus::TransactionsFin {
-        executed_transaction_count: executed_count as u64,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
