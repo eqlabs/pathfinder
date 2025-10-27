@@ -125,7 +125,7 @@ impl PathfinderInstance {
         config.inject_failure.map(|i| {
             command
                 .arg(i.as_cli_arg())
-                .arg("--integration-testing.disable-db-verification=true")
+                .arg("--integration-tests.disable-db-verification=true")
         });
 
         let process = command
@@ -365,10 +365,10 @@ impl InjectFailure {
     pub fn as_cli_arg(&self) -> String {
         match self {
             Self::OnProposalRx(n) => {
-                format!("--integration-testing.inject-failure.on-proposal-rx={n}")
+                format!("--integration-tests.inject-failure.on-proposal-rx={n}")
             }
             Self::_OnProposalDecided(n) => {
-                format!("--integration-testing.inject-failure.on-proposal-decided={n}")
+                format!("--integration-tests.inject-failure.on-proposal-decided={n}")
             }
         }
     }

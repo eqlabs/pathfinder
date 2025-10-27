@@ -1,11 +1,11 @@
 //! Build pathfinder in debug:
 //! ```
-//! cargo build -p pathfinder --bin pathfinder -F p2p -F integration-testing
+//! cargo build -p pathfinder --bin pathfinder -F p2p -F consensus-integration-tests
 //! ```
 //!
 //! Run the test:
 //! ```
-//! cargo test --test consensus -p pathfinder -F p2p -F integration-testing -- --nocapture
+//! cargo test --test consensus -p pathfinder -F p2p -F consensus-integration-tests -- --nocapture
 //! ```
 
 #[cfg(feature = "p2p")]
