@@ -3,7 +3,7 @@ use p2p_proto::consensus::ProposalPart;
 use pathfinder_common::ContractAddress;
 use pathfinder_storage::Transaction;
 
-use crate::consensus::inner::conv::{IntoProto, TryIntoDto};
+use crate::consensus::inner::conv::{IntoModel, TryIntoDto};
 use crate::consensus::inner::dto;
 use crate::validator::FinalizedBlock;
 
@@ -74,7 +74,7 @@ fn decode_proposal_parts(buf: &[u8]) -> anyhow::Result<Vec<ProposalPart>> {
             .context("Deserializing proposal parts")?
             .0;
     let dto::ProposalParts::V0(serde_parts) = proposal_parts;
-    let parts = serde_parts.into_iter().map(|p| p.into_proto()).collect();
+    let parts = serde_parts.into_iter().map(|p| p.into_model()).collect();
     Ok(parts)
 }
 
@@ -121,7 +121,7 @@ fn decode_finalized_block(buf: &[u8]) -> anyhow::Result<FinalizedBlock> {
             .context("Deserializing finalized block")?
             .0;
     let dto::PersistentFinalizedBlock::V0(dto_block) = persistent_block;
-    Ok(dto_block.into_proto())
+    Ok(dto_block.into_model())
 }
 
 pub fn remove_finalized_blocks(db_tx: Transaction<'_>, height: u64) -> anyhow::Result<()> {
