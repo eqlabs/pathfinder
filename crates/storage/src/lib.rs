@@ -37,6 +37,7 @@ pub use transaction::dto::{
     MinimalFelt,
     ResourceBound,
     ResourceBoundsV1,
+    TransactionV2,
 };
 
 /// Sqlite key used for the PRAGMA user version.

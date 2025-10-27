@@ -1,4 +1,5 @@
 use p2p_proto::consensus as proto;
+use pathfinder_common::{receipt, state_update};
 use pathfinder_storage::{
     DataAvailabilityMode,
     DeclareTransactionV4,
@@ -7,9 +8,11 @@ use pathfinder_storage::{
     L1HandlerTransactionV0,
     ResourceBound,
     ResourceBoundsV1,
+    TransactionV2,
 };
 
 use crate::consensus::inner::dto;
+use crate::validator::FinalizedBlock;
 
 /// Convert a DTO type to a protobuf type
 pub trait IntoProto<T> {
@@ -591,6 +594,539 @@ impl TryIntoDto<p2p_proto::common::L1DataAvailabilityMode> for u8 {
         let res = match da {
             p2p_proto::common::L1DataAvailabilityMode::Calldata => 0,
             p2p_proto::common::L1DataAvailabilityMode::Blob => 1,
+        };
+        Ok(res)
+    }
+}
+
+impl IntoProto<FinalizedBlock> for dto::FinalizedBlock {
+    fn into_proto(self) -> FinalizedBlock {
+        let dto::FinalizedBlock {
+            header,
+            state_update,
+            transactions_and_receipts,
+            events,
+        } = self;
+        FinalizedBlock {
+            header: header.into_proto(),
+            state_update: state_update.into_proto(),
+            transactions_and_receipts: transactions_and_receipts
+                .into_iter()
+                .map(|(t, r)| (t.into(), r.into_proto()))
+                .collect(),
+            events,
+        }
+    }
+}
+
+impl IntoProto<pathfinder_common::BlockHeader> for dto::BlockHeader {
+    fn into_proto(self) -> pathfinder_common::BlockHeader {
+        let dto::BlockHeader {
+            hash,
+            parent_hash,
+            number,
+            timestamp,
+            eth_l1_gas_price,
+            strk_l1_gas_price,
+            eth_l1_data_gas_price,
+            strk_l1_data_gas_price,
+            eth_l2_gas_price,
+            strk_l2_gas_price,
+            sequencer_address,
+            starknet_version,
+            event_commitment,
+            state_commitment,
+            transaction_commitment,
+            transaction_count,
+            event_count,
+            receipt_commitment,
+            state_diff_commitment,
+            state_diff_length,
+            l1_da_mode,
+        } = self;
+        pathfinder_common::BlockHeader {
+            hash,
+            parent_hash,
+            number,
+            timestamp,
+            eth_l1_gas_price,
+            strk_l1_gas_price,
+            eth_l1_data_gas_price,
+            strk_l1_data_gas_price,
+            eth_l2_gas_price,
+            strk_l2_gas_price,
+            sequencer_address,
+            starknet_version: pathfinder_common::StarknetVersion::from_u32(starknet_version),
+            event_commitment,
+            state_commitment,
+            transaction_commitment,
+            transaction_count: transaction_count as usize,
+            event_count: event_count as usize,
+            l1_da_mode,
+            receipt_commitment,
+            state_diff_commitment,
+            state_diff_length,
+        }
+    }
+}
+
+impl IntoProto<state_update::StateUpdateData> for dto::StateUpdateData {
+    fn into_proto(self) -> state_update::StateUpdateData {
+        let dto::StateUpdateData {
+            contract_updates,
+            system_contract_updates,
+            declared_cairo_classes,
+            declared_sierra_classes,
+        } = self;
+        state_update::StateUpdateData {
+            contract_updates: contract_updates
+                .line
+                .into_iter()
+                .map(|(k, v)| (k, v.into_proto()))
+                .collect(),
+            system_contract_updates: system_contract_updates
+                .line
+                .into_iter()
+                .map(|(k, v)| (k, v.into_proto()))
+                .collect(),
+            declared_cairo_classes: declared_cairo_classes.into_iter().collect(),
+            declared_sierra_classes: declared_sierra_classes.line.into_iter().collect(),
+        }
+    }
+}
+
+impl IntoProto<state_update::ContractUpdate> for dto::ContractUpdate {
+    fn into_proto(self) -> state_update::ContractUpdate {
+        let dto::ContractUpdate {
+            storage,
+            class,
+            nonce,
+        } = self;
+        state_update::ContractUpdate {
+            storage: storage.line.into_iter().collect(),
+            class: class.map(|c| c.into_proto()),
+            nonce,
+        }
+    }
+}
+
+impl IntoProto<state_update::SystemContractUpdate> for dto::SystemContractUpdate {
+    fn into_proto(self) -> state_update::SystemContractUpdate {
+        let dto::SystemContractUpdate { storage } = self;
+        state_update::SystemContractUpdate {
+            storage: storage.line.into_iter().collect(),
+        }
+    }
+}
+
+impl IntoProto<state_update::ContractClassUpdate> for dto::ContractClassUpdate {
+    fn into_proto(self) -> state_update::ContractClassUpdate {
+        match self {
+            dto::ContractClassUpdate::Deploy(c) => state_update::ContractClassUpdate::Deploy(c),
+            dto::ContractClassUpdate::Replace(c) => state_update::ContractClassUpdate::Replace(c),
+        }
+    }
+}
+
+impl IntoProto<receipt::Receipt> for dto::Receipt {
+    fn into_proto(self) -> receipt::Receipt {
+        let dto::Receipt {
+            actual_fee,
+            execution_resources,
+            l2_to_l1_messages,
+            execution_status,
+            transaction_hash,
+            transaction_index,
+        } = self;
+        receipt::Receipt {
+            actual_fee,
+            execution_resources: execution_resources.into_proto(),
+            l2_to_l1_messages: l2_to_l1_messages
+                .into_iter()
+                .map(|m| m.into_proto())
+                .collect(),
+            execution_status: execution_status.into_proto(),
+            transaction_hash,
+            transaction_index,
+        }
+    }
+}
+
+impl IntoProto<receipt::L2ToL1Message> for dto::L2ToL1Message {
+    fn into_proto(self) -> receipt::L2ToL1Message {
+        let dto::L2ToL1Message {
+            from_address,
+            payload,
+            to_address,
+        } = self;
+        receipt::L2ToL1Message {
+            from_address,
+            payload,
+            to_address,
+        }
+    }
+}
+
+impl IntoProto<receipt::ExecutionResources> for dto::ExecutionResources {
+    fn into_proto(self) -> receipt::ExecutionResources {
+        let dto::ExecutionResources {
+            builtins,
+            n_steps,
+            n_memory_holes,
+            data_availability,
+            total_gas_consumed,
+            l2_gas,
+        } = self;
+        receipt::ExecutionResources {
+            builtins: builtins.into_proto(),
+            n_steps,
+            n_memory_holes,
+            data_availability: data_availability.into_proto(),
+            total_gas_consumed: total_gas_consumed.into_proto(),
+            l2_gas: receipt::L2Gas(l2_gas),
+        }
+    }
+}
+
+impl IntoProto<receipt::L1Gas> for dto::L1Gas {
+    fn into_proto(self) -> receipt::L1Gas {
+        let dto::L1Gas {
+            l1_gas,
+            l1_data_gas,
+        } = self;
+        receipt::L1Gas {
+            l1_gas,
+            l1_data_gas,
+        }
+    }
+}
+
+impl IntoProto<receipt::BuiltinCounters> for dto::BuiltinCounters {
+    fn into_proto(self) -> receipt::BuiltinCounters {
+        let dto::BuiltinCounters {
+            output,
+            pedersen,
+            range_check,
+            ecdsa,
+            bitwise,
+            ec_op,
+            keccak,
+            poseidon,
+            segment_arena,
+            add_mod,
+            mul_mod,
+            range_check96,
+        } = self;
+        receipt::BuiltinCounters {
+            output,
+            pedersen,
+            range_check,
+            ecdsa,
+            bitwise,
+            ec_op,
+            keccak,
+            poseidon,
+            segment_arena,
+            add_mod,
+            mul_mod,
+            range_check96,
+        }
+    }
+}
+
+impl IntoProto<receipt::ExecutionStatus> for dto::ExecutionStatus {
+    fn into_proto(self) -> receipt::ExecutionStatus {
+        match self {
+            dto::ExecutionStatus::Succeeded => receipt::ExecutionStatus::Succeeded,
+            dto::ExecutionStatus::Reverted { reason } => {
+                receipt::ExecutionStatus::Reverted { reason }
+            }
+        }
+    }
+}
+
+impl TryIntoDto<FinalizedBlock> for dto::FinalizedBlock {
+    fn try_into_dto(b: FinalizedBlock) -> anyhow::Result<dto::FinalizedBlock> {
+        let FinalizedBlock {
+            header,
+            state_update,
+            transactions_and_receipts,
+            events,
+        } = b;
+        let res = dto::FinalizedBlock {
+            header: dto::BlockHeader::try_into_dto(header)?,
+            state_update: dto::StateUpdateData::try_into_dto(state_update)?,
+            transactions_and_receipts: transactions_and_receipts
+                .into_iter()
+                .map(|(tx, rcpt)| {
+                    let dtx = TransactionV2::from(&tx);
+                    let drcpt = dto::Receipt::try_into_dto(rcpt)?;
+                    anyhow::Ok((dtx, drcpt))
+                })
+                .collect::<Result<Vec<(TransactionV2, dto::Receipt)>, _>>()?,
+            events,
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<pathfinder_common::BlockHeader> for dto::BlockHeader {
+    fn try_into_dto(h: pathfinder_common::BlockHeader) -> anyhow::Result<dto::BlockHeader> {
+        let pathfinder_common::BlockHeader {
+            hash,
+            parent_hash,
+            number,
+            timestamp,
+            eth_l1_gas_price,
+            strk_l1_gas_price,
+            eth_l1_data_gas_price,
+            strk_l1_data_gas_price,
+            eth_l2_gas_price,
+            strk_l2_gas_price,
+            sequencer_address,
+            starknet_version,
+            event_commitment,
+            state_commitment,
+            transaction_commitment,
+            transaction_count,
+            event_count,
+            l1_da_mode,
+            receipt_commitment,
+            state_diff_commitment,
+            state_diff_length,
+        } = h;
+        let res = dto::BlockHeader {
+            hash,
+            parent_hash,
+            number,
+            timestamp,
+            eth_l1_gas_price,
+            strk_l1_gas_price,
+            eth_l1_data_gas_price,
+            strk_l1_data_gas_price,
+            eth_l2_gas_price,
+            strk_l2_gas_price,
+            sequencer_address,
+            starknet_version: starknet_version.as_u32(),
+            event_commitment,
+            state_commitment,
+            transaction_commitment,
+            transaction_count: transaction_count.try_into()?,
+            event_count: event_count.try_into()?,
+            receipt_commitment,
+            state_diff_commitment,
+            state_diff_length,
+            l1_da_mode,
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<state_update::StateUpdateData> for dto::StateUpdateData {
+    fn try_into_dto(u: state_update::StateUpdateData) -> anyhow::Result<dto::StateUpdateData> {
+        let state_update::StateUpdateData {
+            contract_updates,
+            system_contract_updates,
+            declared_cairo_classes,
+            declared_sierra_classes,
+        } = u;
+        let res = dto::StateUpdateData {
+            contract_updates:
+                dto::LinearMap {
+                    line:
+                        contract_updates
+                            .into_iter()
+                            .map(|(a, u)| anyhow::Ok((a, dto::ContractUpdate::try_into_dto(u)?)))
+                            .collect::<Result<
+                                Vec<(pathfinder_common::ContractAddress, dto::ContractUpdate)>,
+                                _,
+                            >>()?,
+                },
+            system_contract_updates: dto::LinearMap {
+                line: system_contract_updates
+                    .into_iter()
+                    .map(|(a, u)| anyhow::Ok((a, dto::SystemContractUpdate::try_into_dto(u)?)))
+                    .collect::<Result<
+                        Vec<(
+                            pathfinder_common::ContractAddress,
+                            dto::SystemContractUpdate,
+                        )>,
+                        _,
+                    >>()?,
+            },
+            declared_cairo_classes: declared_cairo_classes.into_iter().collect(),
+            declared_sierra_classes: dto::LinearMap {
+                line: declared_sierra_classes.into_iter().collect(),
+            },
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<state_update::ContractUpdate> for dto::ContractUpdate {
+    fn try_into_dto(u: state_update::ContractUpdate) -> anyhow::Result<dto::ContractUpdate> {
+        let state_update::ContractUpdate {
+            storage,
+            class,
+            nonce,
+        } = u;
+        let res = dto::ContractUpdate {
+            storage: dto::LinearMap {
+                line: storage.into_iter().collect(),
+            },
+            class: class
+                .map(dto::ContractClassUpdate::try_into_dto)
+                .transpose()?,
+            nonce,
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<state_update::SystemContractUpdate> for dto::SystemContractUpdate {
+    fn try_into_dto(
+        u: state_update::SystemContractUpdate,
+    ) -> anyhow::Result<dto::SystemContractUpdate> {
+        let state_update::SystemContractUpdate { storage } = u;
+        let res = dto::SystemContractUpdate {
+            storage: dto::LinearMap {
+                line: storage.into_iter().collect(),
+            },
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<state_update::ContractClassUpdate> for dto::ContractClassUpdate {
+    fn try_into_dto(
+        u: state_update::ContractClassUpdate,
+    ) -> anyhow::Result<dto::ContractClassUpdate> {
+        let res = match u {
+            state_update::ContractClassUpdate::Deploy(c) => dto::ContractClassUpdate::Deploy(c),
+            state_update::ContractClassUpdate::Replace(c) => dto::ContractClassUpdate::Replace(c),
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<receipt::Receipt> for dto::Receipt {
+    fn try_into_dto(r: receipt::Receipt) -> anyhow::Result<dto::Receipt> {
+        let receipt::Receipt {
+            actual_fee,
+            execution_resources,
+            l2_to_l1_messages,
+            execution_status,
+            transaction_hash,
+            transaction_index,
+        } = r;
+        let res = dto::Receipt {
+            actual_fee,
+            execution_resources: dto::ExecutionResources::try_into_dto(execution_resources)?,
+            l2_to_l1_messages: l2_to_l1_messages
+                .into_iter()
+                .map(dto::L2ToL1Message::try_into_dto)
+                .collect::<Result<Vec<dto::L2ToL1Message>, _>>()?,
+            execution_status: dto::ExecutionStatus::try_into_dto(execution_status)?,
+            transaction_hash,
+            transaction_index,
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<receipt::L2ToL1Message> for dto::L2ToL1Message {
+    fn try_into_dto(m: receipt::L2ToL1Message) -> anyhow::Result<dto::L2ToL1Message> {
+        let receipt::L2ToL1Message {
+            from_address,
+            payload,
+            to_address,
+        } = m;
+        let res = dto::L2ToL1Message {
+            from_address,
+            payload,
+            to_address,
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<receipt::ExecutionResources> for dto::ExecutionResources {
+    fn try_into_dto(er: receipt::ExecutionResources) -> anyhow::Result<dto::ExecutionResources> {
+        let receipt::ExecutionResources {
+            builtins,
+            n_steps,
+            n_memory_holes,
+            data_availability,
+            total_gas_consumed,
+            l2_gas,
+        } = er;
+        let res = dto::ExecutionResources {
+            builtins: dto::BuiltinCounters::try_into_dto(builtins)?,
+            n_steps,
+            n_memory_holes,
+            data_availability: dto::L1Gas::try_into_dto(data_availability)?,
+            total_gas_consumed: dto::L1Gas::try_into_dto(total_gas_consumed)?,
+            l2_gas: l2_gas.0,
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<receipt::L1Gas> for dto::L1Gas {
+    fn try_into_dto(g: receipt::L1Gas) -> anyhow::Result<dto::L1Gas> {
+        let receipt::L1Gas {
+            l1_gas,
+            l1_data_gas,
+        } = g;
+        let res = dto::L1Gas {
+            l1_gas,
+            l1_data_gas,
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<receipt::BuiltinCounters> for dto::BuiltinCounters {
+    fn try_into_dto(bc: receipt::BuiltinCounters) -> anyhow::Result<dto::BuiltinCounters> {
+        let receipt::BuiltinCounters {
+            output,
+            pedersen,
+            range_check,
+            ecdsa,
+            bitwise,
+            ec_op,
+            keccak,
+            poseidon,
+            segment_arena,
+            add_mod,
+            mul_mod,
+            range_check96,
+        } = bc;
+        let res = dto::BuiltinCounters {
+            output,
+            pedersen,
+            range_check,
+            ecdsa,
+            bitwise,
+            ec_op,
+            keccak,
+            poseidon,
+            segment_arena,
+            add_mod,
+            mul_mod,
+            range_check96,
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<receipt::ExecutionStatus> for dto::ExecutionStatus {
+    fn try_into_dto(e: receipt::ExecutionStatus) -> anyhow::Result<dto::ExecutionStatus> {
+        let res = match e {
+            receipt::ExecutionStatus::Succeeded => dto::ExecutionStatus::Succeeded,
+            receipt::ExecutionStatus::Reverted { reason } => {
+                dto::ExecutionStatus::Reverted { reason }
+            }
         };
         Ok(res)
     }
