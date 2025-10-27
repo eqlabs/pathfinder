@@ -15,7 +15,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Context;
-use futures::future::Either;
 use p2p::consensus::{Client, Event, HeightAndRound};
 use p2p::libp2p::gossipsub::PublishError;
 use p2p_proto::common::{Address, Hash};
@@ -44,13 +43,14 @@ use crate::consensus::inner::persist_proposals::{
     foreign_proposal_parts,
     last_proposal_parts,
     own_proposal_parts,
+    persist_finalized_block,
     persist_proposal_parts,
+    read_finalized_block,
+    remove_finalized_blocks,
     remove_proposal_parts,
 };
 use crate::consensus::inner::ConsensusValue;
 use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage, ValidatorStage};
-
-const EVENT_CHANNEL_SIZE_LIMIT: usize = 1024;
 
 // Successful result of handling an incoming message in a dedicated
 // thread; carried data are used for async handling (e.g. gossiping).
@@ -63,6 +63,8 @@ enum ComputationSuccess {
     ConfirmedProposalCommitment(HeightAndRound, ProposalCommitmentWithOrigin),
 }
 
+const EVENT_CHANNEL_SIZE_LIMIT: usize = 1024;
+
 #[allow(clippy::too_many_arguments)]
 pub fn spawn(
     chain_id: ChainId,
@@ -74,9 +76,6 @@ pub fn spawn(
     mut rx_from_consensus: mpsc::Receiver<P2PTaskEvent>,
     consensus_storage: Storage,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
-    // Cache for finalized blocks that we created from our proposals and are
-    // waiting to be committed to the database once consensus is reached.
-    let mut my_finalized_blocks_cache = HashMap::new();
     // TODO validators are long-lived but not persisted
     let validator_cache = ValidatorCache::new();
     // Contains transaction batches and proposal finalizations that are
@@ -214,8 +213,12 @@ pub fn spawn(
                             &validator_address,
                             &proposal_parts,
                         )?;
-
-                        my_finalized_blocks_cache.insert(height_and_round, finalized_block);
+                        persist_finalized_block(
+                            &cons_tx,
+                            height_and_round.height(),
+                            height_and_round.round(),
+                            finalized_block,
+                        )?;
                         if duplicate_encountered {
                             tracing::warn!(
                                 "Duplicate proposal cache request for {height_and_round}!"
@@ -312,7 +315,6 @@ pub fn spawn(
                             )))
                         }
                     },
-
                     P2PTaskEvent::CommitBlock(height_and_round, value) => {
                         {
                             let storage = readonly_storage.clone();
@@ -323,24 +325,19 @@ pub fn spawn(
                             );
                             let stopwatch = std::time::Instant::now();
 
-                            let finalized_block = match my_finalized_blocks_cache
-                                .remove(&height_and_round)
-                            {
+                            let finalized_block = match read_finalized_block(
+                                &cons_tx,
+                                height_and_round.height(),
+                                height_and_round.round(),
+                            )? {
                                 // Our own proposal is already executed and finalized.
-                                Some(block) => Either::Left(block),
+                                Some(block) => block,
                                 // Incoming proposal has been executed and needs to be finalized
                                 // now.
                                 None => {
                                     let validator_stage =
                                         validator_cache.remove(&height_and_round)?;
                                     let validator = validator_stage.try_into_finalize_stage()?;
-                                    Either::Right(validator)
-                                }
-                            };
-
-                            let finalized_block = match finalized_block {
-                                Either::Left(block) => block,
-                                Either::Right(validator) => {
                                     let block = validator.finalize(db_tx, storage)?;
                                     db_tx = db_conn
                                         .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -370,18 +367,10 @@ pub fn spawn(
                                 stopwatch.elapsed().as_millis()
                             );
 
-                            let removed = my_finalized_blocks_cache
-                                .iter()
-                                .filter_map(|(hnr, _)| {
-                                    (hnr.height() == height_and_round.height())
-                                        .then_some(hnr.round())
-                                })
-                                .collect::<Vec<_>>();
-                            my_finalized_blocks_cache
-                                .retain(|hnr, _| hnr.height() != height_and_round.height());
+                            remove_finalized_blocks(&cons_tx, height_and_round.height())?;
                             tracing::debug!(
-                                "🖧  🗑️ {validator_address} removed my finalized blocks from cache \
-                                 for height {} and rounds: {removed:?}",
+                                "🖧  🗑️ {validator_address} removed my finalized blocks for height \
+                                 {}",
                                 height_and_round.height()
                             );
 
@@ -392,7 +381,6 @@ pub fn spawn(
                                  height {}",
                                 height_and_round.height()
                             );
-
                             remove_proposal_parts(&cons_tx, height_and_round.height(), None)?;
                             anyhow::Ok(())
                         }?;
@@ -554,7 +542,6 @@ fn execute_deferred_for_next_height(
             validator.execute_transactions(deferred.transactions)?;
 
             if let Some(commitment) = deferred.commitment {
-                tracing::trace!(height_and_round=?height_and_round, hnr=?hnr, "validating in execute_deferred_for_next_height");
                 // We've executed all transactions at the height, we can now
                 // finalize the proposal.
                 let validator = validator.consensus_finalize(commitment.proposal_commitment)?;
@@ -939,7 +926,6 @@ fn defer_or_execute_proposal_fin(
         if let Some(DeferredExecution { transactions, .. }) = deferred {
             validator.execute_transactions(transactions)?;
         }
-        tracing::trace!("validating in defer_or_execute_proposal_fin");
         let validator = validator.consensus_finalize(commitment.proposal_commitment)?;
 
         tracing::debug!(

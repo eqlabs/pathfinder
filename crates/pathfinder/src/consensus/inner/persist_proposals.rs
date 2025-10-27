@@ -5,6 +5,7 @@ use pathfinder_storage::Transaction;
 
 use crate::consensus::inner::conv::{IntoProto, TryIntoDto};
 use crate::consensus::inner::dto;
+use crate::validator::FinalizedBlock;
 
 pub fn persist_proposal_parts(
     db_tx: &Transaction<'_>,
@@ -82,4 +83,44 @@ pub fn remove_proposal_parts(
     round: Option<u32>,
 ) -> anyhow::Result<()> {
     db_tx.remove_consensus_proposal_parts(height, round)
+}
+
+pub fn persist_finalized_block(
+    db_tx: &Transaction<'_>,
+    height: u64,
+    round: u32,
+    block: FinalizedBlock,
+) -> anyhow::Result<bool> {
+    let serde_block = dto::FinalizedBlock::try_into_dto(block)?;
+    let finalized_block = dto::PersistentFinalizedBlock::V0(serde_block);
+    let buf = bincode::serde::encode_to_vec(finalized_block, bincode::config::standard())
+        .context("Serializing finalized block")?;
+    let updated = db_tx.persist_consensus_finalized_block(height, round, &buf[..])?;
+    Ok(updated)
+}
+
+pub fn read_finalized_block(
+    db_tx: &Transaction<'_>,
+    height: u64,
+    round: u32,
+) -> anyhow::Result<Option<FinalizedBlock>> {
+    if let Some(buf) = db_tx.read_consensus_finalized_block(height, round)? {
+        let block = decode_finalized_block(&buf[..])?;
+        Ok(Some(block))
+    } else {
+        Ok(None)
+    }
+}
+
+fn decode_finalized_block(buf: &[u8]) -> anyhow::Result<FinalizedBlock> {
+    let persistent_block: dto::PersistentFinalizedBlock =
+        bincode::serde::decode_from_slice(buf, bincode::config::standard())
+            .context("Deserializing finalized block")?
+            .0;
+    let dto::PersistentFinalizedBlock::V0(dto_block) = persistent_block;
+    Ok(dto_block.into_proto())
+}
+
+pub fn remove_finalized_blocks(db_tx: &Transaction<'_>, height: u64) -> anyhow::Result<()> {
+    db_tx.remove_consensus_finalized_blocks(height)
 }
