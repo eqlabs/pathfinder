@@ -201,7 +201,7 @@ impl PathfinderInstance {
             self.consensus_p2p_port.store(p2p_port?, Ordering::Relaxed);
 
             loop {
-                match reqwest::get(format!("http://127.0.0.1:{}/ready", monitor_port)).await {
+                match reqwest::get(format!("http://127.0.0.1:{monitor_port}/ready")).await {
                     Ok(response) if response.status() == StatusCode::OK => {
                         println!(
                             "Pathfinder instance {:<7} ready after {} s",
@@ -218,7 +218,7 @@ impl PathfinderInstance {
         };
         match tokio::time::timeout(timeout, fut).await {
             Ok(Ok(_)) => Ok(()),
-            Ok(Err(e)) => return Err(e),
+            Ok(Err(e)) => Err(e),
             Err(_) => {
                 anyhow::bail!(
                     "Timeout waiting for Pathfinder instance {} to be ready",

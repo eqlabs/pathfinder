@@ -493,22 +493,19 @@ where
     /// ## Panics
     /// The function will panic if it fails to create the marker file.
     fn debug_create_port_marker_file(&self, address: &Multiaddr) {
-        address
-            .iter()
-            .find_map(|p| {
-                if let Protocol::Tcp(port) = p {
-                    Some(port)
-                } else {
-                    None
-                }
-            })
-            .map(|_port| {
-                integration_testing::debug_create_port_marker_file(
-                    B::domain(),
-                    _port,
-                    &self.data_directory,
-                );
-            });
+        if let Some(port) = address.iter().find_map(|p| {
+            if let Protocol::Tcp(port) = p {
+                Some(port)
+            } else {
+                None
+            }
+        }) {
+            integration_testing::debug_create_port_marker_file(
+                B::domain(),
+                port,
+                &self.data_directory,
+            );
+        }
     }
 
     /// Handles a command from the outside world.
