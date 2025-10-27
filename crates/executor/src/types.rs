@@ -825,7 +825,7 @@ fn ordered_l2_to_l1_messages(call_info: &CallInfo) -> Vec<MsgToL1> {
             MsgToL1 {
                 order: *order,
                 payload: message.payload.0.iter().map(IntoFelt::into_felt).collect(),
-                to_address: Felt::from_be_slice(message.to_address.0.as_bytes())
+                to_address: Felt::from_be_slice(message.to_address.0.to_bytes_be().as_ref())
                     .expect("Ethereum address should fit into felt"),
                 from_address: call_info.call.storage_address.0.key().into_felt(),
             },

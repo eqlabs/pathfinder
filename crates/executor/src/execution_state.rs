@@ -312,6 +312,7 @@ impl ExecutionState {
                 strk_fee_token_address,
                 eth_fee_token_address,
             },
+            is_l3: false,
         })
     }
 

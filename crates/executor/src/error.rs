@@ -28,7 +28,7 @@ impl From<BlockifierTransactionExecutionError> for CallError {
         match value {
             ContractConstructorExecutionFailed(
                 ConstructorEntryPointExecutionError::ExecutionError { error, .. },
-            ) => match error {
+            ) => match error.as_ref() {
                 BlockifierEntryPointExecutionError::PreExecutionError(
                     PreExecutionError::EntryPointNotFound(_)
                     | PreExecutionError::NoEntryPointOfTypeFound(_),
@@ -38,7 +38,7 @@ impl From<BlockifierTransactionExecutionError> for CallError {
                 ) => Self::ContractNotFound,
                 _ => Self::ContractError(error.into(), error_stack.into()),
             },
-            ExecutionError { error, .. } => match error {
+            ExecutionError { error, .. } => match error.as_ref() {
                 BlockifierEntryPointExecutionError::PreExecutionError(
                     PreExecutionError::EntryPointNotFound(_)
                     | PreExecutionError::NoEntryPointOfTypeFound(_),
@@ -48,7 +48,7 @@ impl From<BlockifierTransactionExecutionError> for CallError {
                 ) => Self::ContractNotFound,
                 _ => Self::ContractError(error.into(), error_stack.into()),
             },
-            ValidateTransactionError { error, .. } => match error {
+            ValidateTransactionError { error, .. } => match error.as_ref() {
                 BlockifierEntryPointExecutionError::PreExecutionError(
                     PreExecutionError::EntryPointNotFound(_)
                     | PreExecutionError::NoEntryPointOfTypeFound(_),
@@ -71,7 +71,7 @@ impl CallError {
         entry_point: &starknet_api::core::EntryPointSelector,
     ) -> Self {
         let error = BlockifierTransactionExecutionError::ExecutionError {
-            error,
+            error: Box::new(error),
             class_hash: *class_hash,
             storage_address: *contract_address,
             selector: *entry_point,
@@ -221,7 +221,7 @@ mod tests {
 
             let err = BlockifierTransactionExecutionError::ContractConstructorExecutionFailed(
                 ConstructorEntryPointExecutionError::ExecutionError {
-                    error: child,
+                    error: Box::new(child),
                     class_hash: Default::default(),
                     contract_address: Default::default(),
                     constructor_selector: Default::default(),
@@ -249,7 +249,7 @@ mod tests {
 
             let err = BlockifierTransactionExecutionError::ContractConstructorExecutionFailed(
                 ConstructorEntryPointExecutionError::ExecutionError {
-                    error: child,
+                    error: Box::new(child),
                     class_hash: Default::default(),
                     contract_address: Default::default(),
                     constructor_selector: Default::default(),
@@ -275,7 +275,7 @@ mod tests {
             );
 
             let err = BlockifierTransactionExecutionError::ValidateTransactionError {
-                error: child,
+                error: Box::new(child),
                 class_hash: Default::default(),
                 storage_address: Default::default(),
                 selector: Default::default(),
