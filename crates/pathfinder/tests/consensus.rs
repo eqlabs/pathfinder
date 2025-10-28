@@ -76,6 +76,9 @@ mod test {
         let alice = PathfinderInstance::spawn(configs.next().unwrap())?;
         alice.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
 
+        let boot_port = alice.consensus_p2p_port();
+        let mut configs = configs.map(|cfg| cfg.with_boot_port(boot_port));
+
         let bob_cfg = configs.next().unwrap().with_inject_failure(inject_failure);
 
         let bob = PathfinderInstance::spawn(bob_cfg.clone())?;
@@ -90,6 +93,7 @@ mod test {
 
         utils::log_elapsed(stopwatch);
 
+        // Use channels to send and update of the rpc port
         let alice_client = wait_for_height(&alice, HEIGHT, POLL_HEIGHT);
         let bob_client = wait_for_height(&bob, HEIGHT, POLL_HEIGHT);
         let charlie_client = wait_for_height(&charlie, HEIGHT, POLL_HEIGHT);

@@ -84,6 +84,7 @@ impl<B> Builder<B, AppBehaviourSet> {
 
         let max_read_bytes_per_sec = cfg.max_read_bytes_per_sec;
         let max_write_bytes_per_sec = cfg.max_write_bytes_per_sec;
+        let data_directory = cfg.data_directory.clone();
 
         let core_behaviour_builder = core::Behaviour::builder(keypair.clone(), chain_id, cfg);
 
@@ -120,7 +121,7 @@ impl<B> Builder<B, AppBehaviourSet> {
         );
 
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
-        let (main_loop, command_sender) = MainLoop::new(swarm, event_sender);
+        let (main_loop, command_sender) = MainLoop::new(swarm, event_sender, data_directory);
         let client = Client::new(command_sender, local_peer_id);
 
         (client, event_receiver, main_loop)
@@ -140,5 +141,8 @@ impl ApplicationBehaviour for dummy::Behaviour {
         _: &mut Self::State,
         _: mpsc::UnboundedSender<Self::Event>,
     ) {
+    }
+    fn domain() -> &'static str {
+        "p2p_dummy"
     }
 }

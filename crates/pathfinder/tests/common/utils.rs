@@ -60,7 +60,7 @@ pub fn log_elapsed(stopwatch: Instant) {
 /// Waits for either all RPC client tasks to complete, the test timeout to
 /// elapse, or for the user to interrupt the test with Ctrl-C.
 pub async fn wait_for_test_end(
-    rpc_client_handles: Vec<JoinHandle<()>>,
+    rpc_client_handles: Vec<JoinHandle<anyhow::Result<()>>>,
     test_timeout: Duration,
 ) -> anyhow::Result<()> {
     tokio::select! {
@@ -70,7 +70,8 @@ pub async fn wait_for_test_end(
         }
 
         test_result = futures::future::join_all(rpc_client_handles) => {
-            test_result.into_iter().collect::<Result<Vec<_>, JoinError>>().context("Joining all RPC client tasks")?;
+            test_result.into_iter().collect::<Result<Vec<_>, JoinError>>().context("Joining all RPC client tasks")?
+                .into_iter().collect::<Result<Vec<_>, anyhow::Error>>().context("Checking if any RPC client tasks failed")?;
             // Don't dump logs if the test succeeded.
             PathfinderInstance::enable_log_dump(false);
             Ok(())
