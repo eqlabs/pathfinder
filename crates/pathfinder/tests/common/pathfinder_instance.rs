@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
 use http::StatusCode;
+use pathfinder_lib::config::integration_testing::InjectFailureConfig;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -31,7 +32,7 @@ pub struct PathfinderInstance {
 }
 
 /// Configuration for a Pathfinder instance.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Config {
     pub name: &'static str,
     pub boot_port: Option<u16>,
@@ -40,13 +41,7 @@ pub struct Config {
     pub pathfinder_bin: PathBuf,
     pub fixture_dir: PathBuf,
     pub test_dir: PathBuf,
-    pub inject_failure: Option<InjectFailure>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum InjectFailure {
-    OnProposalRx(u64),
-    _OnProposalDecided(u64),
+    pub inject_failure: Option<InjectFailureConfig>,
 }
 
 impl PathfinderInstance {
@@ -121,7 +116,11 @@ impl PathfinderInstance {
 
         config.inject_failure.map(|i| {
             command
-                .arg(i.as_cli_arg())
+                .arg(format!(
+                    "--integration-tests.inject-failure={},{}",
+                    i.height,
+                    i.trigger.as_str()
+                ))
                 .arg("--integration-tests.disable-db-verification=true")
         });
 
@@ -417,7 +416,7 @@ impl Config {
             .collect()
     }
 
-    pub fn with_inject_failure(mut self, inject_failure: Option<InjectFailure>) -> Self {
+    pub fn with_inject_failure(mut self, inject_failure: Option<InjectFailureConfig>) -> Self {
         self.inject_failure = inject_failure;
         self
     }
@@ -425,19 +424,6 @@ impl Config {
     pub fn with_boot_port(mut self, port: u16) -> Self {
         self.boot_port = Some(port);
         self
-    }
-}
-
-impl InjectFailure {
-    pub fn as_cli_arg(&self) -> String {
-        match self {
-            Self::OnProposalRx(n) => {
-                format!("--integration-tests.inject-failure.on-proposal-rx={n}")
-            }
-            Self::_OnProposalDecided(n) => {
-                format!("--integration-tests.inject-failure.on-proposal-decided={n}")
-            }
-        }
     }
 }
 
