@@ -4,7 +4,7 @@ use anyhow::Context;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction as StarknetTransaction;
-use pathfinder_common::{BlockHash, BlockId, BlockNumber, TransactionHash};
+use pathfinder_common::{BlockHash, BlockId, BlockNumber, TransactionHash, TransactionIndex};
 
 use super::{EventsForBlock, TransactionDataForBlock, TransactionWithReceipt};
 use crate::prelude::*;
@@ -319,19 +319,19 @@ impl Transaction<'_> {
             .query_events_by_block(block_number)?
             .unwrap_or_default();
 
-        let transaction_hashes = self
-            .query_transaction_hashes_by_block(block_number)
-            .context("Querying transaction hashes")?;
+        let transaction_infos = self
+            .query_transaction_infos_by_block(block_number)
+            .context("Querying transaction infos")?;
 
-        if events.len() != transaction_hashes.len() {
+        if events.len() != transaction_infos.len() {
             anyhow::bail!("Event list and transaction list mismatch");
         }
 
         Ok(Some(
             events
                 .into_iter()
-                .zip(transaction_hashes)
-                .map(|(events, transaction_hash)| (transaction_hash, events))
+                .zip(transaction_infos)
+                .map(|(events, transaction_info)| (transaction_info, events))
                 .collect(),
         ))
     }
@@ -344,8 +344,8 @@ impl Transaction<'_> {
             return Ok(None);
         };
 
-        let transactions = self.query_transaction_hashes_by_block(block_number)?;
-
+        let infos = self.query_transaction_infos_by_block(block_number)?;
+        let transactions = infos.into_iter().map(|tx_info| tx_info.0).collect();
         Ok(Some(transactions))
     }
 
@@ -431,24 +431,28 @@ impl Transaction<'_> {
             .collect())
     }
 
-    fn query_transaction_hashes_by_block(
+    fn query_transaction_infos_by_block(
         &self,
         block_number: BlockNumber,
-    ) -> anyhow::Result<Vec<TransactionHash>> {
+    ) -> anyhow::Result<Vec<(TransactionHash, TransactionIndex)>> {
         let mut stmt = self.inner().prepare_cached(
             r"
-            SELECT hash
+            SELECT hash, idx
             FROM transaction_hashes
             WHERE block_number = ? ORDER BY idx
             ",
         )?;
         let transaction_hashes: Result<Vec<_>, _> = stmt
-            .query_map(params![&block_number], |row| row.get_transaction_hash(0))
+            .query_map(params![&block_number], |row| {
+                let hash = row.get_transaction_hash(0)?;
+                let raw_idx = row.get_i64(1)?;
+                Ok((hash, TransactionIndex::new_or_panic(raw_idx as u64)))
+            })
             .context("Querying transaction hashes for block")?
             .collect();
-        let transaction_hashes = transaction_hashes?;
+        let transaction_infos = transaction_hashes?;
 
-        Ok(transaction_hashes)
+        Ok(transaction_infos)
     }
 
     fn query_transactions_and_events_by_block(
