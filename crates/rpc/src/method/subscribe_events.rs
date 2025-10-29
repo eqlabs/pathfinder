@@ -325,6 +325,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                                         block_hash: Some(block_hash),
                                         block_number: Some(block_number),
                                         transaction_hash: receipt.transaction_hash,
+                                        transaction_index: receipt.transaction_index,
                                     };
                                     let notification = Notification::EmittedEvent(
                                         EventWithFinality::new(emitted, TxnFinalityStatus::AcceptedOnL2)
@@ -444,6 +445,7 @@ async fn send_event_updates(
                 block_hash,
                 block_number: Some(block_number),
                 transaction_hash: receipt.transaction_hash,
+                transaction_index: receipt.transaction_index,
             };
             let notification =
                 Notification::EmittedEvent(EventWithFinality::new(emitted, finality_status));

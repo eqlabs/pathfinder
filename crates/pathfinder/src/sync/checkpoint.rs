@@ -1671,9 +1671,11 @@ mod tests {
         use super::*;
         use crate::state::block_hash::calculate_event_commitment;
 
+        type TransactionInfo = (TransactionHash, TransactionIndex);
+
         struct Setup {
             pub streamed_events: Vec<Result<PeerData<EventsForBlockByTransaction>, anyhow::Error>>,
-            pub expected_events: Vec<Vec<(TransactionHash, Vec<Event>)>>,
+            pub expected_events: Vec<Vec<(TransactionInfo, Vec<Event>)>>,
             pub storage: Storage,
         }
 
@@ -1726,7 +1728,7 @@ mod tests {
                     block
                         .transaction_data
                         .iter()
-                        .map(|x| (x.0.hash, x.2.clone()))
+                        .map(|x| ((x.0.hash, x.1.transaction_index), x.2.clone()))
                         .collect::<Vec<_>>()
                 })
                 .collect::<Vec<_>>();
