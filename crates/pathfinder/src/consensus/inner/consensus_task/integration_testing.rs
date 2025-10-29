@@ -1,5 +1,5 @@
 //! Integration testing helpers for the consensus task. These are only
-//! active in debug builds when both the "p2p" and "integration-testing"
+//! active in debug builds when both the "p2p" and "consensus-integration-tests"
 //! features are enabled.
 
 use std::path::Path;
@@ -10,8 +10,8 @@ use std::path::Path;
 /// ## Integration testing
 /// Exits the process with error code of value `1` if the current height
 /// matches. This function is only active in debug builds when both the
-/// "p2p" and "integration-testing" features are enabled. A marker file is
-/// created in the data directory to indicate that the failure has been
+/// "p2p" and "consensus-integration-tests" features are enabled. A marker file
+/// is created in the data directory to indicate that the failure has been
 /// triggered. If the file already exists, it is removed instead. This allows
 /// for easy detection of whether the failure has been triggered or not.
 /// The file is named `fail_on_{prefix}_{height}`.
@@ -24,11 +24,19 @@ pub fn debug_fail_on(
     _config: Option<crate::config::integration_testing::FailureInjection>,
     _data_directory: &Path,
 ) {
-    #[cfg(all(feature = "p2p", feature = "integration-testing", debug_assertions))]
+    #[cfg(all(
+        feature = "p2p",
+        feature = "consensus-integration-tests",
+        debug_assertions
+    ))]
     debug_fail_on_impl(_current_height, _config, _data_directory);
 }
 
-#[cfg(all(feature = "p2p", feature = "integration-testing", debug_assertions))]
+#[cfg(all(
+    feature = "p2p",
+    feature = "consensus-integration-tests",
+    debug_assertions
+))]
 fn debug_fail_on_impl(
     current_height: u64,
     config: Option<crate::config::integration_testing::FailureInjection>,
