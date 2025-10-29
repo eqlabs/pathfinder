@@ -1077,7 +1077,15 @@ pub mod test_utils {
         .await
         .unwrap();
 
-        PendingData::from_parts(block, state_update, latest.number + 1)
+        // Aggregated state update is the same as state update for pre-confirmed blocks
+        // as there's no pre-latest block.
+        let aggregated_state_update = state_update.clone();
+        PendingData::from_parts(
+            block,
+            state_update,
+            aggregated_state_update,
+            latest.number + 1,
+        )
     }
 
     /// Creates [PendingData] which correctly links to the provided [Storage].
@@ -1399,6 +1407,10 @@ pub mod test_utils {
             })),
         };
 
+        let aggregated_state_update = pre_latest_state_update
+            .clone()
+            .apply(&pre_confirmed_state_update);
+
         // The class definitions must be inserted into the database.
         let pre_confirmed_state_update_copy = pre_confirmed_state_update.clone();
         tokio::task::spawn_blocking(move || {
@@ -1431,6 +1443,7 @@ pub mod test_utils {
         PendingData::from_parts(
             pre_confirmed_block,
             pre_confirmed_state_update,
+            aggregated_state_update,
             latest.number + 2,
         )
     }

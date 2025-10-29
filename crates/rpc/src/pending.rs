@@ -160,6 +160,9 @@ pub struct PendingData {
     ///
     /// Does not include the [pre-latest](PreLatestData) state update.
     state_update: Arc<StateUpdate>,
+    /// The aggregated state update. Contains the merged state update from
+    /// the pre-latest block (if exists) and the pending/pre-confirmed block.
+    aggregated_state_update: Arc<StateUpdate>,
     /// The block number of the pending/pre-confirmed block.
     number: BlockNumber,
 }
@@ -170,9 +173,11 @@ impl PendingData {
         state_update: StateUpdate,
         number: BlockNumber,
     ) -> Self {
+        let state_update = Arc::new(state_update);
         Self {
             block: Arc::new(PendingBlockVariant::Pending(block)),
-            state_update: Arc::new(state_update),
+            state_update: Arc::clone(&state_update),
+            aggregated_state_update: state_update,
             number,
         }
     }
@@ -181,11 +186,13 @@ impl PendingData {
     pub fn from_parts(
         block: PendingBlockVariant,
         state_update: StateUpdate,
+        aggregated_state_update: StateUpdate,
         number: BlockNumber,
     ) -> Self {
         Self {
             block: Arc::new(block),
             state_update: Arc::new(state_update),
+            aggregated_state_update: Arc::new(aggregated_state_update),
             number,
         }
     }
@@ -306,6 +313,14 @@ impl PendingData {
             Box::new(data)
         });
 
+        let aggregated_state_update = Arc::new(
+            pre_latest_data
+                .clone()
+                .map(|data| data.state_update)
+                .unwrap_or_default()
+                .apply(pre_confirmed_state_update.as_ref()),
+        );
+
         Ok(Self {
             block: Arc::new(PendingBlockVariant::PreConfirmed {
                 block: pre_confirmed_block.into(),
@@ -313,6 +328,7 @@ impl PendingData {
                 pre_latest_data,
             }),
             state_update: pre_confirmed_state_update,
+            aggregated_state_update,
             number: pre_confirmed_block_number,
         })
     }
@@ -376,7 +392,8 @@ impl PendingData {
                 candidate_transactions: vec![],
                 pre_latest_data: None,
             }),
-            state_update,
+            state_update: Arc::clone(&state_update),
+            aggregated_state_update: state_update,
             number: latest.number + 1,
         }
     }
@@ -520,17 +537,10 @@ impl PendingData {
         Arc::clone(&self.state_update)
     }
 
-    /// Get the state update in the pre-latest block, if it exists.
-    pub fn pre_latest_state_update(&self) -> Option<Arc<StateUpdate>> {
-        let PendingBlockVariant::PreConfirmed {
-            pre_latest_data, ..
-        } = self.block.as_ref()
-        else {
-            return None;
-        };
-        pre_latest_data
-            .as_ref()
-            .map(|data| Arc::new(data.state_update.clone()))
+    /// Get the aggregated state update from the pre-latest (if exists) and the
+    /// pending/pre-confirmed block.
+    pub fn aggregated_state_update(&self) -> Arc<StateUpdate> {
+        Arc::clone(&self.aggregated_state_update)
     }
 
     /// Get the transactions in the pending/pre-confirmed block.
@@ -580,18 +590,14 @@ impl PendingData {
         self.block.finality_status()
     }
 
-    /// Find a contract nonce by its contract address in the    
+    /// Find a contract nonce by its contract address in the
     /// pending/pre-confirmed or pre-latest block (in that order).
     pub fn find_nonce(
         &self,
         contract_address: pathfinder_common::ContractAddress,
     ) -> Option<pathfinder_common::ContractNonce> {
-        self.pending_state_update()
+        self.aggregated_state_update()
             .contract_nonce(contract_address)
-            .or_else(|| {
-                self.pre_latest_state_update()
-                    .and_then(|su| su.contract_nonce(contract_address))
-            })
     }
 
     /// Find a storage value by its contract and storage address in the
@@ -601,12 +607,8 @@ impl PendingData {
         contract_address: pathfinder_common::ContractAddress,
         storage_address: pathfinder_common::StorageAddress,
     ) -> Option<pathfinder_common::StorageValue> {
-        self.pending_state_update()
+        self.aggregated_state_update()
             .storage_value(contract_address, storage_address)
-            .or_else(|| {
-                self.pre_latest_state_update()
-                    .and_then(|su| su.storage_value(contract_address, storage_address))
-            })
     }
 
     /// Find a transaction by its hash in the pending/pre-confirmed block,
@@ -694,22 +696,14 @@ impl PendingData {
         &self,
         contract_address: pathfinder_common::ContractAddress,
     ) -> Option<pathfinder_common::ClassHash> {
-        self.pending_state_update()
+        self.aggregated_state_update()
             .contract_class(contract_address)
-            .or_else(|| {
-                self.pre_latest_state_update()
-                    .and_then(|su| su.contract_class(contract_address))
-            })
     }
 
     /// Check if a class hash has been declared in the pending/pre-confirmed
     /// or pre-latest block.
     pub fn class_is_declared(&self, class_hash: pathfinder_common::ClassHash) -> bool {
-        let declared_in_pending = self.pending_state_update().class_is_declared(class_hash);
-        let declared_in_pre_latest = self
-            .pre_latest_state_update()
-            .is_some_and(|su| su.class_is_declared(class_hash));
-        declared_in_pending || declared_in_pre_latest
+        self.aggregated_state_update().class_is_declared(class_hash)
     }
 
     pub fn is_pre_latest_or_pending(&self, block: BlockNumber) -> bool {
@@ -794,6 +788,9 @@ impl PendingWatcher {
                             }
                             .into(),
                             state_update: Arc::clone(&watched_pending_data.state_update),
+                            aggregated_state_update: Arc::clone(
+                                &watched_pending_data.aggregated_state_update,
+                            ),
                             number: block.number,
                         }
                     }
@@ -813,12 +810,15 @@ impl PendingWatcher {
                             candidate_transactions: candidate_transactions.clone(),
                             pre_latest_data: None,
                         };
-                        let pre_confirmed_state_update =
+                        let pre_confirmed_state_update = Arc::new(
                             StateUpdate::clone(&watched_pending_data.state_update)
-                                .with_parent_state_commitment(latest.state_commitment);
+                                .with_parent_state_commitment(latest.state_commitment),
+                        );
+
                         PendingData {
                             block: Arc::new(pre_confirmed_block),
-                            state_update: Arc::new(pre_confirmed_state_update),
+                            state_update: Arc::clone(&pre_confirmed_state_update),
+                            aggregated_state_update: pre_confirmed_state_update,
                             number: block.number,
                         }
                     }
@@ -831,7 +831,8 @@ impl PendingWatcher {
                         let state_update = Arc::new(pre_confirmed_state_update);
                         PendingData {
                             block: Arc::clone(&watched_pending_data.block),
-                            state_update,
+                            state_update: Arc::clone(&state_update),
+                            aggregated_state_update: state_update,
                             number: block.number,
                         }
                     }
@@ -906,6 +907,10 @@ mod tests {
     }
 
     fn valid_pre_confirmed_block(latest: &BlockHeader) -> PendingData {
+        let state_update = Arc::new(StateUpdate::default().with_contract_nonce(
+            contract_address_bytes!(b"contract address"),
+            contract_nonce_bytes!(b"nonce"),
+        ));
         PendingData {
             block: PendingBlockVariant::PreConfirmed {
                 block: PreConfirmedBlock {
@@ -926,12 +931,8 @@ mod tests {
                 pre_latest_data: None,
             }
             .into(),
-            state_update: StateUpdate::default()
-                .with_contract_nonce(
-                    contract_address_bytes!(b"contract address"),
-                    contract_nonce_bytes!(b"nonce"),
-                )
-                .into(),
+            state_update: Arc::clone(&state_update),
+            aggregated_state_update: state_update,
             number: latest.number + 1,
         }
     }
@@ -955,6 +956,16 @@ mod tests {
             contract_address_bytes!(b"pre latest contract address"),
             contract_nonce_bytes!(b"pre latest nonce"),
         );
+
+        let pre_confirmed_state_update = StateUpdate::default().with_contract_nonce(
+            contract_address_bytes!(b"contract address"),
+            contract_nonce_bytes!(b"nonce"),
+        );
+
+        let aggregated_state_update = pre_latest_state_update
+            .clone()
+            .apply(&pre_confirmed_state_update);
+
         let pre_latest_data = Box::new(PreLatestData {
             block: pre_latest_block,
             state_update: pre_latest_state_update,
@@ -983,12 +994,8 @@ mod tests {
                 pre_latest_data: Some(pre_latest_data),
             }
             .into(),
-            state_update: StateUpdate::default()
-                .with_contract_nonce(
-                    contract_address_bytes!(b"contract address"),
-                    contract_nonce_bytes!(b"nonce"),
-                )
-                .into(),
+            state_update: pre_confirmed_state_update.into(),
+            aggregated_state_update: aggregated_state_update.into(),
             number: latest.number + 2,
         }
     }
@@ -1018,6 +1025,7 @@ mod tests {
             }
             .into(),
             state_update: StateUpdate::default().into(),
+            aggregated_state_update: StateUpdate::default().into(),
             // Should be latest.number + 2 to be valid.
             number: latest.number + 3,
         }
@@ -1097,7 +1105,6 @@ mod tests {
         assert!(!result.pending_transactions().is_empty());
         // ..and we did not receive a pre-latest block.
         assert!(result.pre_latest_block().is_none());
-        assert!(result.pre_latest_state_update().is_none());
     }
 
     #[test]
@@ -1385,6 +1392,7 @@ mod tests {
                 pre_latest_data: None,
             }),
             state_update: StateUpdate::default().into(),
+            aggregated_state_update: StateUpdate::default().into(),
             number: latest.number + 1,
         }
     }
