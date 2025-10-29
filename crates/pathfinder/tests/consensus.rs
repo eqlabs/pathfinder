@@ -17,9 +17,10 @@ mod test {
     use std::vec;
 
     use futures::future::Either;
+    use pathfinder_lib::config::integration_testing::{InjectFailureConfig, InjectFailureTrigger};
     use rstest::rstest;
 
-    use crate::common::pathfinder_instance::{respawn_on_fail, InjectFailure, PathfinderInstance};
+    use crate::common::pathfinder_instance::{respawn_on_fail, PathfinderInstance};
     use crate::common::rpc_client::wait_for_height;
     use crate::common::utils;
 
@@ -54,13 +55,21 @@ mod test {
     //   - fail on precommit received.
     #[rstest]
     #[case::happy_path(None)]
-    #[case::fail_on_proposal_rx(Some(InjectFailure::OnProposalRx(12)))]
-    // TODO this test currently fails because the node doesn't properly recover proposals that
-    // were decided but not committed before crashing.
-    // #[case::fail_on_proposal_decided(Some(InjectFailure::_OnProposalDecided(12)))]
+    #[case::fail_on_proposal_init_rx(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::ProposalInitRx }))]
+    #[case::fail_on_batch_info_rx(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::BlockInfoRx }))]
+    #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::TransactionBatchRx }))]
+    #[case::fail_on_transactions_fin_rx(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::TransactionsFinRx }))]
+    #[case::fail_on_proposal_commitment_rx(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::ProposalCommitmentRx }))]
+    #[case::fail_on_proposal_fin_rx(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::ProposalFinRx }))]
+    #[case::fail_on_entire_proposal_rx(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::EntireProposalRx }))]
+    #[case::fail_on_entire_proposal_persisted(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::EntireProposalPersisted }))]
+    #[case::fail_on_prevote_rx(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::PrevoteRx }))]
+    #[case::fail_on_precommit_rx(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::PrecommitRx }))]
+    #[case::fail_on_proposal_decided(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::ProposalDecided }))]
+    #[case::fail_on_proposal_committed(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::ProposalCommitted }))]
     #[tokio::test]
     async fn consensus_3_nodes(
-        #[case] inject_failure: Option<InjectFailure>,
+        #[case] inject_failure: Option<InjectFailureConfig>,
     ) -> anyhow::Result<()> {
         const NUM_NODES: usize = 3;
         // System contracts start to matter after block 10
