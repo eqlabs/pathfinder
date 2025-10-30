@@ -91,7 +91,7 @@ impl BatchExecutionManager {
 
         // Execute the batch
         validator
-            .execute_transactions(all_transactions)
+            .execute_batch(all_transactions)
             .context("Failed to execute transaction batch")?;
 
         // Update execution state

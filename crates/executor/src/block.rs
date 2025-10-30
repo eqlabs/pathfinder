@@ -65,8 +65,7 @@ impl BlockExecutor {
     /// Create a new BlockExecutor with a pre-existing initial state
     /// This allows for executor chaining where the new executor starts with
     /// the final state of a previous executor
-    #[allow(dead_code)] // TODO: This will be removed as soon as we wire this up to the p2p_task
-    pub(crate) fn new_with_initial_state(
+    pub fn new_with_initial_state(
         chain_id: ChainId,
         block_info: BlockInfo,
         eth_fee_address: ContractAddress,
@@ -183,8 +182,7 @@ impl BlockExecutor {
 
     /// Get the final state of the executor
     /// This allows for state extraction before finalizing
-    #[allow(dead_code)] // TODO: This will be removed as soon as we wire this up to the p2p_task
-    pub(crate) fn get_final_state(
+    pub fn get_final_state(
         &self,
     ) -> anyhow::Result<PathfinderExecutionState<ConcurrentStorageAdapter>> {
         let final_state = self
