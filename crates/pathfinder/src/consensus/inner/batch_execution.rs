@@ -297,6 +297,8 @@ mod tests {
         // Setup test storage (temp database with larger connection pool)
         let storage = pathfinder_storage::StorageBuilder::in_tempdir()
             .expect("Failed to create temp database");
+        let mut db_conn = storage.connection().unwrap();
+        let db_tx = db_conn.transaction().unwrap();
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let proposer =
             ContractAddress::new_or_panic(pathfinder_crypto::Felt::from_hex_str("0x123").unwrap());
@@ -325,7 +327,7 @@ mod tests {
             height_and_round,
             batch,
             &mut validator,
-            storage,
+            &db_tx,
             &mut deferred_executions,
         );
 
