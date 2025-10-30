@@ -143,7 +143,7 @@ pub async fn call(
 
                 (
                     pending.pending_header(),
-                    Some(pending.pending_state_update()),
+                    Some(pending.aggregated_state_update()),
                 )
             }
             other => {
@@ -545,6 +545,10 @@ mod tests {
             last_block_header: BlockHeader,
             state_update: StateUpdate,
         ) -> PendingData {
+            // Aggregated state update is the same as state update for pre-confirmed blocks
+            // as there's no pre-latest block.
+            let aggregated_state_update = state_update.clone();
+
             PendingData::from_parts(
                 crate::pending::PendingBlockVariant::PreConfirmed {
                     block: crate::pending::PreConfirmedBlock {
@@ -573,6 +577,7 @@ mod tests {
                     pre_latest_data: None,
                 },
                 state_update,
+                aggregated_state_update,
                 last_block_header.number + 1,
             )
         }

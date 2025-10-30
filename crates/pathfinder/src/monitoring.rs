@@ -1,8 +1,10 @@
 use std::net::SocketAddr;
+use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use metrics_exporter_prometheus::PrometheusHandle;
+use pathfinder_common::integration_testing::debug_create_port_marker_file;
 use pathfinder_rpc::types::syncing::Syncing;
 use pathfinder_rpc::SyncState;
 
@@ -19,6 +21,7 @@ pub async fn spawn_server(
     readiness: Arc<AtomicBool>,
     sync_state: Arc<SyncState>,
     prometheus_handle: PrometheusHandle,
+    data_directory: &Path,
 ) -> anyhow::Result<(SocketAddr, tokio::task::JoinHandle<()>)> {
     let app = axum::Router::new()
         .route("/health", axum::routing::get(health_route))
@@ -32,6 +35,7 @@ pub async fn spawn_server(
         });
     let listener = tokio::net::TcpListener::bind(addr.into()).await?;
     let addr = listener.local_addr()?;
+    debug_create_port_marker_file("monitor", addr.port(), data_directory);
     let spawn = util::task::spawn(async move {
         axum::serve(listener, app.into_make_service())
             .with_graceful_shutdown(util::task::cancellation_token().cancelled_owned())
@@ -81,6 +85,7 @@ async fn metrics_route(axum::extract::State(state): axum::extract::State<State>)
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
     use std::time::Duration;
@@ -115,6 +120,7 @@ mod tests {
             readiness.clone(),
             Default::default(),
             handle,
+            &PathBuf::default(),
         )
         .await
         .unwrap();
@@ -135,6 +141,7 @@ mod tests {
             readiness.clone(),
             Default::default(),
             handle,
+            &PathBuf::default(),
         )
         .await
         .unwrap();
@@ -166,6 +173,7 @@ mod tests {
             readiness.clone(),
             sync_state.clone(),
             handle,
+            &PathBuf::default(),
         )
         .await
         .unwrap();
@@ -240,6 +248,7 @@ mod tests {
             readiness.clone(),
             Default::default(),
             handle,
+            &PathBuf::default(),
         )
         .await
         .unwrap();

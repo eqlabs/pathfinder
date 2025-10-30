@@ -35,7 +35,7 @@ use pathfinder_executor::types::{to_starknet_api_transaction, BlockInfoPriceConv
 use pathfinder_executor::{BlockExecutor, ClassInfo, IntoStarkFelt};
 use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
-use pathfinder_storage::{Storage, TransactionBehavior};
+use pathfinder_storage::{Storage, Transaction as DbTransaction};
 use rayon::prelude::*;
 use tracing::debug;
 
@@ -827,7 +827,11 @@ impl ValidatorFinalizeStage {
     ///
     /// This function performs database operations and is computationally
     /// and IO intensive.
-    pub fn finalize(self, storage: Storage) -> anyhow::Result<FinalizedBlock> {
+    pub fn finalize(
+        self,
+        db_tx: DbTransaction<'_>,
+        storage: Storage,
+    ) -> anyhow::Result<FinalizedBlock> {
         #[cfg(debug_assertions)]
         const VERIFY_HASHES: bool = true;
         #[cfg(not(debug_assertions))]
@@ -850,27 +854,22 @@ impl ValidatorFinalizeStage {
 
         let start = Instant::now();
 
-        let mut db_conn = storage.connection().context("Create database connection")?;
-        let db_txn = db_conn
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .context("Create database transaction")?;
-
         if let Some(parent_number) = header.number.parent() {
-            header.parent_hash = db_txn.block_hash(parent_number.into())?.unwrap_or_default();
+            header.parent_hash = db_tx.block_hash(parent_number.into())?.unwrap_or_default();
         } else {
             // Parent block hash for the genesis block is zero by definition.
             header.parent_hash = BlockHash::ZERO;
         }
 
         let (storage_commitment, class_commitment) = update_starknet_state(
-            &db_txn,
+            &db_tx,
             (&state_update).into(),
             VERIFY_HASHES,
             header.number,
             storage.clone(),
         )?;
 
-        db_txn.commit().context("Committing database transaction")?;
+        db_tx.commit().context("Committing database transaction")?;
 
         debug!(
             "Block {} tries updated in {} ms",

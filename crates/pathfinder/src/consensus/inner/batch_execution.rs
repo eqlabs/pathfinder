@@ -10,7 +10,7 @@ use anyhow::Context;
 use p2p::consensus::HeightAndRound;
 use p2p_proto::consensus as proto_consensus;
 use pathfinder_common::{BlockId, BlockNumber};
-use pathfinder_storage::Storage;
+use pathfinder_storage::Transaction as DbTransaction;
 
 use crate::validator::ValidatorTransactionBatchStage;
 
@@ -57,11 +57,11 @@ impl BatchExecutionManager {
         height_and_round: HeightAndRound,
         transactions: Vec<proto_consensus::Transaction>,
         validator: &mut ValidatorTransactionBatchStage,
-        storage: Storage,
+        db_tx: &DbTransaction<'_>,
         deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
     ) -> anyhow::Result<()> {
         // Check if execution should be deferred
-        if should_defer_execution(height_and_round, storage.clone())? {
+        if should_defer_execution(height_and_round, db_tx)? {
             tracing::debug!(
                 "🖧  ⚙️ transaction batch execution for height and round {height_and_round} is \
                  deferred"
@@ -224,16 +224,14 @@ impl Default for ProposalCommitmentWithOrigin {
 /// be deferred because the previous block is not committed yet.
 pub fn should_defer_execution(
     height_and_round: HeightAndRound,
-    storage: Storage,
+    db_tx: &DbTransaction<'_>,
 ) -> anyhow::Result<bool> {
     let parent_block = height_and_round.height().checked_sub(1);
     let defer = if let Some(parent_block) = parent_block {
         let parent_block =
             BlockNumber::new(parent_block).context("Block number is larger than i64::MAX")?;
         let parent_block = BlockId::Number(parent_block);
-        let mut db_conn = storage.connection()?;
-        let db_txn = db_conn.transaction()?;
-        let parent_committed = db_txn.block_exists(parent_block)?;
+        let parent_committed = db_tx.block_exists(parent_block)?;
         !parent_committed
     } else {
         false

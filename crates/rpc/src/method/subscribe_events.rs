@@ -478,7 +478,7 @@ mod tests {
     use crate::jsonrpc::websocket::WebsocketHistory;
     use crate::jsonrpc::{handle_json_rpc_socket, RpcRouter, RpcSubscriptionFlow};
     use crate::method::subscribe_events::SubscribeEvents;
-    use crate::{v06, v07, v08, v09, Notifications, Reorg, RpcVersion};
+    use crate::{v06, v07, v08, v09, v10, Notifications, Reorg, RpcVersion};
 
     #[tokio::test]
     async fn no_filtering() {
@@ -1244,6 +1244,7 @@ mod tests {
             RpcVersion::V07 => (v07::register_routes().build(ctx), pending_data_tx),
             RpcVersion::V08 => (v08::register_routes().build(ctx), pending_data_tx),
             RpcVersion::V09 => (v09::register_routes().build(ctx), pending_data_tx),
+            RpcVersion::V10 => (v10::register_routes().build(ctx), pending_data_tx),
             RpcVersion::PathfinderV01 => {
                 unreachable!("Did not expect RPC version for tests to be Pathfinder v0.1")
             }

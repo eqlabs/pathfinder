@@ -1,13 +1,15 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
+use std::path::PathBuf;
 
 use futures::StreamExt;
 use libp2p::kad::{self, BootstrapError, BootstrapOk, QueryId, QueryResult};
-use libp2p::multiaddr::Protocol;
+use libp2p::multiaddr::{Multiaddr, Protocol};
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{NetworkBehaviour, SwarmEvent};
 use libp2p::{identify, PeerId};
+use pathfinder_common::integration_testing;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 
@@ -15,6 +17,8 @@ use crate::core::{Behaviour, Command, Event, TestCommand, TestEvent};
 #[cfg(test)]
 use crate::test_utils;
 use crate::{ApplicationBehaviour, EmptyResultSender};
+
+const COMMAND_CHANNEL_SIZE_LIMIT: usize = 1024;
 
 /// This is our main loop for P2P networking.
 /// It handles the incoming events from the swarm and the commands from the
@@ -57,6 +61,8 @@ where
     /// Keeps track of pending queries and allows us to send the response
     /// payloads back to the caller.
     pending_queries: PendingQueries,
+    /// Data directory for Pathfinder.
+    data_directory: PathBuf,
     /// State of the application behaviour.
     state: State<B>,
     _test_event_sender: mpsc::Sender<TestEvent>,
@@ -96,11 +102,12 @@ where
     ///
     /// * `swarm` - The libp2p swarm, including the network behaviour for this
     ///   loop.
-    /// * `command_receiver` - The receiver for commands from the outside world.
     /// * `event_sender` - The sender for events to the outside world.
+    /// * `data_directory` - The data directory for Pathfinder.
     pub fn new(
         swarm: libp2p::swarm::Swarm<Behaviour<B>>,
         event_sender: mpsc::UnboundedSender<<B as ApplicationBehaviour>::Event>,
+        data_directory: PathBuf,
     ) -> (
         Self,
         mpsc::UnboundedSender<Command<<B as ApplicationBehaviour>::Command>>,
@@ -123,6 +130,7 @@ where
                 pending_dials: Default::default(),
                 pending_queries: Default::default(),
                 state: Default::default(),
+                data_directory,
                 _test_event_sender,
                 _test_event_receiver: Some(rx),
                 _pending_test_queries: Default::default(),
@@ -144,6 +152,9 @@ where
         let mut network_status_interval = tokio::time::interval(Duration::from_secs(5));
         // Check the peer status every 30 seconds
         let mut peer_status_interval = tokio::time::interval(Duration::from_secs(30));
+        // Keep track of whether we've already emitted a warning about the
+        // command channel size exceeding the limit, to avoid spamming the logs.
+        let mut channel_size_warning_emitted = false;
 
         loop {
             let network_status_tick = network_status_interval.tick();
@@ -156,8 +167,20 @@ where
                 _ = network_status_tick => self.dump_network_status(),
                 _ = peer_status_tick => self.dump_dht_and_connected_peers(),
                 // Handle commands from the outside world
-                command = self.command_receiver.recv() => self.handle_command(
-                    command.expect("At least one sender is retained by the main loop")).await,
+                command = self.command_receiver.recv() => {
+                    // Unbounded channel size monitoring.
+                    let channel_size = self.command_receiver.len();
+                    if channel_size > COMMAND_CHANNEL_SIZE_LIMIT {
+                        if !channel_size_warning_emitted {
+                            tracing::warn!(%channel_size, "Command channel size exceeded limit");
+                            channel_size_warning_emitted = true;
+                        }
+                    } else {
+                        channel_size_warning_emitted = false;
+                    }
+
+                    self.handle_command(command.expect("At least one sender is retained by the main loop")).await
+                },
                 // Handle events from the inside of the p2p network
                 Some(event) = self.swarm.next() => self.handle_event(event).await,
             }
@@ -448,14 +471,40 @@ where
                 match &event {
                     SwarmEvent::NewListenAddr { address, .. } => {
                         let my_peerid = *self.swarm.local_peer_id();
+                        self.debug_create_port_marker_file(address);
                         let address = address.clone().with(Protocol::P2p(my_peerid));
-
                         tracing::debug!(%address, "New listen");
                     }
                     _ => tracing::trace!(?event, "Ignoring event"),
                 }
                 self.handle_event_for_test(event).await;
             }
+        }
+    }
+
+    /// ## Important
+    /// This function does nothing in production builds.
+    ///
+    /// ## Integration testing
+    /// Extracts the TCP port from the given multiaddress and creates
+    /// a marker file in the data directory indicating that the port has been
+    /// assigned.
+    ///
+    /// ## Panics
+    /// The function will panic if it fails to create the marker file.
+    fn debug_create_port_marker_file(&self, address: &Multiaddr) {
+        if let Some(port) = address.iter().find_map(|p| {
+            if let Protocol::Tcp(port) = p {
+                Some(port)
+            } else {
+                None
+            }
+        }) {
+            integration_testing::debug_create_port_marker_file(
+                B::domain(),
+                port,
+                &self.data_directory,
+            );
         }
     }
 

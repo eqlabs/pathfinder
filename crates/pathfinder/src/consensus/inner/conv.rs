@@ -1,4 +1,5 @@
 use p2p_proto::consensus as proto;
+use pathfinder_common::{receipt, state_update};
 use pathfinder_storage::{
     DataAvailabilityMode,
     DeclareTransactionV4,
@@ -7,24 +8,27 @@ use pathfinder_storage::{
     L1HandlerTransactionV0,
     ResourceBound,
     ResourceBoundsV1,
+    TransactionV2,
 };
 
 use crate::consensus::inner::dto;
+use crate::validator::FinalizedBlock;
 
-/// Convert a DTO type to a protobuf type
-pub trait IntoProto<T> {
-    fn into_proto(self) -> T;
+/// Convert a DTO type to a data model type (`protobuf` in case of raw
+/// proposals, and `pathfinder_common` types in case of finalized blocks)
+pub trait IntoModel<T> {
+    fn into_model(self) -> T;
 }
 
-/// Convert a protobuf type to a DTO, fallibly
+/// Convert a data model type into a DTO, fallibly
 pub trait TryIntoDto<T> {
     fn try_into_dto(dto: T) -> anyhow::Result<Self>
     where
         Self: Sized;
 }
 
-impl IntoProto<proto::ProposalPart> for dto::ProposalPart {
-    fn into_proto(self) -> proto::ProposalPart {
+impl IntoModel<proto::ProposalPart> for dto::ProposalPart {
+    fn into_model(self) -> proto::ProposalPart {
         match self {
             dto::ProposalPart::Init(p) => proto::ProposalPart::Init(proto::ProposalInit {
                 block_number: p.block_number,
@@ -43,10 +47,10 @@ impl IntoProto<proto::ProposalPart> for dto::ProposalPart {
                 l1_gas_price_wei: p.l1_gas_price_wei,
                 l1_data_gas_price_wei: p.l1_data_gas_price_wei,
                 eth_to_strk_rate: p.eth_to_strk_rate,
-                l1_da_mode: p.l1_da_mode.into_proto(),
+                l1_da_mode: p.l1_da_mode.into_model(),
             }),
             dto::ProposalPart::TransactionBatch(batch) => proto::ProposalPart::TransactionBatch(
-                batch.into_iter().map(|t| t.into_proto()).collect(),
+                batch.into_iter().map(|t| t.into_model()).collect(),
             ),
             dto::ProposalPart::ProposalCommitment(p) => {
                 proto::ProposalPart::ProposalCommitment(proto::ProposalCommitment {
@@ -71,47 +75,47 @@ impl IntoProto<proto::ProposalPart> for dto::ProposalPart {
                     l2_gas_price_fri: p.l2_gas_price_fri,
                     l2_gas_used: p.l2_gas_used,
                     next_l2_gas_price_fri: p.next_l2_gas_price_fri,
-                    l1_da_mode: p.l1_da_mode.into_proto(),
+                    l1_da_mode: p.l1_da_mode.into_model(),
                 })
             }
         }
     }
 }
 
-impl IntoProto<proto::Transaction> for dto::TransactionWithClass {
-    fn into_proto(self) -> proto::Transaction {
+impl IntoModel<proto::Transaction> for dto::TransactionWithClass {
+    fn into_model(self) -> proto::Transaction {
         let dto::TransactionWithClass { variant, hash } = self;
         proto::Transaction {
-            txn: variant.into_proto(),
+            txn: variant.into_model(),
             transaction_hash: p2p_proto::common::Hash(hash.into()),
         }
     }
 }
 
-impl IntoProto<proto::TransactionVariant> for dto::TransactionVariantWithClass {
-    fn into_proto(self) -> proto::TransactionVariant {
+impl IntoModel<proto::TransactionVariant> for dto::TransactionVariantWithClass {
+    fn into_model(self) -> proto::TransactionVariant {
         match self {
             dto::TransactionVariantWithClass::Declare(dcl) => {
                 proto::TransactionVariant::DeclareV3(p2p_proto::transaction::DeclareV3WithClass {
-                    common: dcl.declare_transaction.into_proto(),
-                    class: dcl.class.into_proto(),
+                    common: dcl.declare_transaction.into_model(),
+                    class: dcl.class.into_model(),
                 })
             }
             dto::TransactionVariantWithClass::DeployAccount(dpl) => {
-                proto::TransactionVariant::DeployAccountV3(dpl.into_proto())
+                proto::TransactionVariant::DeployAccountV3(dpl.into_model())
             }
             dto::TransactionVariantWithClass::Invoke(inv) => {
-                proto::TransactionVariant::InvokeV3(inv.into_proto())
+                proto::TransactionVariant::InvokeV3(inv.into_model())
             }
             dto::TransactionVariantWithClass::L1Handler(h) => {
-                proto::TransactionVariant::L1HandlerV0(h.into_proto())
+                proto::TransactionVariant::L1HandlerV0(h.into_model())
             }
         }
     }
 }
 
-impl IntoProto<p2p_proto::transaction::DeclareV3Common> for DeclareTransactionV4 {
-    fn into_proto(self) -> p2p_proto::transaction::DeclareV3Common {
+impl IntoModel<p2p_proto::transaction::DeclareV3Common> for DeclareTransactionV4 {
+    fn into_model(self) -> p2p_proto::transaction::DeclareV3Common {
         p2p_proto::transaction::DeclareV3Common {
             sender: p2p_proto::common::Address(self.sender_address.into()),
             signature: p2p_proto::transaction::AccountSignature {
@@ -119,7 +123,7 @@ impl IntoProto<p2p_proto::transaction::DeclareV3Common> for DeclareTransactionV4
             },
             nonce: self.nonce.into(),
             compiled_class_hash: p2p_proto::common::Hash(self.compiled_class_hash.into()),
-            resource_bounds: self.resource_bounds.into_proto(),
+            resource_bounds: self.resource_bounds.into_model(),
             tip: self.tip.0,
             paymaster_data: self.paymaster_data.into_iter().map(|e| e.into()).collect(),
             account_deployment_data: self
@@ -127,14 +131,14 @@ impl IntoProto<p2p_proto::transaction::DeclareV3Common> for DeclareTransactionV4
                 .into_iter()
                 .map(|e| e.into())
                 .collect(),
-            nonce_data_availability_mode: self.nonce_data_availability_mode.into_proto(),
-            fee_data_availability_mode: self.fee_data_availability_mode.into_proto(),
+            nonce_data_availability_mode: self.nonce_data_availability_mode.into_model(),
+            fee_data_availability_mode: self.fee_data_availability_mode.into_model(),
         }
     }
 }
 
-impl IntoProto<p2p_proto::transaction::DeployAccountV3> for DeployAccountTransactionV4 {
-    fn into_proto(self) -> p2p_proto::transaction::DeployAccountV3 {
+impl IntoModel<p2p_proto::transaction::DeployAccountV3> for DeployAccountTransactionV4 {
+    fn into_model(self) -> p2p_proto::transaction::DeployAccountV3 {
         p2p_proto::transaction::DeployAccountV3 {
             signature: p2p_proto::transaction::AccountSignature {
                 parts: self.signature.into_iter().map(|s| s.into()).collect(),
@@ -147,24 +151,24 @@ impl IntoProto<p2p_proto::transaction::DeployAccountV3> for DeployAccountTransac
                 .into_iter()
                 .map(|e| e.into())
                 .collect(),
-            resource_bounds: self.resource_bounds.into_proto(),
+            resource_bounds: self.resource_bounds.into_model(),
             tip: self.tip.0,
             paymaster_data: self.paymaster_data.into_iter().map(|e| e.into()).collect(),
-            nonce_data_availability_mode: self.nonce_data_availability_mode.into_proto(),
-            fee_data_availability_mode: self.fee_data_availability_mode.into_proto(),
+            nonce_data_availability_mode: self.nonce_data_availability_mode.into_model(),
+            fee_data_availability_mode: self.fee_data_availability_mode.into_model(),
         }
     }
 }
 
-impl IntoProto<p2p_proto::transaction::InvokeV3> for InvokeTransactionV4 {
-    fn into_proto(self) -> p2p_proto::transaction::InvokeV3 {
+impl IntoModel<p2p_proto::transaction::InvokeV3> for InvokeTransactionV4 {
+    fn into_model(self) -> p2p_proto::transaction::InvokeV3 {
         p2p_proto::transaction::InvokeV3 {
             sender: p2p_proto::common::Address(self.sender_address.into()),
             signature: p2p_proto::transaction::AccountSignature {
                 parts: self.signature.into_iter().map(|s| s.into()).collect(),
             },
             calldata: self.calldata.into_iter().map(|e| e.into()).collect(),
-            resource_bounds: self.resource_bounds.into_proto(),
+            resource_bounds: self.resource_bounds.into_model(),
             tip: self.tip.0,
             paymaster_data: self.paymaster_data.into_iter().map(|e| e.into()).collect(),
             account_deployment_data: self
@@ -172,15 +176,15 @@ impl IntoProto<p2p_proto::transaction::InvokeV3> for InvokeTransactionV4 {
                 .into_iter()
                 .map(|e| e.into())
                 .collect(),
-            nonce_data_availability_mode: self.nonce_data_availability_mode.into_proto(),
-            fee_data_availability_mode: self.fee_data_availability_mode.into_proto(),
+            nonce_data_availability_mode: self.nonce_data_availability_mode.into_model(),
+            fee_data_availability_mode: self.fee_data_availability_mode.into_model(),
             nonce: self.nonce.into(),
         }
     }
 }
 
-impl IntoProto<p2p_proto::transaction::L1HandlerV0> for L1HandlerTransactionV0 {
-    fn into_proto(self) -> p2p_proto::transaction::L1HandlerV0 {
+impl IntoModel<p2p_proto::transaction::L1HandlerV0> for L1HandlerTransactionV0 {
+    fn into_model(self) -> p2p_proto::transaction::L1HandlerV0 {
         let L1HandlerTransactionV0 {
             contract_address,
             entry_point_selector,
@@ -196,23 +200,23 @@ impl IntoProto<p2p_proto::transaction::L1HandlerV0> for L1HandlerTransactionV0 {
     }
 }
 
-impl IntoProto<p2p_proto::transaction::ResourceBounds> for ResourceBoundsV1 {
-    fn into_proto(self) -> p2p_proto::transaction::ResourceBounds {
+impl IntoModel<p2p_proto::transaction::ResourceBounds> for ResourceBoundsV1 {
+    fn into_model(self) -> p2p_proto::transaction::ResourceBounds {
         let ResourceBoundsV1 {
             l1_gas,
             l2_gas,
             l1_data_gas,
         } = self;
         p2p_proto::transaction::ResourceBounds {
-            l1_gas: l1_gas.into_proto(),
-            l2_gas: l2_gas.into_proto(),
-            l1_data_gas: l1_data_gas.map(|r| r.into_proto()),
+            l1_gas: l1_gas.into_model(),
+            l2_gas: l2_gas.into_model(),
+            l1_data_gas: l1_data_gas.map(|r| r.into_model()),
         }
     }
 }
 
-impl IntoProto<p2p_proto::transaction::ResourceLimits> for ResourceBound {
-    fn into_proto(self) -> p2p_proto::transaction::ResourceLimits {
+impl IntoModel<p2p_proto::transaction::ResourceLimits> for ResourceBound {
+    fn into_model(self) -> p2p_proto::transaction::ResourceLimits {
         let ResourceBound {
             max_amount,
             max_price_per_unit,
@@ -224,8 +228,8 @@ impl IntoProto<p2p_proto::transaction::ResourceLimits> for ResourceBound {
     }
 }
 
-impl IntoProto<p2p_proto::common::VolitionDomain> for DataAvailabilityMode {
-    fn into_proto(self) -> p2p_proto::common::VolitionDomain {
+impl IntoModel<p2p_proto::common::VolitionDomain> for DataAvailabilityMode {
+    fn into_model(self) -> p2p_proto::common::VolitionDomain {
         match self {
             DataAvailabilityMode::L1 => p2p_proto::common::VolitionDomain::L1,
             DataAvailabilityMode::L2 => p2p_proto::common::VolitionDomain::L2,
@@ -233,34 +237,34 @@ impl IntoProto<p2p_proto::common::VolitionDomain> for DataAvailabilityMode {
     }
 }
 
-impl IntoProto<p2p_proto::class::Cairo1Class> for dto::Cairo1Class {
-    fn into_proto(self) -> p2p_proto::class::Cairo1Class {
+impl IntoModel<p2p_proto::class::Cairo1Class> for dto::Cairo1Class {
+    fn into_model(self) -> p2p_proto::class::Cairo1Class {
         p2p_proto::class::Cairo1Class {
             abi: self.abi,
-            entry_points: self.entry_points.into_proto(),
+            entry_points: self.entry_points.into_model(),
             program: self.program.into_iter().map(|e| e.into()).collect(),
             contract_class_version: self.contract_class_version,
         }
     }
 }
 
-impl IntoProto<p2p_proto::class::Cairo1EntryPoints> for dto::Cairo1EntryPoints {
-    fn into_proto(self) -> p2p_proto::class::Cairo1EntryPoints {
+impl IntoModel<p2p_proto::class::Cairo1EntryPoints> for dto::Cairo1EntryPoints {
+    fn into_model(self) -> p2p_proto::class::Cairo1EntryPoints {
         let dto::Cairo1EntryPoints {
             externals,
             l1_handlers,
             constructors,
         } = self;
         p2p_proto::class::Cairo1EntryPoints {
-            externals: externals.into_iter().map(|e| e.into_proto()).collect(),
-            l1_handlers: l1_handlers.into_iter().map(|e| e.into_proto()).collect(),
-            constructors: constructors.into_iter().map(|e| e.into_proto()).collect(),
+            externals: externals.into_iter().map(|e| e.into_model()).collect(),
+            l1_handlers: l1_handlers.into_iter().map(|e| e.into_model()).collect(),
+            constructors: constructors.into_iter().map(|e| e.into_model()).collect(),
         }
     }
 }
 
-impl IntoProto<p2p_proto::class::SierraEntryPoint> for dto::SierraEntryPoint {
-    fn into_proto(self) -> p2p_proto::class::SierraEntryPoint {
+impl IntoModel<p2p_proto::class::SierraEntryPoint> for dto::SierraEntryPoint {
+    fn into_model(self) -> p2p_proto::class::SierraEntryPoint {
         let dto::SierraEntryPoint { index, selector } = self;
         p2p_proto::class::SierraEntryPoint {
             index,
@@ -269,8 +273,8 @@ impl IntoProto<p2p_proto::class::SierraEntryPoint> for dto::SierraEntryPoint {
     }
 }
 
-impl IntoProto<p2p_proto::common::L1DataAvailabilityMode> for u8 {
-    fn into_proto(self) -> p2p_proto::common::L1DataAvailabilityMode {
+impl IntoModel<p2p_proto::common::L1DataAvailabilityMode> for u8 {
+    fn into_model(self) -> p2p_proto::common::L1DataAvailabilityMode {
         match self {
             0 => p2p_proto::common::L1DataAvailabilityMode::Calldata,
             1 => p2p_proto::common::L1DataAvailabilityMode::Blob,
@@ -591,6 +595,539 @@ impl TryIntoDto<p2p_proto::common::L1DataAvailabilityMode> for u8 {
         let res = match da {
             p2p_proto::common::L1DataAvailabilityMode::Calldata => 0,
             p2p_proto::common::L1DataAvailabilityMode::Blob => 1,
+        };
+        Ok(res)
+    }
+}
+
+impl IntoModel<FinalizedBlock> for dto::FinalizedBlock {
+    fn into_model(self) -> FinalizedBlock {
+        let dto::FinalizedBlock {
+            header,
+            state_update,
+            transactions_and_receipts,
+            events,
+        } = self;
+        FinalizedBlock {
+            header: header.into_model(),
+            state_update: state_update.into_model(),
+            transactions_and_receipts: transactions_and_receipts
+                .into_iter()
+                .map(|(t, r)| (t.into(), r.into_model()))
+                .collect(),
+            events,
+        }
+    }
+}
+
+impl IntoModel<pathfinder_common::BlockHeader> for dto::BlockHeader {
+    fn into_model(self) -> pathfinder_common::BlockHeader {
+        let dto::BlockHeader {
+            hash,
+            parent_hash,
+            number,
+            timestamp,
+            eth_l1_gas_price,
+            strk_l1_gas_price,
+            eth_l1_data_gas_price,
+            strk_l1_data_gas_price,
+            eth_l2_gas_price,
+            strk_l2_gas_price,
+            sequencer_address,
+            starknet_version,
+            event_commitment,
+            state_commitment,
+            transaction_commitment,
+            transaction_count,
+            event_count,
+            receipt_commitment,
+            state_diff_commitment,
+            state_diff_length,
+            l1_da_mode,
+        } = self;
+        pathfinder_common::BlockHeader {
+            hash,
+            parent_hash,
+            number,
+            timestamp,
+            eth_l1_gas_price,
+            strk_l1_gas_price,
+            eth_l1_data_gas_price,
+            strk_l1_data_gas_price,
+            eth_l2_gas_price,
+            strk_l2_gas_price,
+            sequencer_address,
+            starknet_version: pathfinder_common::StarknetVersion::from_u32(starknet_version),
+            event_commitment,
+            state_commitment,
+            transaction_commitment,
+            transaction_count: transaction_count as usize,
+            event_count: event_count as usize,
+            l1_da_mode,
+            receipt_commitment,
+            state_diff_commitment,
+            state_diff_length,
+        }
+    }
+}
+
+impl IntoModel<state_update::StateUpdateData> for dto::StateUpdateData {
+    fn into_model(self) -> state_update::StateUpdateData {
+        let dto::StateUpdateData {
+            contract_updates,
+            system_contract_updates,
+            declared_cairo_classes,
+            declared_sierra_classes,
+        } = self;
+        state_update::StateUpdateData {
+            contract_updates: contract_updates
+                .line
+                .into_iter()
+                .map(|(k, v)| (k, v.into_model()))
+                .collect(),
+            system_contract_updates: system_contract_updates
+                .line
+                .into_iter()
+                .map(|(k, v)| (k, v.into_model()))
+                .collect(),
+            declared_cairo_classes: declared_cairo_classes.into_iter().collect(),
+            declared_sierra_classes: declared_sierra_classes.line.into_iter().collect(),
+        }
+    }
+}
+
+impl IntoModel<state_update::ContractUpdate> for dto::ContractUpdate {
+    fn into_model(self) -> state_update::ContractUpdate {
+        let dto::ContractUpdate {
+            storage,
+            class,
+            nonce,
+        } = self;
+        state_update::ContractUpdate {
+            storage: storage.line.into_iter().collect(),
+            class: class.map(|c| c.into_model()),
+            nonce,
+        }
+    }
+}
+
+impl IntoModel<state_update::SystemContractUpdate> for dto::SystemContractUpdate {
+    fn into_model(self) -> state_update::SystemContractUpdate {
+        let dto::SystemContractUpdate { storage } = self;
+        state_update::SystemContractUpdate {
+            storage: storage.line.into_iter().collect(),
+        }
+    }
+}
+
+impl IntoModel<state_update::ContractClassUpdate> for dto::ContractClassUpdate {
+    fn into_model(self) -> state_update::ContractClassUpdate {
+        match self {
+            dto::ContractClassUpdate::Deploy(c) => state_update::ContractClassUpdate::Deploy(c),
+            dto::ContractClassUpdate::Replace(c) => state_update::ContractClassUpdate::Replace(c),
+        }
+    }
+}
+
+impl IntoModel<receipt::Receipt> for dto::Receipt {
+    fn into_model(self) -> receipt::Receipt {
+        let dto::Receipt {
+            actual_fee,
+            execution_resources,
+            l2_to_l1_messages,
+            execution_status,
+            transaction_hash,
+            transaction_index,
+        } = self;
+        receipt::Receipt {
+            actual_fee,
+            execution_resources: execution_resources.into_model(),
+            l2_to_l1_messages: l2_to_l1_messages
+                .into_iter()
+                .map(|m| m.into_model())
+                .collect(),
+            execution_status: execution_status.into_model(),
+            transaction_hash,
+            transaction_index,
+        }
+    }
+}
+
+impl IntoModel<receipt::L2ToL1Message> for dto::L2ToL1Message {
+    fn into_model(self) -> receipt::L2ToL1Message {
+        let dto::L2ToL1Message {
+            from_address,
+            payload,
+            to_address,
+        } = self;
+        receipt::L2ToL1Message {
+            from_address,
+            payload,
+            to_address,
+        }
+    }
+}
+
+impl IntoModel<receipt::ExecutionResources> for dto::ExecutionResources {
+    fn into_model(self) -> receipt::ExecutionResources {
+        let dto::ExecutionResources {
+            builtins,
+            n_steps,
+            n_memory_holes,
+            data_availability,
+            total_gas_consumed,
+            l2_gas,
+        } = self;
+        receipt::ExecutionResources {
+            builtins: builtins.into_model(),
+            n_steps,
+            n_memory_holes,
+            data_availability: data_availability.into_model(),
+            total_gas_consumed: total_gas_consumed.into_model(),
+            l2_gas: receipt::L2Gas(l2_gas),
+        }
+    }
+}
+
+impl IntoModel<receipt::L1Gas> for dto::L1Gas {
+    fn into_model(self) -> receipt::L1Gas {
+        let dto::L1Gas {
+            l1_gas,
+            l1_data_gas,
+        } = self;
+        receipt::L1Gas {
+            l1_gas,
+            l1_data_gas,
+        }
+    }
+}
+
+impl IntoModel<receipt::BuiltinCounters> for dto::BuiltinCounters {
+    fn into_model(self) -> receipt::BuiltinCounters {
+        let dto::BuiltinCounters {
+            output,
+            pedersen,
+            range_check,
+            ecdsa,
+            bitwise,
+            ec_op,
+            keccak,
+            poseidon,
+            segment_arena,
+            add_mod,
+            mul_mod,
+            range_check96,
+        } = self;
+        receipt::BuiltinCounters {
+            output,
+            pedersen,
+            range_check,
+            ecdsa,
+            bitwise,
+            ec_op,
+            keccak,
+            poseidon,
+            segment_arena,
+            add_mod,
+            mul_mod,
+            range_check96,
+        }
+    }
+}
+
+impl IntoModel<receipt::ExecutionStatus> for dto::ExecutionStatus {
+    fn into_model(self) -> receipt::ExecutionStatus {
+        match self {
+            dto::ExecutionStatus::Succeeded => receipt::ExecutionStatus::Succeeded,
+            dto::ExecutionStatus::Reverted { reason } => {
+                receipt::ExecutionStatus::Reverted { reason }
+            }
+        }
+    }
+}
+
+impl TryIntoDto<FinalizedBlock> for dto::FinalizedBlock {
+    fn try_into_dto(b: FinalizedBlock) -> anyhow::Result<dto::FinalizedBlock> {
+        let FinalizedBlock {
+            header,
+            state_update,
+            transactions_and_receipts,
+            events,
+        } = b;
+        let res = dto::FinalizedBlock {
+            header: dto::BlockHeader::try_into_dto(header)?,
+            state_update: dto::StateUpdateData::try_into_dto(state_update)?,
+            transactions_and_receipts: transactions_and_receipts
+                .into_iter()
+                .map(|(tx, rcpt)| {
+                    let dtx = TransactionV2::from(&tx);
+                    let drcpt = dto::Receipt::try_into_dto(rcpt)?;
+                    anyhow::Ok((dtx, drcpt))
+                })
+                .collect::<Result<Vec<(TransactionV2, dto::Receipt)>, _>>()?,
+            events,
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<pathfinder_common::BlockHeader> for dto::BlockHeader {
+    fn try_into_dto(h: pathfinder_common::BlockHeader) -> anyhow::Result<dto::BlockHeader> {
+        let pathfinder_common::BlockHeader {
+            hash,
+            parent_hash,
+            number,
+            timestamp,
+            eth_l1_gas_price,
+            strk_l1_gas_price,
+            eth_l1_data_gas_price,
+            strk_l1_data_gas_price,
+            eth_l2_gas_price,
+            strk_l2_gas_price,
+            sequencer_address,
+            starknet_version,
+            event_commitment,
+            state_commitment,
+            transaction_commitment,
+            transaction_count,
+            event_count,
+            l1_da_mode,
+            receipt_commitment,
+            state_diff_commitment,
+            state_diff_length,
+        } = h;
+        let res = dto::BlockHeader {
+            hash,
+            parent_hash,
+            number,
+            timestamp,
+            eth_l1_gas_price,
+            strk_l1_gas_price,
+            eth_l1_data_gas_price,
+            strk_l1_data_gas_price,
+            eth_l2_gas_price,
+            strk_l2_gas_price,
+            sequencer_address,
+            starknet_version: starknet_version.as_u32(),
+            event_commitment,
+            state_commitment,
+            transaction_commitment,
+            transaction_count: transaction_count.try_into()?,
+            event_count: event_count.try_into()?,
+            receipt_commitment,
+            state_diff_commitment,
+            state_diff_length,
+            l1_da_mode,
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<state_update::StateUpdateData> for dto::StateUpdateData {
+    fn try_into_dto(u: state_update::StateUpdateData) -> anyhow::Result<dto::StateUpdateData> {
+        let state_update::StateUpdateData {
+            contract_updates,
+            system_contract_updates,
+            declared_cairo_classes,
+            declared_sierra_classes,
+        } = u;
+        let res = dto::StateUpdateData {
+            contract_updates:
+                dto::LinearMap {
+                    line:
+                        contract_updates
+                            .into_iter()
+                            .map(|(a, u)| anyhow::Ok((a, dto::ContractUpdate::try_into_dto(u)?)))
+                            .collect::<Result<
+                                Vec<(pathfinder_common::ContractAddress, dto::ContractUpdate)>,
+                                _,
+                            >>()?,
+                },
+            system_contract_updates: dto::LinearMap {
+                line: system_contract_updates
+                    .into_iter()
+                    .map(|(a, u)| anyhow::Ok((a, dto::SystemContractUpdate::try_into_dto(u)?)))
+                    .collect::<Result<
+                        Vec<(
+                            pathfinder_common::ContractAddress,
+                            dto::SystemContractUpdate,
+                        )>,
+                        _,
+                    >>()?,
+            },
+            declared_cairo_classes: declared_cairo_classes.into_iter().collect(),
+            declared_sierra_classes: dto::LinearMap {
+                line: declared_sierra_classes.into_iter().collect(),
+            },
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<state_update::ContractUpdate> for dto::ContractUpdate {
+    fn try_into_dto(u: state_update::ContractUpdate) -> anyhow::Result<dto::ContractUpdate> {
+        let state_update::ContractUpdate {
+            storage,
+            class,
+            nonce,
+        } = u;
+        let res = dto::ContractUpdate {
+            storage: dto::LinearMap {
+                line: storage.into_iter().collect(),
+            },
+            class: class
+                .map(dto::ContractClassUpdate::try_into_dto)
+                .transpose()?,
+            nonce,
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<state_update::SystemContractUpdate> for dto::SystemContractUpdate {
+    fn try_into_dto(
+        u: state_update::SystemContractUpdate,
+    ) -> anyhow::Result<dto::SystemContractUpdate> {
+        let state_update::SystemContractUpdate { storage } = u;
+        let res = dto::SystemContractUpdate {
+            storage: dto::LinearMap {
+                line: storage.into_iter().collect(),
+            },
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<state_update::ContractClassUpdate> for dto::ContractClassUpdate {
+    fn try_into_dto(
+        u: state_update::ContractClassUpdate,
+    ) -> anyhow::Result<dto::ContractClassUpdate> {
+        let res = match u {
+            state_update::ContractClassUpdate::Deploy(c) => dto::ContractClassUpdate::Deploy(c),
+            state_update::ContractClassUpdate::Replace(c) => dto::ContractClassUpdate::Replace(c),
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<receipt::Receipt> for dto::Receipt {
+    fn try_into_dto(r: receipt::Receipt) -> anyhow::Result<dto::Receipt> {
+        let receipt::Receipt {
+            actual_fee,
+            execution_resources,
+            l2_to_l1_messages,
+            execution_status,
+            transaction_hash,
+            transaction_index,
+        } = r;
+        let res = dto::Receipt {
+            actual_fee,
+            execution_resources: dto::ExecutionResources::try_into_dto(execution_resources)?,
+            l2_to_l1_messages: l2_to_l1_messages
+                .into_iter()
+                .map(dto::L2ToL1Message::try_into_dto)
+                .collect::<Result<Vec<dto::L2ToL1Message>, _>>()?,
+            execution_status: dto::ExecutionStatus::try_into_dto(execution_status)?,
+            transaction_hash,
+            transaction_index,
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<receipt::L2ToL1Message> for dto::L2ToL1Message {
+    fn try_into_dto(m: receipt::L2ToL1Message) -> anyhow::Result<dto::L2ToL1Message> {
+        let receipt::L2ToL1Message {
+            from_address,
+            payload,
+            to_address,
+        } = m;
+        let res = dto::L2ToL1Message {
+            from_address,
+            payload,
+            to_address,
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<receipt::ExecutionResources> for dto::ExecutionResources {
+    fn try_into_dto(er: receipt::ExecutionResources) -> anyhow::Result<dto::ExecutionResources> {
+        let receipt::ExecutionResources {
+            builtins,
+            n_steps,
+            n_memory_holes,
+            data_availability,
+            total_gas_consumed,
+            l2_gas,
+        } = er;
+        let res = dto::ExecutionResources {
+            builtins: dto::BuiltinCounters::try_into_dto(builtins)?,
+            n_steps,
+            n_memory_holes,
+            data_availability: dto::L1Gas::try_into_dto(data_availability)?,
+            total_gas_consumed: dto::L1Gas::try_into_dto(total_gas_consumed)?,
+            l2_gas: l2_gas.0,
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<receipt::L1Gas> for dto::L1Gas {
+    fn try_into_dto(g: receipt::L1Gas) -> anyhow::Result<dto::L1Gas> {
+        let receipt::L1Gas {
+            l1_gas,
+            l1_data_gas,
+        } = g;
+        let res = dto::L1Gas {
+            l1_gas,
+            l1_data_gas,
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<receipt::BuiltinCounters> for dto::BuiltinCounters {
+    fn try_into_dto(bc: receipt::BuiltinCounters) -> anyhow::Result<dto::BuiltinCounters> {
+        let receipt::BuiltinCounters {
+            output,
+            pedersen,
+            range_check,
+            ecdsa,
+            bitwise,
+            ec_op,
+            keccak,
+            poseidon,
+            segment_arena,
+            add_mod,
+            mul_mod,
+            range_check96,
+        } = bc;
+        let res = dto::BuiltinCounters {
+            output,
+            pedersen,
+            range_check,
+            ecdsa,
+            bitwise,
+            ec_op,
+            keccak,
+            poseidon,
+            segment_arena,
+            add_mod,
+            mul_mod,
+            range_check96,
+        };
+        Ok(res)
+    }
+}
+
+impl TryIntoDto<receipt::ExecutionStatus> for dto::ExecutionStatus {
+    fn try_into_dto(e: receipt::ExecutionStatus) -> anyhow::Result<dto::ExecutionStatus> {
+        let res = match e {
+            receipt::ExecutionStatus::Succeeded => dto::ExecutionStatus::Succeeded,
+            receipt::ExecutionStatus::Reverted { reason } => {
+                dto::ExecutionStatus::Reverted { reason }
+            }
         };
         Ok(res)
     }

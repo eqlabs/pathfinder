@@ -1,5 +1,7 @@
 #[cfg(feature = "p2p")]
 mod sync_handlers;
+use std::path::PathBuf;
+
 use p2p::sync::client::peer_agnostic::Client;
 use pathfinder_common::ChainId;
 use pathfinder_storage::Storage;
@@ -11,8 +13,9 @@ pub async fn start(
     chain_id: ChainId,
     storage: Storage,
     config: P2PSyncConfig,
+    data_directory: PathBuf,
 ) -> (JoinHandle<anyhow::Result<()>>, Option<Client>) {
-    inner::start(chain_id, storage, config)
+    inner::start(chain_id, storage, config, data_directory)
         .await
         .unwrap_or_else(|error| {
             (
@@ -26,6 +29,7 @@ pub async fn start(
 
 #[cfg(feature = "p2p")]
 mod inner {
+    use std::path::PathBuf;
     use std::time::Duration;
 
     use anyhow::Context;
@@ -49,11 +53,14 @@ mod inner {
     use crate::p2p_network::common::{dial_bootnodes, ensure_peer_id_in_multiaddr};
     use crate::p2p_network::identity;
 
+    const EVENT_CHANNEL_SIZE_LIMIT: usize = 1024;
+
     #[tracing::instrument(name = "p2p", skip_all)]
     pub(super) async fn start(
         chain_id: ChainId,
         storage: Storage,
         config: P2PSyncConfig,
+        data_directory: PathBuf,
     ) -> anyhow::Result<(JoinHandle<anyhow::Result<()>>, Option<Client>)> {
         let core_config = p2p::core::Config {
             direct_connection_timeout: config.core.direct_connection_timeout,
@@ -71,6 +78,7 @@ mod inner {
             max_read_bytes_per_sec: config.core.max_read_bytes_per_sec,
             max_write_bytes_per_sec: config.core.max_write_bytes_per_sec,
             kad_name: config.core.kad_name,
+            data_directory,
         };
         let sync_config = p2p::sync::Config {
             stream_timeout: config.stream_timeout,
@@ -126,6 +134,10 @@ mod inner {
         let join_handle = {
             util::task::spawn(
                 async move {
+                    // Keep track of whether we've already emitted a warning about the
+                    // event channel size exceeding the limit, to avoid spamming the logs.
+                    let mut channel_size_warning_emitted = false;
+
                     loop {
                         tokio::select! {
                             _ = &mut main_loop_handle => {
@@ -133,6 +145,17 @@ mod inner {
                                 anyhow::bail!("sync p2p task ended unexpectedly");
                             }
                             Some(event) = p2p_events.recv() => {
+                                // Unbounded channel size monitoring.
+                                let channel_size = p2p_events.len();
+                                if channel_size > EVENT_CHANNEL_SIZE_LIMIT {
+                                    if !channel_size_warning_emitted {
+                                        tracing::warn!(%channel_size, "Event channel size exceeded limit");
+                                        channel_size_warning_emitted = true;
+                                    }
+                                } else {
+                                    channel_size_warning_emitted = false;
+                                }
+
                                 match handle_p2p_event(event, storage.clone()).await {
                                     Ok(()) => {},
                                     Err(e) => { tracing::error!("Failed to handle sync P2P event: {:#}", e) },
@@ -192,6 +215,7 @@ mod inner {
         _: ChainId,
         _: Storage,
         _: P2PSyncConfig,
+        _: PathBuf,
     ) -> anyhow::Result<(JoinHandle<anyhow::Result<()>>, Option<Client>)> {
         Ok((tokio::task::spawn(futures::future::pending()), None))
     }

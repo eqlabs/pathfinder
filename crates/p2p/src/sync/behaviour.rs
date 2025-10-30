@@ -303,4 +303,8 @@ impl ApplicationBehaviour for Behaviour {
             }
         }
     }
+
+    fn domain() -> &'static str {
+        "p2p_sync"
+    }
 }

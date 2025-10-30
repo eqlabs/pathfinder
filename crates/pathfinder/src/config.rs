@@ -17,6 +17,7 @@ use pathfinder_storage::JournalMode;
 use reqwest::Url;
 use util::percentage::Percentage;
 
+pub mod integration_testing;
 pub mod p2p;
 
 #[cfg(feature = "p2p")]
@@ -402,6 +403,24 @@ This should only be enabled for debugging purposes as it adds substantial proces
         value_parser = parse_fee_estimation_epsilon
     )]
     fee_estimation_epsilon: Percentage,
+
+    #[cfg_attr(
+        all(
+            feature = "consensus-integration-tests",
+            feature = "p2p",
+            debug_assertions
+        ),
+        clap(flatten)
+    )]
+    #[cfg_attr(
+        not(all(
+            feature = "consensus-integration-tests",
+            feature = "p2p",
+            debug_assertions
+        )),
+        clap(skip)
+    )]
+    integration_testing: integration_testing::IntegrationTestingCli,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -431,6 +450,7 @@ pub enum RootRpcVersion {
     V07,
     V08,
     V09,
+    V10,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -842,6 +862,9 @@ pub struct Config {
     pub submission_tracker_time_limit: NonZeroU64,
     pub submission_tracker_size_limit: NonZeroUsize,
     pub consensus: Option<ConsensusConfig>,
+    /// Integration testing config, only available on debug builds with `p2p`
+    /// and `consensus-integration-tests` features enabled.
+    pub integration_testing: integration_testing::IntegrationTestingConfig,
 }
 
 pub struct Ethereum {
@@ -1002,14 +1025,14 @@ impl ConsensusConfig {
 
 #[cfg(feature = "p2p")]
 impl ConsensusConfig {
-    fn parse_or_exit(args: ConsensusCli) -> Option<Self> {
-        args.is_consensus_enabled.then(|| {
-            let my_validator_address = args
+    fn parse_or_exit(consensus_cli: ConsensusCli) -> Option<Self> {
+        consensus_cli.is_consensus_enabled.then(|| {
+            let my_validator_address = consensus_cli
                 .my_validator_address
                 .as_ref()
                 .expect("Required if `is_consensus_enabled` is true");
             let unique_validator_addresses = std::iter::once(my_validator_address)
-                .chain(args.validator_addresses.iter())
+                .chain(consensus_cli.validator_addresses.iter())
                 .collect::<HashSet<_>>();
 
             if unique_validator_addresses.len() < 3 {
@@ -1025,15 +1048,16 @@ impl ConsensusConfig {
 
             Self {
                 my_validator_address: ContractAddress(
-                    args.my_validator_address
+                    consensus_cli
+                        .my_validator_address
                         .expect("Required if `is_consensus_enabled` is true"),
                 ),
-                validator_addresses: args
+                validator_addresses: consensus_cli
                     .validator_addresses
                     .into_iter()
                     .map(ContractAddress)
                     .collect(),
-                proposer_addresses: args
+                proposer_addresses: consensus_cli
                     .proposer_addresses
                     .into_iter()
                     .map(ContractAddress)
@@ -1101,6 +1125,9 @@ impl Config {
             submission_tracker_time_limit: cli.submission_tracker_time_limit,
             submission_tracker_size_limit: cli.submission_tracker_size_limit,
             consensus: ConsensusConfig::parse_or_exit(cli.consensus),
+            integration_testing: integration_testing::IntegrationTestingConfig::parse(
+                cli.integration_testing,
+            ),
         }
     }
 }

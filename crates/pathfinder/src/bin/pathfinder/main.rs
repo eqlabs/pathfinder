@@ -2,7 +2,7 @@
 
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -203,13 +203,15 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         )?;
 
     info!(location=?pathfinder_context.database, "Database migrated.");
-    verify_database(
-        &sync_storage,
-        pathfinder_context.network,
-        &pathfinder_context.gateway,
-    )
-    .await
-    .context("Verifying database")?;
+    if !config.integration_testing.is_db_verification_disabled() {
+        verify_database(
+            &sync_storage,
+            pathfinder_context.network,
+            &pathfinder_context.gateway,
+        )
+        .await
+        .context("Verifying database")?;
+    }
 
     sync_storage
         .connection()
@@ -267,6 +269,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             address,
             readiness.clone(),
             sync_state.clone(),
+            &config.data_directory,
         )
         .await
         .context("Starting monitoring task")?;
@@ -283,13 +286,19 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         pathfinder_context.network_id,
         p2p_storage,
         config.sync_p2p.clone(),
+        config.data_directory.clone(),
     )
     .await;
 
     let chain_id = pathfinder_context.network_id;
-    let (consensus_p2p_handle, consensus_p2p_client_and_event_rx) =
-        p2p_network::consensus::start(chain_id, config.consensus_p2p.clone()).await;
+    let (consensus_p2p_handle, consensus_p2p_client_and_event_rx) = p2p_network::consensus::start(
+        chain_id,
+        config.consensus_p2p.clone(),
+        config.data_directory.clone(),
+    )
+    .await;
 
+    let integration_testing_config = config.integration_testing;
     let ConsensusTaskHandles {
         consensus_p2p_event_processing_handle,
         consensus_engine_handle,
@@ -312,6 +321,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
                 client,
                 event_rx,
                 &config.data_directory,
+                // Does nothing in production builds. Used for integration testing only.
+                integration_testing_config.inject_failure_config(),
             )
         } else {
             ConsensusTaskHandles::pending()
@@ -331,6 +342,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         config::RootRpcVersion::V07 => pathfinder_rpc::RpcVersion::V07,
         config::RootRpcVersion::V08 => pathfinder_rpc::RpcVersion::V08,
         config::RootRpcVersion::V09 => pathfinder_rpc::RpcVersion::V09,
+        config::RootRpcVersion::V10 => pathfinder_rpc::RpcVersion::V10,
     };
 
     let rpc_server = pathfinder_rpc::RpcServer::new(config.rpc_address, context, default_version);
@@ -360,7 +372,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     let rpc_handle = if config.is_rpc_enabled {
         match rpc_server
             .with_max_connections(config.max_rpc_connections.get())
-            .spawn()
+            .spawn(&config.data_directory)
             .await
         {
             Ok((rpc_handle, on)) => {
@@ -642,6 +654,7 @@ async fn spawn_monitoring(
     address: SocketAddr,
     readiness: Arc<AtomicBool>,
     sync_state: Arc<SyncState>,
+    data_directory: &Path,
 ) -> anyhow::Result<tokio::task::JoinHandle<()>> {
     let prometheus_handle = PrometheusBuilder::new()
         .add_global_label("network", network)
@@ -655,8 +668,14 @@ async fn spawn_monitoring(
         Err(err) => tracing::error!("Failed to read system time: {:?}", err),
     }
 
-    let (_, handle) =
-        monitoring::spawn_server(address, readiness, sync_state, prometheus_handle).await?;
+    let (_, handle) = monitoring::spawn_server(
+        address,
+        readiness,
+        sync_state,
+        prometheus_handle,
+        data_directory,
+    )
+    .await?;
     Ok(handle)
 }
 
