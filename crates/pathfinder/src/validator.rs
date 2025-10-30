@@ -265,91 +265,6 @@ impl ValidatorTransactionBatchStage {
         })
     }
 
-    pub fn execute_transactions(
-        &mut self,
-        transactions: Vec<p2p_proto::consensus::Transaction>,
-    ) -> anyhow::Result<()> {
-        let _span = tracing::debug_span!(
-            "Validator::execute_transactions",
-            height = %self.block_info.number,
-            batch_size = %transactions.len(),
-        )
-        .entered();
-
-        if transactions.is_empty() {
-            // TODO(validator) is an empty batch valid?
-            return Ok(());
-        }
-
-        let start = Instant::now();
-
-        let txns = transactions
-            .into_iter()
-            .map(try_map_transaction)
-            .collect::<anyhow::Result<Vec<_>>>()?;
-        let (mut common_txns, executor_txns): (Vec<_>, Vec<_>) = txns.into_iter().unzip();
-
-        let txn_hashes = common_txns
-            .par_iter()
-            .map(|t| {
-                if t.verify_hash(self.chain_id) {
-                    Ok(t.hash)
-                } else {
-                    Err(anyhow::anyhow!(
-                        "Transaction hash mismatch, expected: {}",
-                        t.hash
-                    ))
-                }
-            })
-            .collect::<anyhow::Result<Vec<_>>>()
-            .context("Verifying transaction hashes")?;
-
-        let (receipts, mut events): (Vec<_>, Vec<_>) = self
-            .block_executor
-            .get_or_init()?
-            .execute(executor_txns)?
-            .into_iter()
-            .unzip();
-
-        let receipts = receipts
-            .into_iter()
-            .zip(txn_hashes)
-            .map(|(receipt, hash)| Receipt {
-                actual_fee: receipt.actual_fee,
-                execution_resources: receipt.execution_resources,
-                l2_to_l1_messages: receipt.l2_to_l1_messages,
-                execution_status: receipt.execution_status,
-                transaction_hash: hash,
-                transaction_index: receipt.transaction_index,
-            })
-            .collect::<Vec<_>>();
-
-        let start_idx = receipts
-            .first()
-            .expect("At least one transaction")
-            .transaction_index
-            .get();
-        let end_idx = receipts
-            .last()
-            .expect("At least one transaction")
-            .transaction_index
-            .get();
-
-        self.transactions.append(&mut common_txns);
-        self.receipts.extend(receipts);
-        self.events.append(&mut events);
-
-        debug!(
-            "Executed {} transactions ({}..={}) in {} ms",
-            self.transactions.len(),
-            start_idx,
-            end_idx,
-            start.elapsed().as_millis()
-        );
-
-        Ok(())
-    }
-
     pub fn has_proposal_commitment(&self) -> bool {
         self.expected_block_header.is_some()
     }
@@ -401,14 +316,36 @@ impl ValidatorTransactionBatchStage {
             .collect::<anyhow::Result<Vec<_>>>()
             .context("Verifying transaction hashes")?;
 
-        // Create a new executor for this batch
-        let mut batch_executor = BlockExecutor::new(
-            self.chain_id,
-            self.block_info,
-            ETH_FEE_TOKEN_ADDRESS,
-            STRK_FEE_TOKEN_ADDRESS,
-            self.storage.connection().expect("Failed to get connection"),
-        )?;
+        // Create a new executor for this batch with chaining support
+        let mut batch_executor = if self.batch_executors.is_empty() {
+            // First batch - start from initial state
+            BlockExecutor::new(
+                self.chain_id,
+                self.block_info,
+                ETH_FEE_TOKEN_ADDRESS,
+                STRK_FEE_TOKEN_ADDRESS,
+                self.storage
+                    .connection()
+                    .context("Creating database connection")?,
+            )?
+        } else {
+            // Subsequent batches - chain from previous batch's final state
+            let last_executor = self
+                .batch_executors
+                .last()
+                .context("Should have previous executor for chaining")?;
+            let previous_state = last_executor.get_final_state()?;
+            BlockExecutor::new_with_initial_state(
+                self.chain_id,
+                self.block_info,
+                ETH_FEE_TOKEN_ADDRESS,
+                STRK_FEE_TOKEN_ADDRESS,
+                self.storage
+                    .connection()
+                    .context("Creating database connection")?,
+                previous_state,
+            )?
+        };
 
         // Set the correct transaction index
         batch_executor.set_transaction_index(self.transactions.len());

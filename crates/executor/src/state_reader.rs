@@ -17,7 +17,7 @@ mod native;
 pub use native::NativeClassCache;
 mod storage_adapter;
 
-pub(crate) use storage_adapter::concurrent::ConcurrentStorageAdapter;
+pub use storage_adapter::concurrent::ConcurrentStorageAdapter;
 pub(crate) use storage_adapter::rc::RcStorageAdapter;
 
 #[cfg(not(feature = "cairo-native"))]
@@ -32,7 +32,7 @@ impl NativeClassCache {
 }
 
 #[derive(Clone)]
-pub(super) struct PathfinderStateReader<S> {
+pub struct PathfinderStateReader<S> {
     storage_adapter: S,
     pub block_number: Option<BlockNumber>,
     // Classes in pending state have already been downloaded and added to the database.
