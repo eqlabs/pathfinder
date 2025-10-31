@@ -277,6 +277,7 @@ pub fn state_diff(tag: i32) -> StateUpdateData {
         system_contract_updates,
         declared_cairo_classes,
         declared_sierra_classes,
+        migrated_compiled_classes: Default::default(),
     })
     .unwrap()
     .data

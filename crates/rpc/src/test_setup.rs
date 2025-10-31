@@ -40,10 +40,9 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
     );
     let openzeppelin_account_casm_hash =
         casm_hash!("0x0224b815fab6827eb21993e02e45e532e5476af6536dcf1f7085989ba9dc5bf0");
-    tx.insert_sierra_class(
+    tx.insert_sierra_class_definition(
         &openzeppelin_account_sierra_hash,
         openzeppelin_account_class_definition,
-        &openzeppelin_account_casm_hash,
         openzeppelin_account_casm_definition,
     )
     .unwrap();
@@ -53,7 +52,7 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
         include_bytes!("../fixtures/contracts/universal_deployer.json");
     let universal_deployer_class_hash =
         class_hash!("0x06f38fb91ddbf325a0625533576bb6f6eafd9341868a9ec3faa4b01ce6c4f4dc");
-    tx.insert_cairo_class(universal_deployer_class_hash, universal_deployer_definition)
+    tx.insert_cairo_class_definition(universal_deployer_class_hash, universal_deployer_definition)
         .unwrap();
 
     // Declare ERC20 fee token contract class
@@ -61,7 +60,7 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
         starknet_gateway_test_fixtures::class_definitions::ERC20_CONTRACT_DEFINITION_CLASS_HASH;
     let erc20_class_definition =
         starknet_gateway_test_fixtures::class_definitions::ERC20_CONTRACT_DEFINITION;
-    tx.insert_cairo_class(erc20_class_hash, erc20_class_definition)
+    tx.insert_cairo_class_definition(erc20_class_hash, erc20_class_definition)
         .unwrap();
 
     let header = BlockHeader::child_builder(&genesis)

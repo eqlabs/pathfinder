@@ -944,6 +944,7 @@ impl From<StateDiff> for StateUpdateData {
                 .into_iter()
                 .map(|c| (c.class_hash, c.compiled_class_hash))
                 .collect(),
+            migrated_compiled_classes: Default::default(),
         }
     }
 }

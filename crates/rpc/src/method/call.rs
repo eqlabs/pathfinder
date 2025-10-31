@@ -288,7 +288,7 @@ mod tests {
             let block1_number = BlockNumber::GENESIS + 1;
             let block1_hash = BlockHash(felt!("0xb01"));
 
-            tx.insert_cairo_class(CONTRACT_DEFINITION_CLASS_HASH, CONTRACT_DEFINITION)
+            tx.insert_cairo_class_definition(CONTRACT_DEFINITION_CLASS_HASH, CONTRACT_DEFINITION)
                 .unwrap();
 
             let header = BlockHeader::builder()
@@ -427,7 +427,7 @@ mod tests {
 
             let mut connection = context.storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
-            tx.insert_sierra_class(&sierra_hash, sierra_definition, &casm_hash, casm_definition)
+            tx.insert_sierra_class_definition(&sierra_hash, sierra_definition, casm_definition)
                 .unwrap();
             tx.commit().unwrap();
 
@@ -501,7 +501,7 @@ mod tests {
 
             let mut connection = context.storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
-            tx.insert_sierra_class(&sierra_hash, sierra_definition, &casm_hash, casm_definition)
+            tx.insert_sierra_class_definition(&sierra_hash, sierra_definition, casm_definition)
                 .unwrap();
             tx.commit().unwrap();
 
@@ -602,7 +602,7 @@ mod tests {
             let mut connection = context.storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
-            tx.insert_sierra_class(&sierra_hash, sierra_definition, &casm_hash, casm_definition)
+            tx.insert_sierra_class_definition(&sierra_hash, sierra_definition, casm_definition)
                 .unwrap();
 
             let header = BlockHeader::builder()
@@ -754,12 +754,11 @@ mod tests {
             let mut connection = context.storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
-            tx.insert_sierra_class(&sierra_hash, sierra_definition, &casm_hash, casm_definition)
+            tx.insert_sierra_class_definition(&sierra_hash, sierra_definition, casm_definition)
                 .unwrap();
-            tx.insert_sierra_class(
+            tx.insert_sierra_class_definition(
                 &caller_sierra_hash,
                 &caller_sierra_definition,
-                &caller_casm_hash,
                 caller_casm_definition,
             )
             .unwrap();

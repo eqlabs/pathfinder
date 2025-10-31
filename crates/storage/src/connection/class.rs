@@ -11,11 +11,10 @@ use pathfinder_common::{
 use crate::prelude::*;
 
 impl Transaction<'_> {
-    pub fn insert_sierra_class(
+    pub fn insert_sierra_class_definition(
         &self,
         sierra_hash: &SierraHash,
         sierra_definition: &[u8],
-        casm_hash: &CasmHash,
         casm_definition: &[u8],
     ) -> anyhow::Result<()> {
         let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
@@ -37,25 +36,23 @@ impl Transaction<'_> {
             .execute(
                 r"
                 INSERT OR REPLACE INTO casm_definitions
-                (hash, definition, compiled_class_hash)
-                VALUES (:hash, :definition, :compiled_class_hash)
+                (hash, definition)
+                VALUES (:hash, :definition)
                 ",
                 named_params! {
                     ":hash": sierra_hash,
                     ":definition": &casm_definition,
-                    ":compiled_class_hash": casm_hash,
                 },
             )
-            .context("Inserting casm definition")?;
+            .context("Inserting CASM definition")?;
 
         Ok(())
     }
 
-    pub fn update_sierra_class(
+    pub fn update_sierra_class_definition(
         &self,
         sierra_hash: &SierraHash,
         sierra_definition: &[u8],
-        casm_hash: &CasmHash,
         casm_definition: &[u8],
     ) -> anyhow::Result<()> {
         let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
@@ -68,17 +65,19 @@ impl Transaction<'_> {
 
         self.inner()
             .execute(
-                r"UPDATE class_definitions SET definition=? WHERE hash=?",
-                params![&sierra_definition, sierra_hash],
+                r"UPDATE class_definitions SET definition=:definition WHERE hash=:hash",
+                named_params! {
+                    ":definition": &sierra_definition,
+                    ":hash": sierra_hash
+                },
             )
             .context("Updating sierra definition")?;
 
         self.inner()
             .execute(
-                r"UPDATE casm_definitions SET definition=:definition, compiled_class_hash=:compiled_class_hash WHERE hash=:hash",
+                r"INSERT OR REPLACE INTO casm_definitions(hash, definition) VALUES(:hash, :definition)",
                 named_params! {
                     ":definition": &casm_definition,
-                    ":compiled_class_hash": casm_hash,
                     ":hash": sierra_hash,
                 },
             )
@@ -87,7 +86,7 @@ impl Transaction<'_> {
         Ok(())
     }
 
-    pub fn insert_cairo_class(
+    pub fn insert_cairo_class_definition(
         &self,
         cairo_hash: ClassHash,
         definition: &[u8],
@@ -107,7 +106,7 @@ impl Transaction<'_> {
         Ok(())
     }
 
-    pub fn update_cairo_class(
+    pub fn update_cairo_class_definition(
         &self,
         cairo_hash: ClassHash,
         definition: &[u8],
@@ -413,9 +412,10 @@ impl Transaction<'_> {
 
     /// Returns the compiled class hash for a class.
     pub fn casm_hash(&self, class_hash: ClassHash) -> anyhow::Result<Option<CasmHash>> {
-        let mut stmt = self
-            .inner()
-            .prepare_cached("SELECT compiled_class_hash FROM casm_definitions WHERE hash = ?")?;
+        let mut stmt = self.inner().prepare_cached(
+            "SELECT compiled_class_hash FROM casm_class_hashes WHERE hash = ? ORDER BY \
+             block_number DESC LIMIT 1",
+        )?;
         let compiled_class_hash = stmt
             .query_row(params![&class_hash], |row| row.get_casm_hash(0))
             .optional()
@@ -432,51 +432,55 @@ impl Transaction<'_> {
         class_hash: ClassHash,
     ) -> anyhow::Result<Option<CasmHash>> {
         let compiled_class_hash = match block_id {
-        BlockId::Latest => {
-            let mut stmt = self.inner().prepare_cached(
-            r#"SELECT
-                casm_definitions.compiled_class_hash 
-            FROM
-                casm_definitions
-                INNER JOIN class_definitions ON (
-                    class_definitions.hash = casm_definitions.hash
-                )
-            WHERE
-                casm_definitions.hash = ?
-                AND class_definitions.block_number IS NOT NULL"#)?;
-            stmt.query_row(params![&class_hash], |row| row.get_casm_hash(0))
+            BlockId::Latest => {
+                let mut stmt = self.inner().prepare_cached(
+                    r"SELECT
+                        compiled_class_hash 
+                    FROM
+                        casm_class_hashes
+                    WHERE
+                        hash = ?
+                        AND block_number IS NOT NULL
+                    ORDER BY
+                        block_number DESC
+                    LIMIT 1
+                    ",
+                )?;
+                stmt.query_row(params![&class_hash], |row| row.get_casm_hash(0))
+            }
+            BlockId::Number(number) => {
+                let mut stmt = self.inner().prepare_cached(
+                    r"SELECT
+                        compiled_class_hash 
+                    FROM
+                        casm_class_hashes
+                    WHERE
+                        hash = ?
+                        AND block_number <= ?
+                    ORDER BY
+                        block_number DESC
+                    LIMIT 1",
+                )?;
+                stmt.query_row(params![&class_hash, &number], |row| row.get_casm_hash(0))
+            }
+            BlockId::Hash(hash) => {
+                let mut stmt = self.inner().prepare_cached(
+                    r"SELECT
+                        compiled_class_hash 
+                    FROM
+                        casm_class_hashes
+                    WHERE
+                        hash = ?
+                        AND block_number <= (SELECT number FROM block_headers WHERE hash = ?)
+                    ORDER BY
+                        block_number DESC
+                    LIMIT 1",
+                )?;
+                stmt.query_row(params![&class_hash, &hash], |row| row.get_casm_hash(0))
+            }
         }
-        BlockId::Number(number) => {
-            let mut stmt = self.inner().prepare_cached(
-            r#"SELECT
-                casm_definitions.compiled_class_hash 
-            FROM
-                casm_definitions
-                INNER JOIN class_definitions ON (
-                    class_definitions.hash = casm_definitions.hash
-                )
-            WHERE
-                casm_definitions.hash = ?
-                AND class_definitions.block_number <= ?"#)?;
-            stmt.query_row(params![&class_hash, &number], |row| row.get_casm_hash(0))
-        }
-        BlockId::Hash(hash) => {
-            let mut stmt = self.inner().prepare_cached(
-            r#"SELECT
-                casm_definitions.compiled_class_hash 
-            FROM
-                casm_definitions
-                INNER JOIN class_definitions ON (
-                    class_definitions.hash = casm_definitions.hash
-                )
-            WHERE
-                casm_definitions.hash = ?
-                AND class_definitions.block_number <= (SELECT number FROM block_headers WHERE hash = ?)"#)?;
-            stmt.query_row(params![&class_hash, &hash], |row| row.get_casm_hash(0))
-        }
-    }
-    .optional()
-    .context("Querying for class definition")?;
+        .optional()
+        .context("Querying for class definition")?;
 
         Ok(compiled_class_hash)
     }
@@ -527,7 +531,6 @@ impl Transaction<'_> {
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_crypto::Felt;
 
     use super::*;
 
@@ -536,7 +539,9 @@ mod tests {
 
         let definition = br#"{"abi":{"see":"above"},"program":{"huge":"hash"},"entry_points_by_type":{"this might be a":"hash"}}"#;
 
-        transaction.insert_cairo_class(hash, definition).unwrap();
+        transaction
+            .insert_cairo_class_definition(hash, definition)
+            .unwrap();
 
         (
             hash,
@@ -574,7 +579,8 @@ mod tests {
         let cairo_hash = class_hash_bytes!(b"cairo hash");
         let cairo_definition = b"example cairo program";
 
-        tx.insert_cairo_class(cairo_hash, cairo_definition).unwrap();
+        tx.insert_cairo_class_definition(cairo_hash, cairo_definition)
+            .unwrap();
 
         let definition = tx.class_definition(cairo_hash).unwrap().unwrap();
 
@@ -590,33 +596,17 @@ mod tests {
         let tx = connection.transaction().unwrap();
 
         let sierra_hash = sierra_hash_bytes!(b"sierra hash");
-        let casm_hash = casm_hash_bytes!(b"casm hash");
         let sierra_definition = b"example sierra program";
         let casm_definition = b"compiled sierra program";
 
-        tx.insert_sierra_class(&sierra_hash, sierra_definition, &casm_hash, casm_definition)
+        tx.insert_sierra_class_definition(&sierra_hash, sierra_definition, casm_definition)
             .unwrap();
 
-        let casm_result = tx
-            .inner()
-            .query_row(
-                r"SELECT * FROM casm_definitions 
-                    WHERE hash = ?",
-                params![&sierra_hash],
-                |row| {
-                    let casm_hash = row.get_blob("compiled_class_hash").unwrap();
-                    let casm_hash = CasmHash(Felt::from_be_slice(casm_hash).unwrap());
-
-                    let casm_definition = row.get_blob("definition").unwrap().to_vec();
-                    let casm_definition = zstd::decode_all(casm_definition.as_slice()).unwrap();
-
-                    Ok((casm_hash, casm_definition))
-                },
-            )
+        let definition = tx
+            .casm_definition(ClassHash(sierra_hash.0))
+            .unwrap()
             .unwrap();
-
-        assert_eq!(casm_result.0, casm_hash);
-        assert_eq!(casm_result.1, casm_definition);
+        assert_eq!(definition, casm_definition);
 
         let definition = tx
             .class_definition(ClassHash(sierra_hash.0))

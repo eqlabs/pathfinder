@@ -829,21 +829,16 @@ impl ProcessStage for StoreBlock {
              }| {
                 match definition {
                     class_definitions::CompiledClassDefinition::Cairo(cairo) => db
-                        .update_cairo_class(hash, &cairo)
+                        .update_cairo_class_definition(hash, &cairo)
                         .context("Inserting cairo class definition"),
                     class_definitions::CompiledClassDefinition::Sierra {
                         sierra_definition,
                         casm_definition,
                     } => {
                         let sierra_hash = SierraHash(hash.0);
-                        let casm_hash = db
-                            .casm_hash(hash)
-                            .context("Getting casm hash")?
-                            .context("Casm not found")?;
-                        db.update_sierra_class(
+                        db.update_sierra_class_definition(
                             &sierra_hash,
                             &sierra_definition,
-                            &casm_hash,
                             &casm_definition,
                         )
                         .context("Inserting sierra class definition")

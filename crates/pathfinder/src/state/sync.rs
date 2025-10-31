@@ -623,7 +623,7 @@ async fn consumer(
                 }
                 CairoClass { definition, hash } => {
                     tracing::trace!("Inserting new Cairo class with hash: {hash}");
-                    tx.insert_cairo_class(hash, &definition)
+                    tx.insert_cairo_class_definition(hash, &definition)
                         .context("Inserting new cairo class")?;
 
                     tracing::debug!(%hash, "Inserted new Cairo class");
@@ -637,10 +637,9 @@ async fn consumer(
                     casm_hash,
                 } => {
                     tracing::trace!("Inserting new Sierra class with hash: {sierra_hash}");
-                    tx.insert_sierra_class(
+                    tx.insert_sierra_class_definition(
                         &sierra_hash,
                         &sierra_definition,
-                        &casm_hash,
                         &casm_definition,
                     )
                     .context("Inserting sierra class")?;

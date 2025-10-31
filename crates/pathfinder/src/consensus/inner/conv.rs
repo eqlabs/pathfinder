@@ -692,6 +692,8 @@ impl IntoModel<state_update::StateUpdateData> for dto::StateUpdateData {
                 .collect(),
             declared_cairo_classes: declared_cairo_classes.into_iter().collect(),
             declared_sierra_classes: declared_sierra_classes.line.into_iter().collect(),
+            // TODO: add migrated compiled classes to consensus protocol
+            migrated_compiled_classes: Default::default(),
         }
     }
 }
@@ -930,6 +932,7 @@ impl TryIntoDto<state_update::StateUpdateData> for dto::StateUpdateData {
             system_contract_updates,
             declared_cairo_classes,
             declared_sierra_classes,
+            migrated_compiled_classes: _,
         } = u;
         let res = dto::StateUpdateData {
             contract_updates:

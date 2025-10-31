@@ -789,7 +789,7 @@ mod tests {
 
         // Add a class to test that purging a block unsets its block number;
         let cairo_hash = class_hash!("0x1234");
-        tx.insert_cairo_class(cairo_hash, &[]).unwrap();
+        tx.insert_cairo_class_definition(cairo_hash, &[]).unwrap();
         tx.insert_state_update(
             latest.number,
             &StateUpdate::default().with_declared_cairo_class(cairo_hash),

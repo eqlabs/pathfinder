@@ -25,6 +25,7 @@ pub struct StateUpdate {
     pub system_contract_updates: HashMap<ContractAddress, SystemContractUpdate>,
     pub declared_cairo_classes: HashSet<ClassHash>,
     pub declared_sierra_classes: HashMap<SierraHash, CasmHash>,
+    pub migrated_compiled_classes: HashMap<SierraHash, CasmHash>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Dummy)]
@@ -33,6 +34,7 @@ pub struct StateUpdateData {
     pub system_contract_updates: HashMap<ContractAddress, SystemContractUpdate>,
     pub declared_cairo_classes: HashSet<ClassHash>,
     pub declared_sierra_classes: HashMap<SierraHash, CasmHash>,
+    pub migrated_compiled_classes: HashMap<SierraHash, CasmHash>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Dummy)]
@@ -59,6 +61,7 @@ pub struct StateUpdateRef<'a> {
     pub contract_updates: Vec<(&'a ContractAddress, ContractUpdateRef<'a>)>,
     pub system_contract_updates: Vec<(&'a ContractAddress, SystemContractUpdateRef<'a>)>,
     pub declared_sierra_classes: &'a HashMap<SierraHash, CasmHash>,
+    pub migrated_compiled_classes: &'a HashMap<SierraHash, CasmHash>,
 }
 
 pub struct ContractUpdateRef<'a> {
@@ -182,6 +185,11 @@ impl StateUpdate {
 
     pub fn with_declared_cairo_class(mut self, cairo: ClassHash) -> Self {
         self.declared_cairo_classes.insert(cairo);
+        self
+    }
+
+    pub fn with_migrated_compiled_class(mut self, sierra: SierraHash, casm: CasmHash) -> Self {
+        self.migrated_compiled_classes.insert(sierra, casm);
         self
     }
 
@@ -403,6 +411,7 @@ impl From<StateUpdate> for StateUpdateData {
             system_contract_updates: state_update.system_contract_updates,
             declared_cairo_classes: state_update.declared_cairo_classes,
             declared_sierra_classes: state_update.declared_sierra_classes,
+            migrated_compiled_classes: state_update.migrated_compiled_classes,
         }
     }
 }
@@ -437,6 +446,7 @@ impl<'a> From<&'a StateUpdate> for StateUpdateRef<'a> {
                 })
                 .collect(),
             declared_sierra_classes: &state_update.declared_sierra_classes,
+            migrated_compiled_classes: &state_update.migrated_compiled_classes,
         }
     }
 }
@@ -477,6 +487,7 @@ impl<'a> From<&'a StateUpdateData> for StateUpdateRef<'a> {
                 })
                 .collect(),
             declared_sierra_classes: &state_update.declared_sierra_classes,
+            migrated_compiled_classes: &state_update.migrated_compiled_classes,
         }
     }
 }

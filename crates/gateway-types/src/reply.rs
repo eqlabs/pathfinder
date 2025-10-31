@@ -2110,6 +2110,15 @@ impl From<StateUpdate> for pathfinder_common::StateUpdate {
             state_update = state_update.with_declared_sierra_class(class_hash, compiled_class_hash);
         }
 
+        for state_update::MigratedCompiledClass {
+            class_hash,
+            compiled_class_hash,
+        } in gateway.state_diff.migrated_compiled_classes
+        {
+            state_update =
+                state_update.with_migrated_compiled_class(class_hash, compiled_class_hash);
+        }
+
         state_update.declared_cairo_classes = gateway.state_diff.old_declared_contracts;
 
         state_update
@@ -2136,6 +2145,11 @@ pub mod state_update {
         pub declared_classes: Vec<DeclaredSierraClass>,
         pub nonces: HashMap<ContractAddress, ContractNonce>,
         pub replaced_classes: Vec<ReplacedClass>,
+        // Migrated compiled classes have been added in Starknet 0.14.1.
+        // On a Starknet >= 0.14.1 network this field will always be present
+        // (possibly empty), but on older networks it is missing.
+        #[serde(default)]
+        pub migrated_compiled_classes: Vec<MigratedCompiledClass>,
     }
 
     impl StateDiff {
@@ -2212,6 +2226,16 @@ pub mod state_update {
     pub struct ReplacedClass {
         pub address: ContractAddress,
         pub class_hash: ClassHash,
+    }
+
+    /// Describes a Sierra class for which the compiled class hash has been
+    /// migrated to the new CASM hash algorithm using Blake2s. Maps class
+    /// hash to the new compiled class hash.
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+    #[serde(deny_unknown_fields)]
+    pub struct MigratedCompiledClass {
+        pub class_hash: SierraHash,
+        pub compiled_class_hash: CasmHash,
     }
 }
 
@@ -2324,6 +2348,7 @@ mod tests {
     use crate::reply::state_update::{
         DeclaredSierraClass,
         DeployedContract,
+        MigratedCompiledClass,
         ReplacedClass,
         StorageDiff,
     };
@@ -2351,6 +2376,10 @@ mod tests {
             .with_declared_sierra_class(
                 sierra_hash_bytes!(b"sierra class"),
                 casm_hash_bytes!(b"casm hash"),
+            )
+            .with_migrated_compiled_class(
+                sierra_hash_bytes!(b"migrated class"),
+                casm_hash_bytes!(b"migrated casm"),
             )
             .with_contract_nonce(
                 contract_address_bytes!(b"contract 0"),
@@ -2402,6 +2431,10 @@ mod tests {
                 replaced_classes: vec![ReplacedClass {
                     address: contract_address_bytes!(b"contract 0"),
                     class_hash: class_hash_bytes!(b"replaced class"),
+                }],
+                migrated_compiled_classes: vec![MigratedCompiledClass {
+                    class_hash: sierra_hash_bytes!(b"migrated class"),
+                    compiled_class_hash: casm_hash_bytes!(b"migrated casm"),
                 }],
             },
         };
