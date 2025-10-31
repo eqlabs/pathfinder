@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use pathfinder_common::event::Event;
+use pathfinder_common::event::{Event, EventIndex};
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::{BlockHash, BlockNumber, ContractAddress, EventKey, TransactionHash};
 use pathfinder_storage::{AGGREGATE_BLOOM_BLOCK_RANGE_LEN, EVENT_KEY_FILTER_LIMIT};
@@ -314,7 +314,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                                 if sent_updates.contains(&tx_and_finality) {
                                     continue;
                                 }
-                                for event in events {
+                                for (idx, event) in events.iter().enumerate() {
                                     if !params.matches(event) {
                                         continue;
                                     }
@@ -326,6 +326,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                                         block_number: Some(block_number),
                                         transaction_hash: receipt.transaction_hash,
                                         transaction_index: receipt.transaction_index,
+                                        event_index: EventIndex(idx as u64),
                                     };
                                     let notification = Notification::EmittedEvent(
                                         EventWithFinality::new(emitted, TxnFinalityStatus::AcceptedOnL2)
@@ -434,7 +435,7 @@ async fn send_event_updates(
         if !sent_updates_for_block.insert(tx_and_finality) {
             continue;
         }
-        for event in events {
+        for (idx, event) in events.iter().enumerate() {
             if !params.matches(event) {
                 continue;
             }
@@ -446,6 +447,7 @@ async fn send_event_updates(
                 block_number: Some(block_number),
                 transaction_hash: receipt.transaction_hash,
                 transaction_index: receipt.transaction_index,
+                event_index: EventIndex(idx as u64),
             };
             let notification =
                 Notification::EmittedEvent(EventWithFinality::new(emitted, finality_status));

@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
 use anyhow::Context;
+use pathfinder_common::event::EventIndex;
 use pathfinder_common::prelude::*;
 use pathfinder_storage::{EventFilterError, EVENT_KEY_FILTER_LIMIT};
 use tokio::task::JoinHandle;
@@ -520,10 +521,10 @@ fn match_and_fill_events(
     let pending_events = src
         .iter()
         .flat_map(|(receipt, events)| {
-            events.iter().zip(std::iter::repeat((
-                receipt.transaction_hash,
-                receipt.transaction_index,
-            )))
+            events.iter().zip(
+                std::iter::repeat((receipt.transaction_hash, receipt.transaction_index))
+                    .enumerate(),
+            )
         })
         .filter(|(event, _)| match address {
             Some(address) => &event.from_address == address,
@@ -547,7 +548,7 @@ fn match_and_fill_events(
         .skip(skip)
         // We need to take an extra event to determine the return value.
         .take(max_amount + 1)
-        .map(|(event, tx_info)| EmittedEvent {
+        .map(|(event, (idx, tx_info))| EmittedEvent {
             data: event.data.clone(),
             keys: event.keys.clone(),
             from_address: event.from_address,
@@ -555,6 +556,7 @@ fn match_and_fill_events(
             block_number: None,
             transaction_hash: tx_info.0,
             transaction_index: tx_info.1,
+            event_index: EventIndex(idx as u64),
         });
 
     dst.extend(pending_events);
@@ -620,6 +622,7 @@ pub struct EmittedEvent {
     pub block_number: Option<BlockNumber>,
     pub transaction_hash: TransactionHash,
     pub transaction_index: TransactionIndex,
+    pub event_index: EventIndex,
 }
 
 impl From<pathfinder_storage::EmittedEvent> for EmittedEvent {
@@ -632,6 +635,7 @@ impl From<pathfinder_storage::EmittedEvent> for EmittedEvent {
             block_number: Some(event.block_number),
             transaction_hash: event.transaction_hash,
             transaction_index: event.transaction_index,
+            event_index: event.event_index,
         }
     }
 }
@@ -657,6 +661,7 @@ impl SerializeForVersion for EmittedEvent {
         serializer.serialize_field("transaction_hash", &self.transaction_hash)?;
         if serializer.version >= RpcVersion::V10 {
             serializer.serialize_field("transaction_index", &self.transaction_index.get())?;
+            serializer.serialize_field("event_index", &self.event_index.0)?;
         }
 
         serializer.end()
