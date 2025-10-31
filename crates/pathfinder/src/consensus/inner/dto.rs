@@ -19,6 +19,7 @@ pub enum ProposalPart {
     Fin(ProposalFin),
     BlockInfo(BlockInfo),
     TransactionBatch(Vec<TransactionWithClass>),
+    TransactionsFin(TransactionsFin),
     ProposalCommitment(Box<ProposalCommitment>),
 }
 
@@ -51,6 +52,11 @@ pub struct ProposalFin {
 pub struct TransactionWithClass {
     pub variant: TransactionVariantWithClass,
     pub hash: MinimalFelt,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TransactionsFin {
+    pub executed_transaction_count: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

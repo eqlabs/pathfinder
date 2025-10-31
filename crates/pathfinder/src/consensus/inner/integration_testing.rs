@@ -62,27 +62,36 @@ fn debug_fail_on_impl(
 
     let failure_height = config.height;
     let prefix = config.trigger.as_str();
-    let marker_file = data_directory.join(format!("fail_on_{prefix}_{failure_height}"));
+    let path = data_directory.join(format!("fail_on_{prefix}_{failure_height}"));
 
-    if marker_file.exists() {
-        std::fs::remove_file(&marker_file)
-            .unwrap_or_else(|_| panic!("Failed to remove marker file {}", marker_file.display()));
-        tracing::trace!(
-            marker_file=%marker_file.display(),
-            "💥 ❌ Integration testing: removed",
-        );
-    } else {
-        std::fs::File::create(&marker_file)
-            .unwrap_or_else(|_| panic!("Failed to create marker file {}", marker_file.display()));
-        tracing::trace!(
-            marker_file=%marker_file.display(),
-            "💥 ✅ Integration testing: created",
-        );
-        tracing::info!(
-            "💥 💥 Integration testing: exiting process with error code 1 at height \
-             {failure_height} on {prefix}, as configured"
-        );
-        std::process::exit(1);
+    match std::fs::exists(&path) {
+        Ok(true) => (),
+        Ok(false) => {
+            // Create the marker file to indicate that the failure has been
+            // triggered.
+            let file = std::fs::File::create(&path)
+                .unwrap_or_else(|_| panic!("Failed to create marker file {}", path.display()));
+            // Ensure the file is written to disk. We've seen cases of TOCTOU issues here
+            // during test execution.
+            file.sync_all()
+                .unwrap_or_else(|_| panic!("Failed to sync marker file {}", path.display()));
+            tracing::trace!(
+                marker_file=%path.display(),
+                "💥 ✅ Integration testing: created",
+            );
+            tracing::info!(
+                "💥 💥 Integration testing: exiting process with error code 1 at height \
+                 {failure_height} on {prefix}, as configured"
+            );
+            std::process::exit(1);
+        }
+        Err(e) => {
+            panic!(
+                "Failed to check existence of marker file {}, {}",
+                path.display(),
+                e
+            );
+        }
     }
 }
 

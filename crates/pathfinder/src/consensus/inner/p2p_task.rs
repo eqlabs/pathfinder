@@ -143,10 +143,18 @@ pub fn spawn(
                     P2PTaskEvent::P2PEvent(event) => {
                         tracing::info!("🖧  💌 {validator_address} incoming p2p event: {event:?}");
 
-                        if is_outdated_p2p_event(&db_tx, &event)? {
-                            // TODO consider punishing the sender if the event is too old
-                            return Ok(ComputationSuccess::Continue);
-                        }
+                        // TODO this is wrong right now: we may have 3 nodes, from which ours has
+                        // already committed H, while the other 2 have not. If we fall over and
+                        // respawn, the other nodes will still be voting for H, while we are at H+1
+                        // and we are actively discarding votes for H.
+                        //
+                        // Maybe it does make sense to discard old messages but only those that are
+                        // too old for the consensus history window config. And that window needs to
+                        // have nonzero length.
+                        // if _is_outdated_p2p_event(&db_tx, &event)? {
+                        //     // TODO consider punishing the sender if the event is too old
+                        //     return Ok(ComputationSuccess::Continue);
+                        // }
 
                         match event {
                             Event::Proposal(height_and_round, proposal_part) => {
@@ -621,7 +629,7 @@ fn execute_deferred_for_next_height(
 /// Check whether the incoming p2p event is outdated, i.e. it refers to a block
 /// that is already committed to the database. If so, log it and return `true`,
 /// otherwise return `false`.
-fn is_outdated_p2p_event(db_tx: &Transaction<'_>, event: &Event) -> anyhow::Result<bool> {
+fn _is_outdated_p2p_event(db_tx: &Transaction<'_>, event: &Event) -> anyhow::Result<bool> {
     // Ignore messages that refer to already committed blocks.
     let incoming_height = event.height();
     let latest_committed = db_tx.block_number(BlockId::Latest)?;

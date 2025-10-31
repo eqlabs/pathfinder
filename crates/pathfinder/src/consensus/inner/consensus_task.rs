@@ -98,7 +98,7 @@ pub fn spawn(
                         // historical engines which are finalized because
                         // the effect `CancelAllTimeouts` is only triggered
                         // upon a new round or a new height.
-                        0,
+                        2,
                     ),
                 // TODO use a dynamic validator set provider, once fetching the validator set from
                 // the staking contract is implemented. Related issue: https://github.com/eqlabs/pathfinder/issues/2936
@@ -483,6 +483,10 @@ fn create_empty_proposal(
             // TODO empty proposal in the spec actually skips this part,
             // make sure our code handles the case where this part is missing
             ProposalPart::TransactionBatch(vec![]),
+            // executed_transaction_count must be > 0, otherwise the proposal is invalid
+            // ProposalPart::TransactionsFin(TransactionsFin {
+            //     executed_transaction_count: todo!(),
+            // }),
             ProposalPart::ProposalCommitment(proposal_commitment),
             ProposalPart::Fin(ProposalFin {
                 proposal_commitment: proposal_commitment_hash,
