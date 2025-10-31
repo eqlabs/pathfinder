@@ -55,18 +55,31 @@ mod test {
     //   - fail on precommit received.
     #[rstest]
     #[case::happy_path(None)]
-    #[case::fail_on_proposal_init_rx(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::ProposalInitRx }))]
-    #[case::fail_on_batch_info_rx(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::BlockInfoRx }))]
-    #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::TransactionBatchRx }))]
-    #[case::fail_on_transactions_fin_rx(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::TransactionsFinRx }))]
-    #[case::fail_on_proposal_commitment_rx(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::ProposalCommitmentRx }))]
-    #[case::fail_on_proposal_fin_rx(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::ProposalFinRx }))]
-    #[case::fail_on_entire_proposal_rx(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::EntireProposalRx }))]
-    #[case::fail_on_entire_proposal_persisted(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::EntireProposalPersisted }))]
-    #[case::fail_on_prevote_rx(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::PrevoteRx }))]
-    #[case::fail_on_precommit_rx(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::PrecommitRx }))]
-    #[case::fail_on_proposal_decided(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::ProposalDecided }))]
-    #[case::fail_on_proposal_committed(Some(InjectFailureConfig { height: 12, trigger: InjectFailureTrigger::ProposalCommitted }))]
+    // -----
+    // FIXME these pass when run individually, but fail when run together
+    // -----
+    #[case::fail_on_proposal_init_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalInitRx }))]
+    #[case::fail_on_batch_info_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::BlockInfoRx }))]
+    #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::TransactionBatchRx }))]
+    #[case::fail_on_transactions_fin_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::TransactionsFinRx }))]
+    #[case::fail_on_proposal_commitment_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalCommitmentRx }))]
+    #[case::fail_on_proposal_fin_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalFinRx }))]
+    // TODO this sometime passes when run together
+    #[case::fail_on_entire_proposal_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::EntireProposalRx }))]
+    // TODO this sometime passes when run together
+    #[case::fail_on_entire_proposal_persisted(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::EntireProposalPersisted }))]
+    // -----
+    // FIXME All pass up to this point if run individually
+    // -----
+    // TODO this one fails even when run individually [why?]
+    #[case::fail_on_prevote_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::PrevoteRx }))]
+    // TODO this one fails even when run individually [why?]
+    #[case::fail_on_precommit_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::PrecommitRx }))]
+    // TODO this one fails even when run individually, because we don't have proper proposal
+    // recovery yet
+    #[case::fail_on_proposal_decided(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalDecided }))]
+    // TODO this one fails when run together, even though it should pass
+    #[case::fail_on_proposal_committed(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalCommitted }))]
     #[tokio::test]
     async fn consensus_3_nodes(
         #[case] inject_failure: Option<InjectFailureConfig>,
