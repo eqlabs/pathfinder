@@ -1,7 +1,7 @@
 {
   "openrpc": "1.3.2",
   "info": {
-    "version": "0.9.0",
+    "version": "0.10.0-rc.1",
     "title": "StarkNet WebSocket RPC API",
     "license": {}
   },
@@ -338,7 +338,7 @@
     {
       "name": "starknet_subscriptionReorg",
       "description": "Notifies the subscriber of a reorganization of the chain",
-      "summary": "Can be received from subscribing to newHeads, Events, TransactionStatus",
+      "summary": "Can be received from subscribing to newHeads, Events, TransactionStatus, NewTransactionReceipts, NewTransactions",
       "params": [
         {
           "name": "subscription_id",
