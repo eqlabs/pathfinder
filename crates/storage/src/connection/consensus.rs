@@ -180,4 +180,103 @@ impl Transaction<'_> {
 
         Ok(())
     }
+
+    pub fn ensure_consensus_finalized_blocks_table_exists(&self) -> anyhow::Result<()> {
+        self.inner().execute(
+            r"CREATE TABLE IF NOT EXISTS consensus_finalized_blocks (
+                    height      INTEGER NOT NULL,
+                    round       INTEGER NOT NULL,
+                    block       BLOB NOT NULL,
+                    UNIQUE(height, round)
+            )",
+            [],
+        )?;
+        Ok(())
+    }
+
+    pub fn persist_consensus_finalized_block(
+        &self,
+        height: u64,
+        round: u32,
+        block: &[u8], // FinalizedBlock
+    ) -> anyhow::Result<bool> {
+        let count = self.inner().query_row(
+            r"SELECT count(*)
+            FROM consensus_finalized_blocks
+            WHERE height = :height AND round = :round",
+            named_params! {
+                ":height": &height,
+                ":round": &round,
+            },
+            |row| row.get_i64(0),
+        )?;
+
+        if count == 0 {
+            self.inner()
+                .execute(
+                    r"
+                    INSERT INTO consensus_finalized_blocks
+                    (height, round, block)
+                    VALUES (:height, :round, :block)
+                    ",
+                    named_params! {
+                        ":height": &height,
+                        ":round": &round,
+                        ":block": &block,
+                    },
+                )
+                .context("Inserting consensus finalized block")?;
+        } else {
+            self.inner()
+                .execute(
+                    r"
+                    UPDATE consensus_finalized_blocks
+                    SET block = :block
+                    WHERE height = :height AND round = :round",
+                    named_params! {
+                        ":height": &height,
+                        ":round": &round,
+                        ":block": &block,
+                    },
+                )
+                .context("Updating consensus finalized blocks")?;
+        }
+
+        Ok(count > 0)
+    }
+
+    pub fn read_consensus_finalized_block(
+        &self,
+        height: u64,
+        round: u32,
+    ) -> anyhow::Result<Option<Vec<u8>>> {
+        self.inner()
+            .query_row(
+                r"SELECT block
+            FROM consensus_finalized_blocks
+            WHERE height = :height AND round = :round",
+                named_params! {
+                    ":height": &height,
+                    ":round": &round,
+                },
+                |row| row.get_blob(0).map(|x| x.to_vec()),
+            )
+            .optional()
+            .map_err(|e| e.into())
+    }
+
+    /// Always all rounds
+    pub fn remove_consensus_finalized_blocks(&self, height: u64) -> anyhow::Result<()> {
+        self.inner()
+            .execute(
+                r"
+                DELETE FROM consensus_finalized_blocks
+                WHERE height = :height",
+                named_params! {
+                    ":height": &height,
+                },
+            )
+            .context("Deleting consensus finalized blocks")?;
+        Ok(())
+    }
 }

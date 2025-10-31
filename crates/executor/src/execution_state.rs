@@ -38,6 +38,8 @@ mod versions {
     pub(super) const STARKNET_VERSION_0_13_5: StarknetVersion = StarknetVersion::new(0, 13, 5, 0);
 
     pub(super) const STARKNET_VERSION_0_14_0: StarknetVersion = StarknetVersion::new(0, 14, 0, 0);
+
+    pub(super) const STARKNET_VERSION_0_14_1: StarknetVersion = StarknetVersion::new(0, 14, 1, 0);
 }
 
 #[derive(Clone, Debug)]
@@ -111,6 +113,12 @@ impl VersionedConstantsMap {
             &STARKNET_VERSION_0_14_0,
             VersionedConstants::get(&starknet_api::block::StarknetVersion::V0_14_0)
                 .expect("Failed to get versioned constants for 0.14.0"),
+        );
+        Self::insert_default(
+            data,
+            &STARKNET_VERSION_0_14_1,
+            VersionedConstants::get(&starknet_api::block::StarknetVersion::V0_14_1)
+                .expect("Failed to get versioned constants for 0.14.1"),
         );
     }
 
@@ -312,6 +320,7 @@ impl ExecutionState {
                 strk_fee_token_address,
                 eth_fee_token_address,
             },
+            is_l3: false,
         })
     }
 

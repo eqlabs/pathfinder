@@ -19,7 +19,6 @@ use pathfinder_common::{
     BlockNumber,
     BlockTimestamp,
     ChainId,
-    ClassHash,
     EntryPoint,
     EventCommitment,
     L1DataAvailabilityMode,
@@ -36,7 +35,7 @@ use pathfinder_executor::types::{to_starknet_api_transaction, BlockInfoPriceConv
 use pathfinder_executor::{BlockExecutor, ClassInfo, IntoStarkFelt};
 use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
-use pathfinder_storage::{Storage, TransactionBehavior};
+use pathfinder_storage::{Storage, Transaction as DbTransaction};
 use rayon::prelude::*;
 use tracing::debug;
 
@@ -138,10 +137,14 @@ impl ValidatorBlockInfoStage {
             chain_id,
             block_info,
             expected_block_header: None,
-            block_executor: LazyBlockExecutor::new(chain_id, block_info, storage),
+            block_executor: LazyBlockExecutor::new(chain_id, block_info, storage.clone()),
             transactions: Vec::new(),
             receipts: Vec::new(),
             events: Vec::new(),
+            batch_executors: Vec::new(),
+            batch_sizes: Vec::new(),
+            batch_p2p_transactions: Vec::new(),
+            storage,
         })
     }
 }
@@ -155,21 +158,14 @@ pub struct ValidatorTransactionBatchStage {
     transactions: Vec<Transaction>,
     receipts: Vec<Receipt>,
     events: Vec<Vec<Event>>,
-}
-
-/// Checkpoint of execution state after a batch.
-#[derive(Clone, Debug)]
-pub struct ExecutionCheckpoint {
-    /// All transactions executed up to this point
-    pub transactions: Vec<Transaction>,
-    /// All receipts generated up to this point
-    pub receipts: Vec<Receipt>,
-    /// All events generated up to this point
-    pub events: Vec<Vec<Event>>,
-    /// Transaction index for the next batch
-    pub next_txn_idx: usize,
-    /// Declared deprecated classes up to this point
-    pub declared_deprecated_classes: Vec<ClassHash>,
+    /// Per-batch executors for fine-grained rollback
+    batch_executors: Vec<BlockExecutor>,
+    /// Size of each batch (for proper rollback calculations)
+    batch_sizes: Vec<usize>,
+    /// Original p2p transactions per batch (for partial execution)
+    batch_p2p_transactions: Vec<Vec<p2p_proto::consensus::Transaction>>,
+    /// Storage for creating new connections
+    storage: Storage,
 }
 
 enum LazyBlockExecutor {
@@ -187,10 +183,7 @@ enum LazyBlockExecutor {
     Initializing,
     /// This variant holds the initialized `BlockExecutor` and keeps the storage
     /// reference for potential restoration.
-    Initialized {
-        executor: Box<BlockExecutor>,
-        storage: Storage,
-    },
+    Initialized { executor: Box<BlockExecutor> },
 }
 
 impl LazyBlockExecutor {
@@ -231,7 +224,6 @@ impl LazyBlockExecutor {
             .context("Creating BlockExecutor")?;
             *self = LazyBlockExecutor::Initialized {
                 executor: Box::new(be),
-                storage,
             };
             let LazyBlockExecutor::Initialized { executor, .. } = self else {
                 unreachable!("Block executor is initialized");
@@ -252,30 +244,63 @@ impl LazyBlockExecutor {
 }
 
 impl ValidatorTransactionBatchStage {
-    pub fn execute_transactions(
+    /// Create a new ValidatorTransactionBatchStage
+    pub fn new(
+        chain_id: ChainId,
+        block_info: pathfinder_executor::types::BlockInfo,
+        storage: Storage,
+    ) -> anyhow::Result<Self> {
+        Ok(ValidatorTransactionBatchStage {
+            chain_id,
+            block_info,
+            expected_block_header: None,
+            block_executor: LazyBlockExecutor::new(chain_id, block_info, storage.clone()),
+            transactions: Vec::new(),
+            receipts: Vec::new(),
+            events: Vec::new(),
+            batch_executors: Vec::new(),
+            batch_sizes: Vec::new(),
+            batch_p2p_transactions: Vec::new(),
+            storage,
+        })
+    }
+
+    pub fn has_proposal_commitment(&self) -> bool {
+        self.expected_block_header.is_some()
+    }
+
+    /// Get the current number of executed transactions
+    pub fn transaction_count(&self) -> usize {
+        self.transactions.len()
+    }
+
+    /// Execute a batch of transactions, creating a new executor with chained
+    /// initial state
+    pub fn execute_batch(
         &mut self,
         transactions: Vec<p2p_proto::consensus::Transaction>,
     ) -> anyhow::Result<()> {
-        let _span = tracing::debug_span!(
-            "Validator::execute_transactions",
-            height = %self.block_info.number,
-            batch_size = %transactions.len(),
-        )
-        .entered();
-
         if transactions.is_empty() {
-            // TODO(validator) is an empty batch valid?
             return Ok(());
         }
 
-        let start = Instant::now();
+        let batch_size = transactions.len();
+        let batch_index = self.batch_executors.len();
 
+        tracing::debug!(
+            "Executing batch {} with {} transactions",
+            batch_index,
+            batch_size
+        );
+
+        // Convert transactions to executor format
         let txns = transactions
-            .into_iter()
-            .map(try_map_transaction)
+            .iter()
+            .map(|t| try_map_transaction(t.clone()))
             .collect::<anyhow::Result<Vec<_>>>()?;
-        let (mut common_txns, executor_txns): (Vec<_>, Vec<_>) = txns.into_iter().unzip();
+        let (common_txns, executor_txns): (Vec<_>, Vec<_>) = txns.into_iter().unzip();
 
+        // Verify transaction hashes
         let txn_hashes = common_txns
             .par_iter()
             .map(|t| {
@@ -291,84 +316,249 @@ impl ValidatorTransactionBatchStage {
             .collect::<anyhow::Result<Vec<_>>>()
             .context("Verifying transaction hashes")?;
 
-        let (receipts, mut events): (Vec<_>, Vec<_>) = self
-            .block_executor
-            .get_or_init()?
-            .execute(executor_txns)?
-            .into_iter()
-            .unzip();
+        // Create a new executor for this batch with chaining support
+        let mut batch_executor = if self.batch_executors.is_empty() {
+            // First batch - start from initial state
+            BlockExecutor::new(
+                self.chain_id,
+                self.block_info,
+                ETH_FEE_TOKEN_ADDRESS,
+                STRK_FEE_TOKEN_ADDRESS,
+                self.storage
+                    .connection()
+                    .context("Creating database connection")?,
+            )?
+        } else {
+            // Subsequent batches - chain from previous batch's final state
+            let last_executor = self
+                .batch_executors
+                .last()
+                .context("Should have previous executor for chaining")?;
+            let previous_state = last_executor.get_final_state()?;
+            BlockExecutor::new_with_initial_state(
+                self.chain_id,
+                self.block_info,
+                ETH_FEE_TOKEN_ADDRESS,
+                STRK_FEE_TOKEN_ADDRESS,
+                self.storage
+                    .connection()
+                    .context("Creating database connection")?,
+                previous_state,
+            )?
+        };
 
-        let mut receipts = receipts
+        // Set the correct transaction index
+        batch_executor.set_transaction_index(self.transactions.len());
+
+        // Execute the batch transactions in the NEW executor
+        let (receipts, events): (Vec<_>, Vec<_>) =
+            batch_executor.execute(executor_txns)?.into_iter().unzip();
+
+        // Convert receipts to common format with correct sequential transaction indices
+        let base_transaction_index = self.transactions.len();
+        let receipts: Vec<Receipt> = receipts
             .into_iter()
             .zip(txn_hashes)
-            .map(|(receipt, hash)| Receipt {
+            .enumerate()
+            .map(|(batch_idx, (receipt, hash))| Receipt {
+                transaction_hash: hash,
                 actual_fee: receipt.actual_fee,
                 execution_resources: receipt.execution_resources,
                 l2_to_l1_messages: receipt.l2_to_l1_messages,
                 execution_status: receipt.execution_status,
-                transaction_hash: hash,
-                transaction_index: receipt.transaction_index,
+                transaction_index: pathfinder_common::TransactionIndex::new(
+                    (base_transaction_index + batch_idx) as u64,
+                )
+                .expect("Transaction index should be valid"),
             })
-            .collect::<Vec<_>>();
+            .collect();
 
-        let start_idx = receipts
-            .first()
-            .expect("At least one transaction")
-            .transaction_index
-            .get();
-        let end_idx = receipts
-            .last()
-            .expect("At least one transaction")
-            .transaction_index
-            .get();
+        // Store the executor, batch size, and original p2p transactions for potential
+        // rollback
+        self.batch_executors.push(batch_executor);
+        self.batch_sizes.push(batch_size);
+        self.batch_p2p_transactions.push(transactions);
 
-        self.transactions.append(&mut common_txns);
-        self.receipts.append(&mut receipts);
-        self.events.append(&mut events);
+        // Update our state
+        self.transactions.extend(common_txns);
+        self.receipts.extend(receipts);
+        self.events.extend(events);
 
-        debug!(
-            "Executed {} transactions ({}..={}) in {} ms",
-            self.transactions.len(),
-            start_idx,
-            end_idx,
-            start.elapsed().as_millis()
+        // Validate consistency after each batch execution
+        self.validate_batch_consistency()?;
+
+        tracing::debug!(
+            "Executed batch {} with {} transactions, total transactions: {}",
+            batch_index,
+            batch_size,
+            self.transactions.len()
         );
 
         Ok(())
     }
 
-    pub fn has_proposal_commitment(&self) -> bool {
-        self.expected_block_header.is_some()
+    /// Rollback to the state after a specific batch (discard later batches)
+    pub fn rollback_to_batch(&mut self, target_batch: usize) -> anyhow::Result<()> {
+        if target_batch >= self.batch_executors.len() {
+            return Err(anyhow::anyhow!(
+                "Target batch {} exceeds available batches {}",
+                target_batch,
+                self.batch_executors.len()
+            ));
+        }
+
+        // Calculate how many transactions to keep based on the target batch
+        // Sum up the sizes of all batches up to and including the target batch
+        let transactions_to_keep: usize = self.batch_sizes.iter().take(target_batch + 1).sum();
+
+        // Truncate all vectors to match the target batch
+        self.transactions.truncate(transactions_to_keep);
+        self.receipts.truncate(transactions_to_keep);
+        self.events.truncate(transactions_to_keep);
+        self.batch_executors.truncate(target_batch + 1);
+        self.batch_sizes.truncate(target_batch + 1);
+        self.batch_p2p_transactions.truncate(target_batch + 1);
+
+        // Validate consistency after rollback
+        self.validate_batch_consistency()?;
+
+        tracing::debug!(
+            "Rolled back to batch {} - kept {} transactions, {} receipts, {} events",
+            target_batch,
+            self.transactions.len(),
+            self.receipts.len(),
+            self.events.len()
+        );
+
+        Ok(())
     }
 
-    /// Create a checkpoint of the current execution state
-    pub fn create_checkpoint(&self) -> anyhow::Result<ExecutionCheckpoint> {
-        // TODO: Assumption... We should get the actual next transaction
-        // index from the executor rather than just counting stored transactions
-        let next_txn_idx = self.transactions.len();
+    /// Rollback to a specific transaction count
+    pub fn rollback_to_transaction(
+        &mut self,
+        target_transaction_count: usize,
+    ) -> anyhow::Result<()> {
+        let target_batch = self.find_batch_containing_transaction(target_transaction_count)?;
 
-        // TODO: Assumption... We should track declared deprecated classes
-        // during execution to ensure accurate rollback state
-        let declared_deprecated_classes = Vec::new();
+        let cumulative_size_up_to_batch: usize = self.batch_sizes.iter().take(target_batch).sum();
+        let transactions_in_target_batch = target_transaction_count - cumulative_size_up_to_batch;
 
-        Ok(ExecutionCheckpoint {
-            transactions: self.transactions.clone(),
-            receipts: self.receipts.clone(),
-            events: self.events.clone(),
-            next_txn_idx,
-            declared_deprecated_classes,
-        })
+        // If the target transaction count is equal to the batch size, rollback to the
+        // batch
+        if transactions_in_target_batch == self.batch_sizes[target_batch] {
+            self.rollback_to_batch(target_batch)
+        } else {
+            // If the target batch is the first batch, re-execute the partial batch
+            if target_batch == 0 {
+                // Store the original transactions before clearing state
+                let original_p2p_transactions = self.batch_p2p_transactions[0].clone();
+
+                // Clear all state first since we're starting from scratch
+                self.transactions.clear();
+                self.receipts.clear();
+                self.events.clear();
+                self.batch_executors.clear();
+                self.batch_sizes.clear();
+                self.batch_p2p_transactions.clear();
+
+                // Execute the partial batch
+                let partial_transactions =
+                    &original_p2p_transactions[..transactions_in_target_batch + 1];
+                self.execute_batch(partial_transactions.to_vec())?;
+            } else {
+                // Store the original p2p transactions before rollback
+                let original_p2p_transactions = self.batch_p2p_transactions[target_batch].clone();
+
+                // Rollback to the previous batch
+                self.rollback_to_batch(target_batch - 1)?;
+
+                // Execute the partial batch that's left
+                let partial_transactions =
+                    &original_p2p_transactions[..transactions_in_target_batch + 1];
+                self.execute_batch(partial_transactions.to_vec())?;
+            }
+
+            Ok(())
+        }
     }
 
-    /// Extract storage from the current BlockExecutor
-    fn extract_storage_from_executor(&self) -> anyhow::Result<Storage> {
-        match &self.block_executor {
-            LazyBlockExecutor::Uninitialized { storage, .. } => Ok(storage.clone()),
-            LazyBlockExecutor::Initialized { storage, .. } => Ok(storage.clone()),
-            LazyBlockExecutor::Initializing => {
-                Err(anyhow::anyhow!("Cannot extract storage while initializing"))
+    fn find_batch_containing_transaction(&self, target_count: usize) -> anyhow::Result<usize> {
+        let mut cumulative_size = 0;
+        for (batch_idx, &batch_size) in self.batch_sizes.iter().enumerate() {
+            if cumulative_size + batch_size > target_count {
+                return Ok(batch_idx);
+            }
+            cumulative_size += batch_size;
+        }
+        Err(anyhow::anyhow!(
+            "Transaction count {} exceeds total transactions {}",
+            target_count,
+            self.transactions.len()
+        ))
+    }
+
+    /// Finalize with the current state (up to the last executed transaction)
+    pub fn finalize(&mut self) -> anyhow::Result<Option<pathfinder_executor::types::StateDiff>> {
+        if self.batch_executors.is_empty() {
+            return Ok(None);
+        }
+
+        // Take the last batch executor and finalize it
+        let last_executor = self.batch_executors.pop().unwrap();
+        let state_diff = last_executor.finalize()?;
+
+        Ok(Some(state_diff))
+    }
+
+    /// Get the number of batch executors
+    pub fn batch_executor_count(&self) -> usize {
+        self.batch_executors.len()
+    }
+
+    /// Get the number of receipts
+    pub fn receipt_count(&self) -> usize {
+        self.receipts.len()
+    }
+
+    /// Get the number of events
+    pub fn event_count(&self) -> usize {
+        self.events.len()
+    }
+
+    /// Get a reference to the receipts (for testing)
+    #[cfg(test)]
+    pub fn receipts(&self) -> &[Receipt] {
+        &self.receipts
+    }
+
+    /// Validate that batch tracking vectors are consistent
+    fn validate_batch_consistency(&self) -> anyhow::Result<()> {
+        if self.batch_executors.len() != self.batch_sizes.len() {
+            return Err(anyhow::anyhow!(
+                "Batch consistency error: {} executors but {} batch sizes",
+                self.batch_executors.len(),
+                self.batch_sizes.len()
+            ));
+        }
+
+        // Validate that the sum of batch sizes matches the total transaction count
+        let total_batch_transactions: usize = self.batch_sizes.iter().sum();
+        if total_batch_transactions != self.transactions.len() {
+            return Err(anyhow::anyhow!(
+                "Batch size mismatch: batch sizes sum to {} but we have {} transactions",
+                total_batch_transactions,
+                self.transactions.len()
+            ));
+        }
+
+        // Validate that batch sizes are non-zero
+        for (i, &size) in self.batch_sizes.iter().enumerate() {
+            if size == 0 {
+                return Err(anyhow::anyhow!("Invalid batch size: batch {i} has size 0"));
             }
         }
+
+        Ok(())
     }
 
     /// Validate that the validator state is consistent
@@ -398,59 +588,6 @@ impl ValidatorTransactionBatchStage {
                 "BlockExecutor is in invalid initializing state"
             ));
         }
-
-        Ok(())
-    }
-
-    /// Restore from a checkpoint, returning a new stage with restored state
-    pub fn restore_from_checkpoint(
-        self,
-        checkpoint: ExecutionCheckpoint,
-    ) -> anyhow::Result<ValidatorTransactionBatchStage> {
-        // Extract storage from current executor
-        let storage = self.extract_storage_from_executor()?;
-
-        // Create new stage with restored state
-        let restored_stage = ValidatorTransactionBatchStage {
-            chain_id: self.chain_id,
-            block_info: self.block_info,
-            expected_block_header: self.expected_block_header,
-            block_executor: LazyBlockExecutor::new(self.chain_id, self.block_info, storage),
-            transactions: checkpoint.transactions,
-            receipts: checkpoint.receipts,
-            events: checkpoint.events,
-        };
-
-        // Validate state consistency
-        restored_stage.validate_state_consistency()?;
-
-        Ok(restored_stage)
-    }
-
-    /// Restore from a checkpoint (mutable version for BatchExecutionManager)
-    pub fn restore_from_checkpoint_mut(
-        &mut self,
-        checkpoint: ExecutionCheckpoint,
-    ) -> anyhow::Result<()> {
-        // Extract storage from current executor
-        let storage = self.extract_storage_from_executor()?;
-
-        // Create new stage with restored state
-        let restored_stage = ValidatorTransactionBatchStage {
-            chain_id: self.chain_id,
-            block_info: self.block_info,
-            expected_block_header: self.expected_block_header.clone(),
-            block_executor: LazyBlockExecutor::new(self.chain_id, self.block_info, storage),
-            transactions: checkpoint.transactions,
-            receipts: checkpoint.receipts,
-            events: checkpoint.events,
-        };
-
-        // Validate state consistency
-        restored_stage.validate_state_consistency()?;
-
-        // Replace self with the restored stage
-        *self = restored_stage;
 
         Ok(())
     }
@@ -597,7 +734,7 @@ impl ValidatorTransactionBatchStage {
             header,
             state_update,
             transactions,
-            receipts,
+            receipts: receipts.clone(),
             events,
         })
     }
@@ -627,7 +764,11 @@ impl ValidatorFinalizeStage {
     ///
     /// This function performs database operations and is computationally
     /// and IO intensive.
-    pub fn finalize(self, storage: Storage) -> anyhow::Result<FinalizedBlock> {
+    pub fn finalize(
+        self,
+        db_tx: DbTransaction<'_>,
+        storage: Storage,
+    ) -> anyhow::Result<FinalizedBlock> {
         #[cfg(debug_assertions)]
         const VERIFY_HASHES: bool = true;
         #[cfg(not(debug_assertions))]
@@ -650,27 +791,22 @@ impl ValidatorFinalizeStage {
 
         let start = Instant::now();
 
-        let mut db_conn = storage.connection().context("Create database connection")?;
-        let db_txn = db_conn
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .context("Create database transaction")?;
-
         if let Some(parent_number) = header.number.parent() {
-            header.parent_hash = db_txn.block_hash(parent_number.into())?.unwrap_or_default();
+            header.parent_hash = db_tx.block_hash(parent_number.into())?.unwrap_or_default();
         } else {
             // Parent block hash for the genesis block is zero by definition.
             header.parent_hash = BlockHash::ZERO;
         }
 
         let (storage_commitment, class_commitment) = update_starknet_state(
-            &db_txn,
+            &db_tx,
             (&state_update).into(),
             VERIFY_HASHES,
             header.number,
             storage.clone(),
         )?;
 
-        db_txn.commit().context("Committing database transaction")?;
+        db_tx.commit().context("Committing database transaction")?;
 
         debug!(
             "Block {} tries updated in {} ms",

@@ -20,6 +20,7 @@ pub mod v09;
 pub mod v10;
 
 use std::net::SocketAddr;
+use std::path::Path;
 use std::result::Result;
 
 use anyhow::Context;
@@ -30,7 +31,7 @@ use context::RpcContext;
 pub use executor::compose_executor_transaction;
 use http_body::Body;
 pub use jsonrpc::{Notifications, Reorg};
-use pathfinder_common::AllowedOrigins;
+use pathfinder_common::{integration_testing, AllowedOrigins};
 pub use pending::{FinalizedTxData, PendingBlockVariant, PendingData};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
@@ -105,6 +106,7 @@ impl RpcServer {
     /// Starts the HTTP-RPC server.
     pub async fn spawn(
         self,
+        data_directory: &Path,
     ) -> Result<(JoinHandle<anyhow::Result<()>>, SocketAddr), anyhow::Error> {
         use axum::routing::{get, post};
 
@@ -125,6 +127,7 @@ impl RpcServer {
         let addr = listener
             .local_addr()
             .context("Getting local address from listener")?;
+        integration_testing::debug_create_port_marker_file("rpc", addr.port(), data_directory);
 
         async fn handle_middleware_errors(err: axum::BoxError) -> (http::StatusCode, String) {
             use http::StatusCode;
@@ -1074,7 +1077,15 @@ pub mod test_utils {
         .await
         .unwrap();
 
-        PendingData::from_parts(block, state_update, latest.number + 1)
+        // Aggregated state update is the same as state update for pre-confirmed blocks
+        // as there's no pre-latest block.
+        let aggregated_state_update = state_update.clone();
+        PendingData::from_parts(
+            block,
+            state_update,
+            aggregated_state_update,
+            latest.number + 1,
+        )
     }
 
     /// Creates [PendingData] which correctly links to the provided [Storage].
@@ -1396,6 +1407,10 @@ pub mod test_utils {
             })),
         };
 
+        let aggregated_state_update = pre_latest_state_update
+            .clone()
+            .apply(&pre_confirmed_state_update);
+
         // The class definitions must be inserted into the database.
         let pre_confirmed_state_update_copy = pre_confirmed_state_update.clone();
         tokio::task::spawn_blocking(move || {
@@ -1428,6 +1443,7 @@ pub mod test_utils {
         PendingData::from_parts(
             pre_confirmed_block,
             pre_confirmed_state_update,
+            aggregated_state_update,
             latest.number + 2,
         )
     }
@@ -1435,6 +1451,8 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use dto::DeserializeForVersion;
     use serde_json::json;
 
@@ -1472,7 +1490,7 @@ mod tests {
         let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
         let context = RpcContext::for_tests();
         let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V07)
-            .spawn()
+            .spawn(&PathBuf::default())
             .await
             .unwrap();
 
@@ -1709,7 +1727,7 @@ mod tests {
             ));
         }
         let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V07)
-            .spawn()
+            .spawn(&PathBuf::default()) 
             .await
             .unwrap();
 

@@ -85,7 +85,7 @@ pub async fn estimate_message_fee(
 
                 (
                     pending.pending_header(),
-                    Some(pending.pending_state_update()),
+                    Some(pending.aggregated_state_update()),
                 )
             }
             other => {
@@ -103,7 +103,7 @@ pub async fn estimate_message_fee(
         };
 
         // the error isn't in spec for earlier API versions
-        if (rpc_version >= RpcVersion::V09)
+        if (rpc_version >= RpcVersion::V10)
             && !db_tx.contract_exists(input.message.to_address, header.number.into())?
         {
             return Err(EstimateMessageFeeError::ContractNotFound);
@@ -426,7 +426,7 @@ mod tests {
             block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
         };
 
-        let err = super::estimate_message_fee(rpc, input, RpcVersion::V09)
+        let err = super::estimate_message_fee(rpc, input, RpcVersion::V10)
             .await
             .unwrap_err();
         assert_matches!(err, EstimateMessageFeeError::ContractNotFound);
@@ -436,6 +436,7 @@ mod tests {
     #[case::v06(RpcVersion::V06)]
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
     #[tokio::test]
     async fn contract_not_found_late(#[case] version: RpcVersion) {
         let rpc = setup(Setup::Full).await.expect("RPC context");

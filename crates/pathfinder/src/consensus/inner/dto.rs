@@ -4,6 +4,7 @@ use pathfinder_storage::{
     InvokeTransactionV4,
     L1HandlerTransactionV0,
     MinimalFelt,
+    TransactionV2,
 };
 use serde::{Deserialize, Serialize};
 
@@ -107,4 +108,130 @@ pub struct Cairo1EntryPoints {
 pub struct SierraEntryPoint {
     pub index: u64,
     pub selector: MinimalFelt,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub enum PersistentFinalizedBlock {
+    V0(FinalizedBlock),
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct FinalizedBlock {
+    pub header: BlockHeader,
+    pub state_update: StateUpdateData,
+    pub transactions_and_receipts: Vec<(TransactionV2, Receipt)>,
+    pub events: Vec<Vec<pathfinder_common::event::Event>>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct BlockHeader {
+    pub hash: pathfinder_common::BlockHash,
+    pub parent_hash: pathfinder_common::BlockHash,
+    pub number: pathfinder_common::BlockNumber,
+    pub timestamp: pathfinder_common::BlockTimestamp,
+    pub eth_l1_gas_price: pathfinder_common::GasPrice,
+    pub strk_l1_gas_price: pathfinder_common::GasPrice,
+    pub eth_l1_data_gas_price: pathfinder_common::GasPrice,
+    pub strk_l1_data_gas_price: pathfinder_common::GasPrice,
+    pub eth_l2_gas_price: pathfinder_common::GasPrice,
+    pub strk_l2_gas_price: pathfinder_common::GasPrice,
+    pub sequencer_address: pathfinder_common::SequencerAddress,
+    pub starknet_version: u32,
+    pub event_commitment: pathfinder_common::EventCommitment,
+    pub state_commitment: pathfinder_common::StateCommitment,
+    pub transaction_commitment: pathfinder_common::TransactionCommitment,
+    pub transaction_count: u64,
+    pub event_count: u64,
+    pub receipt_commitment: pathfinder_common::ReceiptCommitment,
+    pub state_diff_commitment: pathfinder_common::StateDiffCommitment,
+    pub state_diff_length: u64,
+    pub l1_da_mode: pathfinder_common::L1DataAvailabilityMode,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct StateUpdateData {
+    pub contract_updates: LinearMap<pathfinder_common::ContractAddress, ContractUpdate>,
+    pub system_contract_updates:
+        LinearMap<pathfinder_common::ContractAddress, SystemContractUpdate>,
+    pub declared_cairo_classes: Vec<pathfinder_common::ClassHash>,
+    pub declared_sierra_classes:
+        LinearMap<pathfinder_common::SierraHash, pathfinder_common::CasmHash>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct LinearMap<K, V> {
+    pub line: Vec<(K, V)>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ContractUpdate {
+    pub storage: LinearMap<pathfinder_common::StorageAddress, pathfinder_common::StorageValue>,
+    pub class: Option<ContractClassUpdate>,
+    pub nonce: Option<pathfinder_common::ContractNonce>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub enum ContractClassUpdate {
+    Deploy(pathfinder_common::ClassHash),
+    Replace(pathfinder_common::ClassHash),
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct SystemContractUpdate {
+    pub storage: LinearMap<pathfinder_common::StorageAddress, pathfinder_common::StorageValue>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Receipt {
+    pub actual_fee: pathfinder_common::Fee,
+    pub execution_resources: ExecutionResources,
+    pub l2_to_l1_messages: Vec<L2ToL1Message>,
+    pub execution_status: ExecutionStatus,
+    pub transaction_hash: pathfinder_common::TransactionHash,
+    pub transaction_index: pathfinder_common::TransactionIndex,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct L2ToL1Message {
+    pub from_address: pathfinder_common::ContractAddress,
+    pub payload: Vec<pathfinder_common::L2ToL1MessagePayloadElem>,
+    pub to_address: pathfinder_common::ContractAddress,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ExecutionResources {
+    pub builtins: BuiltinCounters,
+    pub n_steps: u64,
+    pub n_memory_holes: u64,
+    pub data_availability: L1Gas,
+    pub total_gas_consumed: L1Gas,
+    pub l2_gas: u128,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct L1Gas {
+    pub l1_gas: u128,
+    pub l1_data_gas: u128,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct BuiltinCounters {
+    pub output: u64,
+    pub pedersen: u64,
+    pub range_check: u64,
+    pub ecdsa: u64,
+    pub bitwise: u64,
+    pub ec_op: u64,
+    pub keccak: u64,
+    pub poseidon: u64,
+    pub segment_arena: u64,
+    pub add_mod: u64,
+    pub mul_mod: u64,
+    pub range_check96: u64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub enum ExecutionStatus {
+    Succeeded,
+    Reverted { reason: String },
 }
