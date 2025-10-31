@@ -113,7 +113,7 @@ mod enabled {
             .next()
             .ok_or_else(|| "Expected inject failure trigger".to_string())?
             .parse()
-            .map_err(|e| format!("Expected inject failure trigger: {}", e))?;
+            .map_err(|e| format!("Expected inject failure trigger: {e}"))?;
 
         Ok(InjectFailureConfig { height, trigger })
     }

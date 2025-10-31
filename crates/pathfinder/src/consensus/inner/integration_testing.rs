@@ -93,14 +93,28 @@ pub fn debug_fail_on_proposal_part(
     data_directory: &Path,
 ) {
     debug_fail_on(
-        |trigger| match (proposal_part, trigger) {
-            (ProposalPart::Init(_), InjectFailureTrigger::ProposalInitRx)
-            | (ProposalPart::BlockInfo(_), InjectFailureTrigger::BlockInfoRx)
-            | (ProposalPart::TransactionBatch(_), InjectFailureTrigger::TransactionBatchRx)
-            | (ProposalPart::ProposalCommitment(_), InjectFailureTrigger::ProposalCommitmentRx)
-            | (ProposalPart::TransactionsFin(_), InjectFailureTrigger::TransactionsFinRx)
-            | (ProposalPart::Fin(_), InjectFailureTrigger::ProposalFinRx) => true,
-            _ => false,
+        |trigger| {
+            matches!(
+                (proposal_part, trigger),
+                (ProposalPart::Init(_), InjectFailureTrigger::ProposalInitRx)
+                    | (
+                        ProposalPart::BlockInfo(_),
+                        InjectFailureTrigger::BlockInfoRx
+                    )
+                    | (
+                        ProposalPart::TransactionBatch(_),
+                        InjectFailureTrigger::TransactionBatchRx
+                    )
+                    | (
+                        ProposalPart::ProposalCommitment(_),
+                        InjectFailureTrigger::ProposalCommitmentRx
+                    )
+                    | (
+                        ProposalPart::TransactionsFin(_),
+                        InjectFailureTrigger::TransactionsFinRx
+                    )
+                    | (ProposalPart::Fin(_), InjectFailureTrigger::ProposalFinRx)
+            )
         },
         height,
         config,
@@ -153,12 +167,17 @@ pub fn debug_fail_on_vote(
     data_directory: &Path,
 ) {
     debug_fail_on(
-        |trigger| match (trigger, vote.vote_type) {
-            (InjectFailureTrigger::PrevoteRx, p2p_proto::consensus::VoteType::Prevote)
-            | (InjectFailureTrigger::PrecommitRx, p2p_proto::consensus::VoteType::Precommit) => {
-                true
-            }
-            _ => false,
+        |trigger| {
+            matches!(
+                (trigger, vote.vote_type),
+                (
+                    InjectFailureTrigger::PrevoteRx,
+                    p2p_proto::consensus::VoteType::Prevote
+                ) | (
+                    InjectFailureTrigger::PrecommitRx,
+                    p2p_proto::consensus::VoteType::Precommit
+                )
+            )
         },
         vote.block_number,
         inject_failure,
