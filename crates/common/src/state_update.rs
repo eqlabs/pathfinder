@@ -25,6 +25,7 @@ pub struct StateUpdate {
     pub system_contract_updates: HashMap<ContractAddress, SystemContractUpdate>,
     pub declared_cairo_classes: HashSet<ClassHash>,
     pub declared_sierra_classes: HashMap<SierraHash, CasmHash>,
+    pub migrated_compiled_classes: HashMap<SierraHash, CasmHash>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Dummy)]
@@ -182,6 +183,11 @@ impl StateUpdate {
 
     pub fn with_declared_cairo_class(mut self, cairo: ClassHash) -> Self {
         self.declared_cairo_classes.insert(cairo);
+        self
+    }
+
+    pub fn with_migrated_compiled_class(mut self, sierra: SierraHash, casm: CasmHash) -> Self {
+        self.migrated_compiled_classes.insert(sierra, casm);
         self
     }
 

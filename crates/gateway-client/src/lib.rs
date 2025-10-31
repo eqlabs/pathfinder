@@ -1207,6 +1207,23 @@ mod tests {
         }
 
         #[test_log::test(tokio::test)]
+        async fn success_0_14_1_with_migrated_compiled_classes() {
+            let (_jh, url) = setup([(
+                "/feeder_gateway/get_state_update?blockNumber=3077642&includeBlock=true",
+                (
+                    starknet_gateway_test_fixtures::v0_14_1::state_update_with_block::SEPOLIA_INTEGRATION_3077642,
+                    200,
+                ),
+            )]);
+            let client = Client::for_test(url).unwrap();
+
+            client
+                .state_update_with_block(BlockNumber::new_or_panic(3077642))
+                .await
+                .unwrap();
+        }
+
+        #[test_log::test(tokio::test)]
         async fn block_not_found() {
             const BLOCK_NUMBER: u64 = 99999999;
             let (_jh, url) = setup([(

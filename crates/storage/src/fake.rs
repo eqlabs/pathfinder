@@ -445,6 +445,7 @@ pub mod generate {
                                 .collect()
                         }
                     },
+                    migrated_compiled_classes: Default::default(),
                 }),
                 cairo_defs: cairo_defs.into_iter().collect(),
                 sierra_defs: sierra_defs
