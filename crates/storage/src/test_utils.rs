@@ -1,4 +1,4 @@
-use pathfinder_common::event::Event;
+use pathfinder_common::event::{Event, EventIndex};
 use pathfinder_common::macro_prelude::*;
 use pathfinder_common::receipt::{ExecutionResources, L1Gas, Receipt};
 use pathfinder_common::transaction::{
@@ -184,6 +184,7 @@ pub(crate) fn extract_events(
                     block_number: block.number,
                     transaction_hash: txn.hash,
                     transaction_index: rcpt.transaction_index,
+                    event_index: EventIndex(0),
                 })
             } else {
                 None

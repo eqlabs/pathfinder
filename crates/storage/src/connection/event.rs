@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
-use pathfinder_common::event::Event;
+use pathfinder_common::event::{Event, EventIndex};
 use pathfinder_common::prelude::*;
 use pathfinder_common::BlockId;
 use rusqlite::types::Value;
@@ -38,6 +38,7 @@ pub struct EmittedEvent {
     pub block_number: BlockNumber,
     pub transaction_hash: TransactionHash,
     pub transaction_index: TransactionIndex,
+    pub event_index: EventIndex,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -208,7 +209,11 @@ impl Transaction<'_> {
 
             let events = events
                 .into_iter()
-                .flat_map(|(tx_info, events)| events.into_iter().zip(std::iter::repeat(tx_info)))
+                .flat_map(|(tx_info, events)| {
+                    events
+                        .into_iter()
+                        .zip(std::iter::repeat(tx_info).enumerate())
+                })
                 .filter(|(event, _)| match constraints.contract_address {
                     Some(address) => event.from_address == address,
                     None => true,
@@ -228,7 +233,7 @@ impl Transaction<'_> {
                         .zip(keys.iter())
                         .all(|(key, filter)| filter.is_empty() || filter.contains(key))
                 })
-                .map(|(event, tx_info)| EmittedEvent {
+                .map(|(event, (idx, tx_info))| EmittedEvent {
                     data: event.data.clone(),
                     keys: event.keys.clone(),
                     from_address: event.from_address,
@@ -236,6 +241,7 @@ impl Transaction<'_> {
                     block_number: block_header.number,
                     transaction_hash: tx_info.0,
                     transaction_index: tx_info.1,
+                    event_index: EventIndex(idx as u64),
                 });
 
             emitted_events.extend(events);
@@ -337,7 +343,11 @@ impl Transaction<'_> {
 
             let events = events
                 .into_iter()
-                .flat_map(|(tx_info, events)| events.into_iter().zip(std::iter::repeat(tx_info)))
+                .flat_map(|(tx_info, events)| {
+                    events
+                        .into_iter()
+                        .zip(std::iter::repeat(tx_info).enumerate())
+                })
                 .filter(|(event, _)| match constraints.contract_address {
                     Some(address) => event.from_address == address,
                     None => true,
@@ -363,7 +373,7 @@ impl Transaction<'_> {
                     should_skip
                 })
                 .take(events_required)
-                .map(|(event, tx_info)| EmittedEvent {
+                .map(|(event, (idx, tx_info))| EmittedEvent {
                     data: event.data.clone(),
                     keys: event.keys.clone(),
                     from_address: event.from_address,
@@ -371,6 +381,7 @@ impl Transaction<'_> {
                     block_number: block_header.number,
                     transaction_hash: tx_info.0,
                     transaction_index: tx_info.1,
+                    event_index: EventIndex(idx as u64),
                 });
 
             emitted_events.extend(events);
