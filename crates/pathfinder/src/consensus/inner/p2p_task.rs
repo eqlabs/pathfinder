@@ -11,6 +11,7 @@
 //!    be proposed by us in another round at the same height
 
 use std::collections::{BTreeMap, HashMap};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -32,7 +33,8 @@ use pathfinder_consensus::{
 use pathfinder_storage::{Storage, Transaction, TransactionBehavior};
 use tokio::sync::mpsc;
 
-use super::{ConsensusTaskEvent, P2PTaskEvent};
+use super::{integration_testing, ConsensusTaskEvent, P2PTaskEvent};
+use crate::config::integration_testing::InjectFailureConfig;
 use crate::consensus::inner::batch_execution::{
     should_defer_execution,
     BatchExecutionManager,
@@ -75,6 +77,9 @@ pub fn spawn(
     tx_to_consensus: mpsc::Sender<ConsensusTaskEvent>,
     mut rx_from_consensus: mpsc::Receiver<P2PTaskEvent>,
     consensus_storage: Storage,
+    data_directory: &Path,
+    // Does nothing in production builds. Used for integration testing only.
+    inject_failure: Option<InjectFailureConfig>,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     // TODO validators are long-lived but not persisted
     let validator_cache = ValidatorCache::new();
@@ -87,6 +92,8 @@ pub fn spawn(
     // Keep track of whether we've already emitted a warning about the
     // event channel size exceeding the limit, to avoid spamming the logs.
     let mut channel_size_warning_emitted = false;
+
+    let data_directory = data_directory.to_path_buf();
 
     util::task::spawn(async move {
         let readonly_storage = storage.clone();
@@ -158,9 +165,18 @@ pub fn spawn(
                                     readonly_storage.clone(),
                                     &cons_tx,
                                     &mut batch_execution_manager_inner,
+                                    &data_directory,
+                                    inject_failure,
                                 );
                                 match result {
                                     Ok(Some(commitment)) => {
+                                        // Does nothing in production builds.
+                                        integration_testing::debug_fail_on_entire_proposal_rx(
+                                            height_and_round.height(),
+                                            inject_failure,
+                                            &data_directory,
+                                        );
+
                                         anyhow::Ok(ComputationSuccess::IncomingProposalCommitment(
                                             height_and_round,
                                             commitment,
@@ -186,7 +202,16 @@ pub fn spawn(
                                 }
                             }
 
-                            Event::Vote(vote) => Ok(ComputationSuccess::EventVote(vote)),
+                            Event::Vote(vote) => {
+                                // Does nothing in production builds.
+                                integration_testing::debug_fail_on_vote(
+                                    &vote,
+                                    inject_failure,
+                                    &data_directory,
+                                );
+
+                                Ok(ComputationSuccess::EventVote(vote))
+                            }
                         }
                     }
 
@@ -350,6 +375,14 @@ pub fn spawn(
 
                             commit_finalized_block(&db_tx, finalized_block.clone())?;
                             db_tx.commit().context("Committing database transaction")?;
+
+                            // Does nothing in production builds.
+                            integration_testing::debug_fail_on_proposal_committed(
+                                height_and_round.height(),
+                                inject_failure,
+                                &data_directory,
+                            );
+
                             db_tx = db_conn
                                 .transaction()
                                 .context("Create unused database transaction")?;
@@ -382,6 +415,7 @@ pub fn spawn(
                                 height_and_round.height()
                             );
                             remove_proposal_parts(&cons_tx, height_and_round.height(), None)?;
+
                             anyhow::Ok(())
                         }?;
 
@@ -413,6 +447,13 @@ pub fn spawn(
             match success {
                 ComputationSuccess::Continue => (),
                 ComputationSuccess::IncomingProposalCommitment(height_and_round, commitment) => {
+                    // Does nothing in production builds.
+                    integration_testing::debug_fail_on_entire_proposal_persisted(
+                        height_and_round.height(),
+                        inject_failure,
+                        &data_directory,
+                    );
+
                     send_proposal_to_consensus(&tx_to_consensus, height_and_round, commitment)
                         .await;
                 }
@@ -676,6 +717,8 @@ fn handle_incoming_proposal_part(
     storage: Storage,
     cons_tx: &Transaction<'_>,
     batch_execution_manager: &mut BatchExecutionManager,
+    data_directory: &Path,
+    inject_failure_config: Option<InjectFailureConfig>,
 ) -> anyhow::Result<Option<ProposalCommitmentWithOrigin>> {
     let mut parts = foreign_proposal_parts(
         cons_tx,
@@ -684,6 +727,14 @@ fn handle_incoming_proposal_part(
         &validator_address,
     )?
     .unwrap_or_default();
+
+    // Does nothing in production builds.
+    integration_testing::debug_fail_on_proposal_part(
+        &proposal_part,
+        height_and_round.height(),
+        inject_failure_config,
+        data_directory,
+    );
 
     match proposal_part {
         ProposalPart::Init(ref prop_init) => {

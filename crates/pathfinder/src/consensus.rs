@@ -5,7 +5,8 @@ use pathfinder_common::{ChainId, ConsensusInfo};
 use pathfinder_storage::Storage;
 use tokio::sync::{mpsc, watch};
 
-use crate::config::{integration_testing, ConsensusConfig};
+use crate::config::integration_testing::InjectFailureConfig;
+use crate::config::ConsensusConfig;
 
 #[cfg(feature = "p2p")]
 mod inner;
@@ -39,7 +40,7 @@ pub fn start(
     p2p_event_rx: mpsc::UnboundedReceiver<Event>,
     data_directory: &Path,
     // Does nothing in production builds. Used for integration testing only.
-    inject_failure_config: integration_testing::InjectFailureConfig,
+    inject_failure_config: Option<InjectFailureConfig>,
 ) -> ConsensusTaskHandles {
     inner::start(
         config,
@@ -66,7 +67,7 @@ mod inner {
         _: Client,
         _: mpsc::UnboundedReceiver<Event>,
         _: &Path,
-        _: integration_testing::InjectFailureConfig,
+        _: Option<InjectFailureConfig>,
     ) -> ConsensusTaskHandles {
         ConsensusTaskHandles::pending()
     }

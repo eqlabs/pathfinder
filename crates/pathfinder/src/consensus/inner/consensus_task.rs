@@ -52,7 +52,8 @@ use tokio::sync::{mpsc, watch};
 
 use super::fetch_proposers::L2ProposerSelector;
 use super::fetch_validators::L2ValidatorSetProvider;
-use super::{ConsensusTaskEvent, ConsensusValue, HeightExt, P2PTaskEvent};
+use super::{integration_testing, ConsensusTaskEvent, ConsensusValue, HeightExt, P2PTaskEvent};
+use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
 use crate::state::block_hash::{
     calculate_event_commitment,
@@ -60,8 +61,6 @@ use crate::state::block_hash::{
     calculate_transaction_commitment,
 };
 use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage};
-
-mod integration_testing;
 
 #[allow(clippy::too_many_arguments)]
 pub fn spawn(
@@ -75,7 +74,7 @@ pub fn spawn(
     fake_proposals_storage: Storage,
     data_directory: &Path,
     // Does nothing in production builds. Used for integration testing only.
-    inject_failure: crate::config::integration_testing::InjectFailureConfig,
+    inject_failure: Option<InjectFailureConfig>,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     let data_directory = data_directory.to_path_buf();
 
@@ -249,10 +248,10 @@ pub fn spawn(
                                  round {round}",
                             );
 
-                            // Does nothing in production builds. Used for integration testing only.
-                            integration_testing::debug_fail_on(
+                            // Does nothing in production builds.
+                            integration_testing::debug_fail_on_decided(
                                 height,
-                                inject_failure.on_proposal_decided,
+                                inject_failure,
                                 &data_directory,
                             );
 
@@ -327,16 +326,6 @@ pub fn spawn(
                         // consensus engine is already started for this new height carried in those
                         // messages.
                         ConsensusCommand::Proposal(_) | ConsensusCommand::Vote(_) => {
-                            if let ConsensusCommand::Proposal(_) = &cmd {
-                                // Does nothing in production builds. Used for
-                                // integration testing only.
-                                integration_testing::debug_fail_on(
-                                    cmd_height,
-                                    inject_failure.on_proposal_rx,
-                                    &data_directory,
-                                )
-                            }
-
                             // TODO catch up with the current height of the consensus network using
                             // sync, for the time being just observe the height in the rebroadcasted
                             // votes or in the proposals.
