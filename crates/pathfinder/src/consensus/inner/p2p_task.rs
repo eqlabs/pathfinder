@@ -539,7 +539,9 @@ fn execute_deferred_for_next_height(
 
         let (validator, opt_commitment) = {
             // Execute deferred transactions first.
-            validator.execute_transactions(deferred.transactions)?;
+            if !deferred.transactions.is_empty() {
+                validator.execute_batch(deferred.transactions)?;
+            }
 
             if let Some(commitment) = deferred.commitment {
                 // We've executed all transactions at the height, we can now
@@ -924,7 +926,9 @@ fn defer_or_execute_proposal_fin(
         let deferred_txns_len = deferred.as_ref().map_or(0, |d| d.transactions.len());
 
         if let Some(DeferredExecution { transactions, .. }) = deferred {
-            validator.execute_transactions(transactions)?;
+            if !transactions.is_empty() {
+                validator.execute_batch(transactions)?;
+            }
         }
         let validator = validator.consensus_finalize(commitment.proposal_commitment)?;
 

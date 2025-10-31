@@ -67,7 +67,6 @@ enum Command {
         ClassHash,
         SyncSender<Result<Option<CasmHash>, StateError>>,
     ),
-    Exit,
 }
 
 impl ConcurrentStorageAdapter {
@@ -77,12 +76,6 @@ impl ConcurrentStorageAdapter {
         util::task::spawn_std(move |cancellation_token| db_thread(db_conn, rx, cancellation_token));
 
         Self { tx }
-    }
-}
-
-impl Drop for ConcurrentStorageAdapter {
-    fn drop(&mut self) {
-        _ = self.tx.send(Command::Exit);
     }
 }
 
@@ -255,7 +248,6 @@ fn db_thread(
         };
 
         match command {
-            Command::Exit => return,
             Command::BlockHash(block_id, sender) => {
                 sender
                     .send(db_tx.block_hash(block_id))

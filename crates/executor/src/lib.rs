@@ -26,8 +26,13 @@ pub use class::{parse_casm_definition, parse_deprecated_class_definition};
 pub use error::{CallError, TransactionExecutionError};
 pub use error_stack::{CallFrame, ErrorStack, Frame};
 pub use estimate::estimate;
-pub use execution_state::{ExecutionState, L1BlobDataAvailability, VersionedConstantsMap};
+pub use execution_state::{
+    ExecutionState,
+    L1BlobDataAvailability,
+    PathfinderExecutionState,
+    VersionedConstantsMap,
+};
 pub use felt::{IntoFelt, IntoStarkFelt};
 pub use simulate::{simulate, trace, TraceCache};
 pub use starknet_api::contract_class::ClassInfo;
-pub use state_reader::NativeClassCache;
+pub use state_reader::{ConcurrentStorageAdapter, NativeClassCache};

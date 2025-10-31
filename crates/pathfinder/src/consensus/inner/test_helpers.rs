@@ -4,12 +4,15 @@
 //! and testing consensus scenarios with actual transaction execution.
 
 use p2p_proto::common::{Address, L1DataAvailabilityMode};
-use p2p_proto::consensus::{BlockInfo, ProposalInit, Transaction};
+use p2p_proto::consensus as proto_consensus;
 use pathfinder_common::{ChainId, ContractAddress};
 use pathfinder_crypto::Felt;
 
 /// Creates a realistic L1Handler transaction for testing
-pub fn create_l1_handler_transaction(index: usize, chain_id: ChainId) -> Transaction {
+pub fn create_l1_handler_transaction(
+    index: usize,
+    chain_id: ChainId,
+) -> proto_consensus::Transaction {
     let nonce = Felt::from_hex_str(&format!("0x{index}")).unwrap();
     let address = Felt::from_hex_str(&format!("0x{index:x}")).unwrap();
     let entry_point_selector = Felt::from_hex_str(&format!("0x{index}")).unwrap();
@@ -35,7 +38,7 @@ pub fn create_l1_handler_transaction(index: usize, chain_id: ChainId) -> Transac
 
     let hash = l1_handler.calculate_hash(chain_id);
 
-    Transaction {
+    proto_consensus::Transaction {
         transaction_hash: p2p_proto::common::Hash(hash.0),
         txn,
     }
@@ -46,7 +49,7 @@ pub fn create_transaction_batch(
     start_index: usize,
     count: usize,
     chain_id: ChainId,
-) -> Vec<Transaction> {
+) -> Vec<proto_consensus::Transaction> {
     (start_index..start_index + count)
         .map(|i| create_l1_handler_transaction(i, chain_id))
         .collect()
@@ -58,22 +61,22 @@ pub fn create_test_proposal(
     height: u64,
     round: u32,
     proposer: ContractAddress,
-    _transactions: Vec<Transaction>,
-) -> (ProposalInit, BlockInfo) {
+    _transactions: Vec<proto_consensus::Transaction>,
+) -> (proto_consensus::ProposalInit, proto_consensus::BlockInfo) {
     let proposer_address = Address(proposer.0);
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
 
-    let proposal_init = ProposalInit {
+    let proposal_init = proto_consensus::ProposalInit {
         block_number: height,
         round,
         valid_round: None,
         proposer: proposer_address,
     };
 
-    let block_info = BlockInfo {
+    let block_info = proto_consensus::BlockInfo {
         block_number: height,
         timestamp,
         builder: proposer_address,
@@ -85,13 +88,6 @@ pub fn create_test_proposal(
     };
 
     (proposal_init, block_info)
-}
-
-/// Creates a TransactionsFin message
-pub fn create_transactions_fin(executed_count: u32) -> p2p_proto::consensus::TransactionsFin {
-    p2p_proto::consensus::TransactionsFin {
-        executed_transaction_count: executed_count as u64,
-    }
 }
 
 #[cfg(test)]
@@ -108,7 +104,7 @@ mod tests {
 
         // Verify it's an L1Handler transaction
         match tx.txn {
-            p2p_proto::consensus::TransactionVariant::L1HandlerV0(_) => {}
+            proto_consensus::TransactionVariant::L1HandlerV0(_) => {}
             _ => panic!("Expected L1Handler transaction"),
         }
     }

@@ -11,7 +11,7 @@ use starknet_api::StarknetApiError;
 use super::felt::{IntoFelt, IntoStarkFelt};
 
 #[derive(Clone)]
-pub(super) struct PendingStateReader<S: StateReader + Clone> {
+pub struct PendingStateReader<S: StateReader + Clone> {
     state: S,
     pending_update: Option<Arc<StateUpdate>>,
 }
