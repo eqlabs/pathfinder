@@ -13,9 +13,12 @@ use std::path::Path;
 pub fn debug_create_port_marker_file(_name: &str, _value: u16, _data_directory: &Path) {
     #[cfg(debug_assertions)]
     {
-        let marker_file =
-            _data_directory.join(format!("pid_{}_{}_port", std::process::id(), _name));
-        std::fs::write(&marker_file, _value.to_string())
-            .unwrap_or_else(|_| panic!("Failed to create marker file {}", marker_file.display()));
+        if std::env::var_os("PATHFINDER_TEST_ENABLE_PORT_MARKER_FILES").is_some() {
+            let marker_file =
+                _data_directory.join(format!("pid_{}_{}_port", std::process::id(), _name));
+            std::fs::write(&marker_file, _value.to_string()).unwrap_or_else(|_| {
+                panic!("Failed to create marker file {}", marker_file.display())
+            });
+        }
     }
 }

@@ -8,10 +8,10 @@
 //! cargo test --test consensus -p pathfinder -F p2p -F consensus-integration-tests -- --nocapture
 //! ```
 
-#[cfg(feature = "p2p")]
+#[cfg(all(feature = "p2p", feature = "consensus-integration-tests"))]
 mod common;
 
-#[cfg(feature = "p2p")]
+#[cfg(all(feature = "p2p", feature = "consensus-integration-tests"))]
 mod test {
     use std::time::Duration;
     use std::vec;
