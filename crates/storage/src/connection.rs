@@ -23,7 +23,7 @@ pub use event::{
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction as StarknetTransaction;
-use pathfinder_common::{BlockNumber, TransactionHash};
+use pathfinder_common::{BlockNumber, TransactionHash, TransactionIndex};
 use pruning::BlockchainHistoryMode;
 // Re-export this so users don't require rusqlite as a direct dep.
 pub use rusqlite::TransactionBehavior;
@@ -113,7 +113,7 @@ type TransactionWithReceipt = (StarknetTransaction, Receipt, Vec<Event>, BlockNu
 
 type TransactionDataForBlock = (StarknetTransaction, Receipt, Vec<Event>);
 
-type EventsForBlock = (TransactionHash, Vec<Event>);
+type EventsForBlock = ((TransactionHash, TransactionIndex), Vec<Event>);
 
 impl Transaction<'_> {
     // The implementations here are intentionally kept as simple wrappers. This lets

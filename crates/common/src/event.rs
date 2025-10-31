@@ -20,6 +20,9 @@ pub struct Event {
     pub keys: Vec<EventKey>,
 }
 
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+pub struct EventIndex(pub u64);
+
 serde_conv!(
     EventDataAsDecimalStr,
     EventData,
