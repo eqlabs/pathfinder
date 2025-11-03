@@ -146,30 +146,37 @@ pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
 ) {
     const IN_SYNC_THRESHOLD: u64 = 6;
 
-    #[derive(Default)]
+    #[derive(Debug, Default)]
     struct State {
         block_number: BlockNumber,
         tx_count: usize,
-        pre_latest_tx_count: Option<usize>,
+        pre_latest_data_present: bool,
     }
 
     impl State {
         /// Returns `true` if the state was updated, `false` otherwise.
         fn update(&mut self, new_state: Self) -> bool {
-            let pre_confirmed_same =
-                self.block_number == new_state.block_number && self.tx_count >= new_state.tx_count;
-            let pre_latest_same = match (self.pre_latest_tx_count, new_state.pre_latest_tx_count) {
-                (Some(current), Some(new)) if current >= new => true,
-                (Some(_current), None) => true,
-                _ => false,
+            use std::cmp::Ordering;
+
+            let should_update = match new_state.block_number.get().cmp(&self.block_number.get()) {
+                Ordering::Less => false,   // Stale pre-confirmed data (older block).
+                Ordering::Greater => true, // New pre-confirmed block.
+                Ordering::Equal => match new_state.tx_count.cmp(&self.tx_count) {
+                    Ordering::Less => false,   // Stale pre-confirmed data (fewer txs).
+                    Ordering::Greater => true, // New transactions available.
+                    Ordering::Equal => {
+                        // Check if pre-latest data got cleared (because it has been finalized),
+                        // which is a valid update if both block number and transaction count are
+                        // same.
+                        self.pre_latest_data_present && !new_state.pre_latest_data_present
+                    }
+                },
             };
 
-            if pre_confirmed_same && pre_latest_same {
-                return false;
+            if should_update {
+                *self = new_state;
             }
-
-            *self = new_state;
-            true
+            should_update
         }
     }
 
@@ -256,9 +263,7 @@ pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
         let new_state = State {
             block_number: pre_confirmed_block_number,
             tx_count: pre_confirmed_block.transactions.len(),
-            pre_latest_tx_count: pre_latest_data
-                .as_ref()
-                .map(|pre_latest| pre_latest.1.transactions.len()),
+            pre_latest_data_present: pre_latest_data.is_some(),
         };
         if state.update(new_state) {
             tracing::trace!("Emitting a pre-confirmed update");
@@ -781,5 +786,163 @@ mod tests {
                 && *block == *PRE_CONFIRMED_BLOCK
                 && pre_latest_data == expected_pre_latest_data
         );
+    }
+
+    #[tokio::test]
+    async fn poll_starknet_0_14_0_stale_transactions_is_ignored() {
+        // This test ensures that when `poll_starknet_0_14_0` receives pre-confirmed
+        // blocks with stale data (same or lower transaction count), no event is
+        // emitted.
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let mut sequencer = MockGatewayApi::new();
+
+        let our_latest_hash = PRE_LATEST_BLOCK.parent_hash;
+
+        let mut stale_pre_confirmed = PRE_CONFIRMED_BLOCK.clone();
+        stale_pre_confirmed.transactions.pop();
+        stale_pre_confirmed.transaction_receipts.pop();
+        stale_pre_confirmed.transaction_state_diffs.pop();
+
+        static COUNT: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
+
+        sequencer
+            .expect_pending_block()
+            .returning(move || Ok((PRE_LATEST_BLOCK.clone(), PENDING_UPDATE.clone())));
+        sequencer.expect_preconfirmed_block().returning(move |_| {
+            let mut count = COUNT.lock().unwrap();
+            let block = match *count {
+                0 => {
+                    *count += 1;
+                    // Polling task has default state at the start, so this should produce an
+                    // event.
+                    PRE_CONFIRMED_BLOCK.clone()
+                }
+                1 => {
+                    *count += 1;
+                    // Same transaction count as before, should be ignored.
+                    PRE_CONFIRMED_BLOCK.clone()
+                }
+                _ => {
+                    // Lower transaction count than before, should be ignored.
+                    stale_pre_confirmed.clone()
+                }
+            };
+
+            Ok(block)
+        });
+
+        let latest_block_number = BlockNumber::new_or_panic(10);
+
+        let (_, rx_latest) = watch::channel((latest_block_number, our_latest_hash));
+        let (_, rx_current) = watch::channel((latest_block_number, our_latest_hash));
+
+        let sequencer = Arc::new(sequencer);
+        let _jh = tokio::spawn(async move {
+            super::poll_starknet_0_14_0(
+                &tx,
+                &sequencer,
+                std::time::Duration::ZERO,
+                &StorageBuilder::in_memory().unwrap(),
+                &rx_latest,
+                &rx_current,
+                false,
+            )
+            .await
+        });
+
+        let _ = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
+            .await
+            .expect("First event should be emitted");
+        let result = tokio::time::timeout(TEST_TIMEOUT, rx.recv()).await;
+        assert!(result.is_err(), "No event should be emitted for stale data");
+    }
+
+    /// The expected sequence for Starknet v0.14.0+ goes something like this:
+    ///   1) Node is on block N
+    ///   2) Sequencer is producing pre-confirmed block N + 1 (N is still
+    ///      pre-latest)
+    ///   3) Block N + 1 is promoted to pre-latest and block N + 2 is being
+    ///      built as pre-confirmed
+    ///   4) Block N + 1 is finalized and published as the new L2 block
+    ///   5) Node stores (and is now on) block N + 1
+    ///
+    /// Since we determine the next expected pre-confirmed block as:
+    ///
+    ///  if node_latest_hash == pre_latest.parent_hash {
+    ///      pre_confirmed_num = node_latest_num + 2
+    ///  } else {
+    ///      pre_confirmed_num = node_latest_num + 1
+    ///  }
+    ///
+    /// we must make sure that inconsistencies in the gateway responses do not
+    /// cause the polling task to emit inconsistent updates.
+    ///
+    /// See also <https://github.com/eqlabs/pathfinder/issues/3081>.
+    #[tokio::test]
+    async fn poll_starknet_0_14_0_inconsistent_gateway_data_is_ignored() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let mut sequencer = MockGatewayApi::new();
+
+        let our_latest_hash = PRE_LATEST_BLOCK.parent_hash;
+        let mut fake_pre_latest = PRE_LATEST_BLOCK.clone();
+        fake_pre_latest.parent_hash = block_hash!("0xbad");
+
+        static COUNT: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
+
+        sequencer.expect_pending_block().returning(move || {
+            let mut count = COUNT.lock().unwrap();
+            let block = match *count {
+                0 => {
+                    *count += 1;
+                    // Polling task has default state at the start, so this should produce an
+                    // event. It should also set the current expected pre-confirmed block number
+                    // to `latest + 2`.
+                    (PRE_LATEST_BLOCK.clone(), PENDING_UPDATE.clone())
+                }
+                1 => {
+                    *count += 1;
+                    // This will cause a mismatch between our latest block hash and the pre-latest
+                    // block parent hash. When these don't match, the expected pre-confirmed block
+                    // number is `latest + 1`, which is lower than before. This should be ignored.
+                    (fake_pre_latest.clone(), PENDING_UPDATE.clone())
+                }
+                _ => {
+                    // Our latest hash and the pre-latest block parent hash match again. Since, we
+                    // always send the same pre-confirmed block by the mock sequencer, this should
+                    // not produce any events.
+                    (PRE_LATEST_BLOCK.clone(), PENDING_UPDATE.clone())
+                }
+            };
+
+            Ok(block)
+        });
+        sequencer
+            .expect_preconfirmed_block()
+            .returning(move |_| Ok(PRE_CONFIRMED_BLOCK.clone()));
+
+        let latest_block_number = BlockNumber::new_or_panic(10);
+
+        let (_, rx_latest) = watch::channel((latest_block_number, our_latest_hash));
+        let (_, rx_current) = watch::channel((latest_block_number, our_latest_hash));
+
+        let sequencer = Arc::new(sequencer);
+        let _jh = tokio::spawn(async move {
+            super::poll_starknet_0_14_0(
+                &tx,
+                &sequencer,
+                std::time::Duration::ZERO,
+                &StorageBuilder::in_memory().unwrap(),
+                &rx_latest,
+                &rx_current,
+                false,
+            )
+            .await
+        });
+
+        let _ = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
+            .await
+            .expect("First event should be emitted");
+        let result = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv()).await;
+        assert!(result.is_err(), "No event should be emitted for stale data");
     }
 }
