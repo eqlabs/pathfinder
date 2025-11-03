@@ -95,150 +95,20 @@ pub async fn get_state_update(
 }
 
 pub(crate) mod types {
-    use pathfinder_common::state_update::ContractClassUpdate;
     use pathfinder_common::{
-        BlockHash,
         CasmHash,
         ClassHash,
         ContractAddress,
         ContractNonce,
         SierraHash,
-        StateCommitment,
         StorageAddress,
         StorageValue,
     };
-    #[cfg(test)]
-    use serde_with::serde_as;
 
     use crate::felt::{RpcFelt, RpcFelt251};
 
-    #[derive(Clone, Debug, PartialEq, Eq)]
-    #[cfg_attr(test, derive(serde::Deserialize))]
-    pub struct StateUpdate {
-        /// None for `pending`
-        pub block_hash: Option<BlockHash>,
-        /// None for `pending`
-        pub new_root: Option<StateCommitment>,
-        pub old_root: StateCommitment,
-        pub state_diff: StateDiff,
-    }
-
-    impl crate::dto::SerializeForVersion for StateUpdate {
-        fn serialize(
-            &self,
-            serializer: crate::dto::Serializer,
-        ) -> Result<crate::dto::Ok, crate::dto::Error> {
-            let mut serializer = serializer.serialize_struct()?;
-            if let Some(block_hash) = self.block_hash {
-                serializer.serialize_field("block_hash", &RpcFelt(block_hash.0))?;
-            }
-            if let Some(new_root) = self.new_root {
-                serializer.serialize_field("new_root", &RpcFelt(new_root.0))?;
-            }
-            serializer.serialize_field("old_root", &RpcFelt(self.old_root.0))?;
-            serializer.serialize_field("state_diff", &self.state_diff)?;
-            serializer.end()
-        }
-    }
-
-    impl From<pathfinder_common::StateUpdate> for StateUpdate {
-        fn from(value: pathfinder_common::StateUpdate) -> Self {
-            let mut storage_diffs = Vec::new();
-            let mut deployed_contracts = Vec::new();
-            let mut replaced_classes = Vec::new();
-            let mut nonces = Vec::new();
-
-            for (contract_address, update) in value.contract_updates {
-                if let Some(nonce) = update.nonce {
-                    nonces.push(Nonce {
-                        contract_address,
-                        nonce,
-                    });
-                }
-
-                match update.class {
-                    Some(ContractClassUpdate::Deploy(class_hash)) => {
-                        deployed_contracts.push(DeployedContract {
-                            address: contract_address,
-                            class_hash,
-                        })
-                    }
-                    Some(ContractClassUpdate::Replace(class_hash)) => {
-                        replaced_classes.push(ReplacedClass {
-                            contract_address,
-                            class_hash,
-                        })
-                    }
-                    None => {}
-                }
-
-                let storage_entries = update
-                    .storage
-                    .into_iter()
-                    .map(|(key, value)| StorageEntry { key, value })
-                    .collect();
-
-                storage_diffs.push(StorageDiff {
-                    address: contract_address,
-                    storage_entries,
-                });
-            }
-
-            for (address, update) in value.system_contract_updates {
-                let storage_entries = update
-                    .storage
-                    .into_iter()
-                    .map(|(key, value)| StorageEntry { key, value })
-                    .collect();
-
-                storage_diffs.push(StorageDiff {
-                    address,
-                    storage_entries,
-                });
-            }
-
-            let declared_classes = value
-                .declared_sierra_classes
-                .into_iter()
-                .map(|(class_hash, compiled_class_hash)| DeclaredSierraClass {
-                    class_hash,
-                    compiled_class_hash,
-                })
-                .collect();
-
-            let deprecated_declared_classes = value.declared_cairo_classes.into_iter().collect();
-
-            let state_diff = StateDiff {
-                storage_diffs,
-                deprecated_declared_classes,
-                declared_classes,
-                deployed_contracts,
-                replaced_classes,
-                nonces,
-            };
-
-            let block_hash = match value.block_hash {
-                BlockHash::ZERO => None,
-                other => Some(other),
-            };
-
-            let new_root = match value.state_commitment {
-                StateCommitment::ZERO => None,
-                other => Some(other),
-            };
-
-            StateUpdate {
-                block_hash,
-                new_root,
-                old_root: value.parent_state_commitment,
-                state_diff,
-            }
-        }
-    }
-
     /// L2 state diff.
     #[derive(Clone, Debug, PartialEq, Eq, Default)]
-    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct StateDiff {
         pub storage_diffs: Vec<StorageDiff>,
         pub deprecated_declared_classes: Vec<ClassHash>,
@@ -330,11 +200,7 @@ pub(crate) mod types {
 
     /// L2 storage diff of a contract.
     #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-    #[cfg_attr(test, serde_as)]
-    #[cfg_attr(test, derive(serde::Deserialize))]
-    #[cfg_attr(test, serde(deny_unknown_fields))]
     pub struct StorageDiff {
-        #[cfg_attr(test, serde_as(as = "RpcFelt251"))]
         pub address: ContractAddress,
         pub storage_entries: Vec<StorageEntry>,
     }
@@ -359,12 +225,8 @@ pub(crate) mod types {
 
     /// A key-value entry of a storage diff.
     #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-    #[cfg_attr(test, serde_as)]
-    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct StorageEntry {
-        #[cfg_attr(test, serde_as(as = "RpcFelt251"))]
         pub key: StorageAddress,
-        #[cfg_attr(test, serde_as(as = "RpcFelt"))]
         pub value: StorageValue,
     }
 
@@ -402,12 +264,8 @@ pub(crate) mod types {
 
     /// L2 state diff declared Sierra class item.
     #[derive(Clone, Debug, PartialEq, Eq)]
-    #[cfg_attr(test, serde_as)]
-    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct DeclaredSierraClass {
-        #[cfg_attr(test, serde_as(as = "RpcFelt"))]
         pub class_hash: SierraHash,
-        #[cfg_attr(test, serde_as(as = "RpcFelt"))]
         pub compiled_class_hash: CasmHash,
     }
 
@@ -437,12 +295,8 @@ pub(crate) mod types {
 
     /// L2 state diff deployed contract item.
     #[derive(Clone, Debug, PartialEq, Eq)]
-    #[cfg_attr(test, serde_as)]
-    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct DeployedContract {
-        #[cfg_attr(test, serde_as(as = "RpcFelt251"))]
         pub address: ContractAddress,
-        #[cfg_attr(test, serde_as(as = "RpcFelt"))]
         pub class_hash: ClassHash,
     }
     impl From<pathfinder_executor::types::DeployedContract> for DeployedContract {
@@ -470,12 +324,8 @@ pub(crate) mod types {
 
     /// L2 state diff replaced class item.
     #[derive(Clone, Debug, PartialEq, Eq)]
-    #[cfg_attr(test, serde_as)]
-    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct ReplacedClass {
-        #[cfg_attr(test, serde_as(as = "RpcFelt251"))]
         pub contract_address: ContractAddress,
-        #[cfg_attr(test, serde_as(as = "RpcFelt"))]
         pub class_hash: ClassHash,
     }
 
@@ -504,12 +354,8 @@ pub(crate) mod types {
 
     /// L2 state diff nonce item.
     #[derive(Clone, Debug, PartialEq, Eq)]
-    #[cfg_attr(test, serde_as)]
-    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct Nonce {
-        #[cfg_attr(test, serde_as(as = "RpcFelt251"))]
         pub contract_address: ContractAddress,
-        #[cfg_attr(test, serde_as(as = "RpcFelt"))]
         pub nonce: ContractNonce,
     }
 
@@ -526,91 +372,21 @@ pub(crate) mod types {
             serializer.end()
         }
     }
-
-    #[cfg(test)]
-    mod tests {
-        use pathfinder_common::macro_prelude::*;
-
-        use super::*;
-        use crate::RpcVersion;
-
-        #[test]
-        fn state_update() {
-            let state_update = StateUpdate {
-                block_hash: Some(block_hash!("0xdeadbeef")),
-                new_root: Some(state_commitment!("0x1")),
-                old_root: state_commitment!("0x2"),
-                state_diff: StateDiff {
-                    storage_diffs: vec![StorageDiff {
-                        address: contract_address!("0xadc"),
-                        storage_entries: vec![StorageEntry {
-                            key: storage_address!("0xf0"),
-                            value: storage_value!("0x55"),
-                        }],
-                    }],
-                    deprecated_declared_classes: vec![class_hash!("0xcdef"), class_hash!("0xcdee")],
-                    declared_classes: vec![DeclaredSierraClass {
-                        class_hash: sierra_hash!("0xabcd"),
-                        compiled_class_hash: casm_hash!("0xdcba"),
-                    }],
-                    deployed_contracts: vec![DeployedContract {
-                        address: contract_address!("0xadd"),
-                        class_hash: class_hash!("0xcdef"),
-                    }],
-                    replaced_classes: vec![ReplacedClass {
-                        contract_address: contract_address!("0xcad"),
-                        class_hash: class_hash!("0xdac"),
-                    }],
-                    nonces: vec![Nonce {
-                        contract_address: contract_address!("0xca"),
-                        nonce: contract_nonce!("0x404ce"),
-                    }],
-                },
-            };
-            let data = vec![
-                state_update.clone(),
-                // a pending update
-                StateUpdate {
-                    block_hash: None,
-                    new_root: None,
-                    ..state_update
-                },
-            ];
-
-            let fixture =
-                include_str!("../../fixtures/0.50.0/state_update.json").replace([' ', '\n'], "");
-
-            let fixture_pretty = serde_json::to_string_pretty(
-                &serde_json::from_str::<serde_json::Value>(&fixture).unwrap(),
-            )
-            .unwrap();
-
-            let serializer = crate::dto::Serializer::new(RpcVersion::V07);
-            let serialized = serde_json::to_string_pretty(
-                &serializer
-                    .serialize_iter(data.len(), &mut data.clone().into_iter())
-                    .unwrap(),
-            )
-            .unwrap();
-
-            pretty_assertions_sorted::assert_eq!(serialized, fixture_pretty);
-            pretty_assertions_sorted::assert_eq!(
-                serde_json::from_str::<Vec<StateUpdate>>(&fixture).unwrap(),
-                data
-            );
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::{HashMap, HashSet};
+
     use dto::DeserializeForVersion;
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate};
     use pathfinder_common::BlockNumber;
     use pathfinder_storage::fake::Block;
     use serde_json::json;
 
     use super::*;
+    use crate::dto::{SerializeForVersion, Serializer};
     use crate::RpcVersion;
 
     impl Output {
@@ -644,6 +420,65 @@ mod tests {
         let expected = Input { block_id };
 
         assert_eq!(input, expected);
+    }
+
+    #[rstest::rstest]
+    #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
+    #[tokio::test]
+    async fn serialize_output(#[case] version: RpcVersion) {
+        let mut storage = HashMap::new();
+        storage.insert(storage_address!("0xf0"), storage_value!("0x55"));
+        let storage_update = ContractUpdate {
+            storage,
+            class: None,
+            nonce: None,
+        };
+        let deploy_class_update = ContractUpdate {
+            storage: Default::default(),
+            class: Some(ContractClassUpdate::Deploy(class_hash!("0xcdef"))),
+            nonce: None,
+        };
+        let replace_class_update = ContractUpdate {
+            storage: Default::default(),
+            class: Some(ContractClassUpdate::Replace(class_hash!("0xdac"))),
+            nonce: None,
+        };
+        let nonce_update = ContractUpdate {
+            storage: Default::default(),
+            class: None,
+            nonce: Some(contract_nonce!("0x404ce")),
+        };
+        let mut contract_updates = HashMap::new();
+        contract_updates.insert(contract_address!("0xadc"), storage_update);
+        contract_updates.insert(contract_address!("0xadd"), deploy_class_update);
+        contract_updates.insert(contract_address!("0xcad"), replace_class_update);
+        contract_updates.insert(contract_address!("0xca"), nonce_update);
+        let mut declared_cairo_classes = HashSet::new();
+        declared_cairo_classes.insert(class_hash!("0xcdef"));
+        let mut declared_sierra_classes = HashMap::new();
+        declared_sierra_classes.insert(sierra_hash!("0xabcd"), casm_hash!("0xdcba"));
+        let state_update = StateUpdate {
+            block_hash: block_hash!("0xdeadbeef"),
+            state_commitment: state_commitment!("0x1"),
+            parent_state_commitment: state_commitment!("0x2"),
+            contract_updates,
+            system_contract_updates: Default::default(),
+            declared_cairo_classes,
+            declared_sierra_classes,
+        };
+
+        let output_full = Output::Full(Box::new(state_update.clone()));
+        let output_json = output_full.serialize(Serializer { version }).unwrap();
+        crate::assert_json_matches_fixture!(output_json, version, "state_updates/full.json");
+
+        let output_pending = Output::Pending(Arc::new(state_update));
+        let output_json = output_pending.serialize(Serializer { version }).unwrap();
+        crate::assert_json_matches_fixture!(
+            output_json,
+            version,
+            "state_updates/pre_confirmed.json"
+        );
     }
 
     /// Add some dummy state updates to the context for testing

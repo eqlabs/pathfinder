@@ -1,7 +1,7 @@
 {
   "openrpc": "1.0.0-rc1",
   "info": {
-    "version": "0.9.0",
+    "version": "0.10.0-rc.1",
     "title": "StarkNet Node API",
     "license": {}
   },
@@ -670,6 +670,9 @@
       },
       "errors": [
         {
+          "$ref": "#/components/errors/CONTRACT_NOT_FOUND"
+        },
+        {
           "$ref": "#/components/errors/TRANSACTION_EXECUTION_ERROR"
         },
         {
@@ -708,6 +711,9 @@
         }
       },
       "errors": [
+        {
+          "$ref": "#/components/errors/CONTRACT_NOT_FOUND"
+        },
         {
           "$ref": "#/components/errors/CONTRACT_ERROR"
         },
@@ -949,7 +955,7 @@
                 "storage_keys": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/FELT"
+                    "$ref": "#/components/schemas/STORAGE_KEY"
                   }
                 }
               },
@@ -1108,9 +1114,21 @@
                 "title": "Transaction hash",
                 "description": "The transaction that emitted the event",
                 "$ref": "#/components/schemas/TXN_HASH"
+              },
+              "transaction_index": {
+                "title": "Transaction index",
+                "description": "The index of the transaction in the block by which the event was emitted",
+                "type": "integer",
+                "minimum": 0
+              },
+              "event_index": {
+                "title": "Event index",
+                "description": "The index of the event in the transaction by which it was emitted",
+                "type": "integer",
+                "minimum": 0
               }
             },
-            "required": ["transaction_hash"]
+            "required": ["transaction_hash", "transaction_index", "event_index"]
           }
         ]
       },
@@ -1343,6 +1361,27 @@
               }
             }
           },
+          "migrated_compiled_classes": {
+            "title": "Migrated compiled classes",
+            "type": "array",
+            "items": {
+              "title": "Migrated classes",
+              "type": "object",
+              "description": "The class hash and the new Blake-migrated compiled class hash",
+              "properties": {
+                "class_hash": {
+                  "title": "Class hash",
+                  "description": "The hash of the class",
+                  "$ref": "#/components/schemas/FELT"
+                },
+                "compiled_class_hash": {
+                  "title": "Compiled class hash",
+                  "description": "The Blake-migrated Cairo assembly hash corresponding to the class",
+                  "$ref": "#/components/schemas/FELT"
+                }
+              }
+            }
+          },
           "deployed_contracts": {
             "title": "Deployed contracts",
             "type": "array",
@@ -1418,7 +1457,7 @@
             "$ref": "#/components/schemas/STATE_DIFF"
           }
         },
-        "required": ["old_root", "state_diff"],
+        "required": ["state_diff"],
         "additionalProperties": false
       },
       "STATE_UPDATE": {
@@ -3805,7 +3844,7 @@
       },
       "ENTRYPOINT_NOT_FOUND": {
         "code": 21,
-        "message": "Requested entrypoint does not exist in the contract"
+        "message": "Requested entry point does not exist in the contract"
       },
       "BLOCK_NOT_FOUND": {
         "code": 24,
