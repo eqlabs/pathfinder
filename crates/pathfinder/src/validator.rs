@@ -138,7 +138,6 @@ impl ValidatorBlockInfoStage {
             chain_id,
             block_info,
             expected_block_header: None,
-            block_executor: LazyBlockExecutor::new(chain_id, block_info, storage.clone()),
             transactions: Vec::new(),
             receipts: Vec::new(),
             events: Vec::new(),
@@ -156,7 +155,6 @@ pub struct ValidatorTransactionBatchStage {
     chain_id: ChainId,
     block_info: pathfinder_executor::types::BlockInfo,
     expected_block_header: Option<BlockHeader>,
-    block_executor: LazyBlockExecutor,
     transactions: Vec<Transaction>,
     receipts: Vec<Receipt>,
     events: Vec<Vec<Event>>,
@@ -172,81 +170,6 @@ pub struct ValidatorTransactionBatchStage {
     storage: Storage,
 }
 
-enum LazyBlockExecutor {
-    /// This variant holds the data necessary to initialize the `BlockExecutor`
-    /// on first use.
-    Uninitialized {
-        chain_id: ChainId,
-        block_info: Box<pathfinder_executor::types::BlockInfo>,
-        storage: Storage,
-    },
-    /// This variant is used to temporarily take ownership of the
-    /// `chain_id`, `block_info` and `storage` fields while initializing
-    /// the `BlockExecutor` and occurs only briefly in
-    /// [`get_or_init()`](Self::get_or_init).
-    Initializing,
-    /// This variant holds the initialized `BlockExecutor` and keeps the storage
-    /// reference for potential restoration.
-    Initialized { executor: Box<BlockExecutor> },
-}
-
-impl LazyBlockExecutor {
-    fn new(
-        chain_id: ChainId,
-        block_info: pathfinder_executor::types::BlockInfo,
-        storage: Storage,
-    ) -> Self {
-        LazyBlockExecutor::Uninitialized {
-            chain_id,
-            block_info: Box::new(block_info),
-            storage,
-        }
-    }
-
-    fn get_or_init(&mut self) -> anyhow::Result<&mut BlockExecutor> {
-        if let LazyBlockExecutor::Initialized { executor, .. } = self {
-            Ok(executor)
-        } else {
-            let this = std::mem::replace(self, Self::Initializing);
-            let LazyBlockExecutor::Uninitialized {
-                chain_id,
-                block_info,
-                storage,
-            } = this
-            else {
-                panic!("Unexpected state in LazyBlockExecutor");
-            };
-
-            let db_conn = storage.connection().context("Create database connection")?;
-            let be = BlockExecutor::new(
-                chain_id,
-                *block_info,
-                ETH_FEE_TOKEN_ADDRESS,
-                STRK_FEE_TOKEN_ADDRESS,
-                db_conn,
-            )
-            .context("Creating BlockExecutor")?;
-            *self = LazyBlockExecutor::Initialized {
-                executor: Box::new(be),
-            };
-            let LazyBlockExecutor::Initialized { executor, .. } = self else {
-                unreachable!("Block executor is initialized");
-            };
-            Ok(executor)
-        }
-    }
-
-    /// Takes the initialized [`BlockExecutor`], invoking
-    /// [`get_or_init()`](Self::get_or_init) if necessary.
-    fn take(mut self) -> anyhow::Result<Box<BlockExecutor>> {
-        self.get_or_init()?;
-        let LazyBlockExecutor::Initialized { executor, .. } = self else {
-            unreachable!("Block executor is initialized");
-        };
-        Ok(executor)
-    }
-}
-
 impl ValidatorTransactionBatchStage {
     /// Create a new ValidatorTransactionBatchStage
     pub fn new(
@@ -258,7 +181,6 @@ impl ValidatorTransactionBatchStage {
             chain_id,
             block_info,
             expected_block_header: None,
-            block_executor: LazyBlockExecutor::new(chain_id, block_info, storage.clone()),
             transactions: Vec::new(),
             receipts: Vec::new(),
             events: Vec::new(),
@@ -617,16 +539,6 @@ impl ValidatorTransactionBatchStage {
                 self.transactions.len()
             ));
         }
-
-        // Validate that BlockExecutor is in a valid state
-        // After restoration, it should be either Uninitialized (clean) or Initialized
-        // (clean)
-        if matches!(self.block_executor, LazyBlockExecutor::Initializing) {
-            return Err(anyhow::anyhow!(
-                "BlockExecutor is in invalid initializing state"
-            ));
-        }
-
         Ok(())
     }
 
