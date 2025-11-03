@@ -1053,7 +1053,7 @@ mod tests {
                 .expect("Failed to create validator stage");
 
         // Create batches: 3 batches with 2 transactions each
-        let batches = vec![
+        let batches = [
             vec![create_test_transaction(0), create_test_transaction(1)],
             vec![create_test_transaction(2), create_test_transaction(3)],
             vec![create_test_transaction(4), create_test_transaction(5)],
@@ -1148,19 +1148,11 @@ mod tests {
         }
 
         // Finalize should work with single executor
-        let state_diff = validator_stage
+        // Note: State diffs may be empty for L1Handler transactions, which is fine
+        let _state_diff = validator_stage
             .finalize()
             .expect("Failed to finalize")
             .expect("Should have state diff");
-
-        // State diff should be valid (even if minimal for L1Handler transactions)
-        assert!(
-            !state_diff.storage_diffs.is_empty()
-                || !state_diff.deployed_contracts.is_empty()
-                || !state_diff.nonces.is_empty()
-                || true, // Allow empty diffs for L1Handler transactions
-            "State diff should be valid"
-        );
     }
 
     /// Test that rollback reconstruction produces identical state
@@ -1183,7 +1175,7 @@ mod tests {
             starknet_version: StarknetVersion::new(0, 14, 0, 0),
         };
 
-        let batches = vec![
+        let batches = [
             vec![create_test_transaction(0), create_test_transaction(1)],
             vec![create_test_transaction(2), create_test_transaction(3)],
         ];

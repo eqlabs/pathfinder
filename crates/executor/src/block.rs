@@ -834,7 +834,7 @@ mod tests {
             .collect::<anyhow::Result<Vec<_>>>()
             .expect("Failed to convert transactions");
 
-        let batches = vec![
+        let batches = [
             vec![executor_tx[0].clone()],
             vec![executor_tx[1].clone()],
             vec![executor_tx[2].clone()],
