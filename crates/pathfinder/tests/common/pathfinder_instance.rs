@@ -44,6 +44,8 @@ pub struct Config {
     pub inject_failure: Option<InjectFailureConfig>,
 }
 
+pub type RpcPortWatch = (watch::Sender<(u32, u16)>, watch::Receiver<(u32, u16)>);
+
 impl PathfinderInstance {
     /// Spawns a new Pathfinder instance with the given configuration. The
     /// instance is not guaranteed to be ready after this function returns.
@@ -154,10 +156,7 @@ impl PathfinderInstance {
         })
     }
 
-    pub fn with_rpc_port_watch(
-        mut self,
-        (tx, rx): (watch::Sender<(u32, u16)>, watch::Receiver<(u32, u16)>),
-    ) -> Self {
+    pub fn with_rpc_port_watch(mut self, (tx, rx): RpcPortWatch) -> Self {
         self.rpc_port_watch_tx = tx;
         self.rpc_port_watch_rx = rx;
         self
@@ -286,15 +285,11 @@ impl PathfinderInstance {
         self.name
     }
 
-    pub fn pid(&self) -> u32 {
-        self.process.id()
-    }
-
     pub fn rpc_port_watch_rx(&self) -> watch::Receiver<(u32, u16)> {
         self.rpc_port_watch_rx.clone()
     }
 
-    pub fn rpc_port_watch(&self) -> (watch::Sender<(u32, u16)>, watch::Receiver<(u32, u16)>) {
+    pub fn rpc_port_watch(&self) -> RpcPortWatch {
         (
             self.rpc_port_watch_tx.clone(),
             self.rpc_port_watch_rx.clone(),
@@ -483,10 +478,6 @@ pub fn respawn_on_fail(
     ready_timeout: Duration,
     test_timeout: Duration,
 ) -> AbortGuard {
-    let died_path = instance
-        .db_dir
-        .join(format!("pid_{}_died", instance.name()));
-
     let mut child_signal = signal(SignalKind::child()).unwrap();
 
     tokio::spawn(async move {
