@@ -205,11 +205,39 @@ impl BlockExecutor {
     pub fn set_transaction_index(&mut self, index: usize) {
         self.next_txn_idx = index;
     }
+
+    /// Extract state diff without consuming the executor
+    /// This allows extracting the diff for rollback scenarios without losing
+    /// the executor
+    ///
+    /// Note: This method does NOT call `executor.finalize()`, which means it
+    /// doesn't include stateful compression changes (system contract 0x2
+    /// updates). These changes are only needed when finalizing the proposal
+    /// for commitment computation, not for intermediate diff extraction
+    /// during batch execution.
+    pub fn extract_state_diff(&self) -> anyhow::Result<StateDiff> {
+        let current_state = self
+            .executor
+            .block_state
+            .as_ref()
+            .expect(BLOCK_STATE_ACCESS_ERR);
+
+        let mut cloned_state = current_state.clone();
+        let StateChanges { state_maps, .. } = cloned_state.to_state_diff()?;
+
+        let diff = to_state_diff(
+            state_maps,
+            self.initial_state.clone(),
+            self.declared_deprecated_classes.iter().copied(),
+        )?;
+        Ok(diff)
+    }
 }
 
 #[cfg(test)]
 mod tests {
 
+    use pathfinder_common::state_update::StateUpdateData;
     use pathfinder_common::transaction::{L1HandlerTransaction, TransactionVariant};
     use pathfinder_common::{
         contract_address,
@@ -223,6 +251,7 @@ mod tests {
     use pathfinder_crypto::Felt;
     use pathfinder_storage::StorageBuilder;
 
+    use crate::execution_state::create_executor;
     use crate::BlockExecutor;
 
     // Fee token addresses (same as in pathfinder_rpc::context)
@@ -679,5 +708,333 @@ mod tests {
 
         // Detailed content validation
         validate_state_diff_content(&single_state_diff, &final_state_diff);
+    }
+
+    /// Test extracting state diff without consuming the executor
+    #[test]
+    fn test_extract_state_diff_without_consuming() {
+        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+
+        let block_info = crate::types::BlockInfo {
+            number: pathfinder_common::BlockNumber::new_or_panic(1),
+            timestamp: pathfinder_common::BlockTimestamp::new_or_panic(1000),
+            sequencer_address: pathfinder_common::SequencerAddress::ZERO,
+            l1_da_mode: pathfinder_common::L1DataAvailabilityMode::Calldata,
+            eth_l1_gas_price: pathfinder_common::GasPrice::ZERO,
+            strk_l1_gas_price: pathfinder_common::GasPrice::ZERO,
+            eth_l1_data_gas_price: pathfinder_common::GasPrice::ZERO,
+            strk_l1_data_gas_price: pathfinder_common::GasPrice::ZERO,
+            eth_l2_gas_price: pathfinder_common::GasPrice::ZERO,
+            strk_l2_gas_price: pathfinder_common::GasPrice::ZERO,
+            starknet_version: pathfinder_common::StarknetVersion::new(0, 14, 0, 0),
+        };
+
+        let transactions = vec![
+            create_simple_l1_handler_transaction(1, chain_id),
+            create_simple_l1_handler_transaction(2, chain_id),
+        ];
+
+        let executor_transactions: Vec<crate::Transaction> = transactions
+            .into_iter()
+            .map(convert_to_executor_transaction)
+            .collect::<anyhow::Result<Vec<_>>>()
+            .expect("Failed to convert transactions");
+
+        // Create executor and execute
+        let mut executor = BlockExecutor::new(
+            chain_id,
+            block_info,
+            ETH_FEE_TOKEN_ADDRESS,
+            STRK_FEE_TOKEN_ADDRESS,
+            storage.connection().expect("Failed to get connection"),
+        )
+        .expect("Failed to create executor");
+
+        executor
+            .execute(executor_transactions)
+            .expect("Failed to execute");
+
+        // Extract state diff without consuming executor
+        let _extracted_diff = executor
+            .extract_state_diff()
+            .expect("Failed to extract state diff");
+
+        // Verify executor is still usable after extraction
+        let tx_index = executor.get_transaction_index();
+        assert_eq!(tx_index, 2, "Transaction index should be 2");
+    }
+
+    /// Test full workflow: extract diffs, merge, and reconstruct executor
+    #[test]
+    fn test_single_executor_with_state_diff_reconstruction() {
+        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+
+        let block_info = crate::types::BlockInfo {
+            number: pathfinder_common::BlockNumber::new_or_panic(1),
+            timestamp: pathfinder_common::BlockTimestamp::new_or_panic(1000),
+            sequencer_address: pathfinder_common::SequencerAddress::ZERO,
+            l1_da_mode: pathfinder_common::L1DataAvailabilityMode::Calldata,
+            eth_l1_gas_price: pathfinder_common::GasPrice::ZERO,
+            strk_l1_gas_price: pathfinder_common::GasPrice::ZERO,
+            eth_l1_data_gas_price: pathfinder_common::GasPrice::ZERO,
+            strk_l1_data_gas_price: pathfinder_common::GasPrice::ZERO,
+            eth_l2_gas_price: pathfinder_common::GasPrice::ZERO,
+            strk_l2_gas_price: pathfinder_common::GasPrice::ZERO,
+            starknet_version: pathfinder_common::StarknetVersion::new(0, 14, 0, 0),
+        };
+
+        // Create transactions for 3 batches
+        let all_tx = vec![
+            create_simple_l1_handler_transaction(1, chain_id),
+            create_simple_l1_handler_transaction(2, chain_id),
+            create_simple_l1_handler_transaction(3, chain_id),
+        ];
+
+        let executor_tx: Vec<crate::Transaction> = all_tx
+            .into_iter()
+            .map(convert_to_executor_transaction)
+            .collect::<anyhow::Result<Vec<_>>>()
+            .expect("Failed to convert transactions");
+
+        let batches = vec![
+            vec![executor_tx[0].clone()],
+            vec![executor_tx[1].clone()],
+            vec![executor_tx[2].clone()],
+        ];
+
+        // Execute all batches in single executor (simulating optimized approach)
+        let mut single_executor = BlockExecutor::new(
+            chain_id,
+            block_info,
+            ETH_FEE_TOKEN_ADDRESS,
+            STRK_FEE_TOKEN_ADDRESS,
+            storage.connection().expect("Failed to get connection"),
+        )
+        .expect("Failed to create executor");
+
+        let mut cumulative_state_updates = Vec::new();
+
+        // Execute batch 1
+        single_executor.set_transaction_index(0);
+        single_executor
+            .execute(batches[0].clone())
+            .expect("Failed to execute batch 1");
+        let diff_1 = single_executor
+            .extract_state_diff()
+            .expect("Failed to extract diff 1");
+        let state_update_data_1: StateUpdateData = diff_1.into();
+        // Store cumulative state after batch 1
+        cumulative_state_updates.push(state_update_data_1.clone());
+
+        // Execute batch 2
+        single_executor.set_transaction_index(1);
+        single_executor
+            .execute(batches[1].clone())
+            .expect("Failed to execute batch 2");
+        let diff_2 = single_executor
+            .extract_state_diff()
+            .expect("Failed to extract diff 2");
+        let diff_2_clone = diff_2.clone(); // Clone for validation later
+        let state_update_data_2: StateUpdateData = diff_2.into();
+        // Store cumulative state after batch 2 (diff_2 already includes batch 1)
+        cumulative_state_updates.push(state_update_data_2.clone());
+
+        // Execute batch 3
+        single_executor.set_transaction_index(2);
+        single_executor
+            .execute(batches[2].clone())
+            .expect("Failed to execute batch 3");
+        let final_diff = single_executor.finalize().expect("Failed to finalize");
+
+        // Now create a reference executor using chained approach
+        // Execute batches 1+2 in chained executors to get reference state
+        let mut ref_executor_1 = BlockExecutor::new(
+            chain_id,
+            block_info,
+            ETH_FEE_TOKEN_ADDRESS,
+            STRK_FEE_TOKEN_ADDRESS,
+            storage.connection().expect("Failed to get connection"),
+        )
+        .expect("Failed to create reference executor 1");
+
+        ref_executor_1
+            .execute(batches[0].clone())
+            .expect("Failed to execute batch 1 in reference executor");
+        let ref_state_1 = ref_executor_1
+            .get_final_state()
+            .expect("Failed to get state from reference executor 1");
+
+        let mut ref_executor_2 = BlockExecutor::new_with_initial_state(
+            chain_id,
+            block_info,
+            ETH_FEE_TOKEN_ADDRESS,
+            STRK_FEE_TOKEN_ADDRESS,
+            storage.connection().expect("Failed to get connection"),
+            ref_state_1,
+        )
+        .expect("Failed to create reference executor 2");
+
+        ref_executor_2
+            .execute(batches[1].clone())
+            .expect("Failed to execute batch 2 in reference executor");
+
+        // Extract reference diff after batch 2 (this is our ground truth)
+        let ref_diff_after_batch_2 = ref_executor_2
+            .extract_state_diff()
+            .expect("Failed to extract reference diff");
+
+        // TEST 1: Validate that extracted diff matches reference
+        // Note: L1Handler transactions may produce empty diffs, which is fine
+        // What matters is that the diffs match between single and chained executors
+
+        // Extracted diff from single executor should match reference
+        assert_eq!(
+            diff_2_clone.storage_diffs.len(),
+            ref_diff_after_batch_2.storage_diffs.len(),
+            "Storage diffs count: extracted vs reference after batch 2"
+        );
+        assert_eq!(
+            diff_2_clone.deployed_contracts.len(),
+            ref_diff_after_batch_2.deployed_contracts.len(),
+            "Deployed contracts count: extracted vs reference after batch 2"
+        );
+        assert_eq!(
+            diff_2_clone.nonces.len(),
+            ref_diff_after_batch_2.nonces.len(),
+            "Nonces count: extracted vs reference after batch 2"
+        );
+
+        // Use detailed validation to compare full diff content (validates actual
+        // keys/values, not just lengths)
+        validate_state_diff_content(&diff_2_clone, &ref_diff_after_batch_2);
+
+        // Verify we can reconstruct executor from cumulative state after batch 2
+        // Note: diff_2 is already cumulative (includes batch 1 + batch 2), so we use it
+        // directly
+        let state_update_from_batch_2 = pathfinder_common::StateUpdate {
+            block_hash: pathfinder_common::BlockHash::ZERO,
+            parent_state_commitment: pathfinder_common::StateCommitment::ZERO,
+            state_commitment: pathfinder_common::StateCommitment::ZERO,
+            contract_updates: state_update_data_2.contract_updates,
+            system_contract_updates: state_update_data_2.system_contract_updates,
+            declared_cairo_classes: state_update_data_2.declared_cairo_classes,
+            declared_sierra_classes: state_update_data_2.declared_sierra_classes,
+        };
+
+        // Create executor from cumulative state update (batch 2 state)
+        use std::sync::Arc;
+        let execution_state = crate::ExecutionState::validation(
+            chain_id,
+            block_info,
+            Some(Arc::new(state_update_from_batch_2)),
+            Default::default(),
+            ETH_FEE_TOKEN_ADDRESS,
+            STRK_FEE_TOKEN_ADDRESS,
+            None,
+        );
+
+        let storage_adapter = crate::state_reader::ConcurrentStorageAdapter::new(
+            storage.connection().expect("Failed to get connection"),
+        );
+
+        // Create BlockExecutor wrapper around the reconstructed executor
+        let mut reconstructed_executor_wrapper = BlockExecutor::new_with_initial_state(
+            chain_id,
+            block_info,
+            ETH_FEE_TOKEN_ADDRESS,
+            STRK_FEE_TOKEN_ADDRESS,
+            storage.connection().expect("Failed to get connection"),
+            create_executor(storage_adapter, execution_state)
+                .expect("Failed to reconstruct executor")
+                .block_state
+                .expect("Block state should exist")
+                .clone(),
+        )
+        .expect("Failed to create BlockExecutor wrapper");
+
+        reconstructed_executor_wrapper.set_transaction_index(2);
+
+        // TEST 2: Reconstructed executor should have correct state
+        // Execute batch 3 in reconstructed executor
+        let reconstructed_batch_3_receipts = reconstructed_executor_wrapper
+            .execute(batches[2].clone())
+            .expect("Failed to execute batch 3 in reconstructed executor");
+
+        // Execute batch 3 in reference executor for comparison
+        let mut ref_executor_3 = BlockExecutor::new_with_initial_state(
+            chain_id,
+            block_info,
+            ETH_FEE_TOKEN_ADDRESS,
+            STRK_FEE_TOKEN_ADDRESS,
+            storage.connection().expect("Failed to get connection"),
+            ref_executor_2
+                .get_final_state()
+                .expect("Failed to get state from reference executor 2"),
+        )
+        .expect("Failed to create reference executor 3");
+
+        ref_executor_3.set_transaction_index(2);
+
+        let ref_batch_3_receipts = ref_executor_3
+            .execute(batches[2].clone())
+            .expect("Failed to execute batch 3 in reference executor");
+
+        // TEST 3: Results should be identical
+        assert_eq!(
+            reconstructed_batch_3_receipts.len(),
+            ref_batch_3_receipts.len(),
+            "Receipt count mismatch: reconstructed vs reference for batch 3"
+        );
+
+        // Compare receipts - validate critical fields match
+        for (i, (recon_receipt, ref_receipt)) in reconstructed_batch_3_receipts
+            .iter()
+            .zip(ref_batch_3_receipts.iter())
+            .enumerate()
+        {
+            assert_eq!(
+                recon_receipt.0.transaction_index, ref_receipt.0.transaction_index,
+                "Transaction index mismatch at position {i}"
+            );
+            assert_eq!(
+                recon_receipt.0.execution_status, ref_receipt.0.execution_status,
+                "Execution status mismatch at position {i}"
+            );
+            assert_eq!(
+                recon_receipt.0.actual_fee, ref_receipt.0.actual_fee,
+                "Actual fee mismatch at position {i}"
+            );
+            assert_eq!(
+                recon_receipt.0.l2_to_l1_messages.len(),
+                ref_receipt.0.l2_to_l1_messages.len(),
+                "L2 to L1 messages count mismatch at position {i}"
+            );
+            assert_eq!(
+                recon_receipt.1.len(),
+                ref_receipt.1.len(),
+                "Events count mismatch at position {i}"
+            );
+        }
+
+        // TEST 4: Final state diffs should match
+        let reconstructed_final_diff = reconstructed_executor_wrapper
+            .finalize()
+            .expect("Failed to finalize reconstructed executor");
+        let ref_final_diff = ref_executor_3
+            .finalize()
+            .expect("Failed to finalize reference executor");
+
+        // Use existing validation function
+        validate_state_diff_content(&reconstructed_final_diff, &ref_final_diff);
+
+        // Verify final diff from single executor has expected structure
+        assert!(
+            !final_diff.storage_diffs.is_empty()
+                || !final_diff.deployed_contracts.is_empty()
+                || !final_diff.nonces.is_empty(),
+            "Final state diff should have some changes"
+        );
     }
 }
