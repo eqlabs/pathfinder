@@ -47,7 +47,7 @@ use pathfinder_consensus::{
     ValidatorSet,
     ValidatorSetProvider,
 };
-use pathfinder_storage::Storage;
+use pathfinder_storage::{Storage, TransactionBehavior};
 use tokio::sync::{mpsc, watch};
 
 use super::fetch_proposers::L2ProposerSelector;
@@ -453,7 +453,7 @@ fn create_empty_proposal(
         .connection()
         .context("Creating database connection")?;
     let db_txn = db_conn
-        .transaction()
+        .transaction_with_behavior(TransactionBehavior::Immediate)
         .context("Create database transaction")?;
     let finalized_block = validator.finalize(db_txn, storage.clone())?;
     let proposal_commitment_hash = Hash(finalized_block.header.state_diff_commitment.0);
