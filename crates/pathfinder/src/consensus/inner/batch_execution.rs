@@ -425,14 +425,14 @@ mod tests {
         let final_transactions = validator_stage.transaction_count();
         let final_receipts = validator_stage.receipt_count();
         let final_events = validator_stage.event_count();
-        let final_executors = validator_stage.batch_executor_count();
+        let final_executors = validator_stage.batch_count();
 
         assert_eq!(final_transactions, target_transaction_idx + 1);
         assert_eq!(final_receipts, target_transaction_idx + 1);
         assert_eq!(final_events, target_transaction_idx + 1);
         assert_eq!(final_executors, target_batch + 1);
 
-        assert_eq!(validator_stage.batch_executor_count(), target_batch + 1);
+        assert_eq!(validator_stage.batch_count(), target_batch + 1);
 
         // Verify transaction indices are sequential and correct
         for (i, receipt) in validator_stage.receipts().iter().enumerate() {
@@ -806,14 +806,14 @@ mod tests {
                 .expect("Failed to execute batch");
         }
 
-        let before_rollback_count = validator_stage.batch_executor_count();
+        let before_rollback_count = validator_stage.batch_count();
 
         // Rollback to batch 3 (should drop executors 4-9)
         validator_stage
             .rollback_to_batch(3)
             .expect("Failed to rollback");
 
-        let after_rollback_count = validator_stage.batch_executor_count();
+        let after_rollback_count = validator_stage.batch_count();
 
         assert_eq!(
             after_rollback_count, 4,
@@ -832,23 +832,23 @@ mod tests {
                 .expect("Failed to execute batch");
         }
 
-        let before_multiple_rollback = validator_stage.batch_executor_count();
+        let before_multiple_rollback = validator_stage.batch_count();
 
         // Perform multiple rollbacks
         validator_stage
             .rollback_to_batch(5)
             .expect("Failed to rollback to batch 5");
-        let after_rollback_1 = validator_stage.batch_executor_count();
+        let after_rollback_1 = validator_stage.batch_count();
 
         validator_stage
             .rollback_to_batch(2)
             .expect("Failed to rollback to batch 2");
-        let after_rollback_2 = validator_stage.batch_executor_count();
+        let after_rollback_2 = validator_stage.batch_count();
 
         validator_stage
             .rollback_to_batch(0)
             .expect("Failed to rollback to batch 0");
-        let after_rollback_3 = validator_stage.batch_executor_count();
+        let after_rollback_3 = validator_stage.batch_count();
 
         // Verify progressive cleanup
         assert!(
@@ -877,7 +877,7 @@ mod tests {
             .rollback_to_transaction(1)
             .expect("Failed to rollback to transaction 1");
 
-        let after_first_batch_rollback = validator_stage.batch_executor_count();
+        let after_first_batch_rollback = validator_stage.batch_count();
 
         // Should have only 1 executor (for the partial first batch)
         assert_eq!(
@@ -894,23 +894,23 @@ mod tests {
                 .expect("Failed to execute batch");
         }
 
-        let peak_executor_count = validator_stage.batch_executor_count();
+        let peak_executor_count = validator_stage.batch_count();
 
         // Perform aggressive rollbacks
         validator_stage
             .rollback_to_batch(10)
             .expect("Failed to rollback to batch 10");
-        let after_aggressive_rollback_1 = validator_stage.batch_executor_count();
+        let after_aggressive_rollback_1 = validator_stage.batch_count();
 
         validator_stage
             .rollback_to_batch(5)
             .expect("Failed to rollback to batch 5");
-        let after_aggressive_rollback_2 = validator_stage.batch_executor_count();
+        let after_aggressive_rollback_2 = validator_stage.batch_count();
 
         validator_stage
             .rollback_to_batch(0)
             .expect("Failed to rollback to batch 0");
-        let after_aggressive_rollback_3 = validator_stage.batch_executor_count();
+        let after_aggressive_rollback_3 = validator_stage.batch_count();
 
         // Verify memory is properly reclaimed
         assert!(
