@@ -91,15 +91,7 @@ pub fn spawn(
         let mut consensus =
             Consensus::<ConsensusValue, ContractAddress, L2ProposerSelector>::recover_with_proposal_selector(
                 Config::new(validator_address)
-                    .with_wal_dir(wal_directory)
-                    .with_history_depth(
-                        // TODO: We don't support round certificates yet, and we want to limit
-                        // rebroadcasting to a minimum. Rebroadcast timeouts will happen for
-                        // historical engines which are finalized because
-                        // the effect `CancelAllTimeouts` is only triggered
-                        // upon a new round or a new height.
-                        2,
-                    ),
+                    .with_wal_dir(wal_directory),
                 // TODO use a dynamic validator set provider, once fetching the validator set from
                 // the staking contract is implemented. Related issue: https://github.com/eqlabs/pathfinder/issues/2936
                 Arc::new(validator_set_provider.clone()),

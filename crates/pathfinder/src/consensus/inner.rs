@@ -52,7 +52,7 @@ pub fn start(
 
     let consensus_p2p_event_processing_handle = p2p_task::spawn(
         chain_id,
-        config.my_validator_address,
+        (&config).into(),
         p2p_client,
         storage.clone(),
         p2p_event_rx,
@@ -132,6 +132,21 @@ enum P2PTaskEvent {
     /// Commit the given block and state update to the database. All proposals
     /// for this height are removed from the cache.
     CommitBlock(HeightAndRound, ConsensusValue),
+}
+
+#[derive(Copy, Clone, Debug)]
+struct P2PTaskConfig {
+    my_validator_address: ContractAddress,
+    history_depth: u64,
+}
+
+impl From<&ConsensusConfig> for P2PTaskConfig {
+    fn from(config: &ConsensusConfig) -> Self {
+        Self {
+            my_validator_address: config.my_validator_address,
+            history_depth: config.history_depth,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

@@ -33,7 +33,7 @@ use pathfinder_consensus::{
 use pathfinder_storage::{Storage, Transaction, TransactionBehavior};
 use tokio::sync::mpsc;
 
-use super::{integration_testing, ConsensusTaskEvent, P2PTaskEvent};
+use super::{integration_testing, ConsensusTaskEvent, P2PTaskConfig, P2PTaskEvent};
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::consensus::inner::batch_execution::{
     should_defer_execution,
@@ -70,7 +70,7 @@ const EVENT_CHANNEL_SIZE_LIMIT: usize = 1024;
 #[allow(clippy::too_many_arguments)]
 pub fn spawn(
     chain_id: ChainId,
-    validator_address: ContractAddress,
+    config: P2PTaskConfig,
     p2p_client: Client,
     storage: Storage,
     mut p2p_event_rx: mpsc::UnboundedReceiver<Event>,
@@ -81,6 +81,7 @@ pub fn spawn(
     // Does nothing in production builds. Used for integration testing only.
     inject_failure: Option<InjectFailureConfig>,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+    let validator_address = config.my_validator_address;
     // TODO validators are long-lived but not persisted
     let validator_cache = ValidatorCache::new();
     // Contains transaction batches and proposal finalizations that are
@@ -143,18 +144,20 @@ pub fn spawn(
                     P2PTaskEvent::P2PEvent(event) => {
                         tracing::info!("🖧  💌 {validator_address} incoming p2p event: {event:?}");
 
-                        // TODO this is wrong right now: we may have 3 nodes, from which ours has
-                        // already committed H, while the other 2 have not. If we fall over and
-                        // respawn, the other nodes will still be voting for H, while we are at H+1
-                        // and we are actively discarding votes for H.
-                        //
-                        // Maybe it does make sense to discard old messages but only those that are
-                        // too old for the consensus history window config. And that window needs to
-                        // have nonzero length.
-                        // if _is_outdated_p2p_event(&db_tx, &event)? {
-                        //     // TODO consider punishing the sender if the event is too old
-                        //     return Ok(ComputationSuccess::Continue);
-                        // }
+                        // Even though rebroadcast certificates are not implemented yet, it still
+                        // does make sense to keep `history_depth` nonzero. This is due to race
+                        // conditions that occur between the current height, which is being
+                        // committed and the next height which is being proposed. For example: we
+                        // may have 3 nodes, from which ours has already committed H, while the
+                        // other 2 have not. If we fall over and respawn, the other nodes will still
+                        // be voting for H, while we are at H+1 and we are actively discarding votes
+                        // for H, so the other 2 nodes will not make any progress at H. And since
+                        // we're not keeping any historical engines (ie. including for H), we will
+                        // not help the other 2 nodes in the voting process.
+                        if is_outdated_p2p_event(&db_tx, &event, config.history_depth)? {
+                            // TODO consider punishing the sender if the event is too old
+                            return Ok(ComputationSuccess::Continue);
+                        }
 
                         match event {
                             Event::Proposal(height_and_round, proposal_part) => {
@@ -629,15 +632,19 @@ fn execute_deferred_for_next_height(
 /// Check whether the incoming p2p event is outdated, i.e. it refers to a block
 /// that is already committed to the database. If so, log it and return `true`,
 /// otherwise return `false`.
-fn _is_outdated_p2p_event(db_tx: &Transaction<'_>, event: &Event) -> anyhow::Result<bool> {
+fn is_outdated_p2p_event(
+    db_tx: &Transaction<'_>,
+    event: &Event,
+    history_depth: u64,
+) -> anyhow::Result<bool> {
     // Ignore messages that refer to already committed blocks.
     let incoming_height = event.height();
     let latest_committed = db_tx.block_number(BlockId::Latest)?;
     if let Some(latest_committed) = latest_committed {
-        if incoming_height <= latest_committed.get() {
+        if incoming_height < latest_committed.get().saturating_sub(history_depth) {
             tracing::info!(
                 "🖧  ⛔ ignoring incoming p2p event {} for height {incoming_height} because latest \
-                 committed block is {latest_committed}",
+                 committed block is {latest_committed} and history depth is {history_depth}",
                 event.type_name()
             );
             return Ok(true);
