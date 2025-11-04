@@ -5,8 +5,14 @@
 //!
 //! Run the test:
 //! ```
-//! cargo test --test consensus -p pathfinder -F p2p -F consensus-integration-tests -- --nocapture
+//! PATHFINDER_TEST_ENABLE_PORT_MARKER_FILES=1 cargo nextest run --test consensus -p pathfinder --features p2p,consensus-integration-tests
 //! ```
+//!
+//! # Important
+//!
+//! Please do not use `cargo test` as it does not run parallel test cases in
+//! separate processes, and this will interfere with `PathfinderInstance` using
+//! `SIGCHLD` to detect that a Pathfinder process has exited.
 
 #[cfg(all(feature = "p2p", feature = "consensus-integration-tests"))]
 mod common;
