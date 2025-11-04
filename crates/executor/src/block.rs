@@ -694,7 +694,7 @@ mod tests {
         let single_state_diff = single_executor.finalize().expect("Failed to finalize");
 
         // Chained execution with different batch sizes: [2, 1, 2]
-        let batches = vec![
+        let batches = [
             vec![
                 executor_transactions[0].clone(),
                 executor_transactions[1].clone(),
@@ -706,34 +706,60 @@ mod tests {
             ],
         ];
 
-        let mut current_executor = BlockExecutor::new(
+        // Execute batch 1
+        let mut executor1 = BlockExecutor::new(
             chain_id,
             block_info,
             ETH_FEE_TOKEN_ADDRESS,
             STRK_FEE_TOKEN_ADDRESS,
             storage.connection().expect("Failed to get connection"),
         )
-        .expect("Failed to create first executor");
+        .expect("Failed to create executor1");
 
-        let mut total_receipts = 0;
+        let receipts1 = executor1
+            .execute(batches[0].clone())
+            .expect("Failed to execute batch1");
+        let state1 = executor1
+            .get_final_state()
+            .expect("Failed to get state from executor1");
 
-        for batch in batches.into_iter() {
-            current_executor = BlockExecutor::new(
-                chain_id,
-                block_info,
-                ETH_FEE_TOKEN_ADDRESS,
-                STRK_FEE_TOKEN_ADDRESS,
-                storage.connection().expect("Failed to get connection"),
-            )
-            .expect("Failed to create executor");
+        // Execute batch 2 with state from batch 1
+        let mut executor2 = BlockExecutor::new_with_initial_state(
+            chain_id,
+            block_info,
+            ETH_FEE_TOKEN_ADDRESS,
+            STRK_FEE_TOKEN_ADDRESS,
+            storage.connection().expect("Failed to get connection"),
+            state1,
+        )
+        .expect("Failed to create executor2");
 
-            let receipts = current_executor
-                .execute(batch)
-                .expect("Failed to execute batch");
-            total_receipts += receipts.len();
-        }
+        executor2.set_transaction_index(2);
+        let receipts2 = executor2
+            .execute(batches[1].clone())
+            .expect("Failed to execute batch2");
+        let state2 = executor2
+            .get_final_state()
+            .expect("Failed to get state from executor2");
 
-        let final_state_diff = current_executor.finalize().expect("Failed to finalize");
+        // Execute batch 3 with state from batch 2
+        let mut executor3 = BlockExecutor::new_with_initial_state(
+            chain_id,
+            block_info,
+            ETH_FEE_TOKEN_ADDRESS,
+            STRK_FEE_TOKEN_ADDRESS,
+            storage.connection().expect("Failed to get connection"),
+            state2,
+        )
+        .expect("Failed to create executor3");
+
+        executor3.set_transaction_index(3);
+        let receipts3 = executor3
+            .execute(batches[2].clone())
+            .expect("Failed to execute batch3");
+
+        let total_receipts = receipts1.len() + receipts2.len() + receipts3.len();
+        let final_state_diff = executor3.finalize().expect("Failed to finalize");
 
         // Check receipt count as a first sanity check
         assert_eq!(

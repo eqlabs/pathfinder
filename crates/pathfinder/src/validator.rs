@@ -685,7 +685,7 @@ impl ValidatorTransactionBatchStage {
             header,
             state_update,
             transactions,
-            receipts: receipts.clone(),
+            receipts,
             events,
         })
     }
@@ -1230,5 +1230,158 @@ mod tests {
                 "Transaction hash mismatch at position {i}"
             );
         }
+    }
+
+    /// Test edge cases in find_batch_containing_transaction and rollback logic
+    /// This verifies:
+    /// - find_batch_containing_transaction correctly identifies batches at
+    ///   boundaries
+    /// - rollback_to_transaction handles edge cases correctly (including
+    ///   target_count == 0)
+    #[test]
+    fn test_rollback_edge_cases() {
+        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+
+        let block_info = BlockInfo {
+            number: BlockNumber::new_or_panic(1),
+            timestamp: BlockTimestamp::new_or_panic(1000),
+            sequencer_address: SequencerAddress::ZERO,
+            l1_da_mode: L1DataAvailabilityMode::Calldata,
+            eth_l1_gas_price: GasPrice::ZERO,
+            strk_l1_gas_price: GasPrice::ZERO,
+            eth_l1_data_gas_price: GasPrice::ZERO,
+            strk_l1_data_gas_price: GasPrice::ZERO,
+            strk_l2_gas_price: GasPrice::ZERO,
+            eth_l2_gas_price: GasPrice::ZERO,
+            starknet_version: StarknetVersion::new(0, 14, 0, 0),
+        };
+
+        let mut validator_stage =
+            ValidatorTransactionBatchStage::new(chain_id, block_info, storage.clone())
+                .expect("Failed to create validator stage");
+
+        // Create batches with different sizes to test boundary conditions
+        // Batch 0: 3 transactions (tx's 0, 1, 2)
+        // Batch 1: 2 transactions (tx's 3, 4)
+        // Batch 2: 2 transactions (tx's 5, 6)
+        let batches = [
+            vec![
+                create_test_transaction(0),
+                create_test_transaction(1),
+                create_test_transaction(2),
+            ],
+            vec![create_test_transaction(3), create_test_transaction(4)],
+            vec![create_test_transaction(5), create_test_transaction(6)],
+        ];
+
+        // Execute all batches
+        validator_stage
+            .execute_batch(batches[0].clone())
+            .expect("Failed to execute batch 0");
+        validator_stage
+            .execute_batch(batches[1].clone())
+            .expect("Failed to execute batch 1");
+        validator_stage
+            .execute_batch(batches[2].clone())
+            .expect("Failed to execute batch 2");
+
+        assert_eq!(
+            validator_stage.transaction_count(),
+            7,
+            "Should have 7 transactions"
+        );
+
+        // Rollback to transaction at batch boundary (end of batch 0 = transaction 2)
+        // This should rollback to batch 0
+        validator_stage
+            .rollback_to_transaction(2)
+            .expect("Failed to rollback to transaction 2");
+        assert_eq!(
+            validator_stage.transaction_count(),
+            3,
+            "Should have 3 transactions after rollback to transaction 2"
+        );
+        assert_eq!(
+            validator_stage.batch_count(),
+            1,
+            "Should have 1 batch after rollback to transaction 2"
+        );
+
+        // Re-execute to get back to 7 transactions
+        validator_stage
+            .execute_batch(batches[1].clone())
+            .expect("Failed to re-execute batch 1");
+        validator_stage
+            .execute_batch(batches[2].clone())
+            .expect("Failed to re-execute batch 2");
+
+        // Rollback to transaction at batch boundary (start of batch 1 = transaction 3)
+        // This should rollback to batch 1 (which includes transaction 3)
+        validator_stage
+            .rollback_to_transaction(3)
+            .expect("Failed to rollback to transaction 3");
+        assert_eq!(
+            validator_stage.transaction_count(),
+            4,
+            "Should have 4 transactions after rollback to transaction 3"
+        );
+        assert_eq!(
+            validator_stage.batch_count(),
+            2,
+            "Should have 2 batches after rollback to transaction 3"
+        );
+
+        // Re-execute to get back to 7 transactions
+        validator_stage
+            .execute_batch(batches[2].clone())
+            .expect("Failed to re-execute batch 2");
+
+        // Rollback to transaction in middle of batch (transaction 1 in batch 0)
+        // This should rollback to transaction 1, keeping only first 2 transactions
+        validator_stage
+            .rollback_to_transaction(1)
+            .expect("Failed to rollback to transaction 1");
+        assert_eq!(
+            validator_stage.transaction_count(),
+            2,
+            "Should have 2 transactions after rollback to transaction 1"
+        );
+        assert_eq!(
+            validator_stage.batch_count(),
+            1,
+            "Should have 1 batch after rollback to transaction 1"
+        );
+
+        // Rollback to transaction 0 (first transaction)
+        // This should keep only the first transaction
+        // First, we need to get back to having multiple transactions
+        validator_stage
+            .execute_batch(vec![create_test_transaction(2)])
+            .expect("Failed to add transaction 2 back");
+        validator_stage
+            .execute_batch(batches[1].clone())
+            .expect("Failed to re-execute batch 1");
+
+        validator_stage
+            .rollback_to_transaction(0)
+            .expect("Failed to rollback to transaction 0");
+        assert_eq!(
+            validator_stage.transaction_count(),
+            1,
+            "Should have 1 transaction after rollback to transaction 0"
+        );
+        assert_eq!(
+            validator_stage.batch_count(),
+            1,
+            "Should have 1 batch after rollback to transaction 0"
+        );
+
+        // Verify an out of bounds rollback error
+        let result = validator_stage.rollback_to_transaction(10);
+        assert!(
+            result.is_err(),
+            "Rollback to transaction 10 (out of bounds) should error"
+        );
     }
 }
