@@ -4,7 +4,7 @@
 //! transaction batches with the ability to rollback when TransactionsFin
 //! indicates fewer transactions were actually executed by the proposer.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::Context;
 use p2p::consensus::HeightAndRound;
@@ -17,35 +17,17 @@ use crate::validator::ValidatorTransactionBatchStage;
 /// Manages batch execution with rollback support for TransactionsFin
 #[derive(Debug, Clone)]
 pub struct BatchExecutionManager {
-    /// Tracks execution state for each height/round
-    executions: HashMap<HeightAndRound, BatchExecutionState>,
-}
-
-/// State for a single proposal's batch execution
-#[derive(Debug, Clone)]
-struct BatchExecutionState {
-    /// Whether each batch has been executed (indexed by arrival order)
-    batch_executed: Vec<bool>,
-    /// Current execution state
-    current_state: ExecutionState,
-    /// Total transactions executed so far
-    total_executed: usize,
-}
-
-/// Current execution state
-#[derive(Debug, Clone, PartialEq)]
-pub enum ExecutionState {
-    /// Waiting for more batches
-    Collecting,
-    /// Finalized with specific batch count
-    Finalized { executed_batch_count: usize },
+    /// Tracks which proposals (height/round) have started execution.
+    /// An entry exists here if at least one batch has been executed (not
+    /// deferred).
+    executing: HashSet<HeightAndRound>,
 }
 
 impl BatchExecutionManager {
     /// Create a new batch execution manager
     pub fn new() -> Self {
         Self {
-            executions: HashMap::new(),
+            executing: HashSet::new(),
         }
     }
 
@@ -94,17 +76,8 @@ impl BatchExecutionManager {
             .execute_batch(all_transactions)
             .context("Failed to execute transaction batch")?;
 
-        // Update execution state
-        let state =
-            self.executions
-                .entry(height_and_round)
-                .or_insert_with(|| BatchExecutionState {
-                    batch_executed: Vec::new(),
-                    current_state: ExecutionState::Collecting,
-                    total_executed: 0,
-                });
-
-        state.total_executed += 1;
+        // Mark that execution has started for this height/round
+        self.executing.insert(height_and_round);
 
         tracing::debug!(
             "Transaction batch execution for height and round {height_and_round} is complete, \
@@ -121,10 +94,14 @@ impl BatchExecutionManager {
         transactions_fin: proto_consensus::TransactionsFin,
         validator: &mut ValidatorTransactionBatchStage,
     ) -> anyhow::Result<()> {
-        let state = self
-            .executions
-            .get_mut(&height_and_round)
-            .ok_or_else(|| anyhow::anyhow!("No execution state found for {height_and_round}"))?;
+        // Verify that execution has started (at least one batch was executed, not
+        // deferred)
+        if !self.executing.contains(&height_and_round) {
+            return Err(anyhow::anyhow!(
+                "No execution state found for {height_and_round}. Transactions may have been \
+                 deferred."
+            ));
+        }
 
         let target_transaction_count = transactions_fin.executed_transaction_count as usize;
         let current_transaction_count = validator.transaction_count();
@@ -145,17 +122,7 @@ impl BatchExecutionManager {
             validator
                 .rollback_to_transaction(target_transaction_count)
                 .context("Failed to rollback to target transaction count")?;
-
-            // Update state to reflect rollback
-            state.total_executed = target_transaction_count;
-            for i in target_transaction_count..state.batch_executed.len() {
-                state.batch_executed[i] = false;
-            }
         }
-
-        state.current_state = ExecutionState::Finalized {
-            executed_batch_count: target_transaction_count,
-        };
 
         tracing::info!(
             "Finalized {height_and_round} with {target_transaction_count} executed transactions"
@@ -164,24 +131,10 @@ impl BatchExecutionManager {
         Ok(())
     }
 
-    /// Get the current execution state for a proposal
-    #[cfg(test)]
-    pub fn get_execution_state(
-        &self,
-        height_and_round: &HeightAndRound,
-    ) -> Option<&ExecutionState> {
-        self.executions
-            .get(height_and_round)
-            .map(|state| &state.current_state)
-    }
-
     /// Clean up completed executions
     pub fn cleanup(&mut self, height_and_round: &HeightAndRound) {
-        if let Some(state) = self.executions.remove(height_and_round) {
-            tracing::debug!(
-                "Cleaned up execution state for {height_and_round}: {} batches",
-                state.batch_executed.len()
-            );
+        if self.executing.remove(height_and_round) {
+            tracing::debug!("Cleaned up execution state for {height_and_round}");
         }
     }
 }
@@ -333,11 +286,8 @@ mod tests {
 
         // Should succeed (either execute or defer)
         assert!(result.is_ok());
-
-        // Verify the batch was either executed or deferred
-        let _state = manager.get_execution_state(&height_and_round);
-        // State might be Collecting (if executed) or None (if deferred)
-        // Both are valid outcomes for this test
+        // Note: If executed, execution state will be created. If deferred, it
+        // won't. Both outcomes are valid.
     }
 
     /// Simulate receiving batches from the network and executing them with
