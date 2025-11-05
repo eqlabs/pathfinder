@@ -343,4 +343,16 @@ impl<S: StorageAdapter> StateReader for PathfinderStateReader<S> {
             casm_hash.0.into_starkfelt(),
         ))
     }
+
+    fn get_compiled_class_hash_v2(
+        &self,
+        class_hash: starknet_api::core::ClassHash,
+        compiled_class: &RunnableCompiledClass,
+    ) -> blockifier::state::state_api::StateResult<starknet_api::core::CompiledClassHash> {
+        let pathfinder_class_hash = ClassHash(class_hash.0.into_felt());
+
+        tracing::trace!(class_hash=%pathfinder_class_hash, "Getting compiled class hash v2");
+
+        blockifier::state::utils::get_compiled_class_hash_v2(self, class_hash, compiled_class)
+    }
 }
