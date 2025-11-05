@@ -1007,32 +1007,29 @@ impl Transaction<'_> {
         from_block: BlockNumber,
         to_block: BlockNumber,
     ) -> anyhow::Result<Vec<(SierraHash, Option<CasmHash>)>> {
-        // FIXME: add support for migrated compiled classes.
         let mut stmt = self.inner().prepare_cached(
-            r"WITH declared_sierra_classes(class_hash) AS (
+            r"WITH sierra_casm_class_hash_changes(class_hash) AS (
                 SELECT
-                    class_definitions.hash AS class_hash
+                    hash AS class_hash
                 FROM
-                    class_definitions
-                    INNER JOIN casm_definitions ON casm_definitions.hash = class_definitions.hash
+                    casm_class_hashes
                 WHERE
-                    class_definitions.block_number > ?2
-                    AND class_definitions.block_number <= ?1
+                    block_number > ?2
+                    AND block_number <= ?1
             )
             SELECT
                 class_hash,
                 (
                     SELECT
-                        casm_class_hashes.compiled_class_hash
+                        compiled_class_hash
                     FROM
-                        class_definitions
-                        INNER JOIN casm_class_hashes ON casm_class_hashes.hash = class_definitions.hash
+                        casm_class_hashes
                     WHERE
-                        class_definitions.hash = declared_sierra_classes.class_hash
-                        AND class_definitions.block_number <= ?2
+                        hash = sierra_casm_class_hash_changes.class_hash
+                        AND block_number <= ?2
                 ) AS compiled_class_hash
             FROM
-                declared_sierra_classes
+                sierra_casm_class_hash_changes
             ",
         )?;
 
