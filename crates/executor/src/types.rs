@@ -570,6 +570,7 @@ pub struct StateDiff {
     pub declared_classes: Vec<DeclaredSierraClass>,
     pub nonces: BTreeMap<ContractAddress, ContractNonce>,
     pub replaced_classes: Vec<ReplacedClass>,
+    pub migrated_compiled_classes: Vec<MigratedCompiledClass>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]
@@ -594,6 +595,12 @@ pub struct DeclaredSierraClass {
 pub struct ReplacedClass {
     pub contract_address: ContractAddress,
     pub class_hash: ClassHash,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]
+pub struct MigratedCompiledClass {
+    pub class_hash: SierraHash,
+    pub compiled_class_hash: CasmHash,
 }
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
@@ -887,6 +894,7 @@ impl From<StateDiff> for StateUpdateData {
             declared_classes,
             nonces,
             replaced_classes,
+            migrated_compiled_classes,
         } = x;
 
         let mut contract_updates = HashMap::new();
@@ -944,7 +952,10 @@ impl From<StateDiff> for StateUpdateData {
                 .into_iter()
                 .map(|c| (c.class_hash, c.compiled_class_hash))
                 .collect(),
-            migrated_compiled_classes: Default::default(),
+            migrated_compiled_classes: migrated_compiled_classes
+                .into_iter()
+                .map(|c| (c.class_hash, c.compiled_class_hash))
+                .collect(),
         }
     }
 }
@@ -1217,6 +1228,9 @@ pub(crate) fn to_state_diff<S: StorageAdapter + Clone>(
             })
             .collect(),
         replaced_classes,
+        // Migrated compiled classes are computed only during finalization, so they're not available
+        // after executing a single transaction.
+        migrated_compiled_classes: Default::default(),
     })
 }
 
