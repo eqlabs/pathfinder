@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 #[cfg(not(all(
     feature = "p2p",
     feature = "consensus-integration-tests",
@@ -11,14 +13,69 @@ pub use disabled::*;
 ))]
 pub use enabled::*;
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum InjectFailureTrigger {
+    ProposalInitRx,
+    BlockInfoRx,
+    TransactionBatchRx,
+    TransactionsFinRx,
+    ProposalCommitmentRx,
+    ProposalFinRx,
+    EntireProposalRx,
+    EntireProposalPersisted,
+    PrevoteRx,
+    PrecommitRx,
+    ProposalDecided,
+    ProposalCommitted,
+}
+
+impl InjectFailureTrigger {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            InjectFailureTrigger::ProposalInitRx => "proposal_init_rx",
+            InjectFailureTrigger::BlockInfoRx => "block_info_rx",
+            InjectFailureTrigger::TransactionBatchRx => "txn_batch_rx",
+            InjectFailureTrigger::TransactionsFinRx => "txns_fin_rx",
+            InjectFailureTrigger::ProposalCommitmentRx => "proposal_commitment_rx",
+            InjectFailureTrigger::ProposalFinRx => "proposal_fin_rx",
+            InjectFailureTrigger::EntireProposalRx => "entire_proposal_rx",
+            InjectFailureTrigger::EntireProposalPersisted => "entire_proposal_persisted",
+            InjectFailureTrigger::PrevoteRx => "prevote_rx",
+            InjectFailureTrigger::PrecommitRx => "precommit_rx",
+            InjectFailureTrigger::ProposalDecided => "proposal_decided",
+            InjectFailureTrigger::ProposalCommitted => "proposal_committed",
+        }
+    }
+}
+
+impl FromStr for InjectFailureTrigger {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "proposal_init_rx" => Ok(InjectFailureTrigger::ProposalInitRx),
+            "block_info_rx" => Ok(InjectFailureTrigger::BlockInfoRx),
+            "txn_batch_rx" => Ok(InjectFailureTrigger::TransactionBatchRx),
+            "txns_fin_rx" => Ok(InjectFailureTrigger::TransactionsFinRx),
+            "proposal_commitment_rx" => Ok(InjectFailureTrigger::ProposalCommitmentRx),
+            "proposal_fin_rx" => Ok(InjectFailureTrigger::ProposalFinRx),
+            "entire_proposal_rx" => Ok(InjectFailureTrigger::EntireProposalRx),
+            "entire_proposal_persisted" => Ok(InjectFailureTrigger::EntireProposalPersisted),
+            "prevote_rx" => Ok(InjectFailureTrigger::PrevoteRx),
+            "precommit_rx" => Ok(InjectFailureTrigger::PrecommitRx),
+            "proposal_decided" => Ok(InjectFailureTrigger::ProposalDecided),
+            "proposal_committed" => Ok(InjectFailureTrigger::ProposalCommitted),
+            _ => Err(format!("Unknown inject failure event: {s}")),
+        }
+    }
+}
+
 #[cfg(all(
     feature = "p2p",
     feature = "consensus-integration-tests",
     debug_assertions
 ))]
 mod enabled {
-    use clap::builder::RangedU64ValueParser;
-
     #[derive(clap::Args)]
     pub struct IntegrationTestingCli {
         #[arg(
@@ -27,68 +84,51 @@ mod enabled {
             default_value = "false"
         )]
         disable_db_verification: bool,
+
         #[arg(
-            long = "integration-tests.inject-failure.on-proposal-rx",
+            long = "integration-tests.inject-failure",
             action = clap::ArgAction::Set,
-            value_parser = up_to_15_height_parser(),
+            value_parser = parse_inject_failure,
         )]
-        inject_failure_on_proposal_rx: Option<u64>,
-        #[arg(
-            long = "integration-tests.inject-failure.on-proposal-decided",
-            action = clap::ArgAction::Set,
-            value_parser = up_to_15_height_parser(),
-        )]
-        inject_failure_on_proposal_decided: Option<u64>,
+        inject_failure: Option<InjectFailureConfig>,
     }
 
-    fn up_to_15_height_parser() -> RangedU64ValueParser {
-        (0..=15).into()
+    #[derive(Copy, Clone)]
+    pub struct InjectFailureConfig {
+        pub height: u64,
+        pub trigger: super::InjectFailureTrigger,
+    }
+
+    fn parse_inject_failure(s: &str) -> Result<InjectFailureConfig, String> {
+        let mut items = s.split(',');
+        let height: u64 = items
+            .next()
+            .ok_or_else(|| "Expected block height".to_string())?
+            .parse()
+            .map_err(|_| "Expected a number (u64)".to_string())?;
+        if height > 15 {
+            return Err("Expected range (0..=15)".to_string());
+        }
+        let trigger = items
+            .next()
+            .ok_or_else(|| "Expected inject failure trigger".to_string())?
+            .parse()
+            .map_err(|e| format!("Expected inject failure trigger: {e}"))?;
+
+        Ok(InjectFailureConfig { height, trigger })
     }
 
     #[derive(Copy, Clone)]
     pub struct IntegrationTestingConfig {
         disable_db_verification: bool,
-        inject_failure: InjectFailureConfig,
-    }
-
-    #[derive(Copy, Clone)]
-    pub struct InjectFailureConfig {
-        pub on_proposal_rx: Option<FailureInjection>,
-        pub on_proposal_decided: Option<FailureInjection>,
-    }
-
-    #[derive(Copy, Clone)]
-    pub struct FailureInjection {
-        height: u64,
-        prefix: &'static str,
-    }
-
-    impl FailureInjection {
-        fn new(height: u64, prefix: &'static str) -> Self {
-            Self { height, prefix }
-        }
-
-        pub fn height(&self) -> u64 {
-            self.height
-        }
-
-        pub fn prefix(&self) -> &'static str {
-            self.prefix
-        }
+        inject_failure: Option<InjectFailureConfig>,
     }
 
     impl IntegrationTestingConfig {
         pub fn parse(cli: IntegrationTestingCli) -> Self {
             Self {
                 disable_db_verification: cli.disable_db_verification,
-                inject_failure: InjectFailureConfig {
-                    on_proposal_rx: cli
-                        .inject_failure_on_proposal_rx
-                        .map(|h| FailureInjection::new(h, "proposal_rx")),
-                    on_proposal_decided: cli
-                        .inject_failure_on_proposal_decided
-                        .map(|h| FailureInjection::new(h, "proposal_decided")),
-                },
+                inject_failure: cli.inject_failure,
             }
         }
 
@@ -96,7 +136,7 @@ mod enabled {
             self.disable_db_verification
         }
 
-        pub fn inject_failure_config(&self) -> InjectFailureConfig {
+        pub fn inject_failure_config(&self) -> Option<InjectFailureConfig> {
             self.inject_failure
         }
     }
@@ -114,14 +154,11 @@ mod disabled {
     #[derive(Copy, Clone)]
     pub struct IntegrationTestingConfig;
 
-    #[derive(Copy, Clone, Default)]
-    pub struct InjectFailureConfig {
-        pub on_proposal_rx: Option<FailureInjection>,
-        pub on_proposal_decided: Option<FailureInjection>,
-    }
-
     #[derive(Copy, Clone)]
-    pub struct FailureInjection;
+    pub struct InjectFailureConfig {
+        pub height: u64,
+        pub trigger: super::InjectFailureTrigger,
+    }
 
     impl IntegrationTestingConfig {
         pub fn parse(_: IntegrationTestingCli) -> Self {
@@ -132,8 +169,8 @@ mod disabled {
             false
         }
 
-        pub fn inject_failure_config(&self) -> InjectFailureConfig {
-            InjectFailureConfig::default()
+        pub fn inject_failure_config(&self) -> Option<InjectFailureConfig> {
+            None
         }
     }
 }

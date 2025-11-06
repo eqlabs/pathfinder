@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
 use http::StatusCode;
+use pathfinder_lib::config::integration_testing::InjectFailureConfig;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -20,8 +21,8 @@ pub struct PathfinderInstance {
     name: &'static str,
     monitor_port: AtomicU16,
     consensus_p2p_port: AtomicU16,
-    rpc_port_watch_tx: watch::Sender<u16>,
-    rpc_port_watch_rx: watch::Receiver<u16>,
+    rpc_port_watch_tx: watch::Sender<(u32, u16)>,
+    rpc_port_watch_rx: watch::Receiver<(u32, u16)>,
     db_dir: PathBuf,
     stdout_path: PathBuf,
     stderr_path: PathBuf,
@@ -31,7 +32,7 @@ pub struct PathfinderInstance {
 }
 
 /// Configuration for a Pathfinder instance.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Config {
     pub name: &'static str,
     pub boot_port: Option<u16>,
@@ -40,14 +41,10 @@ pub struct Config {
     pub pathfinder_bin: PathBuf,
     pub fixture_dir: PathBuf,
     pub test_dir: PathBuf,
-    pub inject_failure: Option<InjectFailure>,
+    pub inject_failure: Option<InjectFailureConfig>,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum InjectFailure {
-    OnProposalRx(u64),
-    _OnProposalDecided(u64),
-}
+pub type RpcPortWatch = (watch::Sender<(u32, u16)>, watch::Receiver<(u32, u16)>);
 
 impl PathfinderInstance {
     /// Spawns a new Pathfinder instance with the given configuration. The
@@ -106,6 +103,7 @@ impl PathfinderInstance {
                         .join(",")
                 )
                 .as_str(),
+                "--consensus.history-depth=2",
                 format!("--p2p.consensus.identity-config-file={}", id_file.display()).as_str(),
                 "--p2p.consensus.listen-on=/ip4/127.0.0.1/tcp/0",
                 "--p2p.consensus.experimental.direct-connection-timeout=1",
@@ -121,7 +119,11 @@ impl PathfinderInstance {
 
         config.inject_failure.map(|i| {
             command
-                .arg(i.as_cli_arg())
+                .arg(format!(
+                    "--integration-tests.inject-failure={},{}",
+                    i.height,
+                    i.trigger.as_str()
+                ))
                 .arg("--integration-tests.disable-db-verification=true")
         });
 
@@ -135,7 +137,11 @@ impl PathfinderInstance {
             process.id()
         );
 
-        let (rpc_port_watch_tx, rpc_port_watch_rx) = watch::channel(0u16);
+        let (rpc_port_watch_tx, rpc_port_watch_rx) = watch::channel((0u32, 0u16));
+        // Keep the refcount at at least 1 to achieve 'static lifetime, especially when
+        // an instance is terminated and then respawned.
+        let rpc_port_watch_tx2 = rpc_port_watch_tx.clone();
+        _ = Box::leak(Box::new(rpc_port_watch_tx2));
 
         Ok(Self {
             process,
@@ -151,10 +157,7 @@ impl PathfinderInstance {
         })
     }
 
-    pub fn with_rpc_port_watch(
-        mut self,
-        (tx, rx): (watch::Sender<u16>, watch::Receiver<u16>),
-    ) -> Self {
+    pub fn with_rpc_port_watch(mut self, (tx, rx): RpcPortWatch) -> Self {
         self.rpc_port_watch_tx = tx;
         self.rpc_port_watch_rx = rx;
         self
@@ -163,14 +166,29 @@ impl PathfinderInstance {
     /// Checks if the instance has exited with a non-zero exit code.
     pub fn exited_with_error(&mut self) -> anyhow::Result<bool> {
         match self.process.try_wait() {
+            // The process has exited with some error exit code.
             Ok(Some(status)) if !status.success() => {
                 self.is_terminated = true;
+                // The previous port value is invalid, and the new Pathfinder instance hasn't
+                // been spawned yet.
+                self.rpc_port_watch_tx
+                    .send((0, 0))
+                    .context("Clearing rpc port")?;
                 Ok(true)
             }
-            Ok(Some(_)) | Ok(None) => {
+            // The process has exited with 0 code.
+            Ok(Some(_)) => {
                 self.is_terminated = true;
+                // The previous port value is invalid, and the new Pathfinder instance hasn't
+                // been spawned yet.
+                self.rpc_port_watch_tx
+                    .send((0, 0))
+                    .context("Clearing rpc port")?;
                 Ok(false)
             }
+            // The process is still running. The previous port value is still valid.
+            Ok(None) => Ok(false),
+            // An error occurred while checking the process status.
             Err(e) => Err(anyhow::anyhow!(
                 "Error checking if Pathfinder instance {} (pid: {}) has exited: {e}",
                 self.name,
@@ -187,9 +205,9 @@ impl PathfinderInstance {
         poll_interval: Duration,
         timeout: Duration,
     ) -> anyhow::Result<()> {
+        let pid = self.process.id();
         let fut = async move {
             let stopwatch = Instant::now();
-            let pid = self.process.id();
             let (monitor_port, rpc_port, p2p_port) = tokio::join!(
                 Self::wait_for_port(pid, "monitor", &self.db_dir, poll_interval),
                 Self::wait_for_port(pid, "rpc", &self.db_dir, poll_interval),
@@ -197,20 +215,25 @@ impl PathfinderInstance {
             );
             let monitor_port = monitor_port?;
             self.monitor_port.store(monitor_port, Ordering::Relaxed);
-            self.rpc_port_watch_tx.send(rpc_port?)?;
+            self.rpc_port_watch_tx
+                .send((pid, rpc_port?))
+                .context("Updating rpc port")?;
             self.consensus_p2p_port.store(p2p_port?, Ordering::Relaxed);
 
             loop {
                 match reqwest::get(format!("http://127.0.0.1:{monitor_port}/ready")).await {
                     Ok(response) if response.status() == StatusCode::OK => {
                         println!(
-                            "Pathfinder instance {:<7} ready after {} s",
+                            "Pathfinder instance {:<7} (pid: {pid}) ready after {} s",
                             self.name,
                             stopwatch.elapsed().as_secs()
                         );
                         return anyhow::Ok(());
                     }
-                    _ => println!("Pathfinder instance {:<7} not ready yet", self.name),
+                    _ => println!(
+                        "Pathfinder instance {:<7} (pid: {pid}) not ready yet",
+                        self.name,
+                    ),
                 }
 
                 sleep(poll_interval).await;
@@ -221,7 +244,7 @@ impl PathfinderInstance {
             Ok(Err(e)) => Err(e),
             Err(_) => {
                 anyhow::bail!(
-                    "Timeout waiting for Pathfinder instance {} to be ready",
+                    "Timeout waiting for Pathfinder instance {} (pid: {pid}) to be ready",
                     self.name
                 )
             }
@@ -263,11 +286,11 @@ impl PathfinderInstance {
         self.name
     }
 
-    pub fn rpc_port_watch_rx(&self) -> watch::Receiver<u16> {
+    pub fn rpc_port_watch_rx(&self) -> watch::Receiver<(u32, u16)> {
         self.rpc_port_watch_rx.clone()
     }
 
-    pub fn rpc_port_watch(&self) -> (watch::Sender<u16>, watch::Receiver<u16>) {
+    pub fn rpc_port_watch(&self) -> RpcPortWatch {
         (
             self.rpc_port_watch_tx.clone(),
             self.rpc_port_watch_rx.clone(),
@@ -417,7 +440,7 @@ impl Config {
             .collect()
     }
 
-    pub fn with_inject_failure(mut self, inject_failure: Option<InjectFailure>) -> Self {
+    pub fn with_inject_failure(mut self, inject_failure: Option<InjectFailureConfig>) -> Self {
         self.inject_failure = inject_failure;
         self
     }
@@ -425,19 +448,6 @@ impl Config {
     pub fn with_boot_port(mut self, port: u16) -> Self {
         self.boot_port = Some(port);
         self
-    }
-}
-
-impl InjectFailure {
-    pub fn as_cli_arg(&self) -> String {
-        match self {
-            Self::OnProposalRx(n) => {
-                format!("--integration-tests.inject-failure.on-proposal-rx={n}")
-            }
-            Self::_OnProposalDecided(n) => {
-                format!("--integration-tests.inject-failure.on-proposal-decided={n}")
-            }
-        }
     }
 }
 

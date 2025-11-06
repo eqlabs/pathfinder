@@ -669,6 +669,17 @@ struct ConsensusCli {
         env = "PATHFINDER_CONSENSUS_PROPOSER_ADDRESSES",
     )]
     proposer_addresses: Vec<Felt>,
+
+    #[arg(
+        long = "consensus.history-depth",
+        long_help = "How many historical consensus engines (ie. those prior to the current one) to keep enabled. Warning!Setting this value to 0 may stall small networks in some circumstances.",
+        action = clap::ArgAction::Set,
+        default_value = "10",
+        value_name = "DEPTH",
+        value_parser = clap::value_parser!(u64).range(0..=10),
+        env = "PATHFINDER_CONSENSUS_HISTORY_DEPTH",
+    )]
+    history_depth: u64,
 }
 
 #[derive(clap::ValueEnum, Clone, serde::Deserialize)]
@@ -909,6 +920,9 @@ pub struct ConsensusConfig {
     pub validator_addresses: Vec<ContractAddress>,
     /// The proposer addresses of all proposers in the proposer set.
     pub proposer_addresses: Vec<ContractAddress>,
+    /// How many historical consensus engines (ie. those prior to the current
+    /// one) to keep enabled.
+    pub history_depth: u64,
 }
 
 #[cfg(not(feature = "p2p"))]
@@ -1062,6 +1076,7 @@ impl ConsensusConfig {
                     .into_iter()
                     .map(ContractAddress)
                     .collect(),
+                history_depth: consensus_cli.history_depth,
             }
         })
     }

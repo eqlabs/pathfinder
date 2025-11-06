@@ -52,6 +52,11 @@ impl IntoModel<proto::ProposalPart> for dto::ProposalPart {
             dto::ProposalPart::TransactionBatch(batch) => proto::ProposalPart::TransactionBatch(
                 batch.into_iter().map(|t| t.into_model()).collect(),
             ),
+            dto::ProposalPart::TransactionsFin(p) => {
+                proto::ProposalPart::TransactionsFin(proto::TransactionsFin {
+                    executed_transaction_count: p.executed_transaction_count,
+                })
+            }
             dto::ProposalPart::ProposalCommitment(p) => {
                 proto::ProposalPart::ProposalCommitment(proto::ProposalCommitment {
                     block_number: p.block_number,
@@ -313,8 +318,10 @@ impl TryIntoDto<proto::ProposalPart> for dto::ProposalPart {
                         .collect::<Result<Vec<dto::TransactionWithClass>, _>>()?,
                 )
             }
-            proto::ProposalPart::TransactionsFin(_) => {
-                todo!("TODO: TransactionsFin not supported yet")
+            proto::ProposalPart::TransactionsFin(q) => {
+                dto::ProposalPart::TransactionsFin(dto::TransactionsFin {
+                    executed_transaction_count: q.executed_transaction_count,
+                })
             }
             proto::ProposalPart::ProposalCommitment(q) => {
                 dto::ProposalPart::ProposalCommitment(Box::new(dto::ProposalCommitment {

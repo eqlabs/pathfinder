@@ -4,6 +4,7 @@ mod conv;
 mod dto;
 mod fetch_proposers;
 mod fetch_validators;
+mod integration_testing;
 mod p2p_task;
 mod persist_proposals;
 
@@ -24,7 +25,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, watch};
 
 use super::ConsensusTaskHandles;
-use crate::config::{integration_testing, ConsensusConfig};
+use crate::config::integration_testing::InjectFailureConfig;
+use crate::config::ConsensusConfig;
 use crate::validator::FinalizedBlock;
 
 #[allow(clippy::too_many_arguments)]
@@ -36,7 +38,7 @@ pub fn start(
     p2p_client: Client,
     p2p_event_rx: mpsc::UnboundedReceiver<Event>,
     data_directory: &Path,
-    inject_failure_config: integration_testing::InjectFailureConfig,
+    inject_failure_config: Option<InjectFailureConfig>,
 ) -> ConsensusTaskHandles {
     // Events that are produced by the P2P task and consumed by the consensus task.
     // TODO determine sufficient buffer size. 1 is not enough.
@@ -50,13 +52,15 @@ pub fn start(
 
     let consensus_p2p_event_processing_handle = p2p_task::spawn(
         chain_id,
-        config.my_validator_address,
+        (&config).into(),
         p2p_client,
         storage.clone(),
         p2p_event_rx,
         tx_to_consensus,
         rx_from_consensus,
         consensus_storage.clone(),
+        data_directory,
+        inject_failure_config,
     );
 
     let (info_watch_tx, consensus_info_watch) = watch::channel(None);
@@ -128,6 +132,21 @@ enum P2PTaskEvent {
     /// Commit the given block and state update to the database. All proposals
     /// for this height are removed from the cache.
     CommitBlock(HeightAndRound, ConsensusValue),
+}
+
+#[derive(Copy, Clone, Debug)]
+struct P2PTaskConfig {
+    my_validator_address: ContractAddress,
+    history_depth: u64,
+}
+
+impl From<&ConsensusConfig> for P2PTaskConfig {
+    fn from(config: &ConsensusConfig) -> Self {
+        Self {
+            my_validator_address: config.my_validator_address,
+            history_depth: config.history_depth,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

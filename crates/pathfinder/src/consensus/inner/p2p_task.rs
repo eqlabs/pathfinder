@@ -11,6 +11,7 @@
 //!    be proposed by us in another round at the same height
 
 use std::collections::{BTreeMap, HashMap};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -32,7 +33,8 @@ use pathfinder_consensus::{
 use pathfinder_storage::{Storage, Transaction, TransactionBehavior};
 use tokio::sync::mpsc;
 
-use super::{ConsensusTaskEvent, P2PTaskEvent};
+use super::{integration_testing, ConsensusTaskEvent, P2PTaskConfig, P2PTaskEvent};
+use crate::config::integration_testing::InjectFailureConfig;
 use crate::consensus::inner::batch_execution::{
     should_defer_execution,
     BatchExecutionManager,
@@ -68,14 +70,18 @@ const EVENT_CHANNEL_SIZE_LIMIT: usize = 1024;
 #[allow(clippy::too_many_arguments)]
 pub fn spawn(
     chain_id: ChainId,
-    validator_address: ContractAddress,
+    config: P2PTaskConfig,
     p2p_client: Client,
     storage: Storage,
     mut p2p_event_rx: mpsc::UnboundedReceiver<Event>,
     tx_to_consensus: mpsc::Sender<ConsensusTaskEvent>,
     mut rx_from_consensus: mpsc::Receiver<P2PTaskEvent>,
     consensus_storage: Storage,
+    data_directory: &Path,
+    // Does nothing in production builds. Used for integration testing only.
+    inject_failure: Option<InjectFailureConfig>,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+    let validator_address = config.my_validator_address;
     // TODO validators are long-lived but not persisted
     let validator_cache = ValidatorCache::new();
     // Contains transaction batches and proposal finalizations that are
@@ -87,6 +93,8 @@ pub fn spawn(
     // Keep track of whether we've already emitted a warning about the
     // event channel size exceeding the limit, to avoid spamming the logs.
     let mut channel_size_warning_emitted = false;
+
+    let data_directory = data_directory.to_path_buf();
 
     util::task::spawn(async move {
         let readonly_storage = storage.clone();
@@ -136,7 +144,17 @@ pub fn spawn(
                     P2PTaskEvent::P2PEvent(event) => {
                         tracing::info!("🖧  💌 {validator_address} incoming p2p event: {event:?}");
 
-                        if is_outdated_p2p_event(&db_tx, &event)? {
+                        // Even though rebroadcast certificates are not implemented yet, it still
+                        // does make sense to keep `history_depth` nonzero. This is due to race
+                        // conditions that occur between the current height, which is being
+                        // committed and the next height which is being proposed. For example: we
+                        // may have 3 nodes, from which ours has already committed H, while the
+                        // other 2 have not. If we fall over and respawn, the other nodes will still
+                        // be voting for H, while we are at H+1 and we are actively discarding votes
+                        // for H, so the other 2 nodes will not make any progress at H. And since
+                        // we're not keeping any historical engines (ie. including for H), we will
+                        // not help the other 2 nodes in the voting process.
+                        if is_outdated_p2p_event(&db_tx, &event, config.history_depth)? {
                             // TODO consider punishing the sender if the event is too old
                             return Ok(ComputationSuccess::Continue);
                         }
@@ -158,9 +176,18 @@ pub fn spawn(
                                     readonly_storage.clone(),
                                     &cons_tx,
                                     &mut batch_execution_manager_inner,
+                                    &data_directory,
+                                    inject_failure,
                                 );
                                 match result {
                                     Ok(Some(commitment)) => {
+                                        // Does nothing in production builds.
+                                        integration_testing::debug_fail_on_entire_proposal_rx(
+                                            height_and_round.height(),
+                                            inject_failure,
+                                            &data_directory,
+                                        );
+
                                         anyhow::Ok(ComputationSuccess::IncomingProposalCommitment(
                                             height_and_round,
                                             commitment,
@@ -186,7 +213,16 @@ pub fn spawn(
                                 }
                             }
 
-                            Event::Vote(vote) => Ok(ComputationSuccess::EventVote(vote)),
+                            Event::Vote(vote) => {
+                                // Does nothing in production builds.
+                                integration_testing::debug_fail_on_vote(
+                                    &vote,
+                                    inject_failure,
+                                    &data_directory,
+                                );
+
+                                Ok(ComputationSuccess::EventVote(vote))
+                            }
                         }
                     }
 
@@ -350,6 +386,14 @@ pub fn spawn(
 
                             commit_finalized_block(&db_tx, finalized_block.clone())?;
                             db_tx.commit().context("Committing database transaction")?;
+
+                            // Does nothing in production builds.
+                            integration_testing::debug_fail_on_proposal_committed(
+                                height_and_round.height(),
+                                inject_failure,
+                                &data_directory,
+                            );
+
                             db_tx = db_conn
                                 .transaction()
                                 .context("Create unused database transaction")?;
@@ -382,6 +426,7 @@ pub fn spawn(
                                 height_and_round.height()
                             );
                             remove_proposal_parts(&cons_tx, height_and_round.height(), None)?;
+
                             anyhow::Ok(())
                         }?;
 
@@ -413,6 +458,13 @@ pub fn spawn(
             match success {
                 ComputationSuccess::Continue => (),
                 ComputationSuccess::IncomingProposalCommitment(height_and_round, commitment) => {
+                    // Does nothing in production builds.
+                    integration_testing::debug_fail_on_entire_proposal_persisted(
+                        height_and_round.height(),
+                        inject_failure,
+                        &data_directory,
+                    );
+
                     send_proposal_to_consensus(&tx_to_consensus, height_and_round, commitment)
                         .await;
                 }
@@ -580,15 +632,19 @@ fn execute_deferred_for_next_height(
 /// Check whether the incoming p2p event is outdated, i.e. it refers to a block
 /// that is already committed to the database. If so, log it and return `true`,
 /// otherwise return `false`.
-fn is_outdated_p2p_event(db_tx: &Transaction<'_>, event: &Event) -> anyhow::Result<bool> {
+fn is_outdated_p2p_event(
+    db_tx: &Transaction<'_>,
+    event: &Event,
+    history_depth: u64,
+) -> anyhow::Result<bool> {
     // Ignore messages that refer to already committed blocks.
     let incoming_height = event.height();
     let latest_committed = db_tx.block_number(BlockId::Latest)?;
     if let Some(latest_committed) = latest_committed {
-        if incoming_height <= latest_committed.get() {
+        if incoming_height < latest_committed.get().saturating_sub(history_depth) {
             tracing::info!(
                 "🖧  ⛔ ignoring incoming p2p event {} for height {incoming_height} because latest \
-                 committed block is {latest_committed}",
+                 committed block is {latest_committed} and history depth is {history_depth}",
                 event.type_name()
             );
             return Ok(true);
@@ -676,6 +732,8 @@ fn handle_incoming_proposal_part(
     storage: Storage,
     cons_tx: &Transaction<'_>,
     batch_execution_manager: &mut BatchExecutionManager,
+    data_directory: &Path,
+    inject_failure_config: Option<InjectFailureConfig>,
 ) -> anyhow::Result<Option<ProposalCommitmentWithOrigin>> {
     let mut parts = foreign_proposal_parts(
         cons_tx,
@@ -684,6 +742,14 @@ fn handle_incoming_proposal_part(
         &validator_address,
     )?
     .unwrap_or_default();
+
+    // Does nothing in production builds.
+    integration_testing::debug_fail_on_proposal_part(
+        &proposal_part,
+        height_and_round.height(),
+        inject_failure_config,
+        data_directory,
+    );
 
     match proposal_part {
         ProposalPart::Init(ref prop_init) => {

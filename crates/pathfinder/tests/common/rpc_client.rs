@@ -2,7 +2,6 @@
 
 use std::time::Duration;
 
-use anyhow::Context;
 use serde::Deserialize;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -17,7 +16,7 @@ pub fn wait_for_height(
     instance: &PathfinderInstance,
     height: u64,
     poll_interval: Duration,
-) -> JoinHandle<anyhow::Result<()>> {
+) -> JoinHandle<()> {
     tokio::spawn(wait_for_height_fut(
         instance.name(),
         instance.rpc_port_watch_rx().clone(),
@@ -30,21 +29,25 @@ pub fn wait_for_height(
 /// Polls every `poll_interval`.
 async fn wait_for_height_fut(
     name: &'static str,
-    mut rpc_port_watch_rx: watch::Receiver<u16>,
+    mut rpc_port_watch_rx: watch::Receiver<(u32, u16)>,
     height: u64,
     poll_interval: Duration,
-) -> anyhow::Result<()> {
-    rpc_port_watch_rx
-        .wait_for(|port| *port != 0)
-        .await
-        .context("Waiting for port to change from 0")?;
-
+) {
     loop {
-        let rpc_port = *rpc_port_watch_rx.borrow();
-
         // Sleeping first actually makes sense here, because the node will likely not
         // have any decided heights immediately after the RPC server is ready.
         sleep(poll_interval).await;
+
+        // We're waiting for the rpc port to change from 0 on each iteriation, because
+        // in case of tests where the instance is terminated and then respawned the RPC
+        // port number will temporarily be reset to 0.
+        let (pid, rpc_port) =
+            if let Ok(borrowed) = rpc_port_watch_rx.wait_for(|port| *port != (0, 0)).await {
+                *borrowed
+            } else {
+                println!("Rpc port watch for {name} is closed");
+                continue;
+            };
 
         let Ok(reply) = reqwest::Client::new()
             .post(format!(
@@ -55,7 +58,9 @@ async fn wait_for_height_fut(
             .send()
             .await
         else {
-            println!("Pathfinder instance {name:<7} not responding yet");
+            println!(
+                "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} not responding yet"
+            );
             continue;
         };
 
@@ -65,11 +70,14 @@ async fn wait_for_height_fut(
             },
         } = reply.json::<Reply>().await.unwrap();
 
-        println!("Pathfinder instance {name:<7} decided height: {highest_decided_height:?}");
+        println!(
+            "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} decided height: \
+             {highest_decided_height:?}"
+        );
 
         if let Some(highest_decided_height) = highest_decided_height {
             if highest_decided_height >= height {
-                return Ok(());
+                return;
             }
         }
     }
