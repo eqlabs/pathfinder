@@ -678,6 +678,7 @@ impl IntoModel<state_update::StateUpdateData> for dto::StateUpdateData {
             system_contract_updates,
             declared_cairo_classes,
             declared_sierra_classes,
+            migrated_compiled_classes,
         } = self;
         state_update::StateUpdateData {
             contract_updates: contract_updates
@@ -692,8 +693,7 @@ impl IntoModel<state_update::StateUpdateData> for dto::StateUpdateData {
                 .collect(),
             declared_cairo_classes: declared_cairo_classes.into_iter().collect(),
             declared_sierra_classes: declared_sierra_classes.line.into_iter().collect(),
-            // TODO: add migrated compiled classes to consensus protocol
-            migrated_compiled_classes: Default::default(),
+            migrated_compiled_classes: migrated_compiled_classes.line.into_iter().collect(),
         }
     }
 }
@@ -932,7 +932,7 @@ impl TryIntoDto<state_update::StateUpdateData> for dto::StateUpdateData {
             system_contract_updates,
             declared_cairo_classes,
             declared_sierra_classes,
-            migrated_compiled_classes: _,
+            migrated_compiled_classes,
         } = u;
         let res = dto::StateUpdateData {
             contract_updates:
@@ -961,6 +961,9 @@ impl TryIntoDto<state_update::StateUpdateData> for dto::StateUpdateData {
             declared_cairo_classes: declared_cairo_classes.into_iter().collect(),
             declared_sierra_classes: dto::LinearMap {
                 line: declared_sierra_classes.into_iter().collect(),
+            },
+            migrated_compiled_classes: dto::LinearMap {
+                line: migrated_compiled_classes.into_iter().collect(),
             },
         };
         Ok(res)

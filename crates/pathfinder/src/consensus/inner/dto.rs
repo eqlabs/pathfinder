@@ -156,6 +156,8 @@ pub struct StateUpdateData {
     pub declared_cairo_classes: Vec<pathfinder_common::ClassHash>,
     pub declared_sierra_classes:
         LinearMap<pathfinder_common::SierraHash, pathfinder_common::CasmHash>,
+    pub migrated_compiled_classes:
+        LinearMap<pathfinder_common::SierraHash, pathfinder_common::CasmHash>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
