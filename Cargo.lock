@@ -8571,6 +8571,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "pathfinder-casm-hashes"
+version = "0.20.5"
+dependencies = [
+ "pathfinder-common",
+ "pathfinder-crypto",
+]
+
+[[package]]
 name = "pathfinder-class-hash"
 version = "0.20.5"
 dependencies = [
@@ -8850,8 +8858,10 @@ dependencies = [
  "hex",
  "metrics 0.20.1",
  "paste",
+ "pathfinder-casm-hashes",
  "pathfinder-class-hash",
  "pathfinder-common",
+ "pathfinder-compiler",
  "pathfinder-crypto",
  "pathfinder-ethereum",
  "pathfinder-serde",
@@ -8860,6 +8870,7 @@ dependencies = [
  "r2d2",
  "r2d2_sqlite",
  "rand 0.8.5",
+ "rayon",
  "rstest 0.18.2",
  "rusqlite",
  "serde",
