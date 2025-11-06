@@ -14,7 +14,9 @@
                 ]
             }
         ],
-        "deprecated_declared_classes": [ "0xcdef" ],
+        "deprecated_declared_classes": [
+            "0xcdef"
+        ],
         "declared_classes": [
             {
                 "class_hash": "0xabcd",
@@ -33,6 +35,12 @@
                 "class_hash": "0xdac"
             }
         ],
+        "migrated_compiled_classes": [
+            {
+                "class_hash": "0xabcd",
+                "compiled_class_hash": "0xdcbb"
+            }
+        ],
         "nonces": [
             {
                 "contract_address": "0xca",
@@ -41,4 +49,3 @@
         ]
     }
 }
-

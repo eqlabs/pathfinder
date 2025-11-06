@@ -29,6 +29,7 @@ impl Transaction<'_> {
             &state_update.system_contract_updates,
             &state_update.declared_cairo_classes,
             &state_update.declared_sierra_classes,
+            &state_update.migrated_compiled_classes,
         )
     }
 
@@ -43,6 +44,7 @@ impl Transaction<'_> {
             &state_update.system_contract_updates,
             &state_update.declared_cairo_classes,
             &state_update.declared_sierra_classes,
+            &state_update.migrated_compiled_classes,
         )
     }
 
@@ -53,6 +55,7 @@ impl Transaction<'_> {
         system_contract_updates: &HashMap<ContractAddress, SystemContractUpdate>,
         declared_cairo_classes: &HashSet<ClassHash>,
         declared_sierra_classes: &HashMap<SierraHash, CasmHash>,
+        migrated_compiled_classes: &HashMap<SierraHash, CasmHash>,
     ) -> anyhow::Result<()> {
         let mut query_contract_address = self
             .inner()
@@ -119,12 +122,11 @@ impl Transaction<'_> {
             )
             .context("Preparing redeclared class insert statement")?;
 
-        // OR IGNORE is required to handle legacy syncing logic, where the casm
-        // definition is inserted before the state update
         let mut insert_casm_hash = self
             .inner()
             .prepare_cached(
-                "INSERT OR IGNORE INTO casm_definitions (hash, compiled_class_hash) VALUES (?, ?)",
+                "INSERT OR IGNORE INTO casm_class_hashes (hash, block_number, \
+                 compiled_class_hash) VALUES (?, ?, ?)",
             )
             .context("Preparing casm hash insert statement")?;
 
@@ -240,8 +242,16 @@ impl Transaction<'_> {
 
         for (sierra_hash, casm_hash) in declared_sierra_classes {
             insert_casm_hash
-                .execute(params![sierra_hash, casm_hash])
-                .context("Inserting casm hash")?;
+                .execute(params![sierra_hash, &block_number, casm_hash])
+                .context("Inserting CASM hash")?;
+        }
+
+        // Starknet 0.14.1 introduced CASM hash migrations: CASM class hashes are
+        // gradually migrated to the new hash algorithm (using Blake2).
+        for (sierra_hash, casm_hash) in migrated_compiled_classes {
+            insert_casm_hash
+                .execute(params![sierra_hash, &block_number, casm_hash])
+                .context("Inserting migrated CASM hash")?;
         }
 
         Ok(())
@@ -371,11 +381,11 @@ impl Transaction<'_> {
             .prepare_cached(
                 r"SELECT
                 class_definitions.hash AS class_hash,
-                casm_definitions.compiled_class_hash AS compiled_class_hash
+                casm_class_hashes.compiled_class_hash AS compiled_class_hash
             FROM
                 class_definitions
             LEFT OUTER JOIN
-                casm_definitions ON casm_definitions.hash = class_definitions.hash
+                casm_class_hashes ON casm_class_hashes.hash = class_definitions.hash AND casm_class_hashes.block_number = class_definitions.block_number
             WHERE
                 class_definitions.block_number = ?",
             )
@@ -417,6 +427,38 @@ impl Transaction<'_> {
             .context("Iterating over re-declared classes")?
         {
             state_update = state_update.with_declared_cairo_class(class_hash);
+        }
+
+        let mut stmt = self
+            .inner()
+            .prepare_cached(
+                r"
+            SELECT
+                ch1.hash AS class_hash,
+                ch1.compiled_class_hash AS casm_hash
+            FROM 
+                casm_class_hashes ch1
+            LEFT OUTER JOIN
+                casm_class_hashes ch2 ON ch1.hash = ch2.hash AND ch2.block_number < ch1.block_number
+            WHERE
+                ch1.block_number = ? AND ch2.block_number IS NOT NULL
+            ",
+            )
+            .context("Preparing migrated compiled class query statement")?;
+        let mut migrated_compiled_classes = stmt
+            .query_map(params![&block_number], |row| {
+                let class_hash: ClassHash = row.get_class_hash(0)?;
+                let casm_hash: CasmHash = row.get_casm_hash(1)?;
+
+                Ok((SierraHash(class_hash.0), casm_hash))
+            })
+            .context("Querying migrated compiled classes")?;
+        while let Some((sierra_hash, casm_hash)) = migrated_compiled_classes
+            .next()
+            .transpose()
+            .context("Iterating over migrated compiled class query rows")?
+        {
+            state_update = state_update.with_migrated_compiled_class(sierra_hash, casm_hash);
         }
 
         let mut stmt = self
@@ -966,30 +1008,28 @@ impl Transaction<'_> {
         to_block: BlockNumber,
     ) -> anyhow::Result<Vec<(SierraHash, Option<CasmHash>)>> {
         let mut stmt = self.inner().prepare_cached(
-            r"WITH declared_sierra_classes(class_hash) AS (
+            r"WITH sierra_casm_class_hash_changes(class_hash) AS (
                 SELECT
-                    class_definitions.hash AS class_hash
+                    hash AS class_hash
                 FROM
-                    class_definitions
-                    INNER JOIN casm_definitions ON casm_definitions.hash = class_definitions.hash
+                    casm_class_hashes
                 WHERE
-                    class_definitions.block_number > ?2
-                    AND class_definitions.block_number <= ?1
+                    block_number > ?2
+                    AND block_number <= ?1
             )
             SELECT
                 class_hash,
                 (
                     SELECT
-                        casm_definitions.compiled_class_hash
+                        compiled_class_hash
                     FROM
-                        class_definitions
-                        INNER JOIN casm_definitions ON casm_definitions.hash = class_definitions.hash
+                        casm_class_hashes
                     WHERE
-                        class_definitions.hash = declared_sierra_classes.class_hash
-                        AND class_definitions.block_number <= ?2
+                        hash = sierra_casm_class_hash_changes.class_hash
+                        AND block_number <= ?2
                 ) AS compiled_class_hash
             FROM
-                declared_sierra_classes
+                sierra_casm_class_hash_changes
             ",
         )?;
 
@@ -1037,7 +1077,7 @@ mod tests {
 
         let state_update = StateUpdate::default().with_declared_cairo_class(target_class);
 
-        tx.insert_cairo_class(target_class, &[]).unwrap();
+        tx.insert_cairo_class_definition(target_class, &[]).unwrap();
         tx.insert_block_header(&header_0).unwrap();
         tx.insert_block_header(&header_1).unwrap();
         tx.insert_state_update(header_0.number, &state_update)
@@ -1091,8 +1131,10 @@ mod tests {
         let diff_3 = StateUpdate::default();
         let diff_4 = StateUpdate::default();
 
-        tx.insert_cairo_class(original_class, definition).unwrap();
-        tx.insert_cairo_class(replaced_class, definition).unwrap();
+        tx.insert_cairo_class_definition(original_class, definition)
+            .unwrap();
+        tx.insert_cairo_class_definition(replaced_class, definition)
+            .unwrap();
 
         tx.insert_block_header(&header_0).unwrap();
         tx.insert_block_header(&header_1).unwrap();
@@ -1173,15 +1215,14 @@ mod tests {
 
             // Submit the class definitions since this occurs out of band of the header and
             // state diff.
-            tx.insert_cairo_class(CAIRO_HASH, b"cairo definition")
+            tx.insert_cairo_class_definition(CAIRO_HASH, b"cairo definition")
                 .unwrap();
-            tx.insert_cairo_class(CAIRO_HASH2, b"cairo definition 2")
+            tx.insert_cairo_class_definition(CAIRO_HASH2, b"cairo definition 2")
                 .unwrap();
 
-            tx.insert_sierra_class(
+            tx.insert_sierra_class_definition(
                 &SIERRA_HASH,
                 b"sierra definition",
-                &CASM_HASH,
                 b"casm definition",
             )
             .unwrap();
@@ -1241,7 +1282,7 @@ mod tests {
             let tx = db.transaction().unwrap();
 
             let result = tx.state_update(header.number.into()).unwrap().unwrap();
-            assert_eq!(result, state_update);
+            pretty_assertions_sorted::assert_eq!(result, state_update);
 
             // check getters for compiled class
             let hash = tx
@@ -1287,6 +1328,29 @@ mod tests {
                 .declared_classes_counts(new_header.number, NonZeroUsize::new(1).unwrap())
                 .unwrap();
             assert_eq!(result[0], 1);
+        }
+
+        #[test]
+        fn migrated_compiled_classes() {
+            let (mut db, _state_update, header) = setup();
+
+            let tx = db.transaction().unwrap();
+            let new_header = header
+                .child_builder()
+                .finalize_with_hash(block_hash!("0xabcdee"));
+            let new_state_update = StateUpdate::default()
+                .with_block_hash(new_header.hash)
+                .with_migrated_compiled_class(SIERRA_HASH, casm_hash_bytes!(b"casm hash 2"));
+            tx.insert_block_header(&new_header).unwrap();
+            tx.insert_state_update(new_header.number, &new_state_update)
+                .unwrap();
+
+            tx.commit().unwrap();
+
+            let tx = db.transaction().unwrap();
+
+            let result = tx.state_update(new_header.number.into()).unwrap().unwrap();
+            assert_eq!(result, new_state_update);
         }
 
         #[test]

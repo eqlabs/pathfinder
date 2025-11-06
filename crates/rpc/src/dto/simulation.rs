@@ -354,6 +354,13 @@ impl crate::dto::SerializeForVersion for pathfinder_executor::types::StateDiff {
             self.declared_classes.len(),
             &mut self.declared_classes.iter(),
         )?;
+        if serializer.version >= RpcVersion::V10 {
+            serializer.serialize_iter(
+                "migrated_compiled_classes",
+                self.migrated_compiled_classes.len(),
+                &mut self.migrated_compiled_classes.iter(),
+            )?;
+        }
         serializer.serialize_iter(
             "deployed_contracts",
             self.deployed_contracts.len(),
@@ -401,6 +408,18 @@ impl crate::dto::SerializeForVersion for &pathfinder_executor::types::StorageDif
 }
 
 impl crate::dto::SerializeForVersion for &pathfinder_executor::types::DeclaredSierraClass {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("class_hash", &self.class_hash)?;
+        serializer.serialize_field("compiled_class_hash", &self.compiled_class_hash)?;
+        serializer.end()
+    }
+}
+
+impl crate::dto::SerializeForVersion for &pathfinder_executor::types::MigratedCompiledClass {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,

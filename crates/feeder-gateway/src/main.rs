@@ -41,6 +41,7 @@ use serde::{Deserialize, Serialize};
 use starknet_gateway_types::reply::state_update::{
     DeclaredSierraClass,
     DeployedContract,
+    MigratedCompiledClass,
     ReplacedClass,
     StorageDiff,
 };
@@ -657,6 +658,15 @@ fn storage_to_gateway(
         })
         .collect();
 
+    let migrated_compiled_classes = state_update
+        .migrated_compiled_classes
+        .into_iter()
+        .map(|(sierra_hash, casm_hash)| MigratedCompiledClass {
+            class_hash: sierra_hash,
+            compiled_class_hash: casm_hash,
+        })
+        .collect();
+
     let state_diff = starknet_gateway_types::reply::state_update::StateDiff {
         storage_diffs,
         deployed_contracts,
@@ -664,6 +674,7 @@ fn storage_to_gateway(
         declared_classes,
         nonces,
         replaced_classes,
+        migrated_compiled_classes,
     };
 
     starknet_gateway_types::reply::StateUpdate {

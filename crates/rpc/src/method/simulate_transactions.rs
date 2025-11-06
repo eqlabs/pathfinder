@@ -452,6 +452,7 @@ pub(crate) mod tests {
                                 }
                             ],
                             replaced_classes: vec![],
+                            migrated_compiled_classes: vec![],
                             nonces: BTreeMap::from([(
                                 DEPLOYED_CONTRACT_ADDRESS,
                                 contract_nonce!("0x1"),
@@ -615,6 +616,7 @@ pub(crate) mod tests {
                         declared_classes: vec![],
                         deployed_contracts: vec![],
                         replaced_classes: vec![],
+                        migrated_compiled_classes: vec![],
                         nonces: BTreeMap::from([
                             (account_contract_address, contract_nonce!("0x1")),
                         ]),
@@ -957,6 +959,7 @@ pub(crate) mod tests {
                     }],
                     deployed_contracts: vec![],
                     replaced_classes: vec![],
+                    migrated_compiled_classes: vec![],
                     nonces: BTreeMap::from([(account_contract_address, contract_nonce!("0x1"))]),
                 }
             }
@@ -1162,6 +1165,7 @@ pub(crate) mod tests {
                         class_hash: SIERRA_HASH,
                     }],
                     replaced_classes: vec![],
+                    migrated_compiled_classes: vec![],
                     nonces: BTreeMap::from([(account_contract_address, contract_nonce!("0x2"))]),
                 }
             }
@@ -1484,6 +1488,7 @@ pub(crate) mod tests {
                     declared_classes: vec![],
                     deployed_contracts: vec![],
                     replaced_classes: vec![],
+                    migrated_compiled_classes: vec![],
                     nonces: BTreeMap::from([(account_contract_address, contract_nonce!("0x3"))]),
                 }
             }
@@ -1741,6 +1746,7 @@ pub(crate) mod tests {
                     }],
                     deployed_contracts: vec![],
                     replaced_classes: vec![],
+                    migrated_compiled_classes: vec![],
                     nonces: BTreeMap::from([(account_contract_address, contract_nonce!("0x1"))]),
                 }
             }
@@ -1946,6 +1952,7 @@ pub(crate) mod tests {
                         class_hash: SIERRA_HASH,
                     }],
                     replaced_classes: vec![],
+                    migrated_compiled_classes: vec![],
                     nonces: BTreeMap::from([(account_contract_address, contract_nonce!("0x2"))]),
                 }
             }
@@ -2268,6 +2275,7 @@ pub(crate) mod tests {
                     declared_classes: vec![],
                     deployed_contracts: vec![],
                     replaced_classes: vec![],
+                    migrated_compiled_classes: vec![],
                     nonces: BTreeMap::from([(account_contract_address, contract_nonce!("0x3"))]),
                 }
             }

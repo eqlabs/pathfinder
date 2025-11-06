@@ -337,6 +337,7 @@ mod tests {
     use starknet_gateway_types::reply::state_update::{
         DeclaredSierraClass,
         DeployedContract,
+        MigratedCompiledClass,
         ReplacedClass,
         StateDiff,
         StorageDiff,
@@ -503,6 +504,10 @@ mod tests {
                     replaced_classes: vec![ReplacedClass {
                         address: contract_address_bytes!(b"contract 0"),
                         class_hash: class_hash_bytes!(b"replaced class"),
+                    }],
+                    migrated_compiled_classes: vec![MigratedCompiledClass {
+                        class_hash: sierra_hash_bytes!(b"migrated class"),
+                        compiled_class_hash: casm_hash_bytes!(b"migrated casm"),
                     }],
                 }),
                 None,

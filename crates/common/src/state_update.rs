@@ -25,6 +25,7 @@ pub struct StateUpdate {
     pub system_contract_updates: HashMap<ContractAddress, SystemContractUpdate>,
     pub declared_cairo_classes: HashSet<ClassHash>,
     pub declared_sierra_classes: HashMap<SierraHash, CasmHash>,
+    pub migrated_compiled_classes: HashMap<SierraHash, CasmHash>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Dummy)]
@@ -33,6 +34,7 @@ pub struct StateUpdateData {
     pub system_contract_updates: HashMap<ContractAddress, SystemContractUpdate>,
     pub declared_cairo_classes: HashSet<ClassHash>,
     pub declared_sierra_classes: HashMap<SierraHash, CasmHash>,
+    pub migrated_compiled_classes: HashMap<SierraHash, CasmHash>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Dummy)]
@@ -59,6 +61,7 @@ pub struct StateUpdateRef<'a> {
     pub contract_updates: Vec<(&'a ContractAddress, ContractUpdateRef<'a>)>,
     pub system_contract_updates: Vec<(&'a ContractAddress, SystemContractUpdateRef<'a>)>,
     pub declared_sierra_classes: &'a HashMap<SierraHash, CasmHash>,
+    pub migrated_compiled_classes: &'a HashMap<SierraHash, CasmHash>,
 }
 
 pub struct ContractUpdateRef<'a> {
@@ -185,6 +188,11 @@ impl StateUpdate {
         self
     }
 
+    pub fn with_migrated_compiled_class(mut self, sierra: SierraHash, casm: CasmHash) -> Self {
+        self.migrated_compiled_classes.insert(sierra, casm);
+        self
+    }
+
     /// The number of individual changes in this state update.
     ///
     /// The total amount of:
@@ -296,6 +304,7 @@ impl StateUpdate {
             &self.system_contract_updates,
             &self.declared_cairo_classes,
             &self.declared_sierra_classes,
+            &self.migrated_compiled_classes,
         )
     }
 
@@ -309,7 +318,9 @@ impl StateUpdate {
         self.system_contract_updates.iter().for_each(|(_, update)| {
             len += update.storage.len();
         });
-        len += self.declared_cairo_classes.len() + self.declared_sierra_classes.len();
+        len += self.declared_cairo_classes.len()
+            + self.declared_sierra_classes.len()
+            + self.migrated_compiled_classes.len();
         len.try_into().expect("ptr size is 64bits")
     }
 
@@ -364,6 +375,7 @@ impl StateUpdateData {
             &self.system_contract_updates,
             &self.declared_cairo_classes,
             &self.declared_sierra_classes,
+            &self.migrated_compiled_classes,
         )
     }
 
@@ -403,6 +415,7 @@ impl From<StateUpdate> for StateUpdateData {
             system_contract_updates: state_update.system_contract_updates,
             declared_cairo_classes: state_update.declared_cairo_classes,
             declared_sierra_classes: state_update.declared_sierra_classes,
+            migrated_compiled_classes: state_update.migrated_compiled_classes,
         }
     }
 }
@@ -437,6 +450,7 @@ impl<'a> From<&'a StateUpdate> for StateUpdateRef<'a> {
                 })
                 .collect(),
             declared_sierra_classes: &state_update.declared_sierra_classes,
+            migrated_compiled_classes: &state_update.migrated_compiled_classes,
         }
     }
 }
@@ -477,6 +491,7 @@ impl<'a> From<&'a StateUpdateData> for StateUpdateRef<'a> {
                 })
                 .collect(),
             declared_sierra_classes: &state_update.declared_sierra_classes,
+            migrated_compiled_classes: &state_update.migrated_compiled_classes,
         }
     }
 }
@@ -577,6 +592,7 @@ mod state_diff_commitment {
         system_contract_updates: &HashMap<ContractAddress, SystemContractUpdate>,
         declared_cairo_classes: &HashSet<ClassHash>,
         declared_sierra_classes: &HashMap<SierraHash, CasmHash>,
+        migrated_compiled_classes: &HashMap<SierraHash, CasmHash>,
     ) -> StateDiffCommitment {
         let mut hasher = PoseidonHasher::new();
         hasher.write(felt_bytes!(b"STARKNET_STATE_DIFF0").into());
@@ -595,9 +611,10 @@ mod state_diff_commitment {
             hasher.write(MontFelt::from(address.0));
             hasher.write(MontFelt::from(class_hash.0));
         }
-        // Hash the declared classes.
+        // Hash the declared classes and the migrated compiled classes.
         let declared_classes: BTreeSet<_> = declared_sierra_classes
             .iter()
+            .chain(migrated_compiled_classes.iter())
             .map(|(sierra, casm)| (*sierra, *casm))
             .collect();
         hasher.write(MontFelt::from(declared_classes.len() as u64));
@@ -964,6 +981,95 @@ mod tests {
                 &Default::default(),
                 &declared_cairo_classes,
                 &declared_sierra_classes,
+                &Default::default(),
+            )
+        );
+    }
+
+    /// Source:
+    /// https://github.com/starkware-libs/starknet-api/blob/5565e5282f5fead364a41e49c173940fd83dee00/src/block_hash/state_diff_hash_test.rs#L14
+    #[test]
+    fn test_0_13_2_state_diff_commitment_with_migrated_compiled_classes() {
+        let contract_updates: HashMap<_, _> = [
+            (
+                ContractAddress(0u64.into()),
+                ContractUpdate {
+                    class: Some(ContractClassUpdate::Deploy(ClassHash(1u64.into()))),
+                    ..Default::default()
+                },
+            ),
+            (
+                ContractAddress(2u64.into()),
+                ContractUpdate {
+                    class: Some(ContractClassUpdate::Deploy(ClassHash(3u64.into()))),
+                    ..Default::default()
+                },
+            ),
+            (
+                ContractAddress(4u64.into()),
+                ContractUpdate {
+                    storage: [
+                        (StorageAddress(5u64.into()), StorageValue(6u64.into())),
+                        (StorageAddress(7u64.into()), StorageValue(8u64.into())),
+                    ]
+                    .iter()
+                    .cloned()
+                    .collect(),
+                    ..Default::default()
+                },
+            ),
+            (
+                ContractAddress(9u64.into()),
+                ContractUpdate {
+                    storage: [(StorageAddress(10u64.into()), StorageValue(11u64.into()))]
+                        .iter()
+                        .cloned()
+                        .collect(),
+                    ..Default::default()
+                },
+            ),
+            (
+                ContractAddress(17u64.into()),
+                ContractUpdate {
+                    nonce: Some(ContractNonce(18u64.into())),
+                    ..Default::default()
+                },
+            ),
+            (
+                ContractAddress(19u64.into()),
+                ContractUpdate {
+                    class: Some(ContractClassUpdate::Replace(ClassHash(20u64.into()))),
+                    ..Default::default()
+                },
+            ),
+        ]
+        .into_iter()
+        .collect();
+        let declared_sierra_classes: HashMap<_, _> =
+            [(SierraHash(12u64.into()), CasmHash(13u64.into()))]
+                .iter()
+                .cloned()
+                .collect();
+        let migrated_compiled_classes: HashMap<_, _> =
+            [(SierraHash(14u64.into()), CasmHash(15u64.into()))]
+                .iter()
+                .cloned()
+                .collect();
+        let declared_cairo_classes: HashSet<_> =
+            [ClassHash(16u64.into())].iter().cloned().collect();
+
+        let expected_hash = StateDiffCommitment(felt!(
+            "0x0281f5966e49ad7dad9323826d53d1d27c0c4e6ebe5525e2e2fbca549bfa0a67"
+        ));
+
+        assert_eq!(
+            expected_hash,
+            state_diff_commitment::compute(
+                &contract_updates,
+                &Default::default(),
+                &declared_cairo_classes,
+                &declared_sierra_classes,
+                &migrated_compiled_classes,
             )
         );
     }

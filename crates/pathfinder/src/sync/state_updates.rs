@@ -147,6 +147,7 @@ mod multi_block {
         pub system_contract_updates: HashMap<ContractAddress, SystemContractUpdate>,
         pub declared_cairo_classes: HashSet<ClassHash>,
         pub declared_sierra_classes: HashMap<SierraHash, CasmHash>,
+        pub migrated_compiled_classes: HashMap<SierraHash, CasmHash>,
     }
 
     #[derive(Default, Debug, Clone, PartialEq)]
@@ -197,6 +198,7 @@ mod multi_block {
                     })
                     .collect(),
                 declared_sierra_classes: &update.declared_sierra_classes,
+                migrated_compiled_classes: &update.migrated_compiled_classes,
             }
         }
     }

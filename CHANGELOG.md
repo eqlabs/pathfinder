@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Support for Starknet 0.14.1 networks.
+
 ### Fixed
 
 - Inconsistent state updates when using "pre_confirmed" block identifier with `starknet_call`, `starknet_estimateFee` and `starknet_simulateTransactions` JSON-RPC methods.

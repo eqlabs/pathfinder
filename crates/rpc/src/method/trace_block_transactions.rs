@@ -719,10 +719,9 @@ pub(crate) mod tests {
             let mut db = storage.connection()?;
             let tx = db.transaction()?;
 
-            tx.insert_sierra_class(
+            tx.insert_sierra_class_definition(
                 &SierraHash(fixtures::SIERRA_HASH.0),
                 fixtures::SIERRA_DEFINITION,
-                &fixtures::CASM_HASH,
                 fixtures::CASM_DEFINITION,
             )?;
 
@@ -935,10 +934,9 @@ pub(crate) mod tests {
             let mut db = storage.connection()?;
             let tx = db.transaction()?;
 
-            tx.insert_sierra_class(
+            tx.insert_sierra_class_definition(
                 &SierraHash(fixtures::SIERRA_HASH.0),
                 fixtures::SIERRA_DEFINITION,
-                &fixtures::CASM_HASH,
                 fixtures::CASM_DEFINITION,
             )?;
 
@@ -1054,10 +1052,9 @@ pub(crate) mod tests {
             let mut db = storage.connection()?;
             let tx = db.transaction()?;
 
-            tx.insert_sierra_class(
+            tx.insert_sierra_class_definition(
                 &SierraHash(fixtures::SIERRA_HASH.0),
                 fixtures::SIERRA_DEFINITION,
-                &fixtures::CASM_HASH,
                 fixtures::CASM_DEFINITION,
             )?;
 
@@ -1200,10 +1197,9 @@ pub(crate) mod tests {
             let mut db = storage.connection()?;
             let tx = db.transaction()?;
 
-            tx.insert_sierra_class(
+            tx.insert_sierra_class_definition(
                 &SierraHash(fixtures::SIERRA_HASH.0),
                 fixtures::SIERRA_DEFINITION,
-                &fixtures::CASM_HASH,
                 fixtures::CASM_DEFINITION,
             )?;
 

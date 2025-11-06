@@ -573,22 +573,16 @@ fn persist_impl(
 ) -> anyhow::Result<()> {
     match definition {
         CompiledClassDefinition::Cairo(definition) => {
-            db.update_cairo_class(hash, &definition)
+            db.update_cairo_class_definition(hash, &definition)
                 .context("Updating cairo class definition")?;
         }
         CompiledClassDefinition::Sierra {
             sierra_definition,
             casm_definition,
         } => {
-            let casm_hash = db
-                .casm_hash(hash)
-                .context("Getting casm hash for sierra class")?
-                .context("Casm hash not found")?;
-
-            db.update_sierra_class(
+            db.update_sierra_class_definition(
                 &SierraHash(hash.0),
                 &sierra_definition,
-                &casm_hash,
                 &casm_definition,
             )
             .context("Updating sierra class definition")?;

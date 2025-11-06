@@ -150,21 +150,16 @@ pub fn fill(storage: &Storage, blocks: &[Block], update_tries: Option<UpdateTrie
             }
 
             cairo_defs.iter().for_each(|(cairo_hash, definition)| {
-                db.update_cairo_class(*cairo_hash, definition).unwrap()
+                db.update_cairo_class_definition(*cairo_hash, definition)
+                    .unwrap()
             });
 
             sierra_defs
                 .iter()
                 .for_each(|(sierra_hash, sierra_definition, casm_definition)| {
-                    db.update_sierra_class(
+                    db.update_sierra_class_definition(
                         sierra_hash,
                         sierra_definition,
-                        state_update
-                            .as_ref()
-                            .unwrap()
-                            .declared_sierra_classes
-                            .get(sierra_hash)
-                            .unwrap(),
                         casm_definition,
                     )
                     .unwrap()
@@ -445,6 +440,7 @@ pub mod generate {
                                 .collect()
                         }
                     },
+                    migrated_compiled_classes: Default::default(),
                 }),
                 cairo_defs: cairo_defs.into_iter().collect(),
                 sierra_defs: sierra_defs

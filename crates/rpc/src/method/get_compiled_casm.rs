@@ -112,7 +112,7 @@ mod tests {
         CasmContractEntryPoint,
         CasmContractEntryPoints,
     };
-    use pathfinder_common::{casm_hash, class_hash, felt, sierra_hash, EntryPoint};
+    use pathfinder_common::{class_hash, felt, sierra_hash, EntryPoint};
     use serde_json::json;
     use starknet_gateway_test_fixtures::class_definitions::{
         CAIRO_1_1_0_BALANCE_CASM_JSON,
@@ -169,10 +169,9 @@ mod tests {
             let mut db = storage.connection().expect("db connection");
             let tx = db.transaction().expect("tx");
 
-            tx.insert_sierra_class(
+            tx.insert_sierra_class_definition(
                 &sierra_hash!("0x0484c163658bcce5f9916f486171ac60143a92897533aa7ff7ac800b16c63311"),
                 CAIRO_1_1_0_BALANCE_SIERRA_JSON,
-                &casm_hash!("0x0484c163658bcce5f9916f486171ac60143a92897533aa7ff7ac800b16c63311"),
                 CAIRO_1_1_0_BALANCE_CASM_JSON,
             )
             .expect("insert class");

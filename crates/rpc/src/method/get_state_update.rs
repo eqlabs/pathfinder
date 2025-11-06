@@ -466,6 +466,10 @@ mod tests {
             system_contract_updates: Default::default(),
             declared_cairo_classes,
             declared_sierra_classes,
+            migrated_compiled_classes: HashMap::from([(
+                sierra_hash!("0xabcd"),
+                casm_hash!("0xdcbb"),
+            )]),
         };
 
         let output_full = Output::Full(Box::new(state_update.clone()));

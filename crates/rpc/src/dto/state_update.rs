@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use pathfinder_common::prelude::*;
+use serde::Serialize;
 
 use crate::dto::{SerializeForVersion, Serializer};
 use crate::{dto, RpcVersion};
@@ -55,6 +56,10 @@ impl SerializeForVersion for StateDiff<'_> {
             address: &'a ContractAddress,
             hash: &'a ClassHash,
         }
+        struct MigratedCompiledClass<'a> {
+            sierra: &'a SierraHash,
+            casm: &'a CasmHash,
+        }
         struct Nonce<'a> {
             address: &'a ContractAddress,
             nonce: &'a ContractNonce,
@@ -83,6 +88,20 @@ impl SerializeForVersion for StateDiff<'_> {
 
                 serializer.serialize_field("contract_address", &self.address)?;
                 serializer.serialize_field("class_hash", &self.hash.0)?;
+
+                serializer.end()
+            }
+        }
+
+        impl SerializeForVersion for MigratedCompiledClass<'_> {
+            fn serialize(
+                &self,
+                serializer: Serializer,
+            ) -> Result<crate::dto::Ok, crate::dto::Error> {
+                let mut serializer = serializer.serialize_struct()?;
+
+                serializer.serialize_field("class_hash", &self.sierra.0)?;
+                serializer.serialize_field("compiled_class_hash", &self.casm.0)?;
 
                 serializer.end()
             }
@@ -153,6 +172,12 @@ impl SerializeForVersion for StateDiff<'_> {
                         .map(|hash| ReplacedClass { address, hash })
                 });
 
+        let mut migrated_compiled_classes = self
+            .0
+            .migrated_compiled_classes
+            .iter()
+            .map(|(sierra, casm)| MigratedCompiledClass { sierra, casm });
+
         let mut nonces = self
             .0
             .contract_updates
@@ -182,6 +207,13 @@ impl SerializeForVersion for StateDiff<'_> {
             replaced_classes.clone().count(),
             &mut replaced_classes,
         )?;
+        if serializer.version >= RpcVersion::V10 {
+            serializer.serialize_iter(
+                "migrated_compiled_classes",
+                migrated_compiled_classes.clone().count(),
+                &mut migrated_compiled_classes,
+            )?;
+        }
         serializer.serialize_iter("nonces", nonces.clone().count(), &mut nonces)?;
 
         serializer.end()
