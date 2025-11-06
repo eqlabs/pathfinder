@@ -63,6 +63,7 @@ pub trait StorageAdapter {
     ) -> Result<Option<ClassHash>, StateError>;
 
     fn casm_hash(&self, class_hash: ClassHash) -> Result<Option<CasmHash>, StateError>;
+    fn casm_hash_v2(&self, class_hash: ClassHash) -> Result<Option<CasmHash>, StateError>;
 
     fn casm_hash_at(
         &self,

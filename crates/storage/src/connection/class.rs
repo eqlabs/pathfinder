@@ -485,6 +485,19 @@ impl Transaction<'_> {
         Ok(compiled_class_hash)
     }
 
+    /// Returns the Blake2 compiled class hash for a class.
+    pub fn casm_hash_v2(&self, class_hash: ClassHash) -> anyhow::Result<Option<CasmHash>> {
+        let mut stmt = self.inner().prepare_cached(
+            "SELECT compiled_class_hash FROM casm_class_hashes_v2 WHERE hash = ?",
+        )?;
+        let compiled_class_hash = stmt
+            .query_row(params![&class_hash], |row| row.get_casm_hash(0))
+            .optional()
+            .context("Querying for compiled class definition")?;
+
+        Ok(compiled_class_hash)
+    }
+
     pub fn is_sierra(&self, class_hash: ClassHash) -> anyhow::Result<Option<bool>> {
         let mut stmt = self.inner().prepare_cached(
             "SELECT EXISTS(SELECT 1 FROM casm_definitions WHERE casm_definitions.hash = ?)",

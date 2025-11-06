@@ -107,6 +107,15 @@ impl<'tx> StorageAdapter for RcStorageAdapter<'tx> {
             .map_err(map_anyhow_to_state_err)
     }
 
+    fn casm_hash_v2(
+        &self,
+        class_hash: pathfinder_common::ClassHash,
+    ) -> Result<Option<pathfinder_common::CasmHash>, StateError> {
+        self.db_tx
+            .casm_hash_v2(class_hash)
+            .map_err(map_anyhow_to_state_err)
+    }
+
     fn casm_hash_at(
         &self,
         block_id: BlockId,
