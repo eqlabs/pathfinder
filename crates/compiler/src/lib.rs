@@ -68,11 +68,11 @@ fn parse_sierra_version(program: &serde_json::value::RawValue) -> anyhow::Result
     }
 }
 
-/// Parse CASM class definition and return CASM class hash.
+/// Parse CASM class definition and return _Blake2_ CASM class hash.
 ///
-/// Uses the _latest_ compiler for the parsing and calculation.
-pub fn casm_class_hash(casm_definition: &[u8]) -> anyhow::Result<CasmHash> {
-    v2::casm_class_hash(casm_definition)
+/// Uses the _latest_ compiler for the parsing and starknet_api for the hashing.
+pub fn casm_class_hash_v2(casm_definition: &[u8]) -> anyhow::Result<CasmHash> {
+    v2::casm_class_hash_v2(casm_definition)
 }
 
 mod v1_0_0_alpha6 {
@@ -260,16 +260,22 @@ mod v2 {
         Ok(casm_definition)
     }
 
-    pub(super) fn casm_class_hash(casm_definition: &[u8]) -> anyhow::Result<CasmHash> {
+    pub(super) fn casm_class_hash_v2(casm_definition: &[u8]) -> anyhow::Result<CasmHash> {
         let ccc: CasmContractClass =
             serde_json::from_slice(casm_definition).context("Deserializing CASM class")?;
 
-        let casm_hash = CasmHash(
-            pathfinder_crypto::Felt::from_be_bytes(ccc.compiled_class_hash().to_bytes_be())
-                .context("Computing CASM class hash")?,
-        );
+        use starknet_api::contract_class::compiled_class_hash::{
+            HashVersion,
+            HashableCompiledClass,
+        };
 
-        Ok(casm_hash)
+        let casm_hash_v2 = ccc.hash(&HashVersion::V2);
+
+        let casm_hash_v2 = CasmHash(pathfinder_crypto::Felt::from_be_bytes(
+            casm_hash_v2.0.to_bytes_be(),
+        )?);
+
+        Ok(casm_hash_v2)
     }
 }
 
