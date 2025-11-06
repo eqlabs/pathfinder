@@ -304,8 +304,13 @@ mod tests {
 
             let class_hash =
                 class_hash!("0x032908a85d43275f8509ba5f2acae88811b293463a3521dc05ab06d534b40848");
-            tx.insert_sierra_class_definition(&SierraHash(class_hash.0), sierra_json, casm_json)
-                .expect("insert class");
+            tx.insert_sierra_class_definition(
+                &SierraHash(class_hash.0),
+                sierra_json,
+                casm_json,
+                &casm_hash_bytes!(b"casm hash blake"),
+            )
+            .expect("insert class");
 
             let block1_number = BlockNumber::GENESIS + 1;
             let block1_hash = BlockHash(felt!("0xb01"));

@@ -362,7 +362,8 @@ pub mod test_utils {
         let class2_hash = class_hash_bytes!(b"class 2 hash (sierra)");
         let class_hash_pending = class_hash_bytes!(b"class pending hash");
         let sierra_class = SierraHash(class2_hash.0);
-        let sierra_casm_hash = casm_hash_bytes!(b"non-existent");
+        let sierra_casm_hash = casm_hash_bytes!(b"casm hash");
+        let sierra_casm_hash_v2 = casm_hash_bytes!(b"casm hash blake");
 
         let storage_addr = storage_address_bytes!(b"storage addr 0");
 
@@ -410,7 +411,12 @@ pub mod test_utils {
             .insert_cairo_class_definition(class1_hash, class1_definition)
             .unwrap();
         db_txn
-            .insert_sierra_class_definition(&sierra_class, &sierra_class_definition, &[])
+            .insert_sierra_class_definition(
+                &sierra_class,
+                &sierra_class_definition,
+                &[],
+                &sierra_casm_hash_v2,
+            )
             .unwrap();
         db_txn
             .insert_cairo_class_definition(class_hash_pending, &class0_definition)
@@ -866,8 +872,8 @@ pub mod test_utils {
                     .unwrap();
             }
 
-            for (sierra, _casm) in state_update_copy.declared_sierra_classes {
-                tx.insert_sierra_class_definition(&sierra, b"sierra def", b"casm def")
+            for (sierra, casm) in state_update_copy.declared_sierra_classes {
+                tx.insert_sierra_class_definition(&sierra, b"sierra def", b"casm def", &casm)
                     .unwrap();
             }
 
@@ -1064,8 +1070,8 @@ pub mod test_utils {
                     .unwrap();
             }
 
-            for (sierra, _casm) in state_update_copy.declared_sierra_classes {
-                tx.insert_sierra_class_definition(&sierra, b"sierra def", b"casm def")
+            for (sierra, casm) in state_update_copy.declared_sierra_classes {
+                tx.insert_sierra_class_definition(&sierra, b"sierra def", b"casm def", &casm)
                     .unwrap();
             }
 
@@ -1420,8 +1426,8 @@ pub mod test_utils {
                 tx.insert_cairo_class_definition(cairo, class_definition)
                     .unwrap();
             }
-            for (sierra, _casm) in pre_latest_state_update.declared_sierra_classes {
-                tx.insert_sierra_class_definition(&sierra, b"sierra def", b"casm def")
+            for (sierra, casm) in pre_latest_state_update.declared_sierra_classes {
+                tx.insert_sierra_class_definition(&sierra, b"sierra def", b"casm def", &casm)
                     .unwrap();
             }
 
@@ -1429,8 +1435,8 @@ pub mod test_utils {
                 tx.insert_cairo_class_definition(cairo, class_definition)
                     .unwrap();
             }
-            for (sierra, _casm) in pre_confirmed_state_update_copy.declared_sierra_classes {
-                tx.insert_sierra_class_definition(&sierra, b"sierra def", b"casm def")
+            for (sierra, casm) in pre_confirmed_state_update_copy.declared_sierra_classes {
+                tx.insert_sierra_class_definition(&sierra, b"sierra def", b"casm def", &casm)
                     .unwrap();
             }
 

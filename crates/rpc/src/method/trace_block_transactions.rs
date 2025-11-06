@@ -723,6 +723,7 @@ pub(crate) mod tests {
                 &SierraHash(fixtures::SIERRA_HASH.0),
                 fixtures::SIERRA_DEFINITION,
                 fixtures::CASM_DEFINITION,
+                &casm_hash_bytes!(b"casm hash blake"),
             )?;
 
             let next_block_header = BlockHeader::child_builder(&last_block_header)
@@ -938,6 +939,7 @@ pub(crate) mod tests {
                 &SierraHash(fixtures::SIERRA_HASH.0),
                 fixtures::SIERRA_DEFINITION,
                 fixtures::CASM_DEFINITION,
+                &casm_hash_bytes!(b"casm hash blake"),
             )?;
 
             let dummy_receipt = Receipt {
@@ -1056,6 +1058,7 @@ pub(crate) mod tests {
                 &SierraHash(fixtures::SIERRA_HASH.0),
                 fixtures::SIERRA_DEFINITION,
                 fixtures::CASM_DEFINITION,
+                &casm_hash_bytes!(b"casm hash blake"),
             )?;
 
             let dummy_receipt = Receipt {
@@ -1201,6 +1204,7 @@ pub(crate) mod tests {
                 &SierraHash(fixtures::SIERRA_HASH.0),
                 fixtures::SIERRA_DEFINITION,
                 fixtures::CASM_DEFINITION,
+                &casm_hash_bytes!(b"casm hash blake"),
             )?;
 
             let transaction_receipts: Vec<_> = pre_confirmed_transactions

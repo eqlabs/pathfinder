@@ -8515,6 +8515,7 @@ dependencies = [
  "p2p_proto",
  "paste",
  "pathfinder-block-hashes",
+ "pathfinder-casm-hashes",
  "pathfinder-class-hash",
  "pathfinder-common",
  "pathfinder-compiler",

@@ -903,6 +903,7 @@ pub(super) async fn emit_events_for_downloaded_classes(
                 sierra_definition,
                 sierra_hash,
                 casm_definition,
+                casm_hash_v2,
             } => {
                 // NOTE: we _have_ to use the same compiled_class_class hash as returned by the
                 // feeder gateway, since that's what has been added to the class
@@ -923,6 +924,7 @@ pub(super) async fn emit_events_for_downloaded_classes(
                         sierra_hash,
                         casm_definition,
                         casm_hash,
+                        casm_hash_v2,
                     })
                     .await
                     .with_context(|| {

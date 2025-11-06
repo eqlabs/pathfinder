@@ -61,6 +61,7 @@ pub enum CompiledClassDefinition {
     Sierra {
         sierra_definition: Vec<u8>,
         casm_definition: Vec<u8>,
+        casm_hash_v2: CasmHash,
     },
 }
 
@@ -494,9 +495,17 @@ fn compile_or_fetch_impl<SequencerClient: GatewayApi + Clone + Send + 'static>(
                     .to_vec(),
             };
 
+            let casm_hash_v2 = pathfinder_casm_hashes::get_precomputed_casm_v2_hash(&hash);
+            let casm_hash_v2 = match casm_hash_v2 {
+                Some(casm_hash_v2) => *casm_hash_v2,
+                None => pathfinder_compiler::casm_class_hash_v2(&casm_definition)
+                    .context("Computing CASM Blake2 hash")?,
+            };
+
             CompiledClassDefinition::Sierra {
                 sierra_definition,
                 casm_definition,
+                casm_hash_v2,
             }
         }
     };
@@ -579,11 +588,13 @@ fn persist_impl(
         CompiledClassDefinition::Sierra {
             sierra_definition,
             casm_definition,
+            casm_hash_v2,
         } => {
             db.update_sierra_class_definition(
                 &SierraHash(hash.0),
                 &sierra_definition,
                 &casm_definition,
+                &casm_hash_v2,
             )
             .context("Updating sierra class definition")?;
         }

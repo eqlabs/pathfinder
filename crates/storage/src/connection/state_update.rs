@@ -1203,6 +1203,7 @@ mod tests {
         const CAIRO_HASH: ClassHash = class_hash_bytes!(b"cairo class hash");
         const SIERRA_HASH: SierraHash = sierra_hash_bytes!(b"sierra hash");
         const CASM_HASH: CasmHash = casm_hash_bytes!(b"casm hash");
+        const CASM_HASH_V2: CasmHash = casm_hash_bytes!(b"casm hash blake");
         const CAIRO_HASH2: ClassHash = class_hash_bytes!(b"cairo class hash again");
         const CONTRACT_ADDRESS: ContractAddress = contract_address_bytes!(b"contract addr");
 
@@ -1224,6 +1225,7 @@ mod tests {
                 &SIERRA_HASH,
                 b"sierra definition",
                 b"casm definition",
+                &CASM_HASH_V2,
             )
             .unwrap();
 

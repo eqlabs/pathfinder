@@ -331,7 +331,7 @@ mod prop {
                         // A list of Cairo definitions
                         cairo_defs.into_iter().map(|(_, def)| def).collect::<Vec<_>>(),
                         // A list of Sierra definitions, Casm is ignored
-                        sierra_defs.into_iter().map(|(_, sierra_def, _)| sierra_def).collect::<Vec<_>>()
+                        sierra_defs.into_iter().map(|(_, sierra_def, _, _)| sierra_def).collect::<Vec<_>>()
                     )
             ).collect::<Vec<_>>();
 

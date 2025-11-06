@@ -38,6 +38,7 @@ p2p = { path = "../p2p" }
 p2p_proto = { path = "../p2p_proto" }
 paste = { workspace = true }
 pathfinder-block-hashes = { path = "../block-hashes" }
+pathfinder-casm-hashes = { path = "../casm-hashes" }
 pathfinder-class-hash = { path = "../class-hash" }
 pathfinder-common = { path = "../common" }
 pathfinder-compiler = { path = "../compiler" }

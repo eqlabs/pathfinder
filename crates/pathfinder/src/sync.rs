@@ -616,7 +616,7 @@ mod tests {
                         .sierra_defs
                         .into_iter()
                         // All sierra fixtures are not compile-able
-                        .map(|(h, s, _)| (h, (s, b"I'm from the fgw!".to_vec())))
+                        .map(|(h, s, _, _)| (h, (s, starknet_gateway_test_fixtures::class_definitions::CAIRO_1_1_0_BALANCE_CASM_JSON.to_vec())))
                         .collect::<HashMap<_, _>>(),
                     "block {}",
                     block_number
@@ -860,7 +860,7 @@ mod tests {
                             }))
                         })
                         .chain(b.sierra_defs.into_iter().map(
-                            move |(hash, sierra_definition, _)| {
+                            move |(hash, sierra_definition, _, _)| {
                                 Ok(PeerData::for_tests(ClassDefinition::Sierra {
                                     block_number,
                                     sierra_definition,
@@ -1001,7 +1001,7 @@ mod tests {
                 .chain(
                     b.sierra_defs
                         .iter()
-                        .map(|(h, x, _)| ClassDefinition::Sierra {
+                        .map(|(h, x, _, _)| ClassDefinition::Sierra {
                             block_number: block,
                             sierra_definition: x.clone(),
                             hash: *h,
@@ -1063,7 +1063,9 @@ mod tests {
     #[async_trait::async_trait]
     impl GatewayApi for FakeFgw {
         async fn pending_casm_by_hash(&self, _: ClassHash) -> Result<bytes::Bytes, SequencerError> {
-            Ok(bytes::Bytes::from_static(b"I'm from the fgw!"))
+            Ok(bytes::Bytes::from_static(
+                starknet_gateway_test_fixtures::class_definitions::CAIRO_1_1_0_BALANCE_CASM_JSON,
+            ))
         }
 
         async fn block_header(

@@ -1370,6 +1370,7 @@ mod tests {
         use starknet_gateway_test_fixtures::class_definitions::{
             CAIRO_0_10_TUPLES_INTEGRATION as CAIRO,
             CAIRO_0_11_SIERRA as SIERRA0,
+            CAIRO_1_1_0_BALANCE_CASM_JSON as CASM2,
             CAIRO_2_0_0_STACK_OVERFLOW as SIERRA2,
         };
         use starknet_gateway_types::error::SequencerError;
@@ -1391,7 +1392,7 @@ mod tests {
                 &self,
                 _: ClassHash,
             ) -> Result<bytes::Bytes, SequencerError> {
-                Ok(bytes::Bytes::from_static(b"I'm from the fgw!"))
+                Ok(bytes::Bytes::from_static(CASM2))
             }
         }
 
@@ -1468,9 +1469,19 @@ mod tests {
                 blocks[1].cairo_defs = vec![(cairo_hash, CAIRO.to_vec())];
                 blocks[1].sierra_defs = vec![
                     // Does not compile
-                    (sierra0_hash, SIERRA0.to_vec(), Default::default()),
+                    (
+                        sierra0_hash,
+                        SIERRA0.to_vec(),
+                        Default::default(),
+                        Default::default(),
+                    ),
                     // Compiles just fine
-                    (sierra2_hash, SIERRA2.to_vec(), Default::default()),
+                    (
+                        sierra2_hash,
+                        SIERRA2.to_vec(),
+                        Default::default(),
+                        Default::default(),
+                    ),
                 ];
 
                 let streamed_classes = vec![
@@ -1552,7 +1563,7 @@ mod tests {
                     db.casm_definition(ClassHash(SIERRA0_HASH.0))
                         .unwrap()
                         .unwrap(),
-                    b"I'm from the fgw!"
+                    CASM2
                 );
                 assert!(serde_json::from_slice::<serde_json::Value>(
                     &db.casm_definition(ClassHash(SIERRA2_HASH.0))
