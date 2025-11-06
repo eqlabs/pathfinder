@@ -475,10 +475,6 @@ fn create_empty_proposal(
             // TODO empty proposal in the spec actually skips this part,
             // make sure our code handles the case where this part is missing
             ProposalPart::TransactionBatch(vec![]),
-            // executed_transaction_count must be > 0, otherwise the proposal is invalid
-            // ProposalPart::TransactionsFin(TransactionsFin {
-            //     executed_transaction_count: todo!(),
-            // }),
             ProposalPart::ProposalCommitment(proposal_commitment),
             ProposalPart::Fin(ProposalFin {
                 proposal_commitment: proposal_commitment_hash,
