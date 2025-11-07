@@ -21,6 +21,10 @@ pub struct BatchExecutionManager {
     /// An entry exists here if at least one batch has been executed (not
     /// deferred).
     executing: HashSet<HeightAndRound>,
+    /// Tracks which proposals (height/round) have had TransactionsFin
+    /// processed. An entry exists here if TransactionsFin has been
+    /// successfully processed for this height/round.
+    transactions_fin_processed: HashSet<HeightAndRound>,
 }
 
 impl BatchExecutionManager {
@@ -28,7 +32,25 @@ impl BatchExecutionManager {
     pub fn new() -> Self {
         Self {
             executing: HashSet::new(),
+            transactions_fin_processed: HashSet::new(),
         }
+    }
+
+    /// Check if execution has started for the given height and round
+    ///
+    /// Returns `true` if at least one batch has been executed (not deferred)
+    /// for this height/round.
+    pub fn is_executing(&self, height_and_round: &HeightAndRound) -> bool {
+        self.executing.contains(height_and_round)
+    }
+
+    /// Check if TransactionsFin has been processed for the given height and
+    /// round
+    ///
+    /// Returns `true` if TransactionsFin has been successfully processed
+    /// for this height/round.
+    pub fn is_transactions_fin_processed(&self, height_and_round: &HeightAndRound) -> bool {
+        self.transactions_fin_processed.contains(height_and_round)
     }
 
     /// Process a transaction batch with deferral support
@@ -61,6 +83,7 @@ impl BatchExecutionManager {
         // Execute any previously deferred transactions first
         let deferred = deferred_executions.remove(&height_and_round);
         let deferred_txns_len = deferred.as_ref().map_or(0, |d| d.transactions.len());
+        let deferred_transactions_fin = deferred.as_ref().and_then(|d| d.transactions_fin.clone());
 
         let mut all_transactions = transactions;
         if let Some(DeferredExecution {
@@ -84,10 +107,67 @@ impl BatchExecutionManager {
              additionally {deferred_txns_len} previously deferred transactions were executed",
         );
 
+        // If TransactionsFin was deferred (arrived before execution started, e.g.,
+        // because batches were deferred), process it now that execution has
+        // started.
+        // Assuming message ordering is guaranteed...
+        //   (see p2p::consensus::handle_incoming_proposal_message)
+        // ...if TransactionsFin is deferred, all batches are also in the deferred
+        // entry, so we can safely process TransactionsFin here.
+        if let Some(transactions_fin) = deferred_transactions_fin {
+            tracing::debug!(
+                "Processing deferred TransactionsFin for {height_and_round} after batch execution \
+                 started"
+            );
+            self.process_transactions_fin(height_and_round, transactions_fin, validator)?;
+        }
+
+        Ok(())
+    }
+
+    /// Execute a batch of transactions and track execution state
+    ///
+    /// This is a simpler variant that doesn't handle deferral - used when we
+    /// know execution should proceed immediately (e.g., when executing
+    /// previously deferred transactions after the parent block is
+    /// committed).
+    pub fn execute_batch(
+        &mut self,
+        height_and_round: HeightAndRound,
+        transactions: Vec<proto_consensus::Transaction>,
+        validator: &mut ValidatorTransactionBatchStage,
+    ) -> anyhow::Result<()> {
+        // Mark that execution has started for this height/round, even if batch is
+        // empty. This is necessary because TransactionsFin may arrive later and
+        // requires execution to have started.
+        self.executing.insert(height_and_round);
+
+        if transactions.is_empty() {
+            tracing::debug!(
+                "Empty transaction batch for height and round {height_and_round} - execution \
+                 marked as started"
+            );
+            return Ok(());
+        }
+
+        // Execute the batch
+        validator
+            .execute_batch(transactions)
+            .context("Failed to execute transaction batch")?;
+
+        tracing::debug!(
+            "Transaction batch execution for height and round {height_and_round} is complete"
+        );
+
         Ok(())
     }
 
     /// Process TransactionsFin message
+    ///
+    /// Processes TransactionsFin immediately with rollback support. Assumes
+    /// execution has already started (at least one batch executed). If
+    /// transactions are deferred, deferral should be handled by the caller
+    /// before calling this function.
     pub fn process_transactions_fin(
         &mut self,
         height_and_round: HeightAndRound,
@@ -98,8 +178,8 @@ impl BatchExecutionManager {
         // deferred)
         if !self.executing.contains(&height_and_round) {
             return Err(anyhow::anyhow!(
-                "No execution state found for {height_and_round}. Transactions may have been \
-                 deferred."
+                "No execution state found for {height_and_round}. Execution should have started \
+                 before processing TransactionsFin."
             ));
         }
 
@@ -122,18 +202,34 @@ impl BatchExecutionManager {
             validator
                 .rollback_to_transaction(target_transaction_count)
                 .context("Failed to rollback to target transaction count")?;
+        } else if target_transaction_count > current_transaction_count {
+            // This shouldn't happen with proper message ordering and no protocol errors.
+            // Ordering is guaranteed by p2p::consensus::handle_incoming_proposal_message.
+            // TransactionsFin should arrive after all TransactionBatches, so we should have
+            // at least as many transactions as TransactionsFin indicates.
+            tracing::warn!(
+                "TransactionsFin for {height_and_round} indicates {} transactions, but we only \
+                 have {} transactions. This may indicate a protocol violation or missing batches.",
+                target_transaction_count,
+                current_transaction_count
+            );
         }
 
         tracing::info!(
             "Finalized {height_and_round} with {target_transaction_count} executed transactions"
         );
 
+        // Mark TransactionsFin as processed for this height/round
+        self.transactions_fin_processed.insert(height_and_round);
+
         Ok(())
     }
 
     /// Clean up completed executions
     pub fn cleanup(&mut self, height_and_round: &HeightAndRound) {
-        if self.executing.remove(height_and_round) {
+        let had_execution = self.executing.remove(height_and_round);
+        let had_transactions_fin = self.transactions_fin_processed.remove(height_and_round);
+        if had_execution || had_transactions_fin {
             tracing::debug!("Cleaned up execution state for {height_and_round}");
         }
     }
@@ -148,11 +244,13 @@ impl Default for BatchExecutionManager {
 /// Represents transactions received from the network that are waiting for
 /// previous block to be committed before they can be executed. Also holds
 /// optional proposal commitment and proposer address in case that the entire
-/// proposal has been received.
+/// proposal has been received. May also store TransactionsFin if it arrives
+/// while transactions are deferred.
 #[derive(Debug, Clone, Default)]
 pub struct DeferredExecution {
     pub transactions: Vec<proto_consensus::Transaction>,
     pub commitment: Option<ProposalCommitmentWithOrigin>,
+    pub transactions_fin: Option<proto_consensus::TransactionsFin>,
 }
 
 /// Proposal commitment and the address of its proposer.
