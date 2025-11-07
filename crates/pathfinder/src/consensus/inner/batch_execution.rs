@@ -199,8 +199,14 @@ impl BatchExecutionManager {
             );
 
             // Roll back to the target transaction count
+            // Note: rollback_to_transaction takes a 0-based index, but
+            // executed_transaction_count is a count. To keep N transactions,
+            // we need to rollback to index N-1 (which keeps transactions 0 through N-1).
+            let target_index = target_transaction_count
+                .checked_sub(1)
+                .context("Cannot rollback to 0 transactions")?;
             validator
-                .rollback_to_transaction(target_transaction_count)
+                .rollback_to_transaction(target_index)
                 .context("Failed to rollback to target transaction count")?;
         } else if target_transaction_count > current_transaction_count {
             // This shouldn't happen with proper message ordering and no protocol errors.
