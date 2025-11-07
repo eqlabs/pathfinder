@@ -159,7 +159,7 @@
 //! let mut consensus = Consensus::recover(config, validator_sets);
 //! ```
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::fmt::{Debug, Display};
 use std::ops::{Add, Sub};
 use std::sync::Arc;
@@ -718,9 +718,9 @@ impl<
         }
     }
 
-    /// Get the current maximum height being tracked by the consensus engine.
-    pub fn current_height(&self) -> Option<u64> {
-        self.internal.keys().max().copied()
+    /// Get the heights currently being tracked by the consensus engine.
+    pub fn incomplete_heights(&self) -> HashSet<u64> {
+        self.internal.keys().copied().collect()
     }
 }
 

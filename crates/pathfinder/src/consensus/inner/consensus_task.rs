@@ -99,21 +99,20 @@ pub fn spawn(
                 highest_finalized,
             )?;
 
-        // Get the current height
-        let mut current_height = consensus.current_height().unwrap_or_default();
-
         // A validator that joins the consensus network and is lagging behind will vote
         // Nil for its current height, because the consensus network is already at a
         // higher height. This is a workaround for the missing sync/catch-up mechanism.
         // Related issue: https://github.com/eqlabs/pathfinder/issues/2934
         let mut last_nil_vote_height = None;
 
-        // TODO FIXME this should be taken from WAL & DB
         // This set is used to make sure we only start each height once and is used when
         // a new height needs to be started upon a proposal or vote for H arriving
         // before H-1 has been decided upon. Such race conditions occur very often in a
         // network with low latency.
-        let mut started_heights = HashSet::new();
+        let mut started_heights = consensus.incomplete_heights();
+
+        // Get the current height
+        let mut current_height = started_heights.iter().copied().max().unwrap_or_default();
 
         start_height(
             &mut consensus,
