@@ -1111,9 +1111,7 @@ fn defer_or_execute_proposal_fin(
 
         // Check if execution has started but TransactionsFin hasn't been processed yet
         // If so, defer ProposalFin until TransactionsFin arrives
-        if batch_execution_manager.is_executing(&height_and_round)
-            && !batch_execution_manager.is_transactions_fin_processed(&height_and_round)
-        {
+        if batch_execution_manager.should_defer_proposal_fin(&height_and_round) {
             tracing::debug!(
                 "🖧  ⚙️ consensus finalize for height and round {height_and_round} is deferred \
                  because TransactionsFin hasn't been processed yet"

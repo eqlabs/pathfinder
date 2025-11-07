@@ -53,6 +53,18 @@ impl BatchExecutionManager {
         self.transactions_fin_processed.contains(height_and_round)
     }
 
+    /// Check if ProposalFin should be deferred for the given height and round
+    ///
+    /// ProposalFin should be deferred if execution has started but
+    /// TransactionsFin hasn't been processed yet. This ensures that we
+    /// don't finalize a proposal before we know the final transaction
+    /// count.
+    ///
+    /// Note: This is in its own method to prevent drift with tests.
+    pub fn should_defer_proposal_fin(&self, height_and_round: &HeightAndRound) -> bool {
+        self.is_executing(height_and_round) && !self.is_transactions_fin_processed(height_and_round)
+    }
+
     /// Process a transaction batch with deferral support
     ///
     /// This is the main method that should be used by the P2P task
@@ -298,399 +310,71 @@ pub fn should_defer_execution(
 
 #[cfg(test)]
 mod tests {
-    use p2p_proto::consensus::TransactionVariant;
-    use p2p_proto::transaction::L1HandlerV0;
     use pathfinder_crypto::Felt;
 
     use super::*;
 
-    fn create_test_transaction(index: usize) -> proto_consensus::Transaction {
-        // Create a simple L1Handler transaction
-        let txn = TransactionVariant::L1HandlerV0(L1HandlerV0 {
-            nonce: Felt::from_hex_str(&format!("0x{index}")).unwrap(),
-            address: p2p_proto::common::Address(
-                Felt::from_hex_str(&format!("0x{index:x}")).unwrap(),
-            ),
-            entry_point_selector: Felt::from_hex_str(&format!("0x{index}")).unwrap(),
-            calldata: vec![Felt::from_hex_str(&format!("0x{index}")).unwrap()],
-        });
+    /// Helper function to create a committed parent block in storage
+    fn create_committed_parent_block(
+        storage: &pathfinder_storage::Storage,
+        parent_height: u64,
+    ) -> anyhow::Result<()> {
+        use pathfinder_common::prelude::*;
+        let mut db_conn = storage.connection()?;
+        let db_tx = db_conn.transaction()?;
+        let block_id = BlockId::Number(BlockNumber::new_or_panic(parent_height));
 
-        let l1_handler = pathfinder_common::transaction::L1HandlerTransaction {
-            nonce: pathfinder_common::TransactionNonce(
-                Felt::from_hex_str(&format!("0x{index}")).unwrap(),
-            ),
-            contract_address: pathfinder_common::ContractAddress::new_or_panic(
-                Felt::from_hex_str(&format!("0x{index:x}")).unwrap(),
-            ),
-            entry_point_selector: pathfinder_common::EntryPoint(
-                Felt::from_hex_str(&format!("0x{index}")).unwrap(),
-            ),
-            calldata: vec![pathfinder_common::CallParam(
-                Felt::from_hex_str(&format!("0x{index}")).unwrap(),
-            )],
+        // Check if block already exists
+        if db_tx.block_exists(block_id)? {
+            return Ok(());
+        }
+
+        // Create a unique hash for this block to avoid conflicts
+        let hash = BlockHash(Felt::from_hex_str(&format!("0x{parent_height:064x}")).unwrap());
+        let parent_header = BlockHeader::builder()
+            .number(BlockNumber::new_or_panic(parent_height))
+            .timestamp(BlockTimestamp::new_or_panic(1000))
+            .calculated_state_commitment(StorageCommitment(Felt::ZERO), ClassCommitment(Felt::ZERO))
+            .sequencer_address(SequencerAddress::ZERO)
+            .finalize_with_hash(hash);
+        db_tx.insert_block_header(&parent_header)?;
+        db_tx.commit()?;
+        Ok(())
+    }
+
+    /// Helper function to create BlockInfo for tests
+    fn create_test_block_info(number: u64) -> pathfinder_executor::types::BlockInfo {
+        use pathfinder_common::{
+            BlockNumber,
+            BlockTimestamp,
+            GasPrice,
+            L1DataAvailabilityMode,
+            SequencerAddress,
+            StarknetVersion,
         };
-
-        // Calculate the correct hash
-        let chain_id = pathfinder_common::ChainId::SEPOLIA_TESTNET;
-        let hash = l1_handler.calculate_hash(chain_id);
-
-        proto_consensus::Transaction {
-            transaction_hash: p2p_proto::common::Hash(hash.0),
-            txn,
+        pathfinder_executor::types::BlockInfo {
+            number: BlockNumber::new_or_panic(number),
+            timestamp: BlockTimestamp::new_or_panic(1000),
+            sequencer_address: SequencerAddress::ZERO,
+            l1_da_mode: L1DataAvailabilityMode::Calldata,
+            eth_l1_gas_price: GasPrice::ZERO,
+            strk_l1_gas_price: GasPrice::ZERO,
+            eth_l1_data_gas_price: GasPrice::ZERO,
+            strk_l1_data_gas_price: GasPrice::ZERO,
+            strk_l2_gas_price: GasPrice::ZERO,
+            eth_l2_gas_price: GasPrice::ZERO,
+            starknet_version: StarknetVersion::new(0, 14, 0, 0),
         }
     }
 
-    /// Test deferral mechanism with real transactions
+    /// Test that BatchExecutionManager correctly tracks execution state and
+    /// TransactionsFin processing. This verifies the tracking methods that
+    /// are used by defer_or_execute_proposal_fin to determine
+    /// whether ProposalFin should be deferred.
     #[tokio::test]
-    async fn test_deferral_mechanism() {
+    async fn test_execution_state_tracking() {
         use p2p::consensus::HeightAndRound;
-        use pathfinder_common::{ChainId, ContractAddress};
-
-        use crate::consensus::inner::test_helpers::{
-            create_test_proposal,
-            create_transaction_batch,
-        };
-        use crate::validator::ValidatorBlockInfoStage;
-        // Setup test storage (temp database with larger connection pool)
-        let storage = pathfinder_storage::StorageBuilder::in_tempdir()
-            .expect("Failed to create temp database");
-        let mut db_conn = storage.connection().unwrap();
-        let db_tx = db_conn.transaction().unwrap();
-        let chain_id = ChainId::SEPOLIA_TESTNET;
-        let proposer =
-            ContractAddress::new_or_panic(pathfinder_crypto::Felt::from_hex_str("0x123").unwrap());
-
-        // Create test proposal with transactions
-        let height = 100; // Use a high height to trigger deferral
-        let round = 1;
-        let transactions = create_transaction_batch(20, 3, chain_id);
-        let (proposal_init, block_info) =
-            create_test_proposal(chain_id, height, round, proposer, transactions.clone());
-
-        // Create validator
-        let mut validator = ValidatorBlockInfoStage::new(chain_id, proposal_init)
-            .expect("Failed to create ValidatorBlockInfoStage")
-            .validate_consensus_block_info(block_info, storage.clone())
-            .expect("Failed to create ValidatorTransactionBatchStage");
-
-        // Create batch execution manager
-        let mut manager = BatchExecutionManager::new();
-        let height_and_round = HeightAndRound::new(height, round);
-        let mut deferred_executions = std::collections::HashMap::new();
-
-        // Test deferral mechanism
-        let batch = vec![transactions[0].clone()];
-        let result = manager.process_batch_with_deferral(
-            height_and_round,
-            batch,
-            &mut validator,
-            &db_tx,
-            &mut deferred_executions,
-        );
-
-        // Should succeed (either execute or defer)
-        assert!(result.is_ok());
-        // Note: If executed, execution state will be created. If deferred, it
-        // won't. Both outcomes are valid.
-    }
-
-    /// Simulate receiving batches from the network and executing them with
-    /// rollback. An end-to-end test that verifies the rollback logic.
-    #[tokio::test]
-    async fn test_full_flow_with_rollback() {
-        use pathfinder_common::{
-            BlockNumber,
-            BlockTimestamp,
-            ChainId,
-            GasPrice,
-            L1DataAvailabilityMode,
-            SequencerAddress,
-            StarknetVersion,
-        };
-        use pathfinder_executor::types::BlockInfo;
-        use pathfinder_storage::StorageBuilder;
-
-        // Setup test environment
-        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
-        let chain_id = ChainId::SEPOLIA_TESTNET;
-
-        let block_info = BlockInfo {
-            number: BlockNumber::new_or_panic(1),
-            timestamp: BlockTimestamp::new_or_panic(1000),
-            sequencer_address: SequencerAddress::ZERO,
-            l1_da_mode: L1DataAvailabilityMode::Calldata,
-            eth_l1_gas_price: GasPrice::ZERO,
-            strk_l1_gas_price: GasPrice::ZERO,
-            eth_l1_data_gas_price: GasPrice::ZERO,
-            strk_l1_data_gas_price: GasPrice::ZERO,
-            strk_l2_gas_price: GasPrice::ZERO,
-            eth_l2_gas_price: GasPrice::ZERO,
-            starknet_version: StarknetVersion::new(0, 14, 0, 0),
-        };
-
-        // Create test transactions
-        let mut all_transactions = Vec::new();
-        for i in 0..20 {
-            all_transactions.push(create_test_transaction(i));
-        }
-
-        // Group transactions into batches with variable sizes (simulating real network
-        // reception)
-        let batch_sizes = vec![3, 7, 4, 6];
-        let mut batches = Vec::new();
-        let mut start_idx = 0;
-        for &batch_size in &batch_sizes {
-            let end_idx = start_idx + batch_size;
-            if end_idx <= all_transactions.len() {
-                batches.push(all_transactions[start_idx..end_idx].to_vec());
-                start_idx = end_idx;
-            }
-        }
-
-        // Create validator stage
-        let mut validator_stage =
-            ValidatorTransactionBatchStage::new(chain_id, block_info, storage)
-                .expect("Failed to create validator stage");
-
-        // Execute all batches (simulating normal flow)
-        for batch in batches.iter() {
-            validator_stage
-                .execute_batch(batch.clone())
-                .expect("Failed to execute batch");
-        }
-
-        // Simulate TransactionsFin pointing to transaction 7 (within batch 1)
-        let target_transaction_idx = 7;
-
-        validator_stage
-            .rollback_to_transaction(target_transaction_idx)
-            .expect("Failed to rollback");
-
-        let mut target_batch = 0;
-        let mut cumulative_size = 0;
-        for (batch_idx, &batch_size) in batch_sizes.iter().enumerate() {
-            if cumulative_size + batch_size > target_transaction_idx {
-                target_batch = batch_idx;
-                break;
-            }
-            cumulative_size += batch_size;
-        }
-
-        let final_transactions = validator_stage.transaction_count();
-        let final_receipts = validator_stage.receipt_count();
-        let final_events = validator_stage.event_count();
-        let final_executors = validator_stage.batch_count();
-
-        assert_eq!(final_transactions, target_transaction_idx + 1);
-        assert_eq!(final_receipts, target_transaction_idx + 1);
-        assert_eq!(final_events, target_transaction_idx + 1);
-        assert_eq!(final_executors, target_batch + 1);
-
-        // Verify transaction indices are sequential and correct
-        let receipts = validator_stage.receipts();
-        assert_eq!(
-            receipts.len(),
-            8,
-            "Should have 8 receipts after rollback and re-execution"
-        );
-
-        for (i, receipt) in receipts.iter().enumerate() {
-            let expected_index = i as u64;
-            let actual_index = receipt.transaction_index.get();
-            assert_eq!(
-                actual_index, expected_index,
-                "Transaction index mismatch at position {i}: expected {expected_index}, got \
-                 {actual_index}"
-            );
-        }
-    }
-
-    /// Test transaction index ordering across multiple batches and rollbacks
-    #[test]
-    fn test_transaction_ordering_integrity_across_batches() {
-        use pathfinder_common::{
-            BlockNumber,
-            BlockTimestamp,
-            ChainId,
-            GasPrice,
-            L1DataAvailabilityMode,
-            SequencerAddress,
-            StarknetVersion,
-        };
-        use pathfinder_executor::types::BlockInfo;
-        use pathfinder_storage::StorageBuilder;
-
-        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
-        let chain_id = ChainId::SEPOLIA_TESTNET;
-
-        let block_info = BlockInfo {
-            number: BlockNumber::new_or_panic(1),
-            timestamp: BlockTimestamp::new_or_panic(1000),
-            sequencer_address: SequencerAddress::ZERO,
-            l1_da_mode: L1DataAvailabilityMode::Calldata,
-            eth_l1_gas_price: GasPrice::ZERO,
-            strk_l1_gas_price: GasPrice::ZERO,
-            eth_l1_data_gas_price: GasPrice::ZERO,
-            strk_l1_data_gas_price: GasPrice::ZERO,
-            strk_l2_gas_price: GasPrice::ZERO,
-            eth_l2_gas_price: GasPrice::ZERO,
-            starknet_version: StarknetVersion::new(0, 14, 0, 0),
-        };
-
-        // Create transactions with unique identifiers for ordering validation
-        let mut all_transactions = Vec::new();
-        for i in 0..15 {
-            all_transactions.push(create_test_transaction(i));
-        }
-
-        // Create batches with different sizes to test complex scenarios
-        let batch_sizes = vec![3, 5, 4, 3]; // Total: 15 transactions
-        let mut batches = Vec::new();
-        let mut start_idx = 0;
-        for &batch_size in &batch_sizes {
-            let end_idx = start_idx + batch_size;
-            if end_idx <= all_transactions.len() {
-                batches.push(all_transactions[start_idx..end_idx].to_vec());
-                start_idx = end_idx;
-            }
-        }
-
-        // Full execution ordering
-        let mut validator_stage =
-            ValidatorTransactionBatchStage::new(chain_id, block_info, storage.clone())
-                .expect("Failed to create validator stage");
-
-        for batch in batches.iter() {
-            validator_stage
-                .execute_batch(batch.clone())
-                .expect("Failed to execute batch");
-        }
-
-        // Validate global ordering after full execution
-        let receipts = validator_stage.receipts();
-        assert_eq!(
-            receipts.len(),
-            15,
-            "Should have 15 receipts after full execution"
-        );
-
-        for (i, receipt) in receipts.iter().enumerate() {
-            let expected_index = i as u64;
-            let actual_index = receipt.transaction_index.get();
-            assert_eq!(
-                actual_index, expected_index,
-                "Transaction index mismatch at position {i}: expected {expected_index}, got \
-                 {actual_index}",
-            );
-        }
-
-        // Rollback to batch boundary
-        let target_transaction_idx = 7; // End of batch 1
-        validator_stage
-            .rollback_to_transaction(target_transaction_idx)
-            .expect("Failed to rollback");
-
-        let receipts_after_rollback = validator_stage.receipts();
-        assert_eq!(
-            receipts_after_rollback.len(),
-            8,
-            "Should have 8 receipts after rollback to transaction 7"
-        );
-
-        // Validate ordering after rollback
-        for (i, receipt) in receipts_after_rollback.iter().enumerate() {
-            let expected_index = i as u64;
-            let actual_index = receipt.transaction_index.get();
-            assert_eq!(
-                actual_index, expected_index,
-                "Transaction index mismatch after rollback at position {i}: expected \
-                 {expected_index}, got {actual_index}",
-            );
-        }
-
-        // Rollback to mid-batch
-        // Re-execute to get back to full state
-        let mut validator_stage2 =
-            ValidatorTransactionBatchStage::new(chain_id, block_info, storage.clone())
-                .expect("Failed to create validator stage");
-
-        for batch in batches.iter() {
-            validator_stage2
-                .execute_batch(batch.clone())
-                .expect("Failed to execute batch");
-        }
-
-        let target_transaction_idx = 10; // Mid-batch 2
-        validator_stage2
-            .rollback_to_transaction(target_transaction_idx)
-            .expect("Failed to rollback");
-
-        let receipts_after_mid_rollback = validator_stage2.receipts();
-        assert_eq!(
-            receipts_after_mid_rollback.len(),
-            11,
-            "Should have 11 receipts after rollback to transaction 10"
-        );
-
-        // Validate ordering after mid-batch rollback
-        for (i, receipt) in receipts_after_mid_rollback.iter().enumerate() {
-            let expected_index = i as u64;
-            let actual_index = receipt.transaction_index.get();
-            assert_eq!(
-                actual_index, expected_index,
-                "Transaction index mismatch after mid-batch rollback at position {i}: expected \
-                 {expected_index}, got {actual_index}"
-            );
-        }
-
-        // Batch boundary consistency validation
-        let mut validator_stage3 =
-            ValidatorTransactionBatchStage::new(chain_id, block_info, storage)
-                .expect("Failed to create validator stage");
-
-        for (batch_idx, batch) in batches.iter().enumerate() {
-            validator_stage3
-                .execute_batch(batch.clone())
-                .expect("Failed to execute batch");
-
-            // Validate batch boundary after each batch
-            let receipts = validator_stage3.receipts();
-            let expected_end_index = validator_stage3.transaction_count() - 1;
-            let actual_end_index = receipts.last().unwrap().transaction_index.get();
-
-            assert_eq!(
-                actual_end_index, expected_end_index as u64,
-                "Batch {batch_idx} end index mismatch: expected {expected_end_index}, got \
-                 {actual_end_index}",
-            );
-        }
-
-        // Rollback preserves exact sequence
-        let original_receipts = validator_stage3.receipts().to_vec();
-
-        // Rollback to transaction 6
-        validator_stage3
-            .rollback_to_transaction(6)
-            .expect("Failed to rollback");
-        let rollback_receipts = validator_stage3.receipts();
-
-        // Verify that the first 7 transactions are identical
-        for i in 0..7 {
-            assert_eq!(
-                rollback_receipts[i].transaction_index.get(),
-                original_receipts[i].transaction_index.get(),
-                "Transaction {i} index changed after rollback: original {original_index}, \
-                 rollback {rollback_index}",
-                original_index = original_receipts[i].transaction_index.get(),
-                rollback_index = rollback_receipts[i].transaction_index.get()
-            );
-        }
-    }
-
-    /// Test rollback state update cleanup and verification
-    /// Verifies that rollback properly cleans up cumulative state updates
-    #[test]
-    fn test_rollback_cleanup() {
+        use p2p_proto::consensus::TransactionsFin;
         use pathfinder_common::{
             BlockNumber,
             BlockTimestamp,
@@ -723,94 +407,492 @@ mod tests {
         };
 
         let mut validator_stage =
+            ValidatorTransactionBatchStage::new(chain_id, block_info, storage)
+                .expect("Failed to create validator stage");
+
+        let mut batch_execution_manager = BatchExecutionManager::new();
+        let height_and_round = HeightAndRound::new(2, 1);
+
+        // Initially, execution should not have started
+        assert!(
+            !batch_execution_manager.is_executing(&height_and_round),
+            "Execution should not have started initially"
+        );
+        assert!(
+            !batch_execution_manager.is_transactions_fin_processed(&height_and_round),
+            "TransactionsFin should not be processed initially"
+        );
+
+        // Execute a batch to start execution
+        let transactions = create_transaction_batch(0, 5, chain_id);
+        batch_execution_manager
+            .execute_batch(height_and_round, transactions, &mut validator_stage)
+            .expect("Failed to execute batch");
+
+        // Verify execution has started
+        assert!(
+            batch_execution_manager.is_executing(&height_and_round),
+            "Execution should have started after execute_batch"
+        );
+
+        // Verify TransactionsFin has NOT been processed yet
+        assert!(
+            !batch_execution_manager.is_transactions_fin_processed(&height_and_round),
+            "TransactionsFin should not be processed yet"
+        );
+
+        // Verify that ProposalFin should be deferred
+        assert!(
+            batch_execution_manager.should_defer_proposal_fin(&height_and_round),
+            "ProposalFin should be deferred when execution started but TransactionsFin not \
+             processed"
+        );
+
+        // Now process TransactionsFin
+        let transactions_fin = TransactionsFin {
+            executed_transaction_count: 5,
+        };
+        batch_execution_manager
+            .process_transactions_fin(height_and_round, transactions_fin, &mut validator_stage)
+            .expect("Failed to process TransactionsFin");
+
+        // Verify TransactionsFin is now marked as processed
+        assert!(
+            batch_execution_manager.is_transactions_fin_processed(&height_and_round),
+            "TransactionsFin should be marked as processed after process_transactions_fin"
+        );
+
+        // Now ProposalFin should NOT be deferred
+        assert!(
+            !batch_execution_manager.should_defer_proposal_fin(&height_and_round),
+            "ProposalFin should NOT be deferred after TransactionsFin is processed"
+        );
+    }
+
+    /// Test that TransactionsFin arriving before any TransactionBatch is
+    /// handled gracefully. TransactionsFin should be stored in deferred entry
+    /// even if no batches have been deferred yet.
+    #[tokio::test]
+    async fn test_transactions_fin_before_any_batch() {
+        use p2p::consensus::HeightAndRound;
+        use p2p_proto::consensus::TransactionsFin;
+        use pathfinder_common::prelude::*;
+        use pathfinder_common::{
+            BlockNumber,
+            BlockTimestamp,
+            ChainId,
+            GasPrice,
+            L1DataAvailabilityMode,
+            SequencerAddress,
+            StarknetVersion,
+        };
+        use pathfinder_executor::types::BlockInfo;
+        use pathfinder_storage::StorageBuilder;
+
+        use crate::consensus::inner::test_helpers::create_transaction_batch;
+
+        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+
+        // Create and commit parent block (height 1) so height 2 won't be deferred
+        {
+            let mut db_conn = storage.connection().unwrap();
+            let db_tx = db_conn.transaction().unwrap();
+            let parent_header = BlockHeader::builder()
+                .number(BlockNumber::new_or_panic(1))
+                .timestamp(BlockTimestamp::new_or_panic(1000))
+                .calculated_state_commitment(
+                    StorageCommitment(Felt::ZERO),
+                    ClassCommitment(Felt::ZERO),
+                )
+                .sequencer_address(SequencerAddress::ZERO)
+                .finalize_with_hash(BlockHash(Felt::ZERO));
+            db_tx.insert_block_header(&parent_header).unwrap();
+            db_tx.commit().unwrap();
+        }
+
+        let block_info = BlockInfo {
+            number: BlockNumber::new_or_panic(1),
+            timestamp: BlockTimestamp::new_or_panic(1000),
+            sequencer_address: SequencerAddress::ZERO,
+            l1_da_mode: L1DataAvailabilityMode::Calldata,
+            eth_l1_gas_price: GasPrice::ZERO,
+            strk_l1_gas_price: GasPrice::ZERO,
+            eth_l1_data_gas_price: GasPrice::ZERO,
+            strk_l1_data_gas_price: GasPrice::ZERO,
+            strk_l2_gas_price: GasPrice::ZERO,
+            eth_l2_gas_price: GasPrice::ZERO,
+            starknet_version: StarknetVersion::new(0, 14, 0, 0),
+        };
+
+        let mut validator_stage =
             ValidatorTransactionBatchStage::new(chain_id, block_info, storage.clone())
                 .expect("Failed to create validator stage");
 
-        // Create many batches (each creates a state update checkpoint)
-        for i in 0..10 {
-            let transactions = create_transaction_batch(i * 10, 2, chain_id);
-            validator_stage
-                .execute_batch(transactions)
-                .expect("Failed to execute batch");
+        let mut batch_execution_manager = BatchExecutionManager::new();
+        let height_and_round = HeightAndRound::new(2, 1);
+        let mut deferred_executions: std::collections::HashMap<HeightAndRound, DeferredExecution> =
+            std::collections::HashMap::new();
+
+        // Initially, no execution and no deferred entry
+        assert!(
+            !batch_execution_manager.is_executing(&height_and_round),
+            "Execution should not have started initially"
+        );
+        assert!(
+            !deferred_executions.contains_key(&height_and_round),
+            "No deferred entry should exist initially"
+        );
+
+        // Step 1: TransactionsFin arrives when execution hasn't started yet
+        // (Note: With P2P message ordering guarantees, TransactionsFin will always
+        // arrive after all TransactionBatches, but execution may not have started
+        // if batches were deferred. This test simulates the case where TransactionsFin
+        // arrives before execution starts, e.g., because batches were deferred.)
+        let transactions_fin = TransactionsFin {
+            executed_transaction_count: 5,
+        };
+
+        // Simulate the fix: create deferred entry and store TransactionsFin
+        let deferred = deferred_executions.entry(height_and_round).or_default();
+        deferred.transactions_fin = Some(transactions_fin.clone());
+
+        // Verify TransactionsFin was stored
+        assert!(
+            deferred_executions
+                .get(&height_and_round)
+                .and_then(|d| d.transactions_fin.as_ref())
+                .is_some(),
+            "TransactionsFin should be stored in deferred entry"
+        );
+
+        // Step 2: TransactionBatch arrives and executes
+        let transactions = create_transaction_batch(0, 5, chain_id);
+        let mut db_conn = storage.connection().unwrap();
+        let db_tx = db_conn.transaction().unwrap();
+        batch_execution_manager
+            .process_batch_with_deferral(
+                height_and_round,
+                transactions,
+                &mut validator_stage,
+                &db_tx,
+                &mut deferred_executions,
+            )
+            .expect("Failed to process batch");
+
+        // Verify execution has started
+        assert!(
+            batch_execution_manager.is_executing(&height_and_round),
+            "Execution should have started after batch execution"
+        );
+
+        // Verify TransactionsFin was processed (marked as processed)
+        assert!(
+            batch_execution_manager.is_transactions_fin_processed(&height_and_round),
+            "TransactionsFin should be processed after batch execution"
+        );
+
+        // Verify validator state matches TransactionsFin count
+        assert_eq!(
+            validator_stage.transaction_count(),
+            5,
+            "Validator should have 5 transactions matching TransactionsFin count"
+        );
+    }
+
+    /// Test deferral and immediate execution of transaction batches.
+    /// A few things are covered here:
+    /// - deferral when parent not committed,
+    /// - immediate execution when parent committed
+    /// - deferred batch execution
+    /// - multiple batches with mixed deferral
+    #[tokio::test]
+    async fn test_deferral_and_execution() {
+        use p2p::consensus::HeightAndRound;
+        use pathfinder_common::ChainId;
+        use pathfinder_storage::StorageBuilder;
+
+        use crate::consensus::inner::test_helpers::create_transaction_batch;
+
+        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+        let block_info = create_test_block_info(1);
+
+        let mut validator_stage =
+            ValidatorTransactionBatchStage::new(chain_id, block_info, storage.clone())
+                .expect("Failed to create validator stage");
+
+        let mut batch_execution_manager = BatchExecutionManager::new();
+        let height_and_round = HeightAndRound::new(2, 1);
+        let mut deferred_executions: std::collections::HashMap<HeightAndRound, DeferredExecution> =
+            std::collections::HashMap::new();
+
+        // Test 1: Deferral when parent not committed
+        {
+            let mut db_conn = storage.connection().unwrap();
+            let db_tx = db_conn.transaction().unwrap();
+            let transactions = create_transaction_batch(0, 3, chain_id);
+
+            batch_execution_manager
+                .process_batch_with_deferral(
+                    height_and_round,
+                    transactions,
+                    &mut validator_stage,
+                    &db_tx,
+                    &mut deferred_executions,
+                )
+                .expect("Failed to process batch");
+
+            // Verify deferral: transactions stored, execution NOT started
+            assert!(
+                !batch_execution_manager.is_executing(&height_and_round),
+                "Execution should NOT have started when parent not committed"
+            );
+            assert!(
+                deferred_executions
+                    .get(&height_and_round)
+                    .map(|d| d.transactions.len())
+                    .unwrap_or(0)
+                    == 3,
+                "Deferred transactions should be stored"
+            );
+            assert_eq!(
+                validator_stage.transaction_count(),
+                0,
+                "No transactions should be executed when deferred"
+            );
         }
 
-        let before_rollback_count = validator_stage.batch_count();
+        // Test 2: Commit parent block and execute deferred batch
+        // Create parent block at height 1 (required for height 2 to execute)
+        create_committed_parent_block(&storage, 1).expect("Failed to create parent block");
 
-        // Rollback to batch 3 (should drop state updates for batches 4-9)
-        validator_stage
-            .rollback_to_batch(3)
-            .expect("Failed to rollback");
+        {
+            let mut db_conn = storage.connection().unwrap();
+            let db_tx = db_conn.transaction().unwrap();
+            let transactions = create_transaction_batch(3, 2, chain_id);
 
-        let after_rollback_count = validator_stage.batch_count();
+            batch_execution_manager
+                .process_batch_with_deferral(
+                    height_and_round,
+                    transactions,
+                    &mut validator_stage,
+                    &db_tx,
+                    &mut deferred_executions,
+                )
+                .expect("Failed to process batch");
+
+            // Verify execution: deferred + new transactions executed, execution started
+            assert!(
+                batch_execution_manager.is_executing(&height_and_round),
+                "Execution should have started after parent committed"
+            );
+            assert!(
+                !deferred_executions.contains_key(&height_and_round),
+                "Deferred entry should be removed after execution"
+            );
+            assert_eq!(
+                validator_stage.transaction_count(),
+                5,
+                "All transactions (3 deferred + 2 new) should be executed"
+            );
+        }
+
+        // Test 3: Multiple batches with immediate execution (parent already committed)
+        let height_and_round_2 = HeightAndRound::new(3, 1);
+        let mut validator_stage_2 = ValidatorTransactionBatchStage::new(
+            chain_id,
+            create_test_block_info(2),
+            storage.clone(),
+        )
+        .expect("Failed to create validator stage");
+
+        create_committed_parent_block(&storage, 2).expect("Failed to create parent block");
+
+        {
+            let mut db_conn = storage.connection().unwrap();
+            let db_tx = db_conn.transaction().unwrap();
+
+            // Execute multiple batches
+            for i in 0..3 {
+                let transactions = create_transaction_batch(i * 2, 2, chain_id);
+                batch_execution_manager
+                    .process_batch_with_deferral(
+                        height_and_round_2,
+                        transactions,
+                        &mut validator_stage_2,
+                        &db_tx,
+                        &mut deferred_executions,
+                    )
+                    .expect("Failed to process batch");
+            }
+
+            assert!(
+                batch_execution_manager.is_executing(&height_and_round_2),
+                "Execution should have started"
+            );
+            assert_eq!(
+                validator_stage_2.transaction_count(),
+                6,
+                "All batches should be executed immediately"
+            );
+        }
+    }
+
+    /// Test TransactionsFin processing with rollback support.
+    #[tokio::test]
+    async fn test_transactions_fin_rollback() {
+        use p2p::consensus::HeightAndRound;
+        use p2p_proto::consensus::TransactionsFin;
+        use pathfinder_common::ChainId;
+        use pathfinder_storage::StorageBuilder;
+
+        use crate::consensus::inner::test_helpers::create_transaction_batch;
+
+        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+        let block_info = create_test_block_info(1);
+
+        let mut validator_stage =
+            ValidatorTransactionBatchStage::new(chain_id, block_info, storage.clone())
+                .expect("Failed to create validator stage");
+
+        let mut batch_execution_manager = BatchExecutionManager::new();
+        let height_and_round = HeightAndRound::new(2, 1);
+
+        // Execute multiple batches: 3 + 7 + 4 = 14 transactions total
+        let batch1 = create_transaction_batch(0, 3, chain_id);
+        let batch2 = create_transaction_batch(3, 7, chain_id);
+        let batch3 = create_transaction_batch(10, 4, chain_id);
+
+        batch_execution_manager
+            .execute_batch(height_and_round, batch1, &mut validator_stage)
+            .expect("Failed to execute batch 1");
+        batch_execution_manager
+            .execute_batch(height_and_round, batch2, &mut validator_stage)
+            .expect("Failed to execute batch 2");
+        batch_execution_manager
+            .execute_batch(height_and_round, batch3, &mut validator_stage)
+            .expect("Failed to execute batch 3");
 
         assert_eq!(
-            after_rollback_count, 4,
-            "Should have 4 batches (state updates) after rollback to batch 3"
-        );
-        assert!(
-            after_rollback_count < before_rollback_count,
-            "Rollback should reduce batch count"
+            validator_stage.transaction_count(),
+            14,
+            "Should have 14 transactions before TransactionsFin"
         );
 
-        // Execute more batches
-        for i in 10..20 {
-            let transactions = create_transaction_batch(i * 10, 2, chain_id);
-            validator_stage
-                .execute_batch(transactions)
-                .expect("Failed to execute batch");
+        // Test 1: Normal case - no rollback (TransactionsFin matches current count)
+        {
+            let transactions_fin = TransactionsFin {
+                executed_transaction_count: 14,
+            };
+
+            batch_execution_manager
+                .process_transactions_fin(height_and_round, transactions_fin, &mut validator_stage)
+                .expect("Failed to process TransactionsFin");
+
+            assert!(
+                batch_execution_manager.is_transactions_fin_processed(&height_and_round),
+                "TransactionsFin should be marked as processed"
+            );
+            assert_eq!(
+                validator_stage.transaction_count(),
+                14,
+                "Transaction count should remain 14 (no rollback)"
+            );
         }
 
-        let before_multiple_rollback = validator_stage.batch_count();
+        // Test 2: Rollback case - TransactionsFin indicates fewer transactions
+        // Re-execute batches to get back to 14 transactions
+        let storage_2 = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let mut validator_stage_2 =
+            ValidatorTransactionBatchStage::new(chain_id, create_test_block_info(1), storage_2)
+                .expect("Failed to create validator stage");
 
-        // Perform multiple rollbacks
-        validator_stage
-            .rollback_to_batch(5)
-            .expect("Failed to rollback to batch 5");
-        let after_rollback_1 = validator_stage.batch_count();
+        let batch1_2 = create_transaction_batch(0, 3, chain_id);
+        let batch2_2 = create_transaction_batch(3, 7, chain_id);
+        let batch3_2 = create_transaction_batch(10, 4, chain_id);
 
-        validator_stage
-            .rollback_to_batch(2)
-            .expect("Failed to rollback to batch 2");
-        let after_rollback_2 = validator_stage.batch_count();
+        let height_and_round_2 = HeightAndRound::new(3, 1);
+        batch_execution_manager
+            .execute_batch(height_and_round_2, batch1_2, &mut validator_stage_2)
+            .expect("Failed to execute batch 1");
+        batch_execution_manager
+            .execute_batch(height_and_round_2, batch2_2, &mut validator_stage_2)
+            .expect("Failed to execute batch 2");
+        batch_execution_manager
+            .execute_batch(height_and_round_2, batch3_2, &mut validator_stage_2)
+            .expect("Failed to execute batch 3");
 
-        validator_stage
-            .rollback_to_batch(0)
-            .expect("Failed to rollback to batch 0");
-        let after_rollback_3 = validator_stage.batch_count();
+        let transactions_fin_rollback = TransactionsFin {
+            executed_transaction_count: 7, // Rollback from 14 to 7
+        };
 
-        // Verify progressive cleanup of state updates
+        batch_execution_manager
+            .process_transactions_fin(
+                height_and_round_2,
+                transactions_fin_rollback,
+                &mut validator_stage_2,
+            )
+            .expect("Failed to process TransactionsFin with rollback");
+
         assert!(
-            after_rollback_1 < before_multiple_rollback,
-            "First rollback should reduce batch count"
+            batch_execution_manager.is_transactions_fin_processed(&height_and_round_2),
+            "TransactionsFin should be marked as processed after rollback"
         );
-        assert!(
-            after_rollback_2 < after_rollback_1,
-            "Second rollback should reduce batch count further"
-        );
-        assert!(
-            after_rollback_3 < after_rollback_2,
-            "Third rollback should reduce batch count even more"
-        );
-
-        // Execute some batches
-        for i in 0..5 {
-            let transactions = create_transaction_batch(i * 10, 2, chain_id);
-            validator_stage
-                .execute_batch(transactions)
-                .expect("Failed to execute batch");
-        }
-
-        // Rollback to transaction 1 (within first batch)
-        validator_stage
-            .rollback_to_transaction(1)
-            .expect("Failed to rollback to transaction 1");
-
-        let after_first_batch_rollback = validator_stage.batch_count();
-
-        // Should have only 1 batch (state update) after rollback to transaction 1
         assert_eq!(
-            after_first_batch_rollback, 1,
-            "Should have 1 batch after first-batch rollback"
+            validator_stage_2.transaction_count(),
+            7,
+            "Transaction count should be rolled back to 7 (matching TransactionsFin count)"
+        );
+    }
+
+    /// Test empty batch handling.
+    #[tokio::test]
+    async fn test_empty_batch() {
+        use p2p::consensus::HeightAndRound;
+        use p2p_proto::consensus::TransactionsFin;
+        use pathfinder_common::ChainId;
+        use pathfinder_storage::StorageBuilder;
+
+        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+        let block_info = create_test_block_info(1);
+
+        let mut validator_stage =
+            ValidatorTransactionBatchStage::new(chain_id, block_info, storage)
+                .expect("Failed to create validator stage");
+
+        let mut batch_execution_manager = BatchExecutionManager::new();
+        let height_and_round = HeightAndRound::new(2, 1);
+
+        // Empty batch still marks execution as started
+        batch_execution_manager
+            .execute_batch(height_and_round, vec![], &mut validator_stage)
+            .expect("Failed to execute empty batch");
+
+        assert!(
+            batch_execution_manager.is_executing(&height_and_round),
+            "Execution should be marked as started even for empty batch"
+        );
+        assert_eq!(
+            validator_stage.transaction_count(),
+            0,
+            "No transactions should be executed"
+        );
+
+        // TransactionsFin can be processed after empty batch
+        let transactions_fin = TransactionsFin {
+            executed_transaction_count: 0,
+        };
+
+        batch_execution_manager
+            .process_transactions_fin(height_and_round, transactions_fin, &mut validator_stage)
+            .expect("Failed to process TransactionsFin after empty batch");
+
+        assert!(
+            batch_execution_manager.is_transactions_fin_processed(&height_and_round),
+            "TransactionsFin should be processed after empty batch"
         );
     }
 }
