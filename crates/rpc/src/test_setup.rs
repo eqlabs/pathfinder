@@ -44,6 +44,7 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
         &openzeppelin_account_sierra_hash,
         openzeppelin_account_class_definition,
         openzeppelin_account_casm_definition,
+        &casm_hash_bytes!(b"casm hash blake"),
     )
     .unwrap();
 

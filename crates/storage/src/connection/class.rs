@@ -16,6 +16,8 @@ impl Transaction<'_> {
         sierra_hash: &SierraHash,
         sierra_definition: &[u8],
         casm_definition: &[u8],
+        // Blake2 hash of the compiled class definition
+        casm_hash_v2: &CasmHash,
     ) -> anyhow::Result<()> {
         let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
         let sierra_definition = compressor
@@ -46,6 +48,20 @@ impl Transaction<'_> {
             )
             .context("Inserting CASM definition")?;
 
+        self.inner()
+            .execute(
+                r"
+                INSERT OR REPLACE INTO casm_class_hashes_v2
+                (hash, compiled_class_hash)
+                VALUES (:hash, :compiled_class_hash)
+                ",
+                named_params! {
+                    ":hash": sierra_hash,
+                    ":compiled_class_hash": casm_hash_v2,
+                },
+            )
+            .context("Inserting CASM Blake2 hash")?;
+
         Ok(())
     }
 
@@ -54,6 +70,7 @@ impl Transaction<'_> {
         sierra_hash: &SierraHash,
         sierra_definition: &[u8],
         casm_definition: &[u8],
+        casm_hash_v2: &CasmHash,
     ) -> anyhow::Result<()> {
         let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
         let sierra_definition = compressor
@@ -82,6 +99,16 @@ impl Transaction<'_> {
                 },
             )
             .context("Updating casm definition")?;
+
+        self.inner()
+            .execute(
+                r"INSERT OR REPLACE INTO casm_class_hashes_v2(hash, compiled_class_hash) VALUES(:hash, :compiled_class_hash)",
+                named_params! {
+                    ":compiled_class_hash": casm_hash_v2,
+                    ":hash": sierra_hash,
+                },
+            )
+            .context("Inserting CASM Blake2 hash")?;
 
         Ok(())
     }
@@ -485,6 +512,19 @@ impl Transaction<'_> {
         Ok(compiled_class_hash)
     }
 
+    /// Returns the Blake2 compiled class hash for a class.
+    pub fn casm_hash_v2(&self, class_hash: ClassHash) -> anyhow::Result<Option<CasmHash>> {
+        let mut stmt = self.inner().prepare_cached(
+            "SELECT compiled_class_hash FROM casm_class_hashes_v2 WHERE hash = ?",
+        )?;
+        let compiled_class_hash = stmt
+            .query_row(params![&class_hash], |row| row.get_casm_hash(0))
+            .optional()
+            .context("Querying for compiled class definition")?;
+
+        Ok(compiled_class_hash)
+    }
+
     pub fn is_sierra(&self, class_hash: ClassHash) -> anyhow::Result<Option<bool>> {
         let mut stmt = self.inner().prepare_cached(
             "SELECT EXISTS(SELECT 1 FROM casm_definitions WHERE casm_definitions.hash = ?)",
@@ -598,9 +638,15 @@ mod tests {
         let sierra_hash = sierra_hash_bytes!(b"sierra hash");
         let sierra_definition = b"example sierra program";
         let casm_definition = b"compiled sierra program";
+        let casm_hash_v2 = casm_hash_bytes!(b"casm hash blake");
 
-        tx.insert_sierra_class_definition(&sierra_hash, sierra_definition, casm_definition)
-            .unwrap();
+        tx.insert_sierra_class_definition(
+            &sierra_hash,
+            sierra_definition,
+            casm_definition,
+            &casm_hash_v2,
+        )
+        .unwrap();
 
         let definition = tx
             .casm_definition(ClassHash(sierra_hash.0))
@@ -613,6 +659,9 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(definition, sierra_definition);
+
+        let retrieved_casm_hash_v2 = tx.casm_hash_v2(ClassHash(sierra_hash.0)).unwrap().unwrap();
+        assert_eq!(retrieved_casm_hash_v2, casm_hash_v2);
     }
 
     #[test]

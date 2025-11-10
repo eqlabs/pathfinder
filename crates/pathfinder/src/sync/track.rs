@@ -834,12 +834,14 @@ impl ProcessStage for StoreBlock {
                     class_definitions::CompiledClassDefinition::Sierra {
                         sierra_definition,
                         casm_definition,
+                        casm_hash_v2,
                     } => {
                         let sierra_hash = SierraHash(hash.0);
                         db.update_sierra_class_definition(
                             &sierra_hash,
                             &sierra_definition,
                             &casm_definition,
+                            &casm_hash_v2,
                         )
                         .context("Inserting sierra class definition")
                     }

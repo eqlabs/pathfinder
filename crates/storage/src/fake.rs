@@ -34,8 +34,10 @@ pub struct Block {
     /// update and the user can choose to remove it prior to calling
     /// [`fill`] by setting it to `None`.
     pub state_update: Option<StateUpdate>,
-    pub cairo_defs: Vec<(ClassHash, Vec<u8>)>, // Cairo 0 definitions
-    pub sierra_defs: Vec<(SierraHash, Vec<u8>, Vec<u8>)>, // Sierra + Casm definitions
+    // Cairo 0 definitions
+    pub cairo_defs: Vec<(ClassHash, Vec<u8>)>,
+    // Sierra + Casm definitions + Casm Blake2 hash
+    pub sierra_defs: Vec<(SierraHash, Vec<u8>, Vec<u8>, CasmHash)>,
 }
 
 pub type BlockHashFn = Box<dyn Fn(&BlockHeader) -> BlockHash>;
@@ -154,16 +156,17 @@ pub fn fill(storage: &Storage, blocks: &[Block], update_tries: Option<UpdateTrie
                     .unwrap()
             });
 
-            sierra_defs
-                .iter()
-                .for_each(|(sierra_hash, sierra_definition, casm_definition)| {
+            sierra_defs.iter().for_each(
+                |(sierra_hash, sierra_definition, casm_definition, casm_hash_v2)| {
                     db.update_sierra_class_definition(
                         sierra_hash,
                         sierra_definition,
                         casm_definition,
+                        casm_hash_v2,
                     )
                     .unwrap()
-                });
+                },
+            );
         },
     );
 
@@ -343,7 +346,11 @@ pub mod generate {
                     .unwrap();
                     (
                         SierraHash(compute_class_hash(&def).unwrap().hash().0),
-                        (def, Faker.fake_with_rng::<String, _>(rng).into_bytes()),
+                        (
+                            def,
+                            Faker.fake_with_rng::<String, _>(rng).into_bytes(),
+                            Faker.fake_with_rng::<CasmHash, _>(rng),
+                        ),
                     )
                 })
                 .collect::<HashMap<_, _>>();
@@ -445,7 +452,7 @@ pub mod generate {
                 cairo_defs: cairo_defs.into_iter().collect(),
                 sierra_defs: sierra_defs
                     .into_iter()
-                    .map(|(h, (s, c))| (h, s, c))
+                    .map(|(h, (s, c, casm_hash_v2))| (h, s, c, casm_hash_v2))
                     .collect(),
             });
 

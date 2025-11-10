@@ -38,6 +38,7 @@ p2p = { path = "../p2p" }
 p2p_proto = { path = "../p2p_proto" }
 paste = { workspace = true }
 pathfinder-block-hashes = { path = "../block-hashes" }
+pathfinder-casm-hashes = { path = "../casm-hashes" }
 pathfinder-class-hash = { path = "../class-hash" }
 pathfinder-common = { path = "../common" }
 pathfinder-compiler = { path = "../compiler" }
@@ -98,6 +99,7 @@ pretty_assertions_sorted = { workspace = true }
 proptest = { workspace = true }
 rand_chacha = { workspace = true }
 rstest = { workspace = true }
+rusqlite = { workspace = true, features = ["bundled"] }
 serde_with = { workspace = true }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 test-log = { workspace = true, features = ["trace"] }

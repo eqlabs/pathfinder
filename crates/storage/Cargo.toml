@@ -24,8 +24,10 @@ flume = { version = "0.11.0", default-features = false, features = [
 hex = { workspace = true }
 metrics = { workspace = true }
 paste = { workspace = true }
+pathfinder-casm-hashes = { path = "../casm-hashes" }
 pathfinder-class-hash = { path = "../class-hash" }
 pathfinder-common = { path = "../common" }
+pathfinder-compiler = { path = "../compiler" }
 pathfinder-crypto = { path = "../crypto" }
 pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-serde = { path = "../serde" }
@@ -33,6 +35,7 @@ primitive-types = { workspace = true }
 r2d2 = { workspace = true }
 r2d2_sqlite = { workspace = true }
 rand = { workspace = true }
+rayon = { workspace = true }
 rusqlite = { workspace = true, features = [
     "bundled",
     "functions",

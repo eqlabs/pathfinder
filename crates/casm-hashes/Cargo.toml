@@ -1,0 +1,11 @@
+[package]
+name = "pathfinder-casm-hashes"
+version = { workspace = true }
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+rust-version = { workspace = true }
+
+[dependencies]
+pathfinder-common = { path = "../common" }
+pathfinder-crypto = { path = "../crypto" }

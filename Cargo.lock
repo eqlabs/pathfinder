@@ -8515,6 +8515,7 @@ dependencies = [
  "p2p_proto",
  "paste",
  "pathfinder-block-hashes",
+ "pathfinder-casm-hashes",
  "pathfinder-class-hash",
  "pathfinder-common",
  "pathfinder-compiler",
@@ -8537,6 +8538,7 @@ dependencies = [
  "rayon",
  "reqwest",
  "rstest 0.18.2",
+ "rusqlite",
  "semver 1.0.27",
  "serde",
  "serde_json",
@@ -8563,6 +8565,14 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-block-hashes"
+version = "0.20.5"
+dependencies = [
+ "pathfinder-common",
+ "pathfinder-crypto",
+]
+
+[[package]]
+name = "pathfinder-casm-hashes"
 version = "0.20.5"
 dependencies = [
  "pathfinder-common",
@@ -8630,6 +8640,7 @@ dependencies = [
  "serde",
  "serde_json",
  "starknet-gateway-test-fixtures",
+ "starknet_api",
  "tracing",
 ]
 
@@ -8848,8 +8859,10 @@ dependencies = [
  "hex",
  "metrics 0.20.1",
  "paste",
+ "pathfinder-casm-hashes",
  "pathfinder-class-hash",
  "pathfinder-common",
+ "pathfinder-compiler",
  "pathfinder-crypto",
  "pathfinder-ethereum",
  "pathfinder-serde",
@@ -8858,6 +8871,7 @@ dependencies = [
  "r2d2",
  "r2d2_sqlite",
  "rand 0.8.5",
+ "rayon",
  "rstest 0.18.2",
  "rusqlite",
  "serde",

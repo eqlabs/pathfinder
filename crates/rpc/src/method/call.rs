@@ -424,11 +424,17 @@ mod tests {
             let casm_definition = include_bytes!("../../fixtures/contracts/storage_access.casm");
             let casm_hash =
                 casm_hash!("0x069032ff71f77284e1a0864a573007108ca5cc08089416af50f03260f5d6d4d8");
+            let casm_hash_v2 = casm_hash_bytes!(b"casm hash blake");
 
             let mut connection = context.storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
-            tx.insert_sierra_class_definition(&sierra_hash, sierra_definition, casm_definition)
-                .unwrap();
+            tx.insert_sierra_class_definition(
+                &sierra_hash,
+                sierra_definition,
+                casm_definition,
+                &casm_hash_v2,
+            )
+            .unwrap();
             tx.commit().unwrap();
 
             drop(connection);
@@ -498,11 +504,17 @@ mod tests {
             let casm_definition = include_bytes!("../../fixtures/contracts/storage_access.casm");
             let casm_hash =
                 casm_hash!("0x069032ff71f77284e1a0864a573007108ca5cc08089416af50f03260f5d6d4d8");
+            let casm_hash_v2 = casm_hash_bytes!(b"casm hash blake");
 
             let mut connection = context.storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
-            tx.insert_sierra_class_definition(&sierra_hash, sierra_definition, casm_definition)
-                .unwrap();
+            tx.insert_sierra_class_definition(
+                &sierra_hash,
+                sierra_definition,
+                casm_definition,
+                &casm_hash_v2,
+            )
+            .unwrap();
             tx.commit().unwrap();
 
             drop(connection);
@@ -593,6 +605,7 @@ mod tests {
             let casm_definition = include_bytes!("../../fixtures/contracts/storage_access.casm");
             let casm_hash =
                 casm_hash!("0x069032ff71f77284e1a0864a573007108ca5cc08089416af50f03260f5d6d4d8");
+            let casm_hash_v2 = casm_hash_bytes!(b"casm hash blake");
 
             let block_number = BlockNumber::new_or_panic(last_block_header.number.get() + 1);
             let contract_address = contract_address!("0xcaaaa");
@@ -602,8 +615,13 @@ mod tests {
             let mut connection = context.storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
-            tx.insert_sierra_class_definition(&sierra_hash, sierra_definition, casm_definition)
-                .unwrap();
+            tx.insert_sierra_class_definition(
+                &sierra_hash,
+                sierra_definition,
+                casm_definition,
+                &casm_hash_v2,
+            )
+            .unwrap();
 
             let header = BlockHeader::builder()
                 .number(block_number)
@@ -723,6 +741,7 @@ mod tests {
             let casm_definition = include_bytes!("../../fixtures/contracts/storage_access.casm");
             let casm_hash =
                 casm_hash!("0x069032ff71f77284e1a0864a573007108ca5cc08089416af50f03260f5d6d4d8");
+            let casm_hash_v2 = casm_hash_bytes!(b"casm hash blake");
 
             let block_number = BlockNumber::new_or_panic(last_block_header.number.get() + 1);
             let contract_address = contract_address!("0xcaaaa");
@@ -750,16 +769,23 @@ mod tests {
             );
             let caller_casm_hash =
                 casm_hash!("0x02027e88d6cde8be7669d1baf9ac51f47fe52e600ced31cafba80eee1972a25b");
+            let caller_casm_hash_v2 = casm_hash_bytes!(b"caller casm hash blake");
 
             let mut connection = context.storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
-            tx.insert_sierra_class_definition(&sierra_hash, sierra_definition, casm_definition)
-                .unwrap();
+            tx.insert_sierra_class_definition(
+                &sierra_hash,
+                sierra_definition,
+                casm_definition,
+                &casm_hash_v2,
+            )
+            .unwrap();
             tx.insert_sierra_class_definition(
                 &caller_sierra_hash,
                 &caller_sierra_definition,
                 caller_casm_definition,
+                &caller_casm_hash_v2,
             )
             .unwrap();
 

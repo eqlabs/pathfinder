@@ -62,6 +62,7 @@ enum Command {
         SyncSender<Result<Option<ClassHash>, StateError>>,
     ),
     CasmHash(ClassHash, SyncSender<Result<Option<CasmHash>, StateError>>),
+    CasmHashV2(ClassHash, SyncSender<Result<Option<CasmHash>, StateError>>),
     CasmHashAt(
         BlockId,
         ClassHash,
@@ -218,6 +219,14 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         rx.recv().expect("Channel not to be closed")
     }
 
+    fn casm_hash_v2(&self, class_hash: ClassHash) -> Result<Option<CasmHash>, StateError> {
+        let (tx, rx) = mpsc::sync_channel(1);
+        self.tx
+            .send(Command::CasmHashV2(class_hash, tx))
+            .expect("Receiver not to be dropped");
+        rx.recv().expect("Channel not to be closed")
+    }
+
     fn casm_hash_at(
         &self,
         block_id: BlockId,
@@ -308,6 +317,13 @@ fn db_thread(
                 .expect("Receiver not to be dropped"),
             Command::CasmHash(class_hash, sender) => sender
                 .send(db_tx.casm_hash(class_hash).map_err(map_anyhow_to_state_err))
+                .expect("Receiver not to be dropped"),
+            Command::CasmHashV2(class_hash, sender) => sender
+                .send(
+                    db_tx
+                        .casm_hash_v2(class_hash)
+                        .map_err(map_anyhow_to_state_err),
+                )
                 .expect("Receiver not to be dropped"),
             Command::CasmHashAt(block_id, class_hash, sender) => sender
                 .send(

@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::{ClassHash, SierraHash};
+use pathfinder_common::{CasmHash, ClassHash, SierraHash};
 use starknet_gateway_client::GatewayApi;
 
 pub enum DownloadedClass {
@@ -11,6 +11,7 @@ pub enum DownloadedClass {
         sierra_definition: Vec<u8>,
         sierra_hash: SierraHash,
         casm_definition: Vec<u8>,
+        casm_hash_v2: CasmHash,
     },
 }
 
@@ -96,10 +97,33 @@ pub async fn download_class<SequencerClient: GatewayApi>(
                 (sierra_definition, casm_definition)
             };
 
+            // Check if the CASM v2 hash has been pre-computed for this class
+            let (casm_definition, casm_hash_v2) =
+                match pathfinder_casm_hashes::get_precomputed_casm_v2_hash(&hash) {
+                    Some(casm_hash_v2) => (casm_definition, *casm_hash_v2),
+                    None => {
+                        // Compute Blake2 hash for CASM class
+                        let (send, recv) = tokio::sync::oneshot::channel();
+                        rayon::spawn(move || {
+                            let casm_hash_v2 =
+                                pathfinder_compiler::casm_class_hash_v2(&casm_definition)
+                                    .context("Computing CASM Blake2 hash");
+                            let _ = send.send((casm_definition, casm_hash_v2));
+                        });
+                        let (casm_definition, casm_hash_v2) =
+                            recv.await.expect("Panic on rayon thread");
+
+                        let casm_hash_v2 = casm_hash_v2?;
+
+                        (casm_definition, casm_hash_v2)
+                    }
+                };
+
             Ok(DownloadedClass::Sierra {
                 sierra_definition,
                 sierra_hash: SierraHash(hash.0),
                 casm_definition,
+                casm_hash_v2,
             })
         }
     }

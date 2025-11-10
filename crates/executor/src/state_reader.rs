@@ -1,6 +1,9 @@
+use std::sync::{Arc, Mutex};
+
 use blockifier::execution::contract_class::RunnableCompiledClass;
 use blockifier::state::errors::StateError;
 use blockifier::state::state_api::StateReader;
+use cached::Cached;
 use pathfinder_common::{BlockNumber, ClassHash, StorageAddress, StorageValue};
 use pathfinder_crypto::Felt;
 use starknet_api::contract_class::SierraVersion;
@@ -41,6 +44,8 @@ pub struct PathfinderStateReader<S> {
     ignore_block_number_for_classes: bool,
     #[allow(unused)]
     native_class_cache: Option<NativeClassCache>,
+    casm_hash_v2_cache:
+        Arc<Mutex<cached::SizedCache<ClassHash, starknet_api::core::CompiledClassHash>>>,
 }
 
 impl<S: StorageAdapter> PathfinderStateReader<S> {
@@ -55,6 +60,7 @@ impl<S: StorageAdapter> PathfinderStateReader<S> {
             block_number,
             ignore_block_number_for_classes,
             native_class_cache,
+            casm_hash_v2_cache: Arc::new(Mutex::new(cached::SizedCache::with_size(1024))),
         }
     }
 
@@ -353,6 +359,38 @@ impl<S: StorageAdapter> StateReader for PathfinderStateReader<S> {
 
         tracing::trace!(class_hash=%pathfinder_class_hash, "Getting compiled class hash v2");
 
-        blockifier::state::utils::get_compiled_class_hash_v2(self, class_hash, compiled_class)
+        // First, look up in CASM v2 hash cache and return if found.
+        let casm_hash = self
+            .casm_hash_v2_cache
+            .lock()
+            .unwrap()
+            .cache_get(&pathfinder_class_hash)
+            .cloned();
+        if let Some(casm_hash) = casm_hash {
+            return Ok(casm_hash);
+        }
+
+        // Look up pre-computed CASM v2 hash from storage, fall back to computing it if
+        // not found.
+        let casm_hash = self.storage_adapter.casm_hash_v2(pathfinder_class_hash)?;
+        match casm_hash {
+            Some(casm_hash) => Ok(starknet_api::core::CompiledClassHash(
+                casm_hash.0.into_starkfelt(),
+            )),
+            None => {
+                let casm_hash = blockifier::state::utils::get_compiled_class_hash_v2(
+                    self,
+                    class_hash,
+                    compiled_class,
+                );
+                if let Ok(compiled_class_hash) = casm_hash {
+                    self.casm_hash_v2_cache
+                        .lock()
+                        .unwrap()
+                        .cache_set(pathfinder_class_hash, compiled_class_hash);
+                }
+                casm_hash
+            }
+        }
     }
 }
