@@ -627,8 +627,15 @@ impl ValidatorTransactionBatchStage {
 
         let start = Instant::now();
 
-        let executor = executor.context("Executor should exist for finalization")?;
-        let state_diff = executor.finalize()?;
+        // For empty proposals (no transactions), we don't need an executor.
+        // Use an empty state diff instead.
+        let state_update = if executor.is_none() && transactions.is_empty() {
+            StateUpdateData::default()
+        } else {
+            let executor = executor.context("Executor should exist for finalization")?;
+            let state_diff = executor.finalize()?;
+            StateUpdateData::from(state_diff)
+        };
 
         let transaction_commitment =
             calculate_transaction_commitment(&transactions, block_info.starknet_version)?;
@@ -640,8 +647,6 @@ impl ValidatorTransactionBatchStage {
             .collect::<Vec<_>>();
         let event_commitment =
             calculate_event_commitment(&events_ref_by_txn, block_info.starknet_version)?;
-
-        let state_update = StateUpdateData::from(state_diff);
         let state_diff_commitment = state_update.compute_state_diff_commitment();
 
         let header = BlockHeader {
@@ -1383,6 +1388,98 @@ mod tests {
         assert!(
             result.is_err(),
             "Rollback to transaction 10 (out of bounds) should error"
+        );
+    }
+
+    /// Tests that empty proposals (no transactions, no executor) can be
+    /// finalized.
+    ///
+    /// This test covers the case where a proposal has no transactions and
+    /// therefore no executor is created. The finalization should succeed with
+    /// an empty state diff.
+    #[test]
+    fn test_empty_proposal_finalization() {
+        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+
+        // Create a proposal init for height 0
+        let proposal_init = p2p_proto::consensus::ProposalInit {
+            block_number: 0,
+            round: 0,
+            valid_round: None,
+            proposer: p2p_proto::common::Address(Felt::from_hex_str("0x1").unwrap()),
+        };
+
+        // Create block info
+        let block_info = p2p_proto::consensus::BlockInfo {
+            block_number: 0,
+            timestamp: 1000,
+            builder: p2p_proto::common::Address(Felt::from_hex_str("0x1").unwrap()),
+            l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
+            l2_gas_price_fri: 1,
+            l1_gas_price_wei: 1_000_000_000,
+            l1_data_gas_price_wei: 1,
+            eth_to_strk_rate: 1_000_000_000,
+        };
+
+        // Create validator stages (empty proposal path)
+        let validator_block_info = ValidatorBlockInfoStage::new(chain_id, proposal_init)
+            .expect("Failed to create ValidatorBlockInfoStage");
+
+        let validator_transaction_batch = validator_block_info
+            .validate_consensus_block_info(block_info, storage.clone())
+            .expect("Failed to validate block info");
+
+        // Verify the validator is in the expected empty state
+        assert_eq!(
+            validator_transaction_batch.transaction_count(),
+            0,
+            "Empty proposal should have 0 transactions"
+        );
+        assert!(
+            validator_transaction_batch.executor.is_none(),
+            "Empty proposal should have no executor"
+        );
+
+        // Finalize the empty proposal - this should succeed without an executor
+        let validator_finalize = validator_transaction_batch
+            .consensus_finalize0()
+            .expect("Empty proposal finalization should succeed");
+
+        // Verify the finalized header has correct empty commitments
+        assert_eq!(
+            validator_finalize.header.transaction_count, 0,
+            "Empty proposal should have 0 transaction count"
+        );
+        assert_eq!(
+            validator_finalize.header.event_count, 0,
+            "Empty proposal should have 0 event count"
+        );
+        assert_eq!(
+            validator_finalize.state_update.contract_updates.len(),
+            0,
+            "Empty proposal should have no contract updates"
+        );
+        assert_eq!(
+            validator_finalize
+                .state_update
+                .system_contract_updates
+                .len(),
+            0,
+            "Empty proposal should have no system contract updates"
+        );
+        assert_eq!(
+            validator_finalize.state_update.declared_cairo_classes.len(),
+            0,
+            "Empty proposal should have no declared Cairo classes"
+        );
+        assert_eq!(
+            validator_finalize
+                .state_update
+                .declared_sierra_classes
+                .len(),
+            0,
+            "Empty proposal should have no declared Sierra classes"
         );
     }
 }

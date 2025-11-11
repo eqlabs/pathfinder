@@ -472,9 +472,7 @@ fn create_empty_proposal(
         vec![
             ProposalPart::Init(proposal_init),
             ProposalPart::BlockInfo(block_info),
-            // TODO empty proposal in the spec actually skips this part,
-            // make sure our code handles the case where this part is missing
-            ProposalPart::TransactionBatch(vec![]),
+            // Note: Per spec, empty proposals skip TransactionBatch entirely.
             ProposalPart::ProposalCommitment(proposal_commitment),
             ProposalPart::Fin(ProposalFin {
                 proposal_commitment: proposal_commitment_hash,
@@ -482,4 +480,78 @@ fn create_empty_proposal(
         ],
         finalized_block,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use pathfinder_crypto::Felt;
+    use pathfinder_storage::StorageBuilder;
+
+    use super::*;
+
+    /// Tests that create_empty_proposal successfully creates an empty proposal
+    /// and finalizes it without requiring an executor.
+    #[test]
+    fn test_create_empty_proposal() {
+        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+        let height = 0u64;
+        let round = Round::new(0);
+        let proposer = ContractAddress::new_or_panic(Felt::from_hex_str("0x1").unwrap());
+
+        // Create an empty proposal - this should succeed without an executor
+        let (proposal_parts, finalized_block) =
+            create_empty_proposal(chain_id, height, round, proposer, storage)
+                .expect("create_empty_proposal should succeed for empty proposals");
+
+        // Verify proposal structure
+        assert!(
+            proposal_parts.len() >= 4,
+            "Empty proposal should have at least Init, BlockInfo, ProposalCommitment, and Fin"
+        );
+
+        // Verify it starts with Init
+        assert!(
+            matches!(proposal_parts[0], ProposalPart::Init(_)),
+            "First part should be ProposalInit"
+        );
+
+        // Verify it has BlockInfo
+        assert!(
+            matches!(proposal_parts[1], ProposalPart::BlockInfo(_)),
+            "Second part should be BlockInfo"
+        );
+
+        // Verify it ends with Fin
+        let last_part = proposal_parts.last().expect("Proposal should have parts");
+        assert!(
+            matches!(last_part, ProposalPart::Fin(_)),
+            "Last part should be ProposalFin"
+        );
+
+        // Verify finalized block has empty state
+        assert_eq!(
+            finalized_block.header.transaction_count, 0,
+            "Empty proposal should have 0 transaction count"
+        );
+        assert_eq!(
+            finalized_block.header.event_count, 0,
+            "Empty proposal should have 0 event count"
+        );
+        assert_eq!(
+            finalized_block.state_update.contract_updates.len(),
+            0,
+            "Empty proposal should have no contract updates"
+        );
+        assert_eq!(
+            finalized_block.state_update.system_contract_updates.len(),
+            0,
+            "Empty proposal should have no system contract updates"
+        );
+        assert_eq!(
+            finalized_block.transactions_and_receipts.len(),
+            0,
+            "Empty proposal should have no transactions"
+        );
+    }
 }
