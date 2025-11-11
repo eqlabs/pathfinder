@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::Context;
@@ -10,7 +11,7 @@ use p2p_proto::transaction::DeclareV3WithClass;
 use pathfinder_common::class_definition::{SelectorAndFunctionIndex, SierraEntryPoints};
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::state_update::StateUpdateData;
+use pathfinder_common::state_update::{StateUpdate, StateUpdateData};
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     class_definition,
@@ -137,11 +138,11 @@ impl ValidatorBlockInfoStage {
             chain_id,
             block_info,
             expected_block_header: None,
-            block_executor: LazyBlockExecutor::new(chain_id, block_info, storage.clone()),
             transactions: Vec::new(),
             receipts: Vec::new(),
             events: Vec::new(),
-            batch_executors: Vec::new(),
+            executor: None,
+            cumulative_state_updates: Vec::new(),
             batch_sizes: Vec::new(),
             batch_p2p_transactions: Vec::new(),
             storage,
@@ -154,93 +155,19 @@ pub struct ValidatorTransactionBatchStage {
     chain_id: ChainId,
     block_info: pathfinder_executor::types::BlockInfo,
     expected_block_header: Option<BlockHeader>,
-    block_executor: LazyBlockExecutor,
     transactions: Vec<Transaction>,
     receipts: Vec<Receipt>,
     events: Vec<Vec<Event>>,
-    /// Per-batch executors for fine-grained rollback
-    batch_executors: Vec<BlockExecutor>,
+    /// Single executor for all batches (optimized from multiple executors)
+    executor: Option<BlockExecutor>,
+    /// Cumulative state updates after each batch (for rollback reconstruction)
+    cumulative_state_updates: Vec<StateUpdateData>,
     /// Size of each batch (for proper rollback calculations)
     batch_sizes: Vec<usize>,
     /// Original p2p transactions per batch (for partial execution)
     batch_p2p_transactions: Vec<Vec<p2p_proto::consensus::Transaction>>,
     /// Storage for creating new connections
     storage: Storage,
-}
-
-enum LazyBlockExecutor {
-    /// This variant holds the data necessary to initialize the `BlockExecutor`
-    /// on first use.
-    Uninitialized {
-        chain_id: ChainId,
-        block_info: Box<pathfinder_executor::types::BlockInfo>,
-        storage: Storage,
-    },
-    /// This variant is used to temporarily take ownership of the
-    /// `chain_id`, `block_info` and `storage` fields while initializing
-    /// the `BlockExecutor` and occurs only briefly in
-    /// [`get_or_init()`](Self::get_or_init).
-    Initializing,
-    /// This variant holds the initialized `BlockExecutor` and keeps the storage
-    /// reference for potential restoration.
-    Initialized { executor: Box<BlockExecutor> },
-}
-
-impl LazyBlockExecutor {
-    fn new(
-        chain_id: ChainId,
-        block_info: pathfinder_executor::types::BlockInfo,
-        storage: Storage,
-    ) -> Self {
-        LazyBlockExecutor::Uninitialized {
-            chain_id,
-            block_info: Box::new(block_info),
-            storage,
-        }
-    }
-
-    fn get_or_init(&mut self) -> anyhow::Result<&mut BlockExecutor> {
-        if let LazyBlockExecutor::Initialized { executor, .. } = self {
-            Ok(executor)
-        } else {
-            let this = std::mem::replace(self, Self::Initializing);
-            let LazyBlockExecutor::Uninitialized {
-                chain_id,
-                block_info,
-                storage,
-            } = this
-            else {
-                panic!("Unexpected state in LazyBlockExecutor");
-            };
-
-            let db_conn = storage.connection().context("Create database connection")?;
-            let be = BlockExecutor::new(
-                chain_id,
-                *block_info,
-                ETH_FEE_TOKEN_ADDRESS,
-                STRK_FEE_TOKEN_ADDRESS,
-                db_conn,
-            )
-            .context("Creating BlockExecutor")?;
-            *self = LazyBlockExecutor::Initialized {
-                executor: Box::new(be),
-            };
-            let LazyBlockExecutor::Initialized { executor, .. } = self else {
-                unreachable!("Block executor is initialized");
-            };
-            Ok(executor)
-        }
-    }
-
-    /// Takes the initialized [`BlockExecutor`], invoking
-    /// [`get_or_init()`](Self::get_or_init) if necessary.
-    fn take(mut self) -> anyhow::Result<Box<BlockExecutor>> {
-        self.get_or_init()?;
-        let LazyBlockExecutor::Initialized { executor, .. } = self else {
-            unreachable!("Block executor is initialized");
-        };
-        Ok(executor)
-    }
 }
 
 impl ValidatorTransactionBatchStage {
@@ -254,11 +181,11 @@ impl ValidatorTransactionBatchStage {
             chain_id,
             block_info,
             expected_block_header: None,
-            block_executor: LazyBlockExecutor::new(chain_id, block_info, storage.clone()),
             transactions: Vec::new(),
             receipts: Vec::new(),
             events: Vec::new(),
-            batch_executors: Vec::new(),
+            executor: None,
+            cumulative_state_updates: Vec::new(),
             batch_sizes: Vec::new(),
             batch_p2p_transactions: Vec::new(),
             storage,
@@ -274,8 +201,40 @@ impl ValidatorTransactionBatchStage {
         self.transactions.len()
     }
 
-    /// Execute a batch of transactions, creating a new executor with chained
-    /// initial state
+    /// Reconstruct executor from a cumulative state update
+    /// This is used for rollback scenarios where we need to recreate the
+    /// executor from a stored state diff checkpoint
+    fn reconstruct_executor_from_state_update(
+        &self,
+        state_update_data: &StateUpdateData,
+    ) -> anyhow::Result<BlockExecutor> {
+        // Convert StateUpdateData to StateUpdate
+        let state_update = StateUpdate {
+            block_hash: pathfinder_common::BlockHash::ZERO,
+            parent_state_commitment: pathfinder_common::StateCommitment::ZERO,
+            state_commitment: pathfinder_common::StateCommitment::ZERO,
+            contract_updates: state_update_data.contract_updates.clone(),
+            system_contract_updates: state_update_data.system_contract_updates.clone(),
+            declared_cairo_classes: state_update_data.declared_cairo_classes.clone(),
+            declared_sierra_classes: state_update_data.declared_sierra_classes.clone(),
+        };
+
+        // Create BlockExecutor from the StateUpdate
+        BlockExecutor::new_with_pending_state(
+            self.chain_id,
+            self.block_info,
+            ETH_FEE_TOKEN_ADDRESS,
+            STRK_FEE_TOKEN_ADDRESS,
+            self.storage
+                .connection()
+                .context("Creating database connection for executor reconstruction")?,
+            Arc::new(state_update),
+        )
+        .context("Creating BlockExecutor from state update")
+    }
+
+    /// Execute a batch of transactions using a single executor and extract
+    /// state diffs
     pub fn execute_batch(
         &mut self,
         transactions: Vec<p2p_proto::consensus::Transaction>,
@@ -285,7 +244,7 @@ impl ValidatorTransactionBatchStage {
         }
 
         let batch_size = transactions.len();
-        let batch_index = self.batch_executors.len();
+        let batch_index = self.cumulative_state_updates.len();
 
         tracing::debug!(
             "Executing batch {} with {} transactions",
@@ -316,10 +275,10 @@ impl ValidatorTransactionBatchStage {
             .collect::<anyhow::Result<Vec<_>>>()
             .context("Verifying transaction hashes")?;
 
-        // Create a new executor for this batch with chaining support
-        let mut batch_executor = if self.batch_executors.is_empty() {
+        // Initialize executor on first batch, or use existing executor
+        if self.executor.is_none() {
             // First batch - start from initial state
-            BlockExecutor::new(
+            self.executor = Some(BlockExecutor::new(
                 self.chain_id,
                 self.block_info,
                 ETH_FEE_TOKEN_ADDRESS,
@@ -327,32 +286,26 @@ impl ValidatorTransactionBatchStage {
                 self.storage
                     .connection()
                     .context("Creating database connection")?,
-            )?
-        } else {
-            // Subsequent batches - chain from previous batch's final state
-            let last_executor = self
-                .batch_executors
-                .last()
-                .context("Should have previous executor for chaining")?;
-            let previous_state = last_executor.get_final_state()?;
-            BlockExecutor::new_with_initial_state(
-                self.chain_id,
-                self.block_info,
-                ETH_FEE_TOKEN_ADDRESS,
-                STRK_FEE_TOKEN_ADDRESS,
-                self.storage
-                    .connection()
-                    .context("Creating database connection")?,
-                previous_state,
-            )?
-        };
+            )?);
+        }
+
+        // Get mutable reference to executor
+        let executor = self
+            .executor
+            .as_mut()
+            .context("Executor should be initialized")?;
 
         // Set the correct transaction index
-        batch_executor.set_transaction_index(self.transactions.len());
+        executor.set_transaction_index(self.transactions.len());
 
-        // Execute the batch transactions in the NEW executor
+        // Execute the batch transactions in the single executor
         let (receipts, events): (Vec<_>, Vec<_>) =
-            batch_executor.execute(executor_txns)?.into_iter().unzip();
+            executor.execute(executor_txns)?.into_iter().unzip();
+
+        // Extract cumulative state diff after batch execution
+        let state_diff = executor.extract_state_diff()?;
+        let state_update_data: StateUpdateData = state_diff.into();
+        self.cumulative_state_updates.push(state_update_data);
 
         // Convert receipts to common format with correct sequential transaction indices
         let base_transaction_index = self.transactions.len();
@@ -373,9 +326,7 @@ impl ValidatorTransactionBatchStage {
             })
             .collect();
 
-        // Store the executor, batch size, and original p2p transactions for potential
-        // rollback
-        self.batch_executors.push(batch_executor);
+        // Store batch size and original p2p transactions for potential rollback
         self.batch_sizes.push(batch_size);
         self.batch_p2p_transactions.push(transactions);
 
@@ -399,11 +350,11 @@ impl ValidatorTransactionBatchStage {
 
     /// Rollback to the state after a specific batch (discard later batches)
     pub fn rollback_to_batch(&mut self, target_batch: usize) -> anyhow::Result<()> {
-        if target_batch >= self.batch_executors.len() {
+        if target_batch >= self.cumulative_state_updates.len() {
             return Err(anyhow::anyhow!(
                 "Target batch {} exceeds available batches {}",
                 target_batch,
-                self.batch_executors.len()
+                self.cumulative_state_updates.len()
             ));
         }
 
@@ -415,9 +366,17 @@ impl ValidatorTransactionBatchStage {
         self.transactions.truncate(transactions_to_keep);
         self.receipts.truncate(transactions_to_keep);
         self.events.truncate(transactions_to_keep);
-        self.batch_executors.truncate(target_batch + 1);
+        self.cumulative_state_updates.truncate(target_batch + 1);
         self.batch_sizes.truncate(target_batch + 1);
         self.batch_p2p_transactions.truncate(target_batch + 1);
+
+        // Reconstruct executor from the state update at target batch
+        let state_update_at_target = &self.cumulative_state_updates[target_batch];
+        self.executor = Some(self.reconstruct_executor_from_state_update(state_update_at_target)?);
+        self.executor
+            .as_mut()
+            .context("Executor should be initialized after reconstruction")?
+            .set_transaction_index(transactions_to_keep);
 
         // Validate consistency after rollback
         self.validate_batch_consistency()?;
@@ -457,7 +416,8 @@ impl ValidatorTransactionBatchStage {
                 self.transactions.clear();
                 self.receipts.clear();
                 self.events.clear();
-                self.batch_executors.clear();
+                self.executor = None;
+                self.cumulative_state_updates.clear();
                 self.batch_sizes.clear();
                 self.batch_p2p_transactions.clear();
 
@@ -499,20 +459,20 @@ impl ValidatorTransactionBatchStage {
 
     /// Finalize with the current state (up to the last executed transaction)
     pub fn finalize(&mut self) -> anyhow::Result<Option<pathfinder_executor::types::StateDiff>> {
-        if self.batch_executors.is_empty() {
+        if self.executor.is_none() {
             return Ok(None);
         }
 
-        // Take the last batch executor and finalize it
-        let last_executor = self.batch_executors.pop().unwrap();
-        let state_diff = last_executor.finalize()?;
+        // Take the single executor and finalize it
+        let executor = self.executor.take().context("Executor should exist")?;
+        let state_diff = executor.finalize()?;
 
         Ok(Some(state_diff))
     }
 
-    /// Get the number of batch executors
-    pub fn batch_executor_count(&self) -> usize {
-        self.batch_executors.len()
+    /// Get the number of batches
+    pub fn batch_count(&self) -> usize {
+        self.cumulative_state_updates.len()
     }
 
     /// Get the number of receipts
@@ -533,10 +493,10 @@ impl ValidatorTransactionBatchStage {
 
     /// Validate that batch tracking vectors are consistent
     fn validate_batch_consistency(&self) -> anyhow::Result<()> {
-        if self.batch_executors.len() != self.batch_sizes.len() {
+        if self.cumulative_state_updates.len() != self.batch_sizes.len() {
             return Err(anyhow::anyhow!(
-                "Batch consistency error: {} executors but {} batch sizes",
-                self.batch_executors.len(),
+                "Batch consistency error: {} state updates but {} batch sizes",
+                self.cumulative_state_updates.len(),
                 self.batch_sizes.len()
             ));
         }
@@ -579,16 +539,6 @@ impl ValidatorTransactionBatchStage {
                 self.transactions.len()
             ));
         }
-
-        // Validate that BlockExecutor is in a valid state
-        // After restoration, it should be either Uninitialized (clean) or Initialized
-        // (clean)
-        if matches!(self.block_executor, LazyBlockExecutor::Initializing) {
-            return Err(anyhow::anyhow!(
-                "BlockExecutor is in invalid initializing state"
-            ));
-        }
-
         Ok(())
     }
 
@@ -660,7 +610,7 @@ impl ValidatorTransactionBatchStage {
         let Self {
             block_info,
             expected_block_header,
-            block_executor,
+            executor,
             transactions,
             receipts,
             events,
@@ -676,7 +626,8 @@ impl ValidatorTransactionBatchStage {
 
         let start = Instant::now();
 
-        let state_diff = block_executor.take()?.finalize()?;
+        let executor = executor.context("Executor should exist for finalization")?;
+        let state_diff = executor.finalize()?;
 
         let transaction_commitment =
             calculate_transaction_commitment(&transactions, block_info.starknet_version)?;
@@ -734,7 +685,7 @@ impl ValidatorTransactionBatchStage {
             header,
             state_update,
             transactions,
-            receipts: receipts.clone(),
+            receipts,
             events,
         })
     }
@@ -1021,5 +972,416 @@ fn deployed_address(txnv: &TransactionVariant) -> Option<starknet_api::core::Con
         | TransactionVariant::InvokeV1(_) => {
             unreachable!("Proposal parts don't carry older transaction versions: {txnv:?}")
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use p2p_proto::consensus::TransactionVariant;
+    use p2p_proto::transaction::L1HandlerV0;
+    use pathfinder_common::{
+        BlockNumber,
+        BlockTimestamp,
+        ChainId,
+        GasPrice,
+        L1DataAvailabilityMode,
+        SequencerAddress,
+        StarknetVersion,
+    };
+    use pathfinder_crypto::Felt;
+    use pathfinder_executor::types::BlockInfo;
+    use pathfinder_storage::StorageBuilder;
+
+    use super::*;
+
+    fn create_test_transaction(index: usize) -> p2p_proto::consensus::Transaction {
+        let txn = TransactionVariant::L1HandlerV0(L1HandlerV0 {
+            nonce: Felt::from_hex_str(&format!("0x{index}")).unwrap(),
+            address: p2p_proto::common::Address(
+                Felt::from_hex_str(&format!("0x{index:x}")).unwrap(),
+            ),
+            entry_point_selector: Felt::from_hex_str(&format!("0x{index}")).unwrap(),
+            calldata: vec![Felt::from_hex_str(&format!("0x{index}")).unwrap()],
+        });
+
+        let l1_handler = pathfinder_common::transaction::L1HandlerTransaction {
+            nonce: pathfinder_common::TransactionNonce(
+                Felt::from_hex_str(&format!("0x{index}")).unwrap(),
+            ),
+            contract_address: pathfinder_common::ContractAddress::new_or_panic(
+                Felt::from_hex_str(&format!("0x{index:x}")).unwrap(),
+            ),
+            entry_point_selector: pathfinder_common::EntryPoint(
+                Felt::from_hex_str(&format!("0x{index}")).unwrap(),
+            ),
+            calldata: vec![pathfinder_common::CallParam(
+                Felt::from_hex_str(&format!("0x{index}")).unwrap(),
+            )],
+        };
+
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+        let hash = l1_handler.calculate_hash(chain_id);
+
+        p2p_proto::consensus::Transaction {
+            transaction_hash: p2p_proto::common::Hash(hash.0),
+            txn,
+        }
+    }
+
+    /// Tests that single executor with state diff storage works
+    #[test]
+    fn test_single_executor_optimization() {
+        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+
+        let block_info = BlockInfo {
+            number: BlockNumber::new_or_panic(1),
+            timestamp: BlockTimestamp::new_or_panic(1000),
+            sequencer_address: SequencerAddress::ZERO,
+            l1_da_mode: L1DataAvailabilityMode::Calldata,
+            eth_l1_gas_price: GasPrice::ZERO,
+            strk_l1_gas_price: GasPrice::ZERO,
+            eth_l1_data_gas_price: GasPrice::ZERO,
+            strk_l1_data_gas_price: GasPrice::ZERO,
+            strk_l2_gas_price: GasPrice::ZERO,
+            eth_l2_gas_price: GasPrice::ZERO,
+            starknet_version: StarknetVersion::new(0, 14, 0, 0),
+        };
+
+        let mut validator_stage =
+            ValidatorTransactionBatchStage::new(chain_id, block_info, storage.clone())
+                .expect("Failed to create validator stage");
+
+        // Create batches: 3 batches with 2 transactions each
+        let batches = [
+            vec![create_test_transaction(0), create_test_transaction(1)],
+            vec![create_test_transaction(2), create_test_transaction(3)],
+            vec![create_test_transaction(4), create_test_transaction(5)],
+        ];
+
+        // Execute batch 1
+        validator_stage
+            .execute_batch(batches[0].clone())
+            .expect("Failed to execute batch 1");
+
+        // Should have 1 batch (state update) after first execution
+        assert_eq!(
+            validator_stage.batch_count(),
+            1,
+            "Should have 1 batch after first execution"
+        );
+        assert_eq!(
+            validator_stage.transaction_count(),
+            2,
+            "Should have 2 transactions"
+        );
+
+        // Execute batch 2
+        validator_stage
+            .execute_batch(batches[1].clone())
+            .expect("Failed to execute batch 2");
+
+        // Should have 2 batches and 2 state updates
+        assert_eq!(validator_stage.batch_count(), 2, "Should have 2 batches");
+        assert_eq!(
+            validator_stage.transaction_count(),
+            4,
+            "Should have 4 transactions"
+        );
+
+        // Execute batch 3
+        validator_stage
+            .execute_batch(batches[2].clone())
+            .expect("Failed to execute batch 3");
+
+        // Should have 3 batches now with 6 transactions
+        assert_eq!(validator_stage.batch_count(), 3, "Should have 3 batches");
+        assert_eq!(
+            validator_stage.transaction_count(),
+            6,
+            "Should have 6 transactions"
+        );
+
+        // Rollback to batch 1 should reconstruct executor from stored state
+        validator_stage
+            .rollback_to_batch(1)
+            .expect("Failed to rollback to batch 1");
+
+        assert_eq!(
+            validator_stage.batch_count(),
+            2,
+            "Should have 2 batches after rollback"
+        );
+        assert_eq!(
+            validator_stage.transaction_count(),
+            4,
+            "Should have 4 transactions after rollback"
+        );
+
+        // Make sure we can continue executing after rollback
+        validator_stage
+            .execute_batch(batches[2].clone())
+            .expect("Failed to execute batch 3 after rollback");
+
+        assert_eq!(
+            validator_stage.batch_count(),
+            3,
+            "Should have 3 batches after re-execution"
+        );
+        assert_eq!(
+            validator_stage.transaction_count(),
+            6,
+            "Should have 6 transactions after re-execution"
+        );
+
+        // Receipts should be consistent
+        let receipts = validator_stage.receipts();
+        assert_eq!(receipts.len(), 6, "Should have 6 receipts");
+
+        // Verify transaction indices are sequential
+        for (i, receipt) in receipts.iter().enumerate() {
+            assert_eq!(
+                receipt.transaction_index.get(),
+                i as u64,
+                "Transaction index mismatch at position {i}"
+            );
+        }
+
+        // Finalize should work with single executor
+        // Note: State diffs may be empty for L1Handler transactions, which is fine
+        let _state_diff = validator_stage
+            .finalize()
+            .expect("Failed to finalize")
+            .expect("Should have state diff");
+    }
+
+    /// Test that rollback reconstruction produces identical state
+    #[test]
+    fn test_rollback_reconstruction_consistency() {
+        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+
+        let block_info = BlockInfo {
+            number: BlockNumber::new_or_panic(1),
+            timestamp: BlockTimestamp::new_or_panic(1000),
+            sequencer_address: SequencerAddress::ZERO,
+            l1_da_mode: L1DataAvailabilityMode::Calldata,
+            eth_l1_gas_price: GasPrice::ZERO,
+            strk_l1_gas_price: GasPrice::ZERO,
+            eth_l1_data_gas_price: GasPrice::ZERO,
+            strk_l1_data_gas_price: GasPrice::ZERO,
+            strk_l2_gas_price: GasPrice::ZERO,
+            eth_l2_gas_price: GasPrice::ZERO,
+            starknet_version: StarknetVersion::new(0, 14, 0, 0),
+        };
+
+        let batches = [
+            vec![create_test_transaction(0), create_test_transaction(1)],
+            vec![create_test_transaction(2), create_test_transaction(3)],
+        ];
+
+        // Create first validator and execute both batches
+        let mut validator1 =
+            ValidatorTransactionBatchStage::new(chain_id, block_info, storage.clone())
+                .expect("Failed to create validator stage");
+
+        validator1
+            .execute_batch(batches[0].clone())
+            .expect("Failed to execute batch 1");
+        validator1
+            .execute_batch(batches[1].clone())
+            .expect("Failed to execute batch 2");
+
+        let receipts1 = validator1.receipts().to_vec();
+
+        // Create second validator and execute, then rollback and re-execute
+        let mut validator2 =
+            ValidatorTransactionBatchStage::new(chain_id, block_info, storage.clone())
+                .expect("Failed to create validator stage");
+
+        validator2
+            .execute_batch(batches[0].clone())
+            .expect("Failed to execute batch 1");
+        validator2
+            .execute_batch(batches[1].clone())
+            .expect("Failed to execute batch 2");
+
+        // Rollback and re-execute
+        validator2.rollback_to_batch(0).expect("Failed to rollback");
+        validator2
+            .execute_batch(batches[1].clone())
+            .expect("Failed to re-execute batch 2");
+
+        let receipts2 = validator2.receipts();
+
+        // Receipts should be identical
+        assert_eq!(
+            receipts1.len(),
+            receipts2.len(),
+            "Receipt count should match"
+        );
+        for (i, (r1, r2)) in receipts1.iter().zip(receipts2.iter()).enumerate() {
+            assert_eq!(
+                r1.transaction_index, r2.transaction_index,
+                "Transaction index mismatch at position {i}"
+            );
+            assert_eq!(
+                r1.transaction_hash, r2.transaction_hash,
+                "Transaction hash mismatch at position {i}"
+            );
+        }
+    }
+
+    /// Test edge cases in find_batch_containing_transaction and rollback logic
+    /// This verifies:
+    /// - find_batch_containing_transaction correctly identifies batches at
+    ///   boundaries
+    /// - rollback_to_transaction handles edge cases correctly (including
+    ///   target_count == 0)
+    #[test]
+    fn test_rollback_edge_cases() {
+        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+
+        let block_info = BlockInfo {
+            number: BlockNumber::new_or_panic(1),
+            timestamp: BlockTimestamp::new_or_panic(1000),
+            sequencer_address: SequencerAddress::ZERO,
+            l1_da_mode: L1DataAvailabilityMode::Calldata,
+            eth_l1_gas_price: GasPrice::ZERO,
+            strk_l1_gas_price: GasPrice::ZERO,
+            eth_l1_data_gas_price: GasPrice::ZERO,
+            strk_l1_data_gas_price: GasPrice::ZERO,
+            strk_l2_gas_price: GasPrice::ZERO,
+            eth_l2_gas_price: GasPrice::ZERO,
+            starknet_version: StarknetVersion::new(0, 14, 0, 0),
+        };
+
+        let mut validator_stage =
+            ValidatorTransactionBatchStage::new(chain_id, block_info, storage.clone())
+                .expect("Failed to create validator stage");
+
+        // Create batches with different sizes to test boundary conditions
+        // Batch 0: 3 transactions (tx's 0, 1, 2)
+        // Batch 1: 2 transactions (tx's 3, 4)
+        // Batch 2: 2 transactions (tx's 5, 6)
+        let batches = [
+            vec![
+                create_test_transaction(0),
+                create_test_transaction(1),
+                create_test_transaction(2),
+            ],
+            vec![create_test_transaction(3), create_test_transaction(4)],
+            vec![create_test_transaction(5), create_test_transaction(6)],
+        ];
+
+        // Execute all batches
+        validator_stage
+            .execute_batch(batches[0].clone())
+            .expect("Failed to execute batch 0");
+        validator_stage
+            .execute_batch(batches[1].clone())
+            .expect("Failed to execute batch 1");
+        validator_stage
+            .execute_batch(batches[2].clone())
+            .expect("Failed to execute batch 2");
+
+        assert_eq!(
+            validator_stage.transaction_count(),
+            7,
+            "Should have 7 transactions"
+        );
+
+        // Rollback to transaction at batch boundary (end of batch 0 = transaction 2)
+        // This should rollback to batch 0
+        validator_stage
+            .rollback_to_transaction(2)
+            .expect("Failed to rollback to transaction 2");
+        assert_eq!(
+            validator_stage.transaction_count(),
+            3,
+            "Should have 3 transactions after rollback to transaction 2"
+        );
+        assert_eq!(
+            validator_stage.batch_count(),
+            1,
+            "Should have 1 batch after rollback to transaction 2"
+        );
+
+        // Re-execute to get back to 7 transactions
+        validator_stage
+            .execute_batch(batches[1].clone())
+            .expect("Failed to re-execute batch 1");
+        validator_stage
+            .execute_batch(batches[2].clone())
+            .expect("Failed to re-execute batch 2");
+
+        // Rollback to transaction at batch boundary (start of batch 1 = transaction 3)
+        // This should rollback to batch 1 (which includes transaction 3)
+        validator_stage
+            .rollback_to_transaction(3)
+            .expect("Failed to rollback to transaction 3");
+        assert_eq!(
+            validator_stage.transaction_count(),
+            4,
+            "Should have 4 transactions after rollback to transaction 3"
+        );
+        assert_eq!(
+            validator_stage.batch_count(),
+            2,
+            "Should have 2 batches after rollback to transaction 3"
+        );
+
+        // Re-execute to get back to 7 transactions
+        validator_stage
+            .execute_batch(batches[2].clone())
+            .expect("Failed to re-execute batch 2");
+
+        // Rollback to transaction in middle of batch (transaction 1 in batch 0)
+        // This should rollback to transaction 1, keeping only first 2 transactions
+        validator_stage
+            .rollback_to_transaction(1)
+            .expect("Failed to rollback to transaction 1");
+        assert_eq!(
+            validator_stage.transaction_count(),
+            2,
+            "Should have 2 transactions after rollback to transaction 1"
+        );
+        assert_eq!(
+            validator_stage.batch_count(),
+            1,
+            "Should have 1 batch after rollback to transaction 1"
+        );
+
+        // Rollback to transaction 0 (first transaction)
+        // This should keep only the first transaction
+        // First, we need to get back to having multiple transactions
+        validator_stage
+            .execute_batch(vec![create_test_transaction(2)])
+            .expect("Failed to add transaction 2 back");
+        validator_stage
+            .execute_batch(batches[1].clone())
+            .expect("Failed to re-execute batch 1");
+
+        validator_stage
+            .rollback_to_transaction(0)
+            .expect("Failed to rollback to transaction 0");
+        assert_eq!(
+            validator_stage.transaction_count(),
+            1,
+            "Should have 1 transaction after rollback to transaction 0"
+        );
+        assert_eq!(
+            validator_stage.batch_count(),
+            1,
+            "Should have 1 batch after rollback to transaction 0"
+        );
+
+        // Verify an out of bounds rollback error
+        let result = validator_stage.rollback_to_transaction(10);
+        assert!(
+            result.is_err(),
+            "Rollback to transaction 10 (out of bounds) should error"
+        );
     }
 }

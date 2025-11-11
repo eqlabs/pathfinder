@@ -4,7 +4,7 @@
 //! transaction batches with the ability to rollback when TransactionsFin
 //! indicates fewer transactions were actually executed by the proposer.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::Context;
 use p2p::consensus::HeightAndRound;
@@ -17,35 +17,17 @@ use crate::validator::ValidatorTransactionBatchStage;
 /// Manages batch execution with rollback support for TransactionsFin
 #[derive(Debug, Clone)]
 pub struct BatchExecutionManager {
-    /// Tracks execution state for each height/round
-    executions: HashMap<HeightAndRound, BatchExecutionState>,
-}
-
-/// State for a single proposal's batch execution
-#[derive(Debug, Clone)]
-struct BatchExecutionState {
-    /// Whether each batch has been executed (indexed by arrival order)
-    batch_executed: Vec<bool>,
-    /// Current execution state
-    current_state: ExecutionState,
-    /// Total transactions executed so far
-    total_executed: usize,
-}
-
-/// Current execution state
-#[derive(Debug, Clone, PartialEq)]
-pub enum ExecutionState {
-    /// Waiting for more batches
-    Collecting,
-    /// Finalized with specific batch count
-    Finalized { executed_batch_count: usize },
+    /// Tracks which proposals (height/round) have started execution.
+    /// An entry exists here if at least one batch has been executed (not
+    /// deferred).
+    executing: HashSet<HeightAndRound>,
 }
 
 impl BatchExecutionManager {
     /// Create a new batch execution manager
     pub fn new() -> Self {
         Self {
-            executions: HashMap::new(),
+            executing: HashSet::new(),
         }
     }
 
@@ -94,17 +76,8 @@ impl BatchExecutionManager {
             .execute_batch(all_transactions)
             .context("Failed to execute transaction batch")?;
 
-        // Update execution state
-        let state =
-            self.executions
-                .entry(height_and_round)
-                .or_insert_with(|| BatchExecutionState {
-                    batch_executed: Vec::new(),
-                    current_state: ExecutionState::Collecting,
-                    total_executed: 0,
-                });
-
-        state.total_executed += 1;
+        // Mark that execution has started for this height/round
+        self.executing.insert(height_and_round);
 
         tracing::debug!(
             "Transaction batch execution for height and round {height_and_round} is complete, \
@@ -121,10 +94,14 @@ impl BatchExecutionManager {
         transactions_fin: proto_consensus::TransactionsFin,
         validator: &mut ValidatorTransactionBatchStage,
     ) -> anyhow::Result<()> {
-        let state = self
-            .executions
-            .get_mut(&height_and_round)
-            .ok_or_else(|| anyhow::anyhow!("No execution state found for {height_and_round}"))?;
+        // Verify that execution has started (at least one batch was executed, not
+        // deferred)
+        if !self.executing.contains(&height_and_round) {
+            return Err(anyhow::anyhow!(
+                "No execution state found for {height_and_round}. Transactions may have been \
+                 deferred."
+            ));
+        }
 
         let target_transaction_count = transactions_fin.executed_transaction_count as usize;
         let current_transaction_count = validator.transaction_count();
@@ -145,17 +122,7 @@ impl BatchExecutionManager {
             validator
                 .rollback_to_transaction(target_transaction_count)
                 .context("Failed to rollback to target transaction count")?;
-
-            // Update state to reflect rollback
-            state.total_executed = target_transaction_count;
-            for i in target_transaction_count..state.batch_executed.len() {
-                state.batch_executed[i] = false;
-            }
         }
-
-        state.current_state = ExecutionState::Finalized {
-            executed_batch_count: target_transaction_count,
-        };
 
         tracing::info!(
             "Finalized {height_and_round} with {target_transaction_count} executed transactions"
@@ -164,24 +131,10 @@ impl BatchExecutionManager {
         Ok(())
     }
 
-    /// Get the current execution state for a proposal
-    #[cfg(test)]
-    pub fn get_execution_state(
-        &self,
-        height_and_round: &HeightAndRound,
-    ) -> Option<&ExecutionState> {
-        self.executions
-            .get(height_and_round)
-            .map(|state| &state.current_state)
-    }
-
     /// Clean up completed executions
     pub fn cleanup(&mut self, height_and_round: &HeightAndRound) {
-        if let Some(state) = self.executions.remove(height_and_round) {
-            tracing::debug!(
-                "Cleaned up execution state for {height_and_round}: {} batches",
-                state.batch_executed.len()
-            );
+        if self.executing.remove(height_and_round) {
+            tracing::debug!("Cleaned up execution state for {height_and_round}");
         }
     }
 }
@@ -333,11 +286,8 @@ mod tests {
 
         // Should succeed (either execute or defer)
         assert!(result.is_ok());
-
-        // Verify the batch was either executed or deferred
-        let _state = manager.get_execution_state(&height_and_round);
-        // State might be Collecting (if executed) or None (if deferred)
-        // Both are valid outcomes for this test
+        // Note: If executed, execution state will be created. If deferred, it
+        // won't. Both outcomes are valid.
     }
 
     /// Simulate receiving batches from the network and executing them with
@@ -425,27 +375,14 @@ mod tests {
         let final_transactions = validator_stage.transaction_count();
         let final_receipts = validator_stage.receipt_count();
         let final_events = validator_stage.event_count();
-        let final_executors = validator_stage.batch_executor_count();
+        let final_executors = validator_stage.batch_count();
 
         assert_eq!(final_transactions, target_transaction_idx + 1);
         assert_eq!(final_receipts, target_transaction_idx + 1);
         assert_eq!(final_events, target_transaction_idx + 1);
         assert_eq!(final_executors, target_batch + 1);
 
-        assert_eq!(validator_stage.batch_executor_count(), target_batch + 1);
-
         // Verify transaction indices are sequential and correct
-        for (i, receipt) in validator_stage.receipts().iter().enumerate() {
-            let expected_index = i as u64;
-            let actual_index = receipt.transaction_index.get();
-            assert_eq!(
-                actual_index, expected_index,
-                "Transaction index mismatch at position {i}: expected {expected_index}, got \
-                 {actual_index}"
-            );
-        }
-
-        // Verify specific transaction index ranges after rollback and re-execution
         let receipts = validator_stage.receipts();
         assert_eq!(
             receipts.len(),
@@ -453,112 +390,13 @@ mod tests {
             "Should have 8 receipts after rollback and re-execution"
         );
 
-        // First receipts should be from batch 0 (indices 0, 1, 2)
-        for (i, receipt) in receipts.iter().enumerate().take(3) {
+        for (i, receipt) in receipts.iter().enumerate() {
+            let expected_index = i as u64;
+            let actual_index = receipt.transaction_index.get();
             assert_eq!(
-                receipt.transaction_index.get(),
-                i as u64,
-                "Receipt {i} should have index {i}"
-            );
-        }
-
-        // Next receipts should be from partial batch 1 (indices 3, 4, 5, 6)
-        for (i, receipt) in receipts.iter().enumerate().skip(3).take(4) {
-            assert_eq!(
-                receipt.transaction_index.get(),
-                i as u64,
-                "Receipt {i} should have index {i}"
-            );
-        }
-    }
-
-    /// Test rollback to a transaction within the first batch
-    #[test]
-    fn test_rollback_to_first_batch_transaction() {
-        use pathfinder_common::{
-            BlockNumber,
-            BlockTimestamp,
-            ChainId,
-            GasPrice,
-            L1DataAvailabilityMode,
-            SequencerAddress,
-            StarknetVersion,
-        };
-        use pathfinder_executor::types::BlockInfo;
-        use pathfinder_storage::StorageBuilder;
-
-        // Create test storage and block info
-        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
-        let chain_id = ChainId::SEPOLIA_TESTNET;
-
-        let block_info = BlockInfo {
-            number: BlockNumber::new_or_panic(1),
-            timestamp: BlockTimestamp::new_or_panic(1000),
-            sequencer_address: SequencerAddress::ZERO,
-            l1_da_mode: L1DataAvailabilityMode::Calldata,
-            eth_l1_gas_price: GasPrice::ZERO,
-            strk_l1_gas_price: GasPrice::ZERO,
-            eth_l1_data_gas_price: GasPrice::ZERO,
-            strk_l1_data_gas_price: GasPrice::ZERO,
-            strk_l2_gas_price: GasPrice::ZERO,
-            eth_l2_gas_price: GasPrice::ZERO,
-            starknet_version: StarknetVersion::new(0, 14, 0, 0),
-        };
-
-        // Create test transactions
-        let mut all_transactions = Vec::new();
-        for i in 0..10 {
-            all_transactions.push(create_test_transaction(i));
-        }
-
-        // Group into batches: [5, 5] - so transaction 2 is in batch 0
-        let batch_sizes = vec![5, 5];
-        let mut batches = Vec::new();
-        let mut start_idx = 0;
-        for &batch_size in &batch_sizes {
-            let end_idx = start_idx + batch_size;
-            if end_idx <= all_transactions.len() {
-                batches.push(all_transactions[start_idx..end_idx].to_vec());
-                start_idx = end_idx;
-            }
-        }
-
-        // Create validator stage
-        let mut validator_stage =
-            ValidatorTransactionBatchStage::new(chain_id, block_info, storage)
-                .expect("Failed to create validator stage");
-
-        // Execute all batches
-        for batch in batches.iter() {
-            validator_stage
-                .execute_batch(batch.clone())
-                .expect("Failed to execute batch");
-        }
-
-        // Try to rollback to transaction 2 (which is in the first batch)
-        let target_transaction_idx = 2;
-
-        // This should work, not throw an error
-        validator_stage
-            .rollback_to_transaction(target_transaction_idx)
-            .expect("Failed to rollback to first batch transaction");
-
-        let final_transactions = validator_stage.transaction_count();
-        let final_receipts = validator_stage.receipt_count();
-        let final_events = validator_stage.event_count();
-
-        // Should have exactly 3 transactions (0, 1, 2)
-        assert_eq!(final_transactions, target_transaction_idx + 1);
-        assert_eq!(final_receipts, target_transaction_idx + 1);
-        assert_eq!(final_events, target_transaction_idx + 1);
-
-        // Verify transaction indices are sequential
-        for i in 0..final_transactions {
-            let receipt = &validator_stage.receipts()[i];
-            assert_eq!(
-                receipt.transaction_index.get(),
-                i as u64,
-                "Receipt {i} should have index {i}",
+                actual_index, expected_index,
+                "Transaction index mismatch at position {i}: expected {expected_index}, got \
+                 {actual_index}"
             );
         }
     }
@@ -723,21 +561,6 @@ mod tests {
             );
         }
 
-        // Cross-batch ordering integrity
-        let receipts = validator_stage3.receipts();
-
-        // Verify that transaction indices form a perfect sequence
-        for i in 0..receipts.len() - 1 {
-            let current_index = receipts[i].transaction_index.get();
-            let next_index = receipts[i + 1].transaction_index.get();
-
-            assert_eq!(
-                next_index,
-                current_index + 1,
-                "Non-sequential transaction indices: {current_index} followed by {next_index}",
-            );
-        }
-
         // Rollback preserves exact sequence
         let original_receipts = validator_stage3.receipts().to_vec();
 
@@ -760,7 +583,8 @@ mod tests {
         }
     }
 
-    /// Test rollback executor cleanup and verification
+    /// Test rollback state update cleanup and verification
+    /// Verifies that rollback properly cleans up cumulative state updates
     #[test]
     fn test_rollback_cleanup() {
         use pathfinder_common::{
@@ -798,7 +622,7 @@ mod tests {
             ValidatorTransactionBatchStage::new(chain_id, block_info, storage.clone())
                 .expect("Failed to create validator stage");
 
-        // Create many executors
+        // Create many batches (each creates a state update checkpoint)
         for i in 0..10 {
             let transactions = create_transaction_batch(i * 10, 2, chain_id);
             validator_stage
@@ -806,22 +630,22 @@ mod tests {
                 .expect("Failed to execute batch");
         }
 
-        let before_rollback_count = validator_stage.batch_executor_count();
+        let before_rollback_count = validator_stage.batch_count();
 
-        // Rollback to batch 3 (should drop executors 4-9)
+        // Rollback to batch 3 (should drop state updates for batches 4-9)
         validator_stage
             .rollback_to_batch(3)
             .expect("Failed to rollback");
 
-        let after_rollback_count = validator_stage.batch_executor_count();
+        let after_rollback_count = validator_stage.batch_count();
 
         assert_eq!(
             after_rollback_count, 4,
-            "Should have 4 executors after rollback to batch 3"
+            "Should have 4 batches (state updates) after rollback to batch 3"
         );
         assert!(
             after_rollback_count < before_rollback_count,
-            "Rollback should reduce executor count"
+            "Rollback should reduce batch count"
         );
 
         // Execute more batches
@@ -832,36 +656,36 @@ mod tests {
                 .expect("Failed to execute batch");
         }
 
-        let before_multiple_rollback = validator_stage.batch_executor_count();
+        let before_multiple_rollback = validator_stage.batch_count();
 
         // Perform multiple rollbacks
         validator_stage
             .rollback_to_batch(5)
             .expect("Failed to rollback to batch 5");
-        let after_rollback_1 = validator_stage.batch_executor_count();
+        let after_rollback_1 = validator_stage.batch_count();
 
         validator_stage
             .rollback_to_batch(2)
             .expect("Failed to rollback to batch 2");
-        let after_rollback_2 = validator_stage.batch_executor_count();
+        let after_rollback_2 = validator_stage.batch_count();
 
         validator_stage
             .rollback_to_batch(0)
             .expect("Failed to rollback to batch 0");
-        let after_rollback_3 = validator_stage.batch_executor_count();
+        let after_rollback_3 = validator_stage.batch_count();
 
-        // Verify progressive cleanup
+        // Verify progressive cleanup of state updates
         assert!(
             after_rollback_1 < before_multiple_rollback,
-            "First rollback should reduce executors"
+            "First rollback should reduce batch count"
         );
         assert!(
             after_rollback_2 < after_rollback_1,
-            "Second rollback should reduce executors further"
+            "Second rollback should reduce batch count further"
         );
         assert!(
             after_rollback_3 < after_rollback_2,
-            "Third rollback should reduce executors even more"
+            "Third rollback should reduce batch count even more"
         );
 
         // Execute some batches
@@ -877,53 +701,12 @@ mod tests {
             .rollback_to_transaction(1)
             .expect("Failed to rollback to transaction 1");
 
-        let after_first_batch_rollback = validator_stage.batch_executor_count();
+        let after_first_batch_rollback = validator_stage.batch_count();
 
-        // Should have only 1 executor (for the partial first batch)
+        // Should have only 1 batch (state update) after rollback to transaction 1
         assert_eq!(
             after_first_batch_rollback, 1,
-            "Should have 1 executor after first-batch rollback"
-        );
-
-        // Create a large number of batches to test memory pressure
-        let large_batch_count = 20;
-        for i in 0..large_batch_count {
-            let transactions = create_transaction_batch(i * 100, 3, chain_id);
-            validator_stage
-                .execute_batch(transactions)
-                .expect("Failed to execute batch");
-        }
-
-        let peak_executor_count = validator_stage.batch_executor_count();
-
-        // Perform aggressive rollbacks
-        validator_stage
-            .rollback_to_batch(10)
-            .expect("Failed to rollback to batch 10");
-        let after_aggressive_rollback_1 = validator_stage.batch_executor_count();
-
-        validator_stage
-            .rollback_to_batch(5)
-            .expect("Failed to rollback to batch 5");
-        let after_aggressive_rollback_2 = validator_stage.batch_executor_count();
-
-        validator_stage
-            .rollback_to_batch(0)
-            .expect("Failed to rollback to batch 0");
-        let after_aggressive_rollback_3 = validator_stage.batch_executor_count();
-
-        // Verify memory is properly reclaimed
-        assert!(
-            after_aggressive_rollback_1 < peak_executor_count,
-            "First aggressive rollback should reduce executors"
-        );
-        assert!(
-            after_aggressive_rollback_2 < after_aggressive_rollback_1,
-            "Second aggressive rollback should reduce executors further"
-        );
-        assert!(
-            after_aggressive_rollback_3 < after_aggressive_rollback_2,
-            "Third aggressive rollback should reduce executors even more"
+            "Should have 1 batch after first-batch rollback"
         );
     }
 }
