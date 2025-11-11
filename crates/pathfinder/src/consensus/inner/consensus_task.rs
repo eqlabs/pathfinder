@@ -114,6 +114,8 @@ pub fn spawn(
         // Get the current height
         let mut current_height = started_heights.iter().copied().max().unwrap_or_default();
 
+        let finalized_heights = consensus.finalized_heights();
+
         start_height(
             &mut consensus,
             &mut started_heights,
@@ -334,12 +336,19 @@ pub fn spawn(
                                 }
                             }
 
-                            start_height(
-                                &mut consensus,
-                                &mut started_heights,
-                                cmd_height,
-                                validator_set_provider.get_validator_set(cmd_height)?,
-                            );
+                            if finalized_heights.contains(&cmd_height) {
+                                tracing::debug!(
+                                    "🧠 🤷  Not starting old height {cmd_height} at \
+                                     {current_height}"
+                                );
+                            } else {
+                                start_height(
+                                    &mut consensus,
+                                    &mut started_heights,
+                                    cmd_height,
+                                    validator_set_provider.get_validator_set(cmd_height)?,
+                                );
+                            }
                         }
                     }
 

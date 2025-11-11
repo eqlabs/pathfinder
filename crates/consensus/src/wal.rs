@@ -147,6 +147,8 @@ impl<V: Debug, A: Debug> WalSink<V, A> for NoopWal {
 /// Recovery utilities for the write-ahead log.
 pub(crate) mod recovery {
 
+    use std::collections::HashSet;
+
     use super::*;
 
     /// Extract the height from the filename of the write-ahead log file.
@@ -235,7 +237,7 @@ pub(crate) mod recovery {
     pub(crate) fn recover_incomplete_heights<V, A>(
         wal_dir: &Path,
         highest_finalized: Option<u64>,
-    ) -> Result<Vec<(u64, Vec<WalEntry<V, A>>)>, std::io::Error>
+    ) -> Result<(HashSet<u64>, Vec<(u64, Vec<WalEntry<V, A>>)>), std::io::Error>
     where
         V: for<'de> Deserialize<'de>,
         A: for<'de> Deserialize<'de>,
@@ -246,7 +248,7 @@ pub(crate) mod recovery {
                 wal_dir = %wal_dir.display(),
                 "WAL directory does not exist, no recovery needed"
             );
-            return Ok(Vec::new());
+            return Ok((HashSet::new(), Vec::new()));
         }
 
         let files = collect_wal_files(wal_dir)?;
@@ -254,9 +256,10 @@ pub(crate) mod recovery {
             files = ?files,
             "Recovering incomplete heights from WAL",
         );
-        let mut result = Vec::new();
-        // For each file, read the entries and add them to the result if the height is
-        // not finalized.
+        let mut incomplete = Vec::new();
+        let mut finalized = HashSet::new();
+        // For each file, read the entries and add them to incomplete if the height is
+        // not finalized, or to finalized if it is.
         for (height, path) in files {
             let entries = read_entries(&path)?;
             // `WalEntry::Decision` indicates that a decision has been reached at this
@@ -282,16 +285,17 @@ pub(crate) mod recovery {
                     path = %path.display(),
                     "Skipping finalized height"
                 );
-                continue;
+                finalized.insert(height);
+            } else {
+                tracing::debug!(
+                    height = %height,
+                    path = %path.display(),
+                    entry_count = entries.len(),
+                    "Recovering incomplete height"
+                );
+                incomplete.push((height, entries));
             }
-            tracing::debug!(
-                height = %height,
-                path = %path.display(),
-                entry_count = entries.len(),
-                "Recovering incomplete height"
-            );
-            result.push((height, entries));
         }
-        Ok(result)
+        Ok((finalized, incomplete))
     }
 }

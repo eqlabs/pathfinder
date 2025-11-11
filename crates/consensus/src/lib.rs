@@ -327,6 +327,7 @@ pub struct Consensus<
     config: Config<A>,
     proposer_selector: P,
     min_kept_height: Option<u64>,
+    finalized_heights: HashSet<u64>,
 }
 
 impl<
@@ -355,6 +356,7 @@ impl<
             config,
             proposer_selector: RoundRobinProposerSelector,
             min_kept_height: None,
+            finalized_heights: HashSet::new(),
         }
     }
 
@@ -384,6 +386,7 @@ impl<
             config,
             proposer_selector,
             min_kept_height: None,
+            finalized_heights: HashSet::new(),
         }
     }
 
@@ -470,16 +473,16 @@ impl<
             "Starting consensus recovery from WAL"
         );
 
-        // Read the write-ahead log and recover all incomplete heights.
-        let incomplete_heights =
+        // Read the write-ahead log and recover incomplete and finalized heights.
+        let (finalized_heights, incomplete_heights) =
             match recovery::recover_incomplete_heights(&config.wal_dir, highest_finalized) {
-                Ok(heights) => {
+                Ok((finalized_heights, incomplete_heights)) => {
                     tracing::info!(
                         validator = ?config.address,
-                        incomplete_heights = heights.len(),
+                        incomplete_heights = incomplete_heights.len(),
                         "Found incomplete heights to recover"
                     );
-                    heights
+                    (finalized_heights, incomplete_heights)
                 }
                 Err(e) => {
                     tracing::error!(
@@ -488,9 +491,12 @@ impl<
                         error = %e,
                         "Failed to recover incomplete heights from WAL"
                     );
-                    Vec::new()
+                    (HashSet::new(), Vec::new())
                 }
             };
+
+        // Set finalized heights.
+        consensus.finalized_heights = finalized_heights;
 
         // Manually recover all incomplete heights.
         for (height, entries) in incomplete_heights {
@@ -721,6 +727,11 @@ impl<
     /// Get the heights currently being tracked by the consensus engine.
     pub fn incomplete_heights(&self) -> HashSet<u64> {
         self.internal.keys().copied().collect()
+    }
+
+    /// Get the heights no longer tracked by the consensus engine.
+    pub fn finalized_heights(&self) -> HashSet<u64> {
+        self.finalized_heights.clone()
     }
 }
 
