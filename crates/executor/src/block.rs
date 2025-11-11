@@ -983,6 +983,7 @@ mod tests {
             system_contract_updates: state_update_data_2.system_contract_updates,
             declared_cairo_classes: state_update_data_2.declared_cairo_classes,
             declared_sierra_classes: state_update_data_2.declared_sierra_classes,
+            migrated_compiled_classes: state_update_data_2.migrated_compiled_classes,
         };
 
         // Create executor from cumulative state update (batch 2 state)

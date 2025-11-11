@@ -217,6 +217,7 @@ impl ValidatorTransactionBatchStage {
             system_contract_updates: state_update_data.system_contract_updates.clone(),
             declared_cairo_classes: state_update_data.declared_cairo_classes.clone(),
             declared_sierra_classes: state_update_data.declared_sierra_classes.clone(),
+            migrated_compiled_classes: state_update_data.migrated_compiled_classes.clone(),
         };
 
         // Create BlockExecutor from the StateUpdate
