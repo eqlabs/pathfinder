@@ -88,16 +88,18 @@ pub fn spawn(
         // Get the proposer selector
         let proposer_selector = L2ProposerSelector::new(storage.clone(), chain_id, config.clone());
 
-        let mut consensus =
-            Consensus::<ConsensusValue, ContractAddress, L2ProposerSelector>::recover_with_proposal_selector(
-                Config::new(validator_address)
-                    .with_wal_dir(wal_directory),
-                // TODO use a dynamic validator set provider, once fetching the validator set from
-                // the staking contract is implemented. Related issue: https://github.com/eqlabs/pathfinder/issues/2936
-                Arc::new(validator_set_provider.clone()),
-                proposer_selector,
-                highest_finalized,
-            )?;
+        let (mut consensus, finalized_heights) = Consensus::<
+            ConsensusValue,
+            ContractAddress,
+            L2ProposerSelector,
+        >::recover_with_proposal_selector(
+            Config::new(validator_address).with_wal_dir(wal_directory),
+            // TODO use a dynamic validator set provider, once fetching the validator set from
+            // the staking contract is implemented. Related issue: https://github.com/eqlabs/pathfinder/issues/2936
+            Arc::new(validator_set_provider.clone()),
+            proposer_selector,
+            highest_finalized,
+        )?;
 
         // A validator that joins the consensus network and is lagging behind will vote
         // Nil for its current height, because the consensus network is already at a
@@ -112,7 +114,6 @@ pub fn spawn(
         let mut started_heights = consensus.incomplete_heights();
 
         // Get the current height
-        let finalized_heights = consensus.finalized_heights();
         let mut current_height = started_heights.iter().copied().max().unwrap_or_else(|| {
             match finalized_heights.iter().max() {
                 Some(m) => m + 1,

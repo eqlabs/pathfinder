@@ -327,7 +327,6 @@ pub struct Consensus<
     config: Config<A>,
     proposer_selector: P,
     min_kept_height: Option<u64>,
-    finalized_heights: HashSet<u64>,
 }
 
 impl<
@@ -356,7 +355,6 @@ impl<
             config,
             proposer_selector: RoundRobinProposerSelector,
             min_kept_height: None,
-            finalized_heights: HashSet::new(),
         }
     }
 
@@ -386,7 +384,6 @@ impl<
             config,
             proposer_selector,
             min_kept_height: None,
-            finalized_heights: HashSet::new(),
         }
     }
 
@@ -405,13 +402,13 @@ impl<
     ///
     /// ```rust
     /// let validator_sets = Arc::new(StaticValidatorSetProvider::new(validator_set));
-    /// let mut consensus = Consensus::recover(config, validator_sets)?;
+    /// let (mut consensus, finalized_heights) = Consensus::recover(config, validator_sets)?;
     /// ```
     pub fn recover<VS: ValidatorSetProvider<A> + 'static>(
         config: Config<A>,
         validator_sets: Arc<VS>,
         highest_finalized: Option<u64>,
-    ) -> anyhow::Result<DefaultConsensus<V, A>> {
+    ) -> anyhow::Result<(DefaultConsensus<V, A>, HashSet<u64>)> {
         Self::recover_inner(
             Self::new(config.clone()),
             config,
@@ -437,7 +434,7 @@ impl<
     ///
     /// ```rust
     /// let validator_sets = Arc::new(StaticValidatorSetProvider::new(validator_set));
-    /// let mut consensus = Consensus::recover(config, validator_sets)?;
+    /// let (mut consensus, finalized_heights) = Consensus::recover(config, validator_sets)?;
     /// ```
     pub fn recover_with_proposal_selector<
         VS: ValidatorSetProvider<A> + 'static,
@@ -447,7 +444,7 @@ impl<
         validator_sets: Arc<VS>,
         proposer_selector: PS,
         highest_finalized: Option<u64>,
-    ) -> anyhow::Result<Consensus<V, A, PS>> {
+    ) -> anyhow::Result<(Consensus<V, A, PS>, HashSet<u64>)> {
         Self::recover_inner(
             Self::with_proposer_selector(config.clone(), proposer_selector),
             config,
@@ -464,7 +461,7 @@ impl<
         config: Config<A>,
         validator_sets: Arc<VS>,
         highest_finalized: Option<u64>,
-    ) -> anyhow::Result<Consensus<V, A, PS>> {
+    ) -> anyhow::Result<(Consensus<V, A, PS>, HashSet<u64>)> {
         use crate::wal::recovery;
 
         tracing::info!(
@@ -495,9 +492,6 @@ impl<
                 }
             };
 
-        // Set finalized heights.
-        consensus.finalized_heights = finalized_heights;
-
         // Manually recover all incomplete heights.
         for (height, entries) in incomplete_heights {
             tracing::info!(
@@ -520,7 +514,7 @@ impl<
             "Completed consensus recovery"
         );
 
-        Ok(consensus)
+        Ok((consensus, finalized_heights))
     }
 
     fn create_consensus(
@@ -727,11 +721,6 @@ impl<
     /// Get the heights currently being tracked by the consensus engine.
     pub fn incomplete_heights(&self) -> HashSet<u64> {
         self.internal.keys().copied().collect()
-    }
-
-    /// Get the heights no longer tracked by the consensus engine.
-    pub fn finalized_heights(&self) -> HashSet<u64> {
-        self.finalized_heights.clone()
     }
 }
 
