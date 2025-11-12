@@ -112,9 +112,13 @@ pub fn spawn(
         let mut started_heights = consensus.incomplete_heights();
 
         // Get the current height
-        let mut current_height = started_heights.iter().copied().max().unwrap_or_default();
-
         let finalized_heights = consensus.finalized_heights();
+        let mut current_height = started_heights.iter().copied().max().unwrap_or_else(|| {
+            match finalized_heights.iter().max() {
+                Some(m) => m + 1,
+                None => 0,
+            }
+        });
 
         start_height(
             &mut consensus,
