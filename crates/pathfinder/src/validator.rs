@@ -5,6 +5,7 @@ use std::time::Instant;
 use anyhow::Context;
 use p2p::sync::client::conv::TryFromDto;
 use p2p_proto::class::Cairo1Class;
+use p2p_proto::common::Hash;
 use p2p_proto::consensus::{BlockInfo, ProposalInit, TransactionVariant as ConsensusVariant};
 use p2p_proto::sync::transaction::{DeclareV3WithoutClass, TransactionVariant as SyncVariant};
 use p2p_proto::transaction::DeclareV3WithClass;
@@ -22,6 +23,7 @@ use pathfinder_common::{
     ChainId,
     EntryPoint,
     EventCommitment,
+    GasPrice,
     L1DataAvailabilityMode,
     L2Block,
     ProposalCommitment,
@@ -156,6 +158,135 @@ impl ValidatorBlockInfoStage {
             consensus_storage,
         })
     }
+
+    pub fn verify_proposal_commitment(
+        self,
+        proposal_commitment: &p2p_proto::consensus::ProposalCommitment,
+    ) -> anyhow::Result<ValidatorEmptyProposalStage> {
+        if proposal_commitment.state_diff_commitment != Hash::ZERO {
+            return Err(anyhow::anyhow!(
+                "Empty proposal commitment should have zero state_diff_commitment, got: {}",
+                proposal_commitment.state_diff_commitment
+            ));
+        }
+
+        if proposal_commitment.transaction_commitment != Hash::ZERO {
+            return Err(anyhow::anyhow!(
+                "Empty proposal commitment should have zero transaction_commitment, got: {}",
+                proposal_commitment.transaction_commitment
+            ));
+        }
+
+        if proposal_commitment.event_commitment != Hash::ZERO {
+            return Err(anyhow::anyhow!(
+                "Empty proposal commitment should have zero event_commitment, got: {}",
+                proposal_commitment.event_commitment
+            ));
+        }
+
+        if proposal_commitment.receipt_commitment != Hash::ZERO {
+            return Err(anyhow::anyhow!(
+                "Empty proposal commitment should have zero receipt_commitment, got: {}",
+                proposal_commitment.receipt_commitment
+            ));
+        }
+
+        if proposal_commitment.l1_gas_price_fri != 0 {
+            return Err(anyhow::anyhow!(
+                "Empty proposal commitment should have zero l1_gas_price_fri, got: {}",
+                proposal_commitment.l1_gas_price_fri
+            ));
+        }
+
+        if proposal_commitment.l1_data_gas_price_fri != 0 {
+            return Err(anyhow::anyhow!(
+                "Empty proposal commitment should have zero l1_data_gas_price_fri, got: {}",
+                proposal_commitment.l1_data_gas_price_fri
+            ));
+        }
+
+        if proposal_commitment.l2_gas_price_fri != 0 {
+            return Err(anyhow::anyhow!(
+                "Empty proposal commitment should have zero l2_gas_price_fri, got: {}",
+                proposal_commitment.l2_gas_price_fri
+            ));
+        }
+
+        if proposal_commitment.l2_gas_used != 0 {
+            return Err(anyhow::anyhow!(
+                "Empty proposal commitment should have zero l2_gas_used, got: {}",
+                proposal_commitment.l2_gas_used
+            ));
+        }
+
+        if proposal_commitment.l1_da_mode != p2p_proto::common::L1DataAvailabilityMode::Calldata {
+            return Err(anyhow::anyhow!(
+                "Empty proposal commitment should have Calldata l1_da_mode, got: {:?}",
+                proposal_commitment.l1_da_mode
+            ));
+        }
+
+        // TODO check parent_commitment
+        // TODO check builder
+        // TODO check old_state_root
+        // TODO check version_constant_commitment
+        // TODO check concatenated_counts
+        // TODO check next_l2_gas_price_fri vs prev block
+
+        let expected_block_header = BlockHeader {
+            hash: BlockHash::ZERO,        // UNUSED
+            parent_hash: BlockHash::ZERO, // UNUSED
+            number: BlockNumber::new(proposal_commitment.block_number)
+                .context("ProposalCommitment block number exceeds i64::MAX")?,
+            timestamp: BlockTimestamp::new(proposal_commitment.timestamp)
+                .context("ProposalCommitment timestamp exceeds i64::MAX")?,
+            eth_l1_gas_price: GasPrice::ZERO,
+            strk_l1_gas_price: GasPrice::ZERO,
+            eth_l1_data_gas_price: GasPrice::ZERO,
+            strk_l1_data_gas_price: GasPrice::ZERO,
+            eth_l2_gas_price: GasPrice::ZERO,
+            strk_l2_gas_price: GasPrice::ZERO,
+            sequencer_address: SequencerAddress(proposal_commitment.builder.0),
+            starknet_version: StarknetVersion::from_str(&proposal_commitment.protocol_version)?,
+            event_commitment: EventCommitment::ZERO,
+            state_commitment: StateCommitment::ZERO, // UNUSED
+            transaction_commitment: TransactionCommitment::ZERO,
+            transaction_count: 0,
+            event_count: 0,
+            l1_da_mode: L1DataAvailabilityMode::Calldata,
+            receipt_commitment: ReceiptCommitment::ZERO,
+            state_diff_commitment: StateDiffCommitment::ZERO,
+            state_diff_length: 0,
+        };
+        Ok(ValidatorEmptyProposalStage {
+            expected_block_header,
+        })
+    }
+}
+
+/// Executes transactions and manages the block execution state.
+pub struct ValidatorEmptyProposalStage {
+    expected_block_header: BlockHeader,
+}
+
+impl ValidatorEmptyProposalStage {
+    /// Finalizes the empty proposal, producing a header with all commitments
+    /// except the state commitment and block hash, which are computed in the
+    /// last stage. Also verifies that the computed proposal commitment matches
+    /// the expected one.
+    pub fn consensus_finalize(self) -> ValidatorFinalizeStage {
+        let Self {
+            expected_block_header,
+        } = self;
+
+        ValidatorFinalizeStage {
+            header: expected_block_header,
+            state_update: StateUpdateData::default(),
+            transactions: Vec::new(),
+            receipts: Vec::new(),
+            events: Vec::new(),
+        }
+    }
 }
 
 /// Executes transactions and manages the block execution state.
@@ -175,11 +306,13 @@ pub struct ValidatorTransactionBatchStage {
     /// Original p2p transactions per batch (for partial execution)
     batch_p2p_transactions: Vec<Vec<p2p_proto::consensus::Transaction>>,
     /// Storage for creating new connections
+    // TODO is this correct? Shouldn't it be main_storage?
     consensus_storage: Storage,
 }
 
 impl ValidatorTransactionBatchStage {
     /// Create a new ValidatorTransactionBatchStage
+    #[cfg(test)]
     pub fn new(
         chain_id: ChainId,
         block_info: pathfinder_executor::types::BlockInfo,
@@ -466,6 +599,8 @@ impl ValidatorTransactionBatchStage {
         ))
     }
 
+    // TODO this fn is only used in tests, consider removing it, or making it into
+    // some test specific API
     /// Finalize with the current state (up to the last executed transaction)
     pub fn finalize(&mut self) -> anyhow::Result<Option<pathfinder_executor::types::StateDiff>> {
         if self.executor.is_none() {
@@ -551,9 +686,12 @@ impl ValidatorTransactionBatchStage {
         Ok(())
     }
 
+    // TODO we should probably introduce another stage because we expect exactly one
+    // proposal commitment per proposal and the API allows calling this multiple
+    // times
     pub fn record_proposal_commitment(
         &mut self,
-        proposal_commitment: p2p_proto::consensus::ProposalCommitment,
+        proposal_commitment: &p2p_proto::consensus::ProposalCommitment,
     ) -> anyhow::Result<()> {
         let expected_block_header = BlockHeader {
             hash: BlockHash::ZERO,        // UNUSED

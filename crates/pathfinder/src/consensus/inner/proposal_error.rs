@@ -14,12 +14,16 @@ pub enum ProposalError {
 
     /// Validator stage not found in cache.
     #[error("No ValidatorStage for height and round {height_and_round}")]
+    // TODO why is height_and_round a String?
     ValidatorStageNotFound { height_and_round: String },
 
     /// Wrong validator stage type (e.g., expected BlockInfo but got
     /// TransactionBatch).
     #[error("Wrong validator stage: {message}")]
     WrongValidatorStage { message: String },
+    // Chris: FIXME add more error variants:
+    // - Recoverable: Execution failed due to proposal content
+    // - Fatal: Execution failed due to storage/DB error
 }
 
 impl From<WrongValidatorStageError> for ProposalError {
