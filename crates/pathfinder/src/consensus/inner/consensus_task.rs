@@ -18,7 +18,6 @@ use anyhow::Context;
 use p2p::consensus::HeightAndRound;
 use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
 use p2p_proto::consensus::{
-    BlockInfo,
     ProposalCommitment as ProposalCommitmentProto,
     ProposalFin,
     ProposalInit,
@@ -54,11 +53,6 @@ use super::fetch_validators::L2ValidatorSetProvider;
 use super::{integration_testing, ConsensusTaskEvent, ConsensusValue, HeightExt, P2PTaskEvent};
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
-use crate::state::block_hash::{
-    calculate_event_commitment,
-    calculate_receipt_commitment,
-    calculate_transaction_commitment,
-};
 use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage};
 
 #[allow(clippy::too_many_arguments)]
@@ -381,9 +375,11 @@ fn start_height(
     }
 }
 
-/// Create an empty proposal for the given height and round. Returns
-/// proposal parts that can be gossiped via P2P network and the
-/// finalized block that corresponds to this proposal.
+/// Create an empty proposal for the given height and round. Returns proposal
+/// parts that can be gossiped via P2P network and the finalized block that
+/// corresponds to this proposal.
+///
+/// https://github.com/starknet-io/starknet-p2p-specs/blob/main/p2p/proto/consensus/consensus.md#empty-proposals
 fn create_empty_proposal(
     chain_id: ChainId,
     height: u64,
@@ -403,16 +399,6 @@ fn create_empty_proposal(
         valid_round: None,
         proposer,
     };
-    let block_info = BlockInfo {
-        block_number: height,
-        timestamp,
-        builder: proposer,
-        l1_da_mode: L1DataAvailabilityMode::Calldata,
-        l2_gas_price_fri: 1,
-        l1_gas_price_wei: 1_000_000_000,
-        l1_data_gas_price_wei: 1,
-        eth_to_strk_rate: 1_000_000_000,
-    };
     let current_block = BlockNumber::new(height).context("Invalid height")?;
     let parent_proposal_commitment_hash = if let Some(parent_number) = current_block.parent() {
         let mut db_conn = storage
@@ -430,9 +416,40 @@ fn create_empty_proposal(
         BlockHash::ZERO
     };
 
+    // The only version handled by consensus, so far
+    let starknet_version = StarknetVersion::new(0, 14, 0, 0);
+
+    // Empty proposal is strictly defined in the spec:
+    // https://github.com/starknet-io/starknet-p2p-specs/blob/main/p2p/proto/consensus/consensus.md#empty-proposals
+    let proposal_commitment = ProposalCommitmentProto {
+        block_number: height,
+        parent_commitment: Hash(parent_proposal_commitment_hash.0),
+        builder: proposer,
+        timestamp,
+        protocol_version: starknet_version.to_string(),
+        // TODO not used by 0.14.0, but the spec requires it for empty proposals
+        old_state_root: Default::default(),
+        // TODO required by the spec
+        version_constant_commitment: Default::default(),
+        state_diff_commitment: Hash::ZERO,
+        transaction_commitment: Hash::ZERO,
+        event_commitment: Hash::ZERO,
+        receipt_commitment: Hash::ZERO,
+        // TODO should contain len of version_constant_commitment
+        concatenated_counts: Default::default(),
+        l1_gas_price_fri: 0,
+        l1_data_gas_price_fri: 0,
+        l2_gas_price_fri: 0,
+        l2_gas_used: 0,
+        // TODO keep the value from the last block as per spec
+        next_l2_gas_price_fri: 0,
+        // Equivalent to zero on the wire
+        l1_da_mode: L1DataAvailabilityMode::Calldata,
+    };
+
     let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())?
-        .validate_consensus_block_info(block_info.clone(), storage.clone())?;
-    let validator = validator.consensus_finalize0()?;
+        .verify_proposal_commitment(&proposal_commitment)?
+        .consensus_finalize();
     let mut db_conn = storage
         .connection()
         .context("Creating database connection")?;
@@ -442,40 +459,9 @@ fn create_empty_proposal(
     let finalized_block = validator.finalize(db_txn, storage.clone())?;
     let proposal_commitment_hash = Hash(finalized_block.header.state_diff_commitment.0);
 
-    // The only version handled by consensus, so far
-    let starknet_version = StarknetVersion::new(0, 14, 0, 0);
-    let transactions = vec![];
-    let transaction_commitment = calculate_transaction_commitment(&transactions, starknet_version)?;
-    let transaction_events = vec![];
-    let event_commitment = calculate_event_commitment(&transaction_events, starknet_version)?;
-    let receipts = vec![];
-    let receipt_commitment = calculate_receipt_commitment(&receipts)?;
-    let proposal_commitment = ProposalCommitmentProto {
-      block_number: height,
-        parent_commitment: Hash(parent_proposal_commitment_hash.0),
-        builder: proposer,
-        timestamp,
-        protocol_version: starknet_version.to_string(),
-        old_state_root: Default::default(), // not used by 0.14.0
-        version_constant_commitment: Default::default(), // TODO
-        state_diff_commitment: proposal_commitment_hash,
-        transaction_commitment: Hash(transaction_commitment.0),
-        event_commitment: Hash(event_commitment.0),
-        receipt_commitment: Hash(receipt_commitment.0),
-        concatenated_counts: Default::default(), // should be the sum of lengths of inputs to *_commitment
-        l1_gas_price_fri: 1000,
-        l1_data_gas_price_fri: 2000,
-        l2_gas_price_fri: 3000,
-        l2_gas_used: 4000,
-        next_l2_gas_price_fri: 3000,
-        l1_da_mode: L1DataAvailabilityMode::Calldata,
-    };
-
     Ok((
         vec![
             ProposalPart::Init(proposal_init),
-            ProposalPart::BlockInfo(block_info),
-            // Note: Per spec, empty proposals skip TransactionBatch entirely.
             ProposalPart::ProposalCommitment(proposal_commitment),
             ProposalPart::Fin(ProposalFin {
                 proposal_commitment: proposal_commitment_hash,
