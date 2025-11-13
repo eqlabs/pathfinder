@@ -889,15 +889,42 @@ fn handle_incoming_proposal_part(
             Ok(None)
         }
         ProposalPart::ProposalCommitment(proposal_commitment) => {
-            let validator_stage = validator_cache.remove(&height_and_round)?;
-            let mut validator = validator_stage.try_into_transaction_batch_stage()?;
+            match parts.len() {
+                1 => {
+                    // Looks like it could be an empty proposal, which looks like
+                    // this:
+                    // - [x] Proposal Init
+                    // - [x] Proposal Commitment
+                    // - [ ] Proposal Fin
+                    let validator_stage = validator_cache.remove(&height_and_round)?;
+                    let mut validator = validator_stage.try_into_block_info_stage()?;
+                    let validator = validator.on_proposal_commitment(proposal_commitment)?;
+                    let validator =
+                        ValidatorStage::Finalize(Box::new(validator.consensus_finalize()));
+                    validator_cache.insert(height_and_round, validator);
+                    Ok(None)
+                }
+                4.. => {
+                    // Maybe a valid non-empty proposal
+                    let validator_stage = validator_cache.remove(&height_and_round)?;
+                    let mut validator = validator_stage.try_into_transaction_batch_stage()?;
 
-            validator.record_proposal_commitment(proposal_commitment)?;
-            validator_cache.insert(
-                height_and_round,
-                ValidatorStage::TransactionBatch(validator),
-            );
-            Ok(None)
+                    validator.record_proposal_commitment(proposal_commitment)?;
+                    validator_cache.insert(
+                        height_and_round,
+                        ValidatorStage::TransactionBatch(validator),
+                    );
+                    Ok(None)
+                }
+                _ => {
+                    anyhow::bail!(
+                        "Unexpected proposal ProposalCommitment for height and round {} at \
+                         position {}",
+                        height_and_round,
+                        parts.len()
+                    );
+                }
+            }
         }
         ProposalPart::Fin(ProposalFin {
             proposal_commitment,

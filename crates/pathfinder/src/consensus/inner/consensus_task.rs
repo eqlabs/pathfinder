@@ -387,9 +387,11 @@ fn start_height(
     }
 }
 
-/// Create an empty proposal for the given height and round. Returns
-/// proposal parts that can be gossiped via P2P network and the
-/// finalized block that corresponds to this proposal.
+/// Create an empty proposal for the given height and round. Returns proposal
+/// parts that can be gossiped via P2P network and the finalized block that
+/// corresponds to this proposal.
+///
+/// https://github.com/starknet-io/starknet-p2p-specs/blob/main/p2p/proto/consensus/consensus.md#empty-proposals
 fn create_empty_proposal(
     chain_id: ChainId,
     height: u64,
@@ -480,7 +482,7 @@ fn create_empty_proposal(
     Ok((
         vec![
             ProposalPart::Init(proposal_init),
-            ProposalPart::BlockInfo(block_info),
+            // ProposalPart::BlockInfo(block_info),
             // Note: Per spec, empty proposals skip TransactionBatch entirely.
             ProposalPart::ProposalCommitment(proposal_commitment),
             ProposalPart::Fin(ProposalFin {
