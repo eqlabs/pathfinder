@@ -793,19 +793,16 @@ fn handle_incoming_proposal_part(
                     parts.len()
                 );
             }
-
+            // Looks like a non-empty proposal:
+            // - [x] Proposal Init
+            // - [x] Block Info
+            // (...)
             let validator_stage = validator_cache.remove(&height_and_round)?;
             let validator = validator_stage.try_into_block_info_stage()?;
 
             let block_info = block_info.clone();
             parts.push(proposal_part);
-            let ProposalPart::Init(ProposalInit { proposer, .. }) =
-                parts.first().expect("Proposal Init")
-            else {
-                unreachable!("Proposal Init is inserted first");
-            };
-
-            let proposer_address = ContractAddress(proposer.0);
+            let proposer_address = proposer_address_from_parts(&parts)?;
             let updated = proposals_db.persist_parts(
                 height_and_round.height(),
                 height_and_round.round(),
@@ -813,6 +810,7 @@ fn handle_incoming_proposal_part(
                 &parts,
             )?;
             assert!(updated);
+
             let new_validator = validator.validate_consensus_block_info(block_info, storage)?;
             validator_cache.insert(
                 height_and_round,
@@ -830,6 +828,18 @@ fn handle_incoming_proposal_part(
                 );
             }
 
+            if tx_batch.is_empty() {
+                anyhow::bail!(
+                    "Received empty TransactionBatch for height and round {} at position {}",
+                    height_and_round,
+                    parts.len()
+                );
+            }
+            // Looks like this could be a non-empty proposal:
+            // - [x] Proposal Init
+            // - [x] Block Info
+            // - [x] at least one non-empty Transaction Batch
+            // (...)
             tracing::debug!(
                 "🖧  ⚙️ executing transaction batch for height and round {height_and_round}..."
             );
@@ -839,6 +849,14 @@ fn handle_incoming_proposal_part(
 
             let tx_batch = tx_batch.clone();
             parts.push(proposal_part);
+            let proposer_address = proposer_address_from_parts(&parts)?;
+            let updated = proposals_db.persist_parts(
+                height_and_round.height(),
+                height_and_round.round(),
+                &proposer_address,
+                &parts,
+            )?;
+            assert!(updated);
 
             // Use BatchExecutionManager to handle optimistic execution with checkpoints and
             // deferral
@@ -855,33 +873,70 @@ fn handle_incoming_proposal_part(
                 ValidatorStage::TransactionBatch(validator),
             );
 
-            let ProposalPart::Init(ProposalInit { proposer, .. }) =
-                parts.first().expect("Proposal Init")
-            else {
-                unreachable!("Proposal Init is inserted first");
-            };
-
-            let proposer_address = ContractAddress(proposer.0);
-            let updated = proposals_db.persist_parts(
-                height_and_round.height(),
-                height_and_round.round(),
-                &proposer_address,
-                &parts,
-            )?;
-            assert!(updated);
-
             Ok(None)
         }
-        ProposalPart::ProposalCommitment(proposal_commitment) => {
-            let validator_stage = validator_cache.remove(&height_and_round)?;
-            let mut validator = validator_stage.try_into_transaction_batch_stage()?;
+        ProposalPart::ProposalCommitment(ref proposal_commitment) => {
+            match parts.len() {
+                1 => {
+                    // Looks like this could be an empty proposal:
+                    // - [x] Proposal Init
+                    // - [x] Proposal Commitment
+                    // - [ ] Proposal Fin
+                    parts.push(proposal_part.clone());
+                    let proposer_address = proposer_address_from_parts(&parts)?;
+                    let updated = proposals_db.persist_parts(
+                        height_and_round.height(),
+                        height_and_round.round(),
+                        &proposer_address,
+                        &parts,
+                    )?;
+                    assert!(updated);
 
-            validator.record_proposal_commitment(proposal_commitment)?;
-            validator_cache.insert(
-                height_and_round,
-                ValidatorStage::TransactionBatch(validator),
-            );
-            Ok(None)
+                    let validator_stage = validator_cache.remove(&height_and_round)?;
+                    let validator = validator_stage.try_into_block_info_stage()?;
+                    let validator = validator.verify_proposal_commitment(proposal_commitment)?;
+                    let validator =
+                        ValidatorStage::Finalize(Box::new(validator.consensus_finalize()));
+                    validator_cache.insert(height_and_round, validator);
+                    Ok(None)
+                }
+                4.. => {
+                    // Looks like this could be a valid non-empty proposal:
+                    // - [x] Proposal Init
+                    // - [x] Block Info
+                    // - [x] at least one Transaction Batch
+                    // - [x] Transactions Fin
+                    // - [x] Proposal Commitment
+                    // - [ ] Transactions Fin
+                    parts.push(proposal_part.clone());
+                    let proposer_address = proposer_address_from_parts(&parts)?;
+                    let updated = proposals_db.persist_parts(
+                        height_and_round.height(),
+                        height_and_round.round(),
+                        &proposer_address,
+                        &parts,
+                    )?;
+                    assert!(updated);
+
+                    let validator_stage = validator_cache.remove(&height_and_round)?;
+                    let mut validator = validator_stage.try_into_transaction_batch_stage()?;
+
+                    validator.record_proposal_commitment(proposal_commitment)?;
+                    validator_cache.insert(
+                        height_and_round,
+                        ValidatorStage::TransactionBatch(validator),
+                    );
+                    Ok(None)
+                }
+                _ => {
+                    anyhow::bail!(
+                        "Unexpected proposal ProposalCommitment for height and round {} at \
+                         position {}",
+                        height_and_round,
+                        parts.len()
+                    );
+                }
+            }
         }
         ProposalPart::Fin(ProposalFin {
             proposal_commitment,
@@ -890,53 +945,96 @@ fn handle_incoming_proposal_part(
                 "🖧  ⚙️ finalizing consensus for height and round {height_and_round}..."
             );
 
-            let validator_stage = validator_cache.remove(&height_and_round)?;
-            let validator = validator_stage.try_into_transaction_batch_stage()?;
+            match parts.len() {
+                2 => {
+                    // Looks like this is an empty proposal:
+                    // - [x] Proposal Init
+                    // - [x] Proposal Commitment
+                    // - [x] Proposal Fin
+                    parts.push(proposal_part);
+                    let proposer_address = proposer_address_from_parts(&parts)?;
+                    let updated = proposals_db.persist_parts(
+                        height_and_round.height(),
+                        height_and_round.round(),
+                        &proposer_address,
+                        &parts,
+                    )?;
+                    assert!(updated);
 
-            if !validator.has_proposal_commitment() {
-                anyhow::bail!(
-                    "Transaction batch missing proposal commitment for height and round \
-                     {height_and_round}"
-                );
+                    let valid_round = valid_round_from_parts(&parts)?;
+                    let proposal_commitment = Some(ProposalCommitmentWithOrigin {
+                        proposal_commitment: ProposalCommitment(proposal_commitment.0),
+                        proposer_address,
+                        pol_round: valid_round.map(Round::new).unwrap_or(Round::nil()),
+                    });
+
+                    // We don't retrieve the validator from cache here, it'll be retrieved for
+                    // block finalization
+                    Ok(proposal_commitment)
+                }
+                // TODO `3..` means that we're permissive here, so we assume that only the
+                // following are present:
+                // - [x] Proposal Init
+                // - [x] Block Info
+                // - [x] at least one Transaction Batch
+                // If we want to be more strict, we should rather assume `5..`
+                // - [x] Proposal Init
+                // - [x] Block Info
+                // - [x] at least one Transaction Batch
+                // - [x] Proposal Commitment
+                // - [x] Transactions Fin
+                3.. => {
+                    // Maybe a valid non-empty proposal
+                    let validator_stage = validator_cache.remove(&height_and_round)?;
+                    let validator = validator_stage.try_into_transaction_batch_stage()?;
+
+                    if !validator.has_proposal_commitment() {
+                        anyhow::bail!(
+                            "Transaction batch missing proposal commitment for height and round \
+                             {height_and_round}"
+                        );
+                    }
+
+                    parts.push(proposal_part);
+                    let proposer_address = proposer_address_from_parts(&parts)?;
+                    let updated = proposals_db.persist_parts(
+                        height_and_round.height(),
+                        height_and_round.round(),
+                        &proposer_address,
+                        &parts,
+                    )?;
+                    assert!(updated);
+
+                    let valid_round = valid_round_from_parts(&parts)?;
+                    let (validator, proposal_commitment) = defer_or_execute_proposal_fin(
+                        height_and_round,
+                        proposal_commitment,
+                        proposer_address,
+                        valid_round,
+                        db_tx,
+                        validator,
+                        deferred_executions,
+                        batch_execution_manager,
+                    )?;
+
+                    validator_cache.insert(height_and_round, validator);
+                    Ok(proposal_commitment)
+                }
+                _ => {
+                    anyhow::bail!(
+                        "Unexpected proposal ProposalFin for height and round {} at position {}",
+                        height_and_round,
+                        parts.len()
+                    );
+                }
             }
-
-            parts.push(proposal_part);
-            let ProposalPart::Init(ProposalInit {
-                proposer,
-                valid_round,
-                ..
-            }) = parts.first().expect("Proposal Init")
-            else {
-                unreachable!("Proposal Init is inserted first");
-            };
-
-            let proposer_address = ContractAddress(proposer.0);
-            let updated = proposals_db.persist_parts(
-                height_and_round.height(),
-                height_and_round.round(),
-                &proposer_address,
-                &parts,
-            )?;
-            assert!(updated);
-
-            let (validator, proposal_commitment) = defer_or_execute_proposal_fin(
-                height_and_round,
-                proposal_commitment,
-                proposer,
-                *valid_round,
-                db_tx,
-                validator,
-                deferred_executions,
-                batch_execution_manager,
-            )?;
-
-            validator_cache.insert(height_and_round, validator);
-            Ok(proposal_commitment)
         }
         ProposalPart::TransactionsFin(transactions_fin) => {
             tracing::debug!(
                 "🖧  ⚙️ handling TransactionsFin for height and round {height_and_round}..."
             );
+
+            // TODO check parts.len() to ensure proper ordering, at least to some extent
 
             let validator_stage = validator_cache.remove(&height_and_round)?;
             let mut validator = validator_stage.try_into_transaction_batch_stage()?;
@@ -1010,7 +1108,7 @@ fn handle_incoming_proposal_part(
 fn defer_or_execute_proposal_fin(
     height_and_round: HeightAndRound,
     proposal_commitment: Hash,
-    proposer: &Address,
+    proposer_address: ContractAddress,
     valid_round: Option<u32>,
     db_tx: &Transaction<'_>,
     mut validator: Box<crate::validator::ValidatorTransactionBatchStage>,
@@ -1019,7 +1117,7 @@ fn defer_or_execute_proposal_fin(
 ) -> anyhow::Result<(ValidatorStage, Option<ProposalCommitmentWithOrigin>)> {
     let commitment = ProposalCommitmentWithOrigin {
         proposal_commitment: ProposalCommitment(proposal_commitment.0),
-        proposer_address: ContractAddress(proposer.0),
+        proposer_address,
         pol_round: valid_round.map(Round::new).unwrap_or(Round::nil()),
     };
 
@@ -1154,4 +1252,24 @@ fn consensus_vote_to_p2p_vote(
         proposal_commitment: vote.value.map(|v| Hash(v.0 .0)),
         voter: Address(vote.validator_address.0),
     }
+}
+
+/// Extract the proposer address from the proposal parts.
+fn proposer_address_from_parts(parts: &[ProposalPart]) -> anyhow::Result<ContractAddress> {
+    let ProposalPart::Init(ProposalInit { proposer, .. }) =
+        parts.first().context("Proposal part list is empty")?
+    else {
+        anyhow::bail!("First proposal part is not ProposalInit");
+    };
+    Ok(ContractAddress(proposer.0))
+}
+
+/// Extract the valid round from the proposal parts.
+fn valid_round_from_parts(parts: &[ProposalPart]) -> anyhow::Result<Option<u32>> {
+    let ProposalPart::Init(ProposalInit { valid_round, .. }) =
+        parts.first().context("Proposal part list is empty")?
+    else {
+        anyhow::bail!("First proposal part is not ProposalInit");
+    };
+    Ok(*valid_round)
 }
