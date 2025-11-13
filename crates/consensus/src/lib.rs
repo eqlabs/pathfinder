@@ -474,7 +474,8 @@ impl<
         );
 
         // Read the write-ahead log and recover all incomplete heights.
-        // This also returns the highest Decision height found (even in finalized heights).
+        // This also returns the highest Decision height found (even in finalized
+        // heights).
         let (incomplete_heights, highest_decision) =
             match recovery::recover_incomplete_heights(&config.wal_dir, highest_finalized) {
                 Ok((heights, decision_height)) => {
@@ -759,7 +760,6 @@ impl<
     pub fn last_decided_height(&self) -> Option<u64> {
         self.last_decided_height
     }
-
 }
 
 /// A round number (or `None` if the round is nil).

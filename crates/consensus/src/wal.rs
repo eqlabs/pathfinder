@@ -234,7 +234,8 @@ pub(crate) mod recovery {
     ///
     /// Returns a tuple of:
     /// - Incomplete heights that need to be recovered
-    /// - The highest Decision height found in the WAL (even if finalized/skipped)
+    /// - The highest Decision height found in the WAL (even if
+    ///   finalized/skipped)
     #[allow(clippy::type_complexity)]
     pub(crate) fn recover_incomplete_heights<V, A>(
         wal_dir: &Path,
@@ -268,7 +269,11 @@ pub(crate) mod recovery {
 
             // Track the highest Decision height we encounter (even for finalized heights).
             for entry in &entries {
-                if let WalEntry::Decision { height: decision_height, .. } = entry {
+                if let WalEntry::Decision {
+                    height: decision_height,
+                    ..
+                } = entry
+                {
                     let decision_height: u64 = *decision_height;
                     highest_decision = match highest_decision {
                         Some(current_max) => Some(std::cmp::max(current_max, decision_height)),
@@ -312,5 +317,4 @@ pub(crate) mod recovery {
         }
         Ok((result, highest_decision))
     }
-
 }
