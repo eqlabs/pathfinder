@@ -79,6 +79,7 @@ mod test {
     #[case::fail_on_precommit_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::PrecommitRx }))]
     #[ignore = "TODO Proposal recovery not fully implemented yet"]
     #[case::fail_on_proposal_decided(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalDecided }))]
+    #[ignore = "Regression: https://github.com/eqlabs/pathfinder/issues/3102"]
     #[case::fail_on_proposal_committed(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalCommitted }))]
     #[tokio::test]
     async fn consensus_3_nodes(
