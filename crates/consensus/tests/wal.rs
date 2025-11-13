@@ -274,4 +274,157 @@ async fn recover_from_wal_restores_and_continues() {
         event.is_some(),
         "Recovered consensus should continue to operate and advance rounds"
     );
+
+    // Verify last_decided_height is None since no decision was reached
+    assert_eq!(
+        consensus.last_decided_height(),
+        None,
+        "last_decided_height should be None when no decisions were made"
+    );
+}
+
+#[tokio::test]
+async fn recover_from_wal_tracks_last_decided_height() {
+    use std::sync::Arc;
+
+    use pathfinder_consensus::{
+        Config,
+        ConsensusCommand,
+        ConsensusEvent,
+        Proposal,
+        Round,
+        ValidatorSetProvider,
+    };
+
+    //common::setup_tracing_full();
+    pause();
+
+    // Create a temporary directory for WAL files
+    let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+    let wal_dir = temp_dir.path();
+
+    // Static validator
+    let addr = NodeAddress("0x1".to_string());
+    let sk = SigningKey::new(rand::rngs::OsRng);
+    let pk = sk.verification_key();
+    let pubkey = PublicKey::from_bytes(pk.to_bytes());
+    let validator = Validator {
+        address: addr.clone(),
+        public_key: pubkey,
+        voting_power: 1,
+    };
+    let validators = ValidatorSet::new(vec![validator.clone()]);
+
+    // Config with temporary WAL directory
+    let config = Config::new(addr.clone()).with_wal_dir(wal_dir.to_path_buf());
+
+    // This is the height we'll reach a Decision at and thus the one we'll be
+    // checking for
+    let height = 100;
+
+    // Create and run consensus to reach a Decision
+    {
+        let mut consensus: DefaultConsensus<ConsensusValue, NodeAddress> =
+            DefaultConsensus::new(config.clone());
+        consensus.handle_command(ConsensusCommand::StartHeight(height, validators.clone()));
+
+        // Verify last_decided_height is None to start with
+        assert_eq!(consensus.last_decided_height(), None);
+
+        // Wait for RequestProposal
+        let _ = drive_until(&mut consensus, Duration::from_secs(1), 5, |evt| {
+            matches!(evt, ConsensusEvent::RequestProposal { .. })
+        })
+        .await;
+
+        // Send a proposal
+        let value = ConsensusValue("Test decision".to_string());
+        let proposal = Proposal {
+            height,
+            round: Round::new(0),
+            value: value.clone(),
+            pol_round: Round::nil(),
+            proposer: addr.clone(),
+        };
+        let signed = SignedProposal {
+            proposal,
+            signature: Signature::from_bytes([0u8; 64]),
+        };
+        consensus.handle_command(ConsensusCommand::Proposal(signed));
+
+        // Wait for Decision event
+        let decision_event = drive_until(&mut consensus, Duration::from_secs(1), 10, |evt| {
+            matches!(evt, ConsensusEvent::Decision { .. })
+        })
+        .await;
+
+        assert!(
+            decision_event.is_some(),
+            "Consensus should reach a Decision"
+        );
+
+        // Verify last_decided_height is set during normal operation
+        assert_eq!(
+            consensus.last_decided_height(),
+            Some(height),
+            "last_decided_height should be set after Decision"
+        );
+
+        // Give time for WAL writes to complete
+        sleep(Duration::from_millis(100)).await;
+
+        // Copy the WAL file before consensus is dropped (which will delete it)
+        // This allows us to test recovery from a WAL file with a Decision entry
+        let wal_filename = format!("wal-{addr}-{height}.json");
+        let wal_path = wal_dir.join(&wal_filename);
+        let wal_path_backup = wal_dir.join(format!("{wal_filename}.backup"));
+
+        if wal_path.exists() {
+            std::fs::copy(&wal_path, &wal_path_backup)
+                .expect("Failed to copy WAL file for recovery test");
+        }
+    }
+
+    // At this point, the consensus is dropped and the original WAL file is deleted.
+    // But we have a backup copy that we can use for recovery testing.
+
+    // Create a validator set provider
+    #[derive(Clone)]
+    struct TestStaticSet(ValidatorSet<NodeAddress>);
+
+    impl ValidatorSetProvider<NodeAddress> for TestStaticSet {
+        fn get_validator_set(
+            &self,
+            _height: u64,
+        ) -> Result<ValidatorSet<NodeAddress>, anyhow::Error> {
+            Ok(self.0.clone())
+        }
+    }
+
+    // Restore the WAL file from backup so we can test recovery
+    let wal_filename = format!("wal-{addr}-{height}.json");
+    let wal_path = wal_dir.join(&wal_filename);
+    let wal_path_backup = wal_dir.join(format!("{wal_filename}.backup"));
+
+    if wal_path_backup.exists() {
+        std::fs::copy(&wal_path_backup, &wal_path)
+            .expect("Failed to restore WAL file for recovery test");
+    }
+
+    // Don't forget to clean up the backup file
+    let _ = std::fs::remove_file(&wal_path_backup);
+
+    debug!("---------------------- Recovering from WAL ----------------------");
+
+    // Now recover from WAL (using the restored WAL file with Decision entry)
+    let consensus: DefaultConsensus<ConsensusValue, NodeAddress> =
+        DefaultConsensus::recover(config.clone(), Arc::new(TestStaticSet(validators)), None)
+            .unwrap();
+
+    // Verify last_decided_height is correctly recovered from WAL Decision entry
+    assert_eq!(
+        consensus.last_decided_height(),
+        Some(height),
+        "last_decided_height should be recovered from WAL Decision entry"
+    );
 }
