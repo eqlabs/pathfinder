@@ -471,8 +471,8 @@ async fn consumer(
 
         if let Block((block, _), _, _, _, _) = &event {
             if block.block_number < next_number {
-                tracing::debug!("Ignoring duplicate block {}", block.block_number);
-                return anyhow::Ok(());
+                tracing::debug!(block_number=%block.block_number, "Ignoring duplicate block");
+                continue;
             }
 
             let block_number = block.block_number;
@@ -518,7 +518,7 @@ async fn consumer(
                 ) => {
                     tracing::trace!("Updating L2 state to block {}", block.block_number);
                     if block.block_number < next_number {
-                        tracing::debug!("Ignoring duplicate block {}", block.block_number);
+                        tracing::debug!(block_number=%block.block_number, "Ignoring duplicate block");
                         return anyhow::Ok(());
                     }
 
