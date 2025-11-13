@@ -898,7 +898,7 @@ fn handle_incoming_proposal_part(
                     // - [ ] Proposal Fin
                     let validator_stage = validator_cache.remove(&height_and_round)?;
                     let mut validator = validator_stage.try_into_block_info_stage()?;
-                    let validator = validator.on_proposal_commitment(proposal_commitment)?;
+                    let validator = validator.verify_proposal_commitment(proposal_commitment)?;
                     let validator =
                         ValidatorStage::Finalize(Box::new(validator.consensus_finalize()));
                     validator_cache.insert(height_and_round, validator);

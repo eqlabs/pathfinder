@@ -5,6 +5,7 @@ use std::time::Instant;
 use anyhow::Context;
 use p2p::sync::client::conv::TryFromDto;
 use p2p_proto::class::Cairo1Class;
+use p2p_proto::common::Hash;
 use p2p_proto::consensus::{BlockInfo, ProposalInit, TransactionVariant as ConsensusVariant};
 use p2p_proto::sync::transaction::{DeclareV3WithoutClass, TransactionVariant as SyncVariant};
 use p2p_proto::transaction::DeclareV3WithClass;
@@ -150,11 +151,80 @@ impl ValidatorBlockInfoStage {
         })
     }
 
-    pub fn on_proposal_commitment(
+    pub fn verify_proposal_commitment(
         self,
         proposal_commitment: p2p_proto::consensus::ProposalCommitment,
     ) -> anyhow::Result<ValidatorEmptyProposalStage> {
-        // TODO check if the empty proposal commitment is valid
+        if proposal_commitment.state_diff_commitment != Hash::ZERO {
+            return Err(anyhow::anyhow!(
+                "Empty proposal commitment should have zero state_diff_commitment, got: {}",
+                proposal_commitment.state_diff_commitment
+            ));
+        }
+
+        if proposal_commitment.transaction_commitment != Hash::ZERO {
+            return Err(anyhow::anyhow!(
+                "Empty proposal commitment should have zero transaction_commitment, got: {}",
+                proposal_commitment.transaction_commitment
+            ));
+        }
+
+        if proposal_commitment.event_commitment != Hash::ZERO {
+            return Err(anyhow::anyhow!(
+                "Empty proposal commitment should have zero event_commitment, got: {}",
+                proposal_commitment.event_commitment
+            ));
+        }
+
+        if proposal_commitment.receipt_commitment != Hash::ZERO {
+            return Err(anyhow::anyhow!(
+                "Empty proposal commitment should have zero receipt_commitment, got: {}",
+                proposal_commitment.receipt_commitment
+            ));
+        }
+
+        if proposal_commitment.l1_gas_price_fri != 0 {
+            return Err(anyhow::anyhow!(
+                "Empty proposal commitment should have zero l1_gas_price_fri, got: {}",
+                proposal_commitment.l1_gas_price_fri
+            ));
+        }
+
+        if proposal_commitment.l1_data_gas_price_fri != 0 {
+            return Err(anyhow::anyhow!(
+                "Empty proposal commitment should have zero l1_data_gas_price_fri, got: {}",
+                proposal_commitment.l1_data_gas_price_fri
+            ));
+        }
+
+        if proposal_commitment.l2_gas_price_fri != 0 {
+            return Err(anyhow::anyhow!(
+                "Empty proposal commitment should have zero l2_gas_price_fri, got: {}",
+                proposal_commitment.l2_gas_price_fri
+            ));
+        }
+
+        if proposal_commitment.l2_gas_used != 0 {
+            return Err(anyhow::anyhow!(
+                "Empty proposal commitment should have zero l2_gas_used, got: {}",
+                proposal_commitment.l2_gas_used
+            ));
+        }
+
+        if proposal_commitment.l1_da_mode != p2p_proto::common::L1DataAvailabilityMode::Calldata {
+            return Err(anyhow::anyhow!(
+                "Empty proposal commitment should have Calldata l1_da_mode, got: {:?}",
+                proposal_commitment.l1_da_mode
+            ));
+        }
+
+        // TODO check parent_commitment
+        // TODO check builder
+        // TODO check old_state_root
+        // TODO check version_constant_commitment
+        // TODO check concatenated_counts
+        // TODO check next_l2_gas_price_fri vs prev block
+
         let expected_block_header = BlockHeader {
             hash: BlockHash::ZERO,        // UNUSED
             parent_hash: BlockHash::ZERO, // UNUSED
@@ -162,30 +232,23 @@ impl ValidatorBlockInfoStage {
                 .context("ProposalCommitment block number exceeds i64::MAX")?,
             timestamp: BlockTimestamp::new(proposal_commitment.timestamp)
                 .context("ProposalCommitment timestamp exceeds i64::MAX")?,
-            eth_l1_gas_price: GasPrice::ZERO, // TODO where to get the rate from?
-            strk_l1_gas_price: GasPrice(proposal_commitment.l1_gas_price_fri),
-            eth_l1_data_gas_price: GasPrice::ZERO, // TODO where to get the rate from?
-            strk_l1_data_gas_price: GasPrice(proposal_commitment.l1_data_gas_price_fri),
-            eth_l2_gas_price: GasPrice::ZERO, // TODO where to get the rate from?
-            strk_l2_gas_price: GasPrice(proposal_commitment.l2_gas_price_fri),
+            eth_l1_gas_price: GasPrice::ZERO,
+            strk_l1_gas_price: GasPrice::ZERO,
+            eth_l1_data_gas_price: GasPrice::ZERO,
+            strk_l1_data_gas_price: GasPrice::ZERO,
+            eth_l2_gas_price: GasPrice::ZERO,
+            strk_l2_gas_price: GasPrice::ZERO,
             sequencer_address: SequencerAddress(proposal_commitment.builder.0),
             starknet_version: StarknetVersion::from_str(&proposal_commitment.protocol_version)?,
-            event_commitment: EventCommitment(proposal_commitment.event_commitment.0),
+            event_commitment: EventCommitment::ZERO,
             state_commitment: StateCommitment::ZERO, // UNUSED
-            transaction_commitment: TransactionCommitment(
-                proposal_commitment.transaction_commitment.0,
-            ),
+            transaction_commitment: TransactionCommitment::ZERO,
             transaction_count: 0,
             event_count: 0,
-            l1_da_mode: match proposal_commitment.l1_da_mode {
-                p2p_proto::common::L1DataAvailabilityMode::Blob => L1DataAvailabilityMode::Blob,
-                p2p_proto::common::L1DataAvailabilityMode::Calldata => {
-                    L1DataAvailabilityMode::Calldata
-                }
-            },
-            receipt_commitment: ReceiptCommitment(proposal_commitment.receipt_commitment.0),
-            state_diff_commitment: StateDiffCommitment(proposal_commitment.state_diff_commitment.0),
-            state_diff_length: 0, // TODO what about system contracts?
+            l1_da_mode: L1DataAvailabilityMode::Calldata,
+            receipt_commitment: ReceiptCommitment::ZERO,
+            state_diff_commitment: StateDiffCommitment::ZERO,
+            state_diff_length: 0,
         };
         Ok(ValidatorEmptyProposalStage {
             expected_block_header,
