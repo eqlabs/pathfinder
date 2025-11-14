@@ -118,12 +118,11 @@ pub fn spawn(
         // Related issue: https://github.com/eqlabs/pathfinder/issues/2934
         let mut last_nil_vote_height = None;
 
-        // TODO FIXME this should be taken from WAL & DB
         // This set is used to make sure we only start each height once and is used when
         // a new height needs to be started upon a proposal or vote for H arriving
         // before H-1 has been decided upon. Such race conditions occur very often in a
         // network with low latency.
-        let mut started_heights = HashSet::new();
+        let mut started_heights = consensus.incomplete_heights();
 
         start_height(
             &mut consensus,
@@ -344,12 +343,24 @@ pub fn spawn(
                                 }
                             }
 
-                            start_height(
-                                &mut consensus,
-                                &mut started_heights,
-                                cmd_height,
-                                validator_set_provider.get_validator_set(cmd_height)?,
-                            );
+                            let is_decided =
+                                if let Some(last_decided) = consensus.last_decided_height() {
+                                    cmd_height <= last_decided
+                                } else {
+                                    false
+                                };
+                            if is_decided {
+                                tracing::debug!(
+                                    "🧠 🤷  Not starting old height {cmd_height} at {next_height}"
+                                );
+                            } else {
+                                start_height(
+                                    &mut consensus,
+                                    &mut started_heights,
+                                    cmd_height,
+                                    validator_set_provider.get_validator_set(cmd_height)?,
+                                );
+                            }
                         }
                     }
 

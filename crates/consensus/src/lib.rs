@@ -159,7 +159,7 @@
 //! let mut consensus = Consensus::recover(config, validator_sets);
 //! ```
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::fmt::{Debug, Display};
 use std::ops::{Add, Sub};
 use std::sync::Arc;
@@ -759,6 +759,11 @@ impl<
     /// Returns `None` if no decisions have been made yet.
     pub fn last_decided_height(&self) -> Option<u64> {
         self.last_decided_height
+    }
+
+    /// Get the heights currently being tracked by the consensus engine.
+    pub fn incomplete_heights(&self) -> HashSet<u64> {
+        self.internal.keys().copied().collect()
     }
 }
 
