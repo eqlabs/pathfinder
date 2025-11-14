@@ -344,12 +344,24 @@ pub fn spawn(
                                 }
                             }
 
-                            start_height(
-                                &mut consensus,
-                                &mut started_heights,
-                                cmd_height,
-                                validator_set_provider.get_validator_set(cmd_height)?,
-                            );
+                            let is_decided =
+                                if let Some(last_decided) = consensus.last_decided_height() {
+                                    cmd_height <= last_decided
+                                } else {
+                                    false
+                                };
+                            if is_decided {
+                                tracing::debug!(
+                                    "🧠 🤷  Not starting old height {cmd_height} at {next_height}"
+                                );
+                            } else {
+                                start_height(
+                                    &mut consensus,
+                                    &mut started_heights,
+                                    cmd_height,
+                                    validator_set_provider.get_validator_set(cmd_height)?,
+                                );
+                            }
                         }
                     }
 
