@@ -327,6 +327,7 @@ pub struct Consensus<
     config: Config<A>,
     proposer_selector: P,
     min_kept_height: Option<u64>,
+    last_decided_height: Option<u64>,
 }
 
 impl<
@@ -355,6 +356,7 @@ impl<
             config,
             proposer_selector: RoundRobinProposerSelector,
             min_kept_height: None,
+            last_decided_height: None,
         }
     }
 
@@ -384,6 +386,7 @@ impl<
             config,
             proposer_selector,
             min_kept_height: None,
+            last_decided_height: None,
         }
     }
 
@@ -471,15 +474,18 @@ impl<
         );
 
         // Read the write-ahead log and recover all incomplete heights.
-        let incomplete_heights =
+        // This also returns the highest Decision height found (even in finalized
+        // heights).
+        let (incomplete_heights, highest_decision) =
             match recovery::recover_incomplete_heights(&config.wal_dir, highest_finalized) {
-                Ok(heights) => {
+                Ok((heights, decision_height)) => {
                     tracing::info!(
                         validator = ?config.address,
                         incomplete_heights = heights.len(),
-                        "Found incomplete heights to recover"
+                        highest_decision = ?decision_height,
+                        "Found incomplete heights and highest Decision in WAL"
                     );
-                    heights
+                    (heights, decision_height)
                 }
                 Err(e) => {
                     tracing::error!(
@@ -488,9 +494,19 @@ impl<
                         error = %e,
                         "Failed to recover incomplete heights from WAL"
                     );
-                    Vec::new()
+                    (Vec::new(), None)
                 }
             };
+
+        // Set last_decided_height from the highest Decision found during recovery.
+        consensus.last_decided_height = highest_decision;
+        if let Some(h) = highest_decision {
+            tracing::info!(
+                validator = ?consensus.config.address,
+                last_decided_height = %h,
+                "Set last_decided_height from WAL recovery"
+            );
+        }
 
         // Manually recover all incomplete heights.
         for (height, entries) in incomplete_heights {
@@ -511,6 +527,7 @@ impl<
         tracing::info!(
             validator = ?consensus.config.address,
             recovered_heights = consensus.internal.len(),
+            last_decided_height = ?consensus.last_decided_height,
             "Completed consensus recovery"
         );
 
@@ -647,9 +664,15 @@ impl<
                     event = ?event,
                     "Engine returned event"
                 );
-                // Track finished heights.
+                // Track finished heights and update last_decided_height.
                 if let ConsensusEvent::Decision { height, .. } = &event {
                     finished_heights.push(*height);
+                    // Update last_decided_height to track the highest decided height.
+                    self.last_decided_height = Some(
+                        self.last_decided_height
+                            .map(|h| h.max(*height))
+                            .unwrap_or(*height),
+                    );
                 }
                 // Push the event to the queue.
                 self.event_queue.push_back(event);
@@ -718,9 +741,24 @@ impl<
         }
     }
 
-    /// Get the current maximum height being tracked by the consensus engine.
-    pub fn current_height(&self) -> Option<u64> {
+    /// Get the maximum height actively being tracked by the consensus engine.
+    ///
+    /// This returns the highest height that consensus is currently working on,
+    /// which includes incomplete heights that haven't reached a decision yet.
+    /// Returns `None` if there are no actively tracked heights.
+    pub fn max_active_height(&self) -> Option<u64> {
         self.internal.keys().max().copied()
+    }
+
+    /// Get the highest height that consensus has decided on.
+    ///
+    /// This returns the highest height that has a Decision entry, even if that
+    /// height is no longer actively tracked (e.g., after recovery when it was
+    /// skipped).
+    ///
+    /// Returns `None` if no decisions have been made yet.
+    pub fn last_decided_height(&self) -> Option<u64> {
+        self.last_decided_height
     }
 }
 

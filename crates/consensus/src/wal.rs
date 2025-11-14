@@ -231,11 +231,16 @@ pub(crate) mod recovery {
     }
 
     /// Recover all incomplete heights from the write-ahead log.
+    ///
+    /// Returns a tuple of:
+    /// - Incomplete heights that need to be recovered
+    /// - The highest Decision height found in the WAL (even if
+    ///   finalized/skipped)
     #[allow(clippy::type_complexity)]
     pub(crate) fn recover_incomplete_heights<V, A>(
         wal_dir: &Path,
         highest_finalized: Option<u64>,
-    ) -> Result<Vec<(u64, Vec<WalEntry<V, A>>)>, std::io::Error>
+    ) -> Result<(Vec<(u64, Vec<WalEntry<V, A>>)>, Option<u64>), std::io::Error>
     where
         V: for<'de> Deserialize<'de>,
         A: for<'de> Deserialize<'de>,
@@ -246,7 +251,7 @@ pub(crate) mod recovery {
                 wal_dir = %wal_dir.display(),
                 "WAL directory does not exist, no recovery needed"
             );
-            return Ok(Vec::new());
+            return Ok((Vec::new(), None));
         }
 
         let files = collect_wal_files(wal_dir)?;
@@ -255,10 +260,28 @@ pub(crate) mod recovery {
             "Recovering incomplete heights from WAL",
         );
         let mut result = Vec::new();
+        let mut highest_decision: Option<u64> = None;
+
         // For each file, read the entries and add them to the result if the height is
-        // not finalized.
+        // not finalized. Also track the highest Decision height encountered.
         for (height, path) in files {
-            let entries = read_entries(&path)?;
+            let entries: Vec<WalEntry<V, A>> = read_entries(&path)?;
+
+            // Track the highest Decision height we encounter (even for finalized heights).
+            for entry in &entries {
+                if let WalEntry::Decision {
+                    height: decision_height,
+                    ..
+                } = entry
+                {
+                    let decision_height: u64 = *decision_height;
+                    highest_decision = match highest_decision {
+                        Some(current_max) => Some(std::cmp::max(current_max, decision_height)),
+                        None => Some(decision_height),
+                    };
+                }
+            }
+
             // `WalEntry::Decision` indicates that a decision has been reached at this
             // height by the consensus engine. But it's probable that the proposal itself
             // hasn't fully been executed and committed to the DB locally yet, or it has
@@ -292,6 +315,6 @@ pub(crate) mod recovery {
             );
             result.push((height, entries));
         }
-        Ok(result)
+        Ok((result, highest_decision))
     }
 }

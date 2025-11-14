@@ -99,8 +99,18 @@ pub fn spawn(
                 highest_finalized,
             )?;
 
-        // Get the current height
-        let mut current_height = consensus.current_height().unwrap_or_default();
+        // Compute the next height to work on using all available information:
+        // - max_active_height: highest incomplete/active height being tracked
+        // - last_decided_height: highest decided height (even if not actively tracked)
+        // - highest_finalized + 1: next height after what's been committed to DB
+        let mut next_height = [
+            consensus.max_active_height().unwrap_or(0),
+            consensus.last_decided_height().unwrap_or(0),
+            highest_finalized.map(|h| h + 1).unwrap_or(0),
+        ]
+        .into_iter()
+        .max()
+        .unwrap_or(0);
 
         // A validator that joins the consensus network and is lagging behind will vote
         // Nil for its current height, because the consensus network is already at a
@@ -118,8 +128,8 @@ pub fn spawn(
         start_height(
             &mut consensus,
             &mut started_heights,
-            current_height,
-            validator_set_provider.get_validator_set(current_height)?,
+            next_height,
+            validator_set_provider.get_validator_set(next_height)?,
         );
 
         loop {
@@ -205,7 +215,7 @@ pub fn spawn(
                             // is > 0 and we're not supporting round certificates yet. Setting
                             // history depth to a low value (or 0) should mitigate this issue for
                             // now.
-                            if msg.height() >= current_height {
+                            if msg.height() >= next_height {
                                 // Record the highest height at which we voted Nil as it may be an
                                 // indication that we're lagging behind the consensus network.
                                 if let NetworkMessage::Vote(SignedVote { vote, .. }) = &msg {
@@ -223,8 +233,7 @@ pub fn spawn(
                                     .expect("Gossip request receiver not to be dropped");
                             } else {
                                 tracing::debug!(
-                                    "🧠 🤷 Ignoring gossip request for height {} < \
-                                     {current_height}",
+                                    "🧠 🤷 Ignoring gossip request for height {} < {next_height}",
                                     msg.height()
                                 );
                             }
@@ -280,15 +289,15 @@ pub fn spawn(
 
                             assert!(started_heights.remove(&height));
 
-                            if height == current_height {
-                                current_height = current_height
+                            if height == next_height {
+                                next_height = next_height
                                     .checked_add(1)
                                     .expect("Height never reaches i64::MAX");
                                 start_height(
                                     &mut consensus,
                                     &mut started_heights,
-                                    current_height,
-                                    validator_set_provider.get_validator_set(current_height)?,
+                                    next_height,
+                                    validator_set_provider.get_validator_set(next_height)?,
                                 );
                             }
                         }
@@ -310,7 +319,7 @@ pub fn spawn(
                         // so we did start a new height upon successful decision, before any p2p
                         // messages for the new height were received.
                         ConsensusCommand::StartHeight(..) | ConsensusCommand::Propose(_) => {
-                            assert!(cmd_height >= current_height);
+                            assert!(cmd_height >= next_height);
                             assert!(started_heights.contains(&cmd_height));
                         }
                         // Sometimes messages for the next height are received before the engine
@@ -324,12 +333,12 @@ pub fn spawn(
                             let last_nil = last_nil_vote_height.take();
 
                             if let Some(last_nil) = last_nil {
-                                if cmd_height > current_height && cmd_height > last_nil {
+                                if cmd_height > next_height && cmd_height > last_nil {
                                     tracing::info!(
                                         "🧠 ⏩  {validator_address} catching up current height \
-                                         {current_height} -> {cmd_height}",
+                                         {next_height} -> {cmd_height}",
                                     );
-                                    current_height = cmd_height;
+                                    next_height = cmd_height;
                                 } else {
                                     last_nil_vote_height = Some(last_nil);
                                 }
