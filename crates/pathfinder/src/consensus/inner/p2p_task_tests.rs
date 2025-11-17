@@ -20,7 +20,7 @@ mod tests {
     use pathfinder_storage::StorageBuilder;
     use tokio::sync::mpsc;
 
-    use crate::consensus::inner::persist_proposals::foreign_proposal_parts;
+    use crate::consensus::inner::persist_proposals::ConsensusProposals;
     use crate::consensus::inner::test_helpers::{create_test_proposal, create_transaction_batch};
     use crate::consensus::inner::{p2p_task, ConsensusTaskEvent, ConsensusValue, P2PTaskConfig};
 
@@ -141,18 +141,6 @@ mod tests {
                 }
             }
         }
-
-        async fn cleanup(self) {
-            drop(self.p2p_tx);
-            tokio::time::sleep(Duration::from_millis(200)).await;
-            let handle_opt = Arc::try_unwrap(self.handle)
-                .expect("Should be able to unwrap Arc")
-                .into_inner()
-                .unwrap();
-            if let Some(handle) = handle_opt {
-                handle.abort();
-            }
-        }
     }
 
     /// Helper: Wait for a proposal event from consensus
@@ -235,21 +223,38 @@ mod tests {
     }
 
     /// Helper: Verify proposal parts are persisted in database
+    ///
+    /// Verifies that the expected part types are present:
+    /// - Init (required)
+    /// - BlockInfo (required)
+    /// - Fin (required)
+    /// - TransactionBatch (optional, if `expect_transaction_batch` is true)
+    ///
+    /// Also verifies the total count matches `expected_count`.
     fn verify_proposal_parts_persisted(
         consensus_storage: &pathfinder_storage::Storage,
         height: u64,
         round: u32,
         validator_address: &ContractAddress, // Query with validator address (receiver)
-        expected_min_parts: usize,
+        expected_count: usize,
+        expect_transaction_batch: bool,
     ) {
         let mut db_conn = consensus_storage.connection().unwrap();
         let db_tx = db_conn.transaction().unwrap();
-        // seems like foreign_proposal_parts queries by validator_address to get
+        let proposals_db = ConsensusProposals::new(&db_tx);
+        // seems like foreign_parts queries by validator_address to get
         // proposals from foreign validators (proposals where proposer !=
         // validator)
-        let parts = foreign_proposal_parts(&db_tx, height, round, validator_address)
+        let parts = proposals_db
+            .foreign_parts(height, round, validator_address)
             .unwrap()
             .unwrap_or_default();
+
+        // Part types for error message
+        let part_types: Vec<String> = parts
+            .iter()
+            .map(|part| format!("{:?}", std::mem::discriminant(part)))
+            .collect();
 
         // ----- Debug output for proposal parts -----
         #[cfg(debug_assertions)]
@@ -268,11 +273,48 @@ mod tests {
         }
         // ----- End debug output for proposal parts -----
 
+        // Verify required parts are present
+        use p2p_proto::consensus::ProposalPart as P2PProposalPart;
+        let has_init = parts.iter().any(|p| matches!(p, P2PProposalPart::Init(_)));
+        let has_block_info = parts
+            .iter()
+            .any(|p| matches!(p, P2PProposalPart::BlockInfo(_)));
+        let has_fin = parts.iter().any(|p| matches!(p, P2PProposalPart::Fin(_)));
+        let has_transaction_batch = parts
+            .iter()
+            .any(|p| matches!(p, P2PProposalPart::TransactionBatch(_)));
+
         assert!(
-            parts.len() >= expected_min_parts,
-            "Expected at least {} proposal parts, got {}",
-            expected_min_parts,
-            parts.len()
+            has_init,
+            "Expected Init part to be persisted. Persisted parts: [{}]",
+            part_types.join(", ")
+        );
+        assert!(
+            has_block_info,
+            "Expected BlockInfo part to be persisted. Persisted parts: [{}]",
+            part_types.join(", ")
+        );
+        assert!(
+            has_fin,
+            "Expected Fin part to be persisted. Persisted parts: [{}]",
+            part_types.join(", ")
+        );
+        if expect_transaction_batch {
+            assert!(
+                has_transaction_batch,
+                "Expected TransactionBatch part to be persisted. Persisted parts: [{}]",
+                part_types.join(", ")
+            );
+        }
+
+        // Verify total count
+        assert_eq!(
+            parts.len(),
+            expected_count,
+            "Expected {} proposal parts, got {}. Persisted parts: [{}]",
+            expected_count,
+            parts.len(),
+            part_types.join(", ")
         );
     }
 
@@ -286,7 +328,9 @@ mod tests {
     ) {
         let mut db_conn = consensus_storage.connection().unwrap();
         let db_tx = db_conn.transaction().unwrap();
-        let parts = foreign_proposal_parts(&db_tx, height, round, validator_address)
+        let proposals = ConsensusProposals::new(&db_tx);
+        let parts = proposals
+            .foreign_parts(height, round, validator_address)
             .unwrap()
             .unwrap_or_default();
 
@@ -372,7 +416,6 @@ mod tests {
                 ProposalPart::Init(proposal_init),
             ))
             .expect("Failed to send ProposalInit");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Step 2: Send BlockInfo
@@ -382,7 +425,6 @@ mod tests {
                 ProposalPart::BlockInfo(block_info),
             ))
             .expect("Failed to send BlockInfo");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Step 3: Send TransactionBatch (execution should start)
@@ -392,7 +434,6 @@ mod tests {
                 ProposalPart::TransactionBatch(transactions),
             ))
             .expect("Failed to send TransactionBatch");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Verify: No proposal event yet (execution started, but not finalized)
@@ -405,7 +446,6 @@ mod tests {
                 create_proposal_commitment_part(2, proposal_commitment),
             ))
             .expect("Failed to send ProposalCommitment");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Step 5: Send ProposalFin BEFORE TransactionsFin
@@ -418,7 +458,6 @@ mod tests {
                 }),
             ))
             .expect("Failed to send ProposalFin");
-        tokio::time::sleep(Duration::from_millis(500)).await;
         env.verify_task_alive().await;
 
         // Verify: Still no proposal event (ProposalFin was deferred)
@@ -429,7 +468,9 @@ mod tests {
         {
             let mut db_conn = env.consensus_storage.connection().unwrap();
             let db_tx = db_conn.transaction().unwrap();
-            let parts_after_proposal_fin = foreign_proposal_parts(&db_tx, 2, 1, &validator_address)
+            let proposals = ConsensusProposals::new(&db_tx);
+            let parts_after_proposal_fin = proposals
+                .foreign_parts(2, 1, &validator_address)
                 .unwrap()
                 .unwrap_or_default();
             eprintln!(
@@ -451,7 +492,6 @@ mod tests {
                 }),
             ))
             .expect("Failed to send TransactionsFin");
-        tokio::time::sleep(Duration::from_millis(1000)).await;
         env.verify_task_alive().await;
 
         // Verify: Proposal event should be sent now
@@ -465,12 +505,17 @@ mod tests {
         // Expected: Init, BlockInfo, TransactionBatch, ProposalFin (4 parts)
         // Note: ProposalCommitment is not persisted as a proposal part (it's validator
         // state only)
-        verify_proposal_parts_persisted(&env.consensus_storage, 2, 1, &validator_address, 4);
+        verify_proposal_parts_persisted(
+            &env.consensus_storage,
+            2,
+            1,
+            &validator_address,
+            4,
+            true, // expect_transaction_batch
+        );
 
         // Verify transaction count matches TransactionsFin count
         verify_transaction_count(&env.consensus_storage, 2, 1, &validator_address, 5);
-
-        env.cleanup().await;
     }
 
     /// Full proposal flow in normal order.
@@ -509,7 +554,6 @@ mod tests {
                 ProposalPart::Init(proposal_init),
             ))
             .expect("Failed to send ProposalInit");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Step 2: Send BlockInfo
@@ -519,7 +563,6 @@ mod tests {
                 ProposalPart::BlockInfo(block_info),
             ))
             .expect("Failed to send BlockInfo");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Step 3: Send TransactionBatch
@@ -529,7 +572,6 @@ mod tests {
                 ProposalPart::TransactionBatch(transactions),
             ))
             .expect("Failed to send TransactionBatch");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Verify: No proposal event yet (execution started, but TransactionsFin not
@@ -545,7 +587,6 @@ mod tests {
                 }),
             ))
             .expect("Failed to send TransactionsFin");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Verify: Still no proposal event (TransactionsFin processed, but ProposalFin
@@ -559,7 +600,6 @@ mod tests {
                 create_proposal_commitment_part(2, proposal_commitment),
             ))
             .expect("Failed to send ProposalCommitment");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Step 6: Send ProposalFin
@@ -581,12 +621,17 @@ mod tests {
 
         // Verify proposal parts persisted
         // Query with validator_address (receiver) to get foreign proposals
-        verify_proposal_parts_persisted(&env.consensus_storage, 2, 1, &validator_address, 4);
+        verify_proposal_parts_persisted(
+            &env.consensus_storage,
+            2,
+            1,
+            &validator_address,
+            4,
+            true, // expect_transaction_batch
+        );
 
         // Verify transaction count matches TransactionsFin count
         verify_transaction_count(&env.consensus_storage, 2, 1, &validator_address, 5);
-
-        env.cleanup().await;
     }
 
     /// TransactionsFin deferred when execution not started.
@@ -628,7 +673,6 @@ mod tests {
                 ProposalPart::Init(proposal_init),
             ))
             .expect("Failed to send ProposalInit");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Step 2: Send BlockInfo
@@ -638,7 +682,6 @@ mod tests {
                 ProposalPart::BlockInfo(block_info),
             ))
             .expect("Failed to send BlockInfo");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Step 3: Send first TransactionBatch (should be deferred - parent not
@@ -649,7 +692,6 @@ mod tests {
                 ProposalPart::TransactionBatch(transactions_batch1),
             ))
             .expect("Failed to send first TransactionBatch");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Verify: No proposal event (execution deferred)
@@ -664,7 +706,6 @@ mod tests {
                 }),
             ))
             .expect("Failed to send TransactionsFin");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Verify: Still no proposal event (TransactionsFin deferred)
@@ -683,7 +724,6 @@ mod tests {
                 ProposalPart::TransactionBatch(transactions_batch2),
             ))
             .expect("Failed to send second TransactionBatch");
-        tokio::time::sleep(Duration::from_millis(500)).await;
         env.verify_task_alive().await;
 
         // At this point, execution should have started and TransactionsFin should be
@@ -702,7 +742,6 @@ mod tests {
                 create_proposal_commitment_part(2, proposal_commitment),
             ))
             .expect("Failed to send ProposalCommitment");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Step 8: Send ProposalFin
@@ -715,7 +754,6 @@ mod tests {
                 }),
             ))
             .expect("Failed to send ProposalFin");
-        tokio::time::sleep(Duration::from_millis(500)).await;
         env.verify_task_alive().await;
 
         // Verify: Proposal event should be sent (confirms TransactionsFin was
@@ -726,9 +764,16 @@ mod tests {
         verify_proposal_event(proposal_cmd, 2, proposal_commitment);
 
         // Verify proposal parts persisted
-        verify_proposal_parts_persisted(&env.consensus_storage, 2, 1, &validator_address, 4);
-
-        env.cleanup().await;
+        // Expected: Init, BlockInfo, TransactionBatch (2 batches), ProposalFin (5
+        // parts)
+        verify_proposal_parts_persisted(
+            &env.consensus_storage,
+            2,
+            1,
+            &validator_address,
+            5,    // 2 TransactionBatch parts
+            true, // expect_transaction_batch
+        );
     }
 
     /// Multiple TransactionBatch messages are executed correctly.
@@ -776,7 +821,6 @@ mod tests {
                 ProposalPart::Init(proposal_init),
             ))
             .expect("Failed to send ProposalInit");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Step 2: Send BlockInfo
@@ -786,7 +830,6 @@ mod tests {
                 ProposalPart::BlockInfo(block_info),
             ))
             .expect("Failed to send BlockInfo");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Step 3: Send multiple TransactionBatches
@@ -796,7 +839,6 @@ mod tests {
                 ProposalPart::TransactionBatch(transactions_batch1),
             ))
             .expect("Failed to send TransactionBatch1");
-        tokio::time::sleep(Duration::from_millis(200)).await;
         env.verify_task_alive().await;
 
         env.p2p_tx
@@ -805,7 +847,6 @@ mod tests {
                 ProposalPart::TransactionBatch(transactions_batch2),
             ))
             .expect("Failed to send TransactionBatch2");
-        tokio::time::sleep(Duration::from_millis(200)).await;
         env.verify_task_alive().await;
 
         env.p2p_tx
@@ -814,7 +855,6 @@ mod tests {
                 ProposalPart::TransactionBatch(transactions_batch3),
             ))
             .expect("Failed to send TransactionBatch3");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Step 4: Send TransactionsFin (total count = 7)
@@ -826,7 +866,6 @@ mod tests {
                 }),
             ))
             .expect("Failed to send TransactionsFin");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Step 5: Send ProposalCommitment
@@ -836,7 +875,6 @@ mod tests {
                 create_proposal_commitment_part(2, proposal_commitment),
             ))
             .expect("Failed to send ProposalCommitment");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Step 6: Send ProposalFin
@@ -858,16 +896,21 @@ mod tests {
 
         // Verify all batches persisted
         // Query with validator_address (receiver) to get foreign proposals
-        // Expected: Init, BlockInfo, TransactionBatch (multiple batches combined),
-        // ProposalFin (4 parts)
-        verify_proposal_parts_persisted(&env.consensus_storage, 2, 1, &validator_address, 4);
+        // Expected: Init, BlockInfo, TransactionBatch (3 batches), ProposalFin (6
+        // parts)
+        verify_proposal_parts_persisted(
+            &env.consensus_storage,
+            2,
+            1,
+            &validator_address,
+            6,    // 3 TransactionBatch parts
+            true, // expect_transaction_batch
+        );
 
         // Verify transaction count matches TransactionsFin count
-        // Multiple batches are combined into a single TransactionBatch part in the
-        // database, so we can count the transactions from the persisted parts
+        // Multiple batches are persisted as separate TransactionBatch parts, so we
+        // count the transactions from all persisted parts
         verify_transaction_count(&env.consensus_storage, 2, 1, &validator_address, 7);
-
-        env.cleanup().await;
     }
 
     /// TransactionsFin triggers rollback when count is less than executed.
@@ -914,7 +957,6 @@ mod tests {
                 ProposalPart::Init(proposal_init),
             ))
             .expect("Failed to send ProposalInit");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Step 2: Send BlockInfo
@@ -924,7 +966,6 @@ mod tests {
                 ProposalPart::BlockInfo(block_info),
             ))
             .expect("Failed to send BlockInfo");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Step 3: Send TransactionBatch 1 (5 transactions)
@@ -934,7 +975,6 @@ mod tests {
                 ProposalPart::TransactionBatch(transactions_batch1),
             ))
             .expect("Failed to send TransactionBatch1");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Step 4: Send TransactionBatch 2 (5 more transactions, total = 10)
@@ -944,7 +984,6 @@ mod tests {
                 ProposalPart::TransactionBatch(transactions_batch2),
             ))
             .expect("Failed to send TransactionBatch2");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Step 5: Send TransactionsFin with count=7 (should trigger rollback from 10 to
@@ -957,7 +996,6 @@ mod tests {
                 }),
             ))
             .expect("Failed to send TransactionsFin");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Step 6: Send ProposalCommitment
@@ -967,7 +1005,6 @@ mod tests {
                 create_proposal_commitment_part(2, proposal_commitment),
             ))
             .expect("Failed to send ProposalCommitment");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Step 7: Send ProposalFin
@@ -995,7 +1032,16 @@ mod tests {
 
         // Verify proposal parts persisted
         // Query with validator_address (receiver) to get foreign proposals
-        verify_proposal_parts_persisted(&env.consensus_storage, 2, 1, &validator_address, 4);
+        // Expected: Init, BlockInfo, TransactionBatch (2 batches), ProposalFin (5
+        // parts)
+        verify_proposal_parts_persisted(
+            &env.consensus_storage,
+            2,
+            1,
+            &validator_address,
+            5,    // 2 TransactionBatch parts
+            true, // expect_transaction_batch
+        );
 
         // Note: Persisted proposal parts contain the original transactions (10), not
         // the rolled-back count (7). Rollback happens in the validator's
@@ -1003,9 +1049,12 @@ mod tests {
         // received from the network. The rollback verification (that execution
         // state has 7 transactions) is covered in unit tests. Here we verify
         // that all original batches are persisted.
+        //
+        // This means that if the process crashes and recovers from persisted parts, it
+        // would restore 10 transactions instead of the rolled-back count of 7. Recovery
+        // logic should take TransactionsFin into account to ensure the correct
+        // transaction count is restored after rollback.
         verify_transaction_count(&env.consensus_storage, 2, 1, &validator_address, 10);
-
-        env.cleanup().await;
     }
 
     /// Empty TransactionBatch execution (non-spec edge case).
@@ -1042,7 +1091,6 @@ mod tests {
                 ProposalPart::Init(proposal_init),
             ))
             .expect("Failed to send ProposalInit");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         env.p2p_tx
@@ -1051,7 +1099,6 @@ mod tests {
                 ProposalPart::BlockInfo(block_info),
             ))
             .expect("Failed to send BlockInfo");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         env.p2p_tx
@@ -1060,7 +1107,6 @@ mod tests {
                 ProposalPart::TransactionBatch(empty_transactions),
             ))
             .expect("Failed to send empty TransactionBatch");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
@@ -1073,17 +1119,15 @@ mod tests {
                 }),
             ))
             .expect("Failed to send TransactionsFin");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
 
-        // Empty batches don't initialize the executor, but finalization now handles
-        // this case (see test_empty_proposal_finalization in validator.rs).
-        // This test focuses on batch execution and TransactionsFin processing not
-        // finalization (which we can't verify here).
-
-        env.cleanup().await;
+        // Empty batches don't initialize the executor, but finalization now
+        // handles this case (see test_empty_proposal_finalization in
+        // validator.rs). This test focuses on batch execution and
+        // TransactionsFin processing not finalization (which we can't
+        // verify here).
     }
 
     /// TransactionsFin indicates more transactions than executed.
@@ -1122,7 +1166,6 @@ mod tests {
                 ProposalPart::Init(proposal_init),
             ))
             .expect("Failed to send ProposalInit");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         env.p2p_tx
@@ -1131,7 +1174,6 @@ mod tests {
                 ProposalPart::BlockInfo(block_info),
             ))
             .expect("Failed to send BlockInfo");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         env.p2p_tx
@@ -1140,7 +1182,6 @@ mod tests {
                 ProposalPart::TransactionBatch(transactions),
             ))
             .expect("Failed to send TransactionBatch");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
@@ -1153,7 +1194,6 @@ mod tests {
                 }),
             ))
             .expect("Failed to send TransactionsFin");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
@@ -1164,7 +1204,6 @@ mod tests {
                 create_proposal_commitment_part(2, proposal_commitment),
             ))
             .expect("Failed to send ProposalCommitment");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         env.p2p_tx
@@ -1182,13 +1221,18 @@ mod tests {
             .expect("Expected proposal event after ProposalFin");
         verify_proposal_event(proposal_cmd, 2, proposal_commitment);
 
-        verify_proposal_parts_persisted(&env.consensus_storage, 2, 1, &validator_address, 4);
+        verify_proposal_parts_persisted(
+            &env.consensus_storage,
+            2,
+            1,
+            &validator_address,
+            4,
+            true, // expect_transaction_batch
+        );
 
         // Verify transaction count matches what was actually received (5 transactions).
         // Persisted proposal parts should reflect what was received from the network.
         verify_transaction_count(&env.consensus_storage, 2, 1, &validator_address, 5);
-
-        env.cleanup().await;
     }
 
     /// TransactionsFin arrives before any TransactionBatch.
@@ -1223,7 +1267,6 @@ mod tests {
                 ProposalPart::Init(proposal_init),
             ))
             .expect("Failed to send ProposalInit");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         env.p2p_tx
@@ -1232,7 +1275,6 @@ mod tests {
                 ProposalPart::BlockInfo(block_info),
             ))
             .expect("Failed to send BlockInfo");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         env.p2p_tx
@@ -1243,7 +1285,6 @@ mod tests {
                 }),
             ))
             .expect("Failed to send TransactionsFin");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
@@ -1256,7 +1297,6 @@ mod tests {
                 ProposalPart::TransactionBatch(transactions),
             ))
             .expect("Failed to send TransactionBatch");
-        tokio::time::sleep(Duration::from_millis(500)).await;
         env.verify_task_alive().await;
 
         // Verify: Still no proposal event (TransactionsFin processed, but ProposalFin
@@ -1272,7 +1312,6 @@ mod tests {
                 create_proposal_commitment_part(2, proposal_commitment),
             ))
             .expect("Failed to send ProposalCommitment");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         env.p2p_tx
@@ -1290,12 +1329,17 @@ mod tests {
             .expect("Expected proposal event after ProposalFin");
         verify_proposal_event(proposal_cmd, 2, proposal_commitment);
 
-        verify_proposal_parts_persisted(&env.consensus_storage, 2, 1, &validator_address, 4);
+        verify_proposal_parts_persisted(
+            &env.consensus_storage,
+            2,
+            1,
+            &validator_address,
+            4,
+            true, // expect_transaction_batch
+        );
 
         // Verify transaction count matches TransactionsFin count
         verify_transaction_count(&env.consensus_storage, 2, 1, &validator_address, 5);
-
-        env.cleanup().await;
     }
 
     /// Empty proposal per spec (no TransactionBatch, no TransactionsFin).
@@ -1338,7 +1382,6 @@ mod tests {
                 ProposalPart::Init(proposal_init),
             ))
             .expect("Failed to send ProposalInit");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Step 2: Send BlockInfo
@@ -1348,7 +1391,6 @@ mod tests {
                 ProposalPart::BlockInfo(block_info),
             ))
             .expect("Failed to send BlockInfo");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Verify: No proposal event yet (ProposalCommitment and ProposalFin not
@@ -1364,7 +1406,6 @@ mod tests {
                 create_proposal_commitment_part(2, proposal_commitment),
             ))
             .expect("Failed to send ProposalCommitment");
-        tokio::time::sleep(Duration::from_millis(300)).await;
         env.verify_task_alive().await;
 
         // Verify: Still no proposal event (ProposalFin not received)
@@ -1382,7 +1423,6 @@ mod tests {
                 }),
             ))
             .expect("Failed to send ProposalFin");
-        tokio::time::sleep(Duration::from_millis(500)).await;
         env.verify_task_alive().await;
 
         // Verify: Proposal event should be sent immediately (not deferred)
@@ -1395,8 +1435,13 @@ mod tests {
 
         // Verify proposal parts persisted
         // Expected: Init, BlockInfo, ProposalFin (3 parts)
-        verify_proposal_parts_persisted(&env.consensus_storage, 2, 1, &validator_address, 3);
-
-        env.cleanup().await;
+        verify_proposal_parts_persisted(
+            &env.consensus_storage,
+            2,
+            1,
+            &validator_address,
+            3,
+            false, // expect_transaction_batch (empty proposal)
+        );
     }
 }
