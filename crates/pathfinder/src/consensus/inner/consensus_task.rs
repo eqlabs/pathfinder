@@ -9,7 +9,6 @@
 //! 4. issues commands to the P2P task, for example to gossip a proposal or a
 //!    vote
 
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -118,16 +117,8 @@ pub fn spawn(
         // Related issue: https://github.com/eqlabs/pathfinder/issues/2934
         let mut last_nil_vote_height = None;
 
-        // TODO FIXME this should be taken from WAL & DB
-        // This set is used to make sure we only start each height once and is used when
-        // a new height needs to be started upon a proposal or vote for H arriving
-        // before H-1 has been decided upon. Such race conditions occur very often in a
-        // network with low latency.
-        let mut started_heights = HashSet::new();
-
         start_height(
             &mut consensus,
-            &mut started_heights,
             next_height,
             validator_set_provider.get_validator_set(next_height)?,
         );
@@ -287,15 +278,12 @@ pub fn spawn(
                                 do_update
                             });
 
-                            assert!(started_heights.remove(&height));
-
                             if height == next_height {
                                 next_height = next_height
                                     .checked_add(1)
                                     .expect("Height never reaches i64::MAX");
                                 start_height(
                                     &mut consensus,
-                                    &mut started_heights,
                                     next_height,
                                     validator_set_provider.get_validator_set(next_height)?,
                                 );
@@ -320,7 +308,6 @@ pub fn spawn(
                         // messages for the new height were received.
                         ConsensusCommand::StartHeight(..) | ConsensusCommand::Propose(_) => {
                             assert!(cmd_height >= next_height);
-                            assert!(started_heights.contains(&cmd_height));
                         }
                         // Sometimes messages for the next height are received before the engine
                         // decides upon the current height. In such case we need to ensure that a
@@ -344,12 +331,20 @@ pub fn spawn(
                                 }
                             }
 
-                            start_height(
-                                &mut consensus,
-                                &mut started_heights,
-                                cmd_height,
-                                validator_set_provider.get_validator_set(cmd_height)?,
-                            );
+                            let is_decided = consensus
+                                .last_decided_height()
+                                .is_some_and(|last_decided| cmd_height <= last_decided);
+                            if is_decided {
+                                tracing::debug!(
+                                    "🧠 🤷  Not starting old height {cmd_height} at {next_height}"
+                                );
+                            } else {
+                                start_height(
+                                    &mut consensus,
+                                    cmd_height,
+                                    validator_set_provider.get_validator_set(cmd_height)?,
+                                );
+                            }
                         }
                     }
 
@@ -377,12 +372,10 @@ fn highest_finalized(storage: &Storage) -> anyhow::Result<Option<u64>> {
 
 fn start_height(
     consensus: &mut Consensus<ConsensusValue, ContractAddress, L2ProposerSelector>,
-    started_heights: &mut HashSet<u64>,
     height: u64,
     validator_set: ValidatorSet<ContractAddress>,
 ) {
-    if !started_heights.contains(&height) {
-        started_heights.insert(height);
+    if !consensus.is_height_active(height) {
         consensus.handle_command(ConsensusCommand::StartHeight(height, validator_set));
     }
 }
