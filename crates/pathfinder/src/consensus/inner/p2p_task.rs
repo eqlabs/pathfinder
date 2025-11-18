@@ -900,14 +900,14 @@ fn handle_incoming_proposal_part(
                     validator_cache.insert(height_and_round, validator);
                     Ok(None)
                 }
-                4.. => {
+                3.. => {
                     // Looks like this could be a valid non-empty proposal:
                     // - [x] Proposal Init
                     // - [x] Block Info
                     // - [x] at least one Transaction Batch
-                    // - [x] Transactions Fin
-                    // - [x] Proposal Commitment
-                    // - [ ] Transactions Fin
+                    // - [x] Transactions Fin (canonical) | Proposal Commitment (non-canonical)
+                    // - [x] Proposal Commitment (canonical) | Transactions Fin (non-canonical)
+                    // - [ ] Proposal Fin
                     parts.push(proposal_part.clone());
                     let proposer_address = proposer_address_from_parts(&parts)?;
                     let updated = proposals_db.persist_parts(
@@ -1029,12 +1029,22 @@ fn handle_incoming_proposal_part(
                 }
             }
         }
-        ProposalPart::TransactionsFin(transactions_fin) => {
+        ProposalPart::TransactionsFin(ref transactions_fin) => {
             tracing::debug!(
                 "🖧  ⚙️ handling TransactionsFin for height and round {height_and_round}..."
             );
 
             // TODO check parts.len() to ensure proper ordering, at least to some extent
+
+            parts.push(proposal_part.clone());
+            let proposer_address = proposer_address_from_parts(&parts)?;
+            let updated = proposals_db.persist_parts(
+                height_and_round.height(),
+                height_and_round.round(),
+                &proposer_address,
+                &parts,
+            )?;
+            assert!(updated);
 
             let validator_stage = validator_cache.remove(&height_and_round)?;
             let mut validator = validator_stage.try_into_transaction_batch_stage()?;
@@ -1054,7 +1064,7 @@ fn handle_incoming_proposal_part(
                 let mut dex = deferred_executions.lock().unwrap();
 
                 let deferred = dex.entry(height_and_round).or_default();
-                deferred.transactions_fin = Some(transactions_fin.clone());
+                deferred.transactions_fin = Some(*transactions_fin);
                 tracing::debug!(
                     "TransactionsFin for {height_and_round} is deferred - storing for later \
                      processing (execution not started yet)"
@@ -1063,7 +1073,7 @@ fn handle_incoming_proposal_part(
                 // Execution has started - process TransactionsFin immediately
                 batch_execution_manager.process_transactions_fin(
                     height_and_round,
-                    transactions_fin,
+                    *transactions_fin,
                     &mut validator,
                 )?;
 

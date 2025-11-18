@@ -495,8 +495,8 @@ mod tests {
 
         // Verify proposal structure
         assert!(
-            proposal_parts.len() >= 4,
-            "Empty proposal should have at least Init, BlockInfo, ProposalCommitment, and Fin"
+            proposal_parts.len() == 3,
+            "Empty proposal should have exactly Init, ProposalCommitment, and Fin"
         );
 
         // Verify it starts with Init
@@ -505,10 +505,10 @@ mod tests {
             "First part should be ProposalInit"
         );
 
-        // Verify it has BlockInfo
+        // Verify it has ProposalCommitment
         assert!(
-            matches!(proposal_parts[1], ProposalPart::BlockInfo(_)),
-            "Second part should be BlockInfo"
+            matches!(proposal_parts[1], ProposalPart::ProposalCommitment(_)),
+            "Second part should be ProposalCommitment"
         );
 
         // Verify it ends with Fin
