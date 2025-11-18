@@ -41,16 +41,7 @@ use crate::consensus::inner::batch_execution::{
     DeferredExecution,
     ProposalCommitmentWithOrigin,
 };
-use crate::consensus::inner::persist_proposals::{
-    foreign_proposal_parts,
-    last_proposal_parts,
-    own_proposal_parts,
-    persist_finalized_block,
-    persist_proposal_parts,
-    read_finalized_block,
-    remove_finalized_blocks,
-    remove_proposal_parts,
-};
+use crate::consensus::inner::persist_proposals::ConsensusProposals;
 use crate::consensus::inner::ConsensusValue;
 use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage, ValidatorStage};
 
@@ -139,6 +130,7 @@ pub fn spawn(
                 let mut cons_tx = cons_conn
                     .transaction_with_behavior(TransactionBehavior::Immediate)
                     .context("Create database transaction")?;
+                let mut proposals_db = ConsensusProposals::new(&cons_tx);
 
                 let success = match p2p_task_event {
                     P2PTaskEvent::P2PEvent(event) => {
@@ -172,7 +164,7 @@ pub fn spawn(
                                     dex,
                                     &db_tx,
                                     readonly_storage.clone(),
-                                    &cons_tx,
+                                    &proposals_db,
                                     &mut batch_execution_manager,
                                     &data_directory,
                                     inject_failure,
@@ -240,15 +232,13 @@ pub fn spawn(
                              {height_and_round}, hash {proposal_commitment}"
                         );
 
-                        let duplicate_encountered = persist_proposal_parts(
-                            &cons_tx,
+                        let duplicate_encountered = proposals_db.persist_parts(
                             height_and_round.height(),
                             height_and_round.round(),
                             &validator_address,
                             &proposal_parts,
                         )?;
-                        persist_finalized_block(
-                            &cons_tx,
+                        proposals_db.persist_finalized_block(
                             height_and_round.height(),
                             height_and_round.round(),
                             finalized_block,
@@ -271,12 +261,12 @@ pub fn spawn(
                                 proposal.round.as_u32().expect("Valid round"),
                             );
 
-                            let proposal_parts = if let Some(proposal_parts) = own_proposal_parts(
-                                &cons_tx,
-                                height_and_round.height(),
-                                height_and_round.round(),
-                                &validator_address,
-                            )? {
+                            let proposal_parts = if let Some(proposal_parts) = proposals_db
+                                .own_parts(
+                                    height_and_round.height(),
+                                    height_and_round.round(),
+                                    &validator_address,
+                                )? {
                                 // TODO we're assuming that all proposals are valid and any failure
                                 // to reach consensus in round 0
                                 // always yields re-proposing the same
@@ -298,11 +288,8 @@ pub fn spawn(
                                 // For now we just choose the proposal from the previous round, and
                                 // the rest are kept for debugging
                                 // purposes.
-                                let Some((round, mut proposal_parts)) = last_proposal_parts(
-                                    &cons_tx,
-                                    proposal.height,
-                                    &validator_address,
-                                )?
+                                let Some((round, mut proposal_parts)) =
+                                    proposals_db.last_parts(proposal.height, &validator_address)?
                                 else {
                                     panic!("At least one proposal from a previous round");
                                 };
@@ -327,8 +314,7 @@ pub fn spawn(
                                 *round = proposal.round.as_u32().expect("Round not to be None");
                                 *proposer = Address(proposal.proposer.0);
                                 let proposer_address = ContractAddress(proposal.proposer.0);
-                                persist_proposal_parts(
-                                    &cons_tx,
+                                proposals_db.persist_parts(
                                     proposal.height,
                                     *round,
                                     &proposer_address,
@@ -359,8 +345,7 @@ pub fn spawn(
                             );
                             let stopwatch = std::time::Instant::now();
 
-                            let finalized_block = match read_finalized_block(
-                                &cons_tx,
+                            let finalized_block = match proposals_db.read_finalized_block(
                                 height_and_round.height(),
                                 height_and_round.round(),
                             )? {
@@ -403,13 +388,15 @@ pub fn spawn(
                             cons_tx = cons_conn
                                 .transaction_with_behavior(TransactionBehavior::Immediate)
                                 .context("Create consensus database transaction")?;
+                            // Recreate proposals_db wrapper with new transaction
+                            proposals_db = ConsensusProposals::new(&cons_tx);
                             tracing::info!(
                                 "🖧  💾 {validator_address} Finalized and committed block at \
                                  {height_and_round} to the database in {} ms",
                                 stopwatch.elapsed().as_millis()
                             );
 
-                            remove_finalized_blocks(&cons_tx, height_and_round.height())?;
+                            proposals_db.remove_finalized_blocks(height_and_round.height())?;
                             tracing::debug!(
                                 "🖧  🗑️ {validator_address} removed my finalized blocks for height \
                                  {}",
@@ -423,7 +410,7 @@ pub fn spawn(
                                  height {}",
                                 height_and_round.height()
                             );
-                            remove_proposal_parts(&cons_tx, height_and_round.height(), None)?;
+                            proposals_db.remove_parts(height_and_round.height(), None)?;
 
                             anyhow::Ok(())
                         }?;
@@ -753,18 +740,18 @@ fn handle_incoming_proposal_part(
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     db_tx: &Transaction<'_>,
     storage: Storage,
-    cons_tx: &Transaction<'_>,
+    proposals_db: &ConsensusProposals<'_>,
     batch_execution_manager: &mut BatchExecutionManager,
     data_directory: &Path,
     inject_failure_config: Option<InjectFailureConfig>,
 ) -> anyhow::Result<Option<ProposalCommitmentWithOrigin>> {
-    let mut parts = foreign_proposal_parts(
-        cons_tx,
-        height_and_round.height(),
-        height_and_round.round(),
-        &validator_address,
-    )?
-    .unwrap_or_default();
+    let mut parts = proposals_db
+        .foreign_parts(
+            height_and_round.height(),
+            height_and_round.round(),
+            &validator_address,
+        )?
+        .unwrap_or_default();
 
     // Does nothing in production builds.
     integration_testing::debug_fail_on_proposal_part(
@@ -787,8 +774,7 @@ fn handle_incoming_proposal_part(
             let proposal_init = prop_init.clone();
             parts.push(proposal_part);
             let proposer_address = ContractAddress(proposal_init.proposer.0);
-            let updated = persist_proposal_parts(
-                cons_tx,
+            let updated = proposals_db.persist_parts(
                 height_and_round.height(),
                 height_and_round.round(),
                 &proposer_address,
@@ -820,8 +806,7 @@ fn handle_incoming_proposal_part(
             };
 
             let proposer_address = ContractAddress(proposer.0);
-            let updated = persist_proposal_parts(
-                cons_tx,
+            let updated = proposals_db.persist_parts(
                 height_and_round.height(),
                 height_and_round.round(),
                 &proposer_address,
@@ -877,8 +862,7 @@ fn handle_incoming_proposal_part(
             };
 
             let proposer_address = ContractAddress(proposer.0);
-            let updated = persist_proposal_parts(
-                cons_tx,
+            let updated = proposals_db.persist_parts(
                 height_and_round.height(),
                 height_and_round.round(),
                 &proposer_address,
@@ -927,8 +911,7 @@ fn handle_incoming_proposal_part(
             };
 
             let proposer_address = ContractAddress(proposer.0);
-            let updated = persist_proposal_parts(
-                cons_tx,
+            let updated = proposals_db.persist_parts(
                 height_and_round.height(),
                 height_and_round.round(),
                 &proposer_address,
