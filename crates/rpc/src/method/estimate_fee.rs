@@ -623,6 +623,42 @@ mod tests {
         ))
     }
 
+    fn declare_v3_transaction_with_blake2_casm_hash(
+        sender_address: ContractAddress,
+    ) -> BroadcastedTransaction {
+        let sierra_definition =
+            include_bytes!("../../fixtures/contracts/l2_gas_accounting/l2_gas_accounting.json");
+        let sierra_hash =
+            class_hash!("0x01A48FD3F75D0A7C2288AC23FB6ABA26CD375607BA63E4A3B3ED47FC8E99DC21");
+        let casm_hash =
+            casm_hash!("0x138cd11c6de707426665bd8b0425d7411bb8dc5cbee15867025007a933b3379");
+
+        let contract_class: SierraContractClass =
+            ContractClass::from_definition_bytes(sierra_definition)
+                .unwrap()
+                .as_sierra()
+                .unwrap();
+
+        self::assert_eq!(contract_class.class_hash().unwrap().hash(), sierra_hash);
+
+        BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V3(
+            BroadcastedDeclareTransactionV3 {
+                version: TransactionVersion::THREE,
+                signature: vec![],
+                nonce: transaction_nonce!("0x0"),
+                resource_bounds: ResourceBounds::default(),
+                tip: Tip(0),
+                paymaster_data: vec![],
+                account_deployment_data: vec![],
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+                compiled_class_hash: casm_hash,
+                contract_class,
+                sender_address,
+            },
+        ))
+    }
+
     fn deploy_v3_transaction(
         account_contract_address: ContractAddress,
         universal_deployer_address: ContractAddress,
@@ -719,6 +755,7 @@ mod tests {
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
     #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
     #[tokio::test]
     async fn declare_deploy_and_invoke_sierra_class_starknet_0_13_4(#[case] version: RpcVersion) {
         let (context, last_block_header, account_contract_address, universal_deployer_address) =
@@ -765,6 +802,117 @@ mod tests {
             output_json,
             version,
             "fee_estimates/declare_deploy_invoke_sierra_0_13_4.json"
+        );
+    }
+
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
+    #[tokio::test]
+    async fn declare_deploy_and_invoke_sierra_class_starknet_0_14_0(#[case] version: RpcVersion) {
+        let (context, last_block_header, account_contract_address, universal_deployer_address) =
+            crate::test_setup::test_context_with_starknet_version(StarknetVersion::new(
+                0, 14, 0, 0,
+            ))
+            .await;
+
+        // declare test class
+        let declare_transaction = declare_v3_transaction(account_contract_address);
+        // deploy with universal deployer contract
+        let deploy_transaction =
+            deploy_v3_transaction(account_contract_address, universal_deployer_address);
+        // invoke deployed contract
+        let invoke_transaction = invoke_v3_transaction_with_data_gas(
+            account_contract_address,
+            transaction_nonce!("0x2"),
+            call_param!("7"),
+        );
+        // Invoke once more to test that the execution state updates properly with L2
+        // gas accounting aware code.
+        let invoke_transaction2 = invoke_v3_transaction_with_data_gas(
+            account_contract_address,
+            transaction_nonce!("0x3"),
+            call_param!("7"),
+        );
+
+        let input = Input {
+            request: vec![
+                declare_transaction,
+                deploy_transaction,
+                invoke_transaction,
+                invoke_transaction2,
+            ],
+            simulation_flags: vec![SimulationFlag::SkipValidate],
+            block_id: BlockId::Number(last_block_header.number),
+        };
+        let result = super::estimate_fee(context, input, RPC_VERSION)
+            .await
+            .unwrap();
+
+        let output_json = result.serialize(Serializer { version }).unwrap();
+        crate::assert_json_matches_fixture!(
+            output_json,
+            version,
+            "fee_estimates/declare_deploy_invoke_sierra_0_14_0.json"
+        );
+    }
+
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
+    #[tokio::test]
+    async fn declare_deploy_and_invoke_sierra_class_starknet_0_14_1(#[case] version: RpcVersion) {
+        let (context, last_block_header, account_contract_address, universal_deployer_address) =
+            crate::test_setup::test_context_with_starknet_version(StarknetVersion::new(
+                0, 14, 1, 0,
+            ))
+            .await;
+
+        // declare test class
+        let declare_transaction =
+            declare_v3_transaction_with_blake2_casm_hash(account_contract_address);
+        // deploy with universal deployer contract
+        let deploy_transaction =
+            deploy_v3_transaction(account_contract_address, universal_deployer_address);
+        // invoke deployed contract
+        let invoke_transaction = invoke_v3_transaction_with_data_gas(
+            account_contract_address,
+            transaction_nonce!("0x2"),
+            call_param!("7"),
+        );
+        // Invoke once more to test that the execution state updates properly with L2
+        // gas accounting aware code.
+        let invoke_transaction2 = invoke_v3_transaction_with_data_gas(
+            account_contract_address,
+            transaction_nonce!("0x3"),
+            call_param!("7"),
+        );
+
+        let input = Input {
+            request: vec![
+                declare_transaction,
+                deploy_transaction,
+                invoke_transaction,
+                invoke_transaction2,
+            ],
+            simulation_flags: vec![SimulationFlag::SkipValidate],
+            block_id: BlockId::Number(last_block_header.number),
+        };
+        let result = super::estimate_fee(context, input, RPC_VERSION)
+            .await
+            .unwrap();
+
+        let output_json = result.serialize(Serializer { version }).unwrap();
+        crate::assert_json_matches_fixture!(
+            output_json,
+            version,
+            "fee_estimates/declare_deploy_invoke_sierra_0_14_1.json"
         );
     }
 

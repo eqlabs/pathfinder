@@ -6,6 +6,7 @@ use blockifier::state::state_api::StateReader;
 use cached::Cached;
 use pathfinder_common::{BlockNumber, ClassHash, StorageAddress, StorageValue};
 use pathfinder_crypto::Felt;
+use starknet_api::contract_class::compiled_class_hash::{HashVersion, HashableCompiledClass};
 use starknet_api::contract_class::SierraVersion;
 use starknet_api::StarknetApiError;
 use starknet_types_core::felt::Felt as CoreFelt;
@@ -341,9 +342,7 @@ impl<S: StorageAdapter> StateReader for PathfinderStateReader<S> {
             self.storage_adapter.casm_hash_at(block_id, class_hash)
         };
 
-        let casm_hash = casm_hash?.ok_or_else(|| {
-            StateError::StateReadError("Error getting compiled class hash".to_owned())
-        })?;
+        let casm_hash = casm_hash?.unwrap_or_default();
 
         Ok(starknet_api::core::CompiledClassHash(
             casm_hash.0.into_starkfelt(),
@@ -378,11 +377,17 @@ impl<S: StorageAdapter> StateReader for PathfinderStateReader<S> {
                 casm_hash.0.into_starkfelt(),
             )),
             None => {
-                let casm_hash = blockifier::state::utils::get_compiled_class_hash_v2(
-                    self,
-                    class_hash,
-                    compiled_class,
-                );
+                tracing::trace!("CASM hash v2 not found in storage, computing from compiled class");
+
+                let casm_hash = match compiled_class {
+                    RunnableCompiledClass::V0(_) => {
+                        Err(StateError::MissingCompiledClassHashV2(class_hash))
+                    }
+                    RunnableCompiledClass::V1(class) => Ok(class.hash(&HashVersion::V2)),
+                    #[cfg(feature = "cairo-native")]
+                    RunnableCompiledClass::V1Native(class) => Ok(class.hash(&HashVersion::V2)),
+                };
+
                 if let Ok(compiled_class_hash) = casm_hash {
                     self.casm_hash_v2_cache
                         .lock()
