@@ -341,9 +341,7 @@ impl<S: StorageAdapter> StateReader for PathfinderStateReader<S> {
             self.storage_adapter.casm_hash_at(block_id, class_hash)
         };
 
-        let casm_hash = casm_hash?.ok_or_else(|| {
-            StateError::StateReadError("Error getting compiled class hash".to_owned())
-        })?;
+        let casm_hash = casm_hash?.unwrap_or_default();
 
         Ok(starknet_api::core::CompiledClassHash(
             casm_hash.0.into_starkfelt(),
