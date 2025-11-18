@@ -741,6 +741,19 @@ impl<
         }
     }
 
+    /// Check if a specific height is actively tracked by the consensus engine.
+    ///
+    /// ## Arguments
+    ///
+    /// - `height`: The height to check
+    ///
+    /// ## Returns
+    ///
+    /// Returns `true` if the height is active, `false` otherwise.
+    pub fn is_height_active(&self, height: u64) -> bool {
+        self.internal.contains_key(&height)
+    }
+
     /// Get the maximum height actively being tracked by the consensus engine.
     ///
     /// This returns the highest height that consensus is currently working on,
