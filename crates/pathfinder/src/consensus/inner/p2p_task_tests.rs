@@ -19,6 +19,8 @@ mod tests {
     use pathfinder_crypto::Felt;
     use pathfinder_storage::StorageBuilder;
     use tokio::sync::mpsc;
+    use tokio::time::error::Elapsed;
+    use tokio::time::timeout;
 
     use crate::consensus::inner::persist_proposals::ConsensusProposals;
     use crate::consensus::inner::test_helpers::{create_test_proposal, create_transaction_batch};
@@ -149,6 +151,30 @@ mod tests {
                 }
             }
         }
+
+        async fn wait_for_task_exit(&self) -> Result<anyhow::Result<()>, Elapsed> {
+            let wait_for_exit_fut = async {
+                loop {
+                    let handle_opt = {
+                        let handle_guard = self.handle.lock().unwrap();
+                        handle_guard.as_ref().map(|h| h.is_finished())
+                    };
+
+                    if let Some(true) = handle_opt {
+                        // Handle is finished, take it out and await to get the result
+                        let handle = {
+                            let mut handle_guard = self.handle.lock().unwrap();
+                            handle_guard.take().expect("Handle should exist")
+                        };
+
+                        return handle.await?;
+                    }
+
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+            };
+            timeout(Duration::from_millis(300), wait_for_exit_fut).await
+        }
     }
 
     /// Helper: Wait for a proposal event from consensus
@@ -234,9 +260,11 @@ mod tests {
     ///
     /// Verifies that the expected part types are present:
     /// - Init (required)
-    /// - BlockInfo (required)
-    /// - Fin (required)
+    /// - BlockInfo (optional, if `expect_transaction_batch` is true)
     /// - TransactionBatch (optional, if `expect_transaction_batch` is true)
+    /// - TransactionsFin (optional, if `expect_transaction_batch` is true)
+    /// - ProposalCommitment (required)
+    /// - Fin (required)
     ///
     /// Also verifies the total count matches `expected_count`.
     fn verify_proposal_parts_persisted(
@@ -286,10 +314,16 @@ mod tests {
         let has_block_info = parts
             .iter()
             .any(|p| matches!(p, P2PProposalPart::BlockInfo(_)));
-        let has_fin = parts.iter().any(|p| matches!(p, P2PProposalPart::Fin(_)));
         let has_transaction_batch = parts
             .iter()
             .any(|p| matches!(p, P2PProposalPart::TransactionBatch(_)));
+        let has_transactions_fin = parts
+            .iter()
+            .any(|p| matches!(p, P2PProposalPart::TransactionsFin(_)));
+        let has_proposal_commitment = parts
+            .iter()
+            .any(|p| matches!(p, P2PProposalPart::ProposalCommitment(_)));
+        let has_fin = parts.iter().any(|p| matches!(p, P2PProposalPart::Fin(_)));
 
         assert!(
             has_init,
@@ -297,8 +331,8 @@ mod tests {
             part_types.join(", ")
         );
         assert!(
-            has_block_info,
-            "Expected BlockInfo part to be persisted. Persisted parts: [{}]",
+            has_proposal_commitment,
+            "Expected ProposalCommitment part to be persisted. Persisted parts: [{}]",
             part_types.join(", ")
         );
         assert!(
@@ -308,8 +342,18 @@ mod tests {
         );
         if expect_transaction_batch {
             assert!(
+                has_block_info,
+                "Expected BlockInfo part to be persisted. Persisted parts: [{}]",
+                part_types.join(", ")
+            );
+            assert!(
                 has_transaction_batch,
                 "Expected TransactionBatch part to be persisted. Persisted parts: [{}]",
+                part_types.join(", ")
+            );
+            assert!(
+                has_transactions_fin,
+                "Expected TransactionsFin part to be persisted. Persisted parts: [{}]",
                 part_types.join(", ")
             );
         }
@@ -400,7 +444,7 @@ mod tests {
     /// Verify ProposalFin is deferred (no proposal event), then verify
     /// finalization occurs after TransactionsFin arrives. Also verify
     /// ProposalFin is persisted in the database even when deferred.
-    #[tokio::test(flavor = "multi_thread")]
+    #[test_log::test(tokio::test(flavor = "multi_thread"))]
     async fn test_proposal_fin_deferred_until_transactions_fin_processed() {
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
@@ -518,7 +562,7 @@ mod tests {
             2,
             1,
             &validator_address,
-            4,
+            6,
             true, // expect_transaction_batch
         );
 
@@ -537,7 +581,7 @@ mod tests {
     ///
     /// Verify proposal event is sent immediately after ProposalFin (no
     /// deferral), and verify all parts are persisted correctly.
-    #[tokio::test(flavor = "multi_thread")]
+    #[test_log::test(tokio::test(flavor = "multi_thread"))]
     async fn test_full_proposal_flow_normal_order() {
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
@@ -634,7 +678,7 @@ mod tests {
             2,
             1,
             &validator_address,
-            4,
+            6,
             true, // expect_transaction_batch
         );
 
@@ -654,7 +698,7 @@ mod tests {
     /// Verify no execution occurs. Then commit parent block and send another
     /// TransactionBatch. Verify deferred TransactionsFin is processed when
     /// execution starts.
-    #[tokio::test(flavor = "multi_thread")]
+    #[test_log::test(tokio::test(flavor = "multi_thread"))]
     async fn test_transactions_fin_deferred_when_execution_not_started() {
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
@@ -779,7 +823,7 @@ mod tests {
             2,
             1,
             &validator_address,
-            5,    // 2 TransactionBatch parts
+            7,    // 2 TransactionBatch parts
             true, // expect_transaction_batch
         );
     }
@@ -797,7 +841,7 @@ mod tests {
     /// Verify proposal event is sent after ProposalFin, and verify all batches
     /// are persisted (combined into a single TransactionBatch part in the
     /// database).
-    #[tokio::test(flavor = "multi_thread")]
+    #[test_log::test(tokio::test(flavor = "multi_thread"))]
     async fn test_multiple_batches_execution() {
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
@@ -904,14 +948,14 @@ mod tests {
 
         // Verify all batches persisted
         // Query with validator_address (receiver) to get foreign proposals
-        // Expected: Init, BlockInfo, TransactionBatch (3 batches), ProposalFin (6
-        // parts)
+        // Expected: Init, BlockInfo, TransactionBatch (3 batches), ProposalCommitment,
+        // TransactionsFin, ProposalFin (8 parts)
         verify_proposal_parts_persisted(
             &env.consensus_storage,
             2,
             1,
             &validator_address,
-            6,    // 3 TransactionBatch parts
+            8,    // 3 TransactionBatch parts
             true, // expect_transaction_batch
         );
 
@@ -934,7 +978,7 @@ mod tests {
     ///
     /// Verify proposal event is sent successfully after rollback, confirming
     /// the rollback mechanism works correctly.
-    #[tokio::test(flavor = "multi_thread")]
+    #[test_log::test(tokio::test(flavor = "multi_thread"))]
     async fn test_transactions_fin_rollback() {
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
@@ -1047,7 +1091,7 @@ mod tests {
             2,
             1,
             &validator_address,
-            5,    // 2 TransactionBatch parts
+            7,    // 2 TransactionBatch parts
             true, // expect_transaction_batch
         );
 
@@ -1070,20 +1114,20 @@ mod tests {
     /// **Scenario**: A proposal contains an empty TransactionBatch. Per the
     /// [Starknet consensus spec](https://raw.githubusercontent.com/starknet-io/starknet-p2p-specs/refs/heads/main/p2p/proto/consensus/consensus.md),
     /// if a proposer has no transactions, they should send an empty proposal
-    /// (skipping TransactionBatch and TransactionsFin entirely). However, this
-    /// test covers the defensive case where a non-empty proposal includes an
-    /// empty TransactionBatch. Execution should still be marked as started, and
-    /// TransactionsFin with count=0 should be processable.
+    /// (skipping BlockInfo, TransactionBatch and TransactionsFin entirely).
+    /// However, this test covers the case where a non-empty proposal includes
+    /// an empty TransactionBatch. Such a proposal is invalid per the spec, so
+    /// we reject it.
     ///
     /// **Test**: Send Init → BlockInfo → TransactionBatch (empty) →
     /// TransactionsFin (count=0) → ProposalCommitment → ProposalFin.
     ///
-    /// Verify execution is marked as started and TransactionsFin is processed.
-    #[tokio::test(flavor = "multi_thread")]
-    async fn test_empty_batch_execution() {
+    /// Verify that the proposal is rejected and no proposal event is sent.
+    #[test_log::test(tokio::test(flavor = "multi_thread"))]
+    async fn test_empty_batch_is_rejected() {
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
-        let mut env = TestEnvironment::new(chain_id, validator_address);
+        let env = TestEnvironment::new(chain_id, validator_address);
         env.create_committed_parent_block(1);
         env.wait_for_task_initialization().await;
 
@@ -1115,27 +1159,15 @@ mod tests {
                 ProposalPart::TransactionBatch(empty_transactions),
             ))
             .expect("Failed to send empty TransactionBatch");
-        env.verify_task_alive().await;
 
-        verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
-
-        env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::TransactionsFin(p2p_proto::consensus::TransactionsFin {
-                    executed_transaction_count: 0,
-                }),
-            ))
-            .expect("Failed to send TransactionsFin");
-        env.verify_task_alive().await;
-
-        verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
-
-        // Empty batches don't initialize the executor, but finalization now
-        // handles this case (see test_empty_proposal_finalization in
-        // validator.rs). This test focuses on batch execution and
-        // TransactionsFin processing not finalization (which we can't
-        // verify here).
+        // TODO Invalid proposals are a recoverable error, so the task should not exit.
+        // It should only log the fact, clean any cashes of the invalid proposal and
+        // alter the score of the peer. See: https://github.com/eqlabs/pathfinder/issues/2975.
+        let task_result = env.wait_for_task_exit().await.expect("Timed out");
+        assert!(
+            task_result.is_err(),
+            "Expected task to exit with error on empty TransactionBatch"
+        );
     }
 
     /// TransactionsFin indicates more transactions than executed.
@@ -1152,7 +1184,7 @@ mod tests {
     /// **Note**: We cannot directly verify these things. The goal of this
     /// e2e test is to verify that processing continues correctly despite the
     /// mismatch.
-    #[tokio::test(flavor = "multi_thread")]
+    #[test_log::test(tokio::test(flavor = "multi_thread"))]
     async fn test_transactions_fin_count_exceeds_executed() {
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
@@ -1234,7 +1266,7 @@ mod tests {
             2,
             1,
             &validator_address,
-            4,
+            6,
             true, // expect_transaction_batch
         );
 
@@ -1253,7 +1285,7 @@ mod tests {
     /// TransactionBatch → ProposalCommitment → ProposalFin. Verify
     /// TransactionsFin is deferred, then processed when execution starts,
     /// and proposal event is sent.
-    #[tokio::test(flavor = "multi_thread")]
+    #[test_log::test(tokio::test(flavor = "multi_thread"))]
     async fn test_transactions_fin_before_any_batch() {
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
@@ -1342,7 +1374,7 @@ mod tests {
             2,
             1,
             &validator_address,
-            4,
+            6,
             true, // expect_transaction_batch
         );
 
@@ -1357,13 +1389,13 @@ mod tests {
     /// TransactionBatch and TransactionsFin entirely. The order is:
     /// ProposalInit → ProposalCommitment → ProposalFin.
     ///
-    /// **Test**: Send ProposalInit → BlockInfo → ProposalCommitment →
-    /// ProposalFin (no TransactionBatch, no TransactionsFin).
+    /// **Test**: Send ProposalInit → ProposalCommitment → ProposalFin (no
+    /// TransactionBatch, no ProposalCommitment, no TransactionsFin).
     ///
     /// Verify ProposalFin proceeds immediately (not deferred, since execution
     /// never started), proposal event is sent, and all parts are persisted
     /// correctly.
-    #[tokio::test(flavor = "multi_thread")]
+    #[test_log::test(tokio::test(flavor = "multi_thread"))]
     async fn test_empty_proposal_per_spec() {
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
@@ -1377,7 +1409,7 @@ mod tests {
         // For empty proposals, we still need BlockInfo to transition to
         // TransactionBatch stage, but we don't send any TransactionBatch or
         // TransactionsFin
-        let (proposal_init, block_info) =
+        let (proposal_init, _block_info) =
             create_test_proposal(chain_id, 2, 1, proposer_address, vec![]);
 
         // Using a dummy commitment...
@@ -1392,20 +1424,11 @@ mod tests {
             .expect("Failed to send ProposalInit");
         env.verify_task_alive().await;
 
-        // Step 2: Send BlockInfo
-        env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::BlockInfo(block_info),
-            ))
-            .expect("Failed to send BlockInfo");
-        env.verify_task_alive().await;
-
         // Verify: No proposal event yet (ProposalCommitment and ProposalFin not
         // received)
         verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
 
-        // Step 3: Send ProposalCommitment
+        // Step 2: Send ProposalCommitment
         // Note: No TransactionBatch or TransactionsFin - this is the key difference
         // from normal proposals. Execution never starts.
         env.p2p_tx
@@ -1419,7 +1442,7 @@ mod tests {
         // Verify: Still no proposal event (ProposalFin not received)
         verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
 
-        // Step 4: Send ProposalFin
+        // Step 3: Send ProposalFin
         // Since execution never started (no TransactionBatch), ProposalFin should
         // proceed immediately without deferral. This is different from first test
         // where execution started but TransactionsFin wasn't processed yet.
@@ -1442,7 +1465,7 @@ mod tests {
         verify_proposal_event(proposal_cmd, 2, proposal_commitment);
 
         // Verify proposal parts persisted
-        // Expected: Init, BlockInfo, ProposalFin (3 parts)
+        // Expected: Init, ProposalCommitment, ProposalFin (3 parts)
         verify_proposal_parts_persisted(
             &env.consensus_storage,
             2,

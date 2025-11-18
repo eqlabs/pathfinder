@@ -86,7 +86,7 @@ pub struct TransactionBatch {
     pub transactions: Vec<Transaction>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "consensus_proto::TransactionsFin")]
 pub struct TransactionsFin {
     pub executed_transaction_count: u64,
