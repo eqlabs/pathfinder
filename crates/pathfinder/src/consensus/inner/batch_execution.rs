@@ -95,7 +95,7 @@ impl BatchExecutionManager {
         // Execute any previously deferred transactions first
         let deferred = deferred_executions.remove(&height_and_round);
         let deferred_txns_len = deferred.as_ref().map_or(0, |d| d.transactions.len());
-        let deferred_transactions_fin = deferred.as_ref().and_then(|d| d.transactions_fin.clone());
+        let deferred_transactions_fin = deferred.as_ref().and_then(|d| d.transactions_fin);
 
         let mut all_transactions = transactions;
         if let Some(DeferredExecution {
@@ -555,7 +555,7 @@ mod tests {
 
         // Simulate the fix: create deferred entry and store TransactionsFin
         let deferred = deferred_executions.entry(height_and_round).or_default();
-        deferred.transactions_fin = Some(transactions_fin.clone());
+        deferred.transactions_fin = Some(transactions_fin);
 
         // Verify TransactionsFin was stored
         assert!(
