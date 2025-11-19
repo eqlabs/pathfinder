@@ -919,17 +919,7 @@ fn handle_incoming_proposal_part(
                 .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
 
             let block_info = block_info.clone();
-            parts.push(proposal_part);
-            let proposer_address = proposer_address_from_parts(&parts, &height_and_round)?;
-            let updated = proposals_db
-                .persist_parts(
-                    height_and_round.height(),
-                    height_and_round.round(),
-                    &proposer_address,
-                    &parts,
-                )
-                .map_err(ProposalHandlingError::Fatal)?;
-            assert!(updated);
+            append_and_persist_part(height_and_round, proposal_part, proposals_db, &mut parts)?;
 
             let new_validator = validator
                 .validate_consensus_block_info(block_info, main_readonly_storage)
@@ -983,17 +973,7 @@ fn handle_incoming_proposal_part(
                 .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
 
             let tx_batch = tx_batch.clone();
-            parts.push(proposal_part);
-            let proposer_address = proposer_address_from_parts(&parts, &height_and_round)?;
-            let updated = proposals_db
-                .persist_parts(
-                    height_and_round.height(),
-                    height_and_round.round(),
-                    &proposer_address,
-                    &parts,
-                )
-                .map_err(ProposalHandlingError::Fatal)?;
-            assert!(updated);
+            append_and_persist_part(height_and_round, proposal_part, proposals_db, &mut parts)?;
 
             // Use BatchExecutionManager to handle optimistic execution with checkpoints and
             // deferral
@@ -1021,17 +1001,12 @@ fn handle_incoming_proposal_part(
                     // - [x] Proposal Init
                     // - [x] Proposal Commitment
                     // - [ ] Proposal Fin
-                    parts.push(proposal_part.clone());
-                    let proposer_address = proposer_address_from_parts(&parts, &height_and_round)?;
-                    let updated = proposals_db
-                        .persist_parts(
-                            height_and_round.height(),
-                            height_and_round.round(),
-                            &proposer_address,
-                            &parts,
-                        )
-                        .map_err(ProposalHandlingError::Fatal)?;
-                    assert!(updated);
+                    append_and_persist_part(
+                        height_and_round,
+                        proposal_part.clone(),
+                        proposals_db,
+                        &mut parts,
+                    )?;
 
                     let validator_stage = validator_cache.remove(&height_and_round)?;
                     let validator = validator_stage
@@ -1055,17 +1030,12 @@ fn handle_incoming_proposal_part(
                     // - [x] Transactions Fin (canonical) | Proposal Commitment (non-canonical)
                     // - [x] Proposal Commitment (canonical) | Transactions Fin (non-canonical)
                     // - [ ] Proposal Fin
-                    parts.push(proposal_part.clone());
-                    let proposer_address = proposer_address_from_parts(&parts, &height_and_round)?;
-                    let updated = proposals_db
-                        .persist_parts(
-                            height_and_round.height(),
-                            height_and_round.round(),
-                            &proposer_address,
-                            &parts,
-                        )
-                        .map_err(ProposalHandlingError::Fatal)?;
-                    assert!(updated);
+                    append_and_persist_part(
+                        height_and_round,
+                        proposal_part.clone(),
+                        proposals_db,
+                        &mut parts,
+                    )?;
 
                     let validator_stage = validator_cache.remove(&height_and_round)?;
                     let mut validator = validator_stage
@@ -1110,17 +1080,12 @@ fn handle_incoming_proposal_part(
                     // - [x] Proposal Init
                     // - [x] Proposal Commitment
                     // - [x] Proposal Fin
-                    parts.push(proposal_part);
-                    let proposer_address = proposer_address_from_parts(&parts, &height_and_round)?;
-                    let updated = proposals_db
-                        .persist_parts(
-                            height_and_round.height(),
-                            height_and_round.round(),
-                            &proposer_address,
-                            &parts,
-                        )
-                        .map_err(ProposalHandlingError::Fatal)?;
-                    assert!(updated);
+                    let proposer_address = append_and_persist_part(
+                        height_and_round,
+                        proposal_part,
+                        proposals_db,
+                        &mut parts,
+                    )?;
 
                     let valid_round = valid_round_from_parts(&parts, &height_and_round)?;
                     let proposal_commitment = Some(ProposalCommitmentWithOrigin {
@@ -1162,17 +1127,12 @@ fn handle_incoming_proposal_part(
                         ));
                     }
 
-                    parts.push(proposal_part);
-                    let proposer_address = proposer_address_from_parts(&parts, &height_and_round)?;
-                    let updated = proposals_db
-                        .persist_parts(
-                            height_and_round.height(),
-                            height_and_round.round(),
-                            &proposer_address,
-                            &parts,
-                        )
-                        .map_err(ProposalHandlingError::Fatal)?;
-                    assert!(updated);
+                    let proposer_address = append_and_persist_part(
+                        height_and_round,
+                        proposal_part,
+                        proposals_db,
+                        &mut parts,
+                    )?;
 
                     let valid_round = valid_round_from_parts(&parts, &height_and_round)?;
                     let (validator, proposal_commitment) = defer_or_execute_proposal_fin(
@@ -1211,19 +1171,32 @@ fn handle_incoming_proposal_part(
                 "🖧  ⚙️ handling TransactionsFin for height and round {height_and_round}..."
             );
 
-            // TODO check parts.len() to ensure proper ordering, at least to some extent
+            // Looks like this could be a valid non-empty proposal:
+            // - [x] Proposal Init
+            // - [x] Block Info
+            // - [x] at least one Transaction Batch
+            // - [x] Transactions Fin (canonical) | Proposal Commitment (non-canonical)
+            // - [x] Proposal Commitment (canonical) | Transactions Fin (non-canonical)
+            // - [ ] Proposal Fin
+            if parts.len() < 3 {
+                return Err(ProposalHandlingError::Recoverable(
+                    ProposalError::UnexpectedProposalPart {
+                        message: format!(
+                            "Unexpected proposal TransactionsFin for height and round {} at \
+                             position {}",
+                            height_and_round,
+                            parts.len()
+                        ),
+                    },
+                ));
+            }
 
-            parts.push(proposal_part.clone());
-            let proposer_address = proposer_address_from_parts(&parts, &height_and_round)?;
-            let updated = proposals_db
-                .persist_parts(
-                    height_and_round.height(),
-                    height_and_round.round(),
-                    &proposer_address,
-                    &parts,
-                )
-                .map_err(ProposalHandlingError::Fatal)?;
-            assert!(updated);
+            append_and_persist_part(
+                height_and_round,
+                proposal_part.clone(),
+                proposals_db,
+                &mut parts,
+            )?;
 
             let validator_stage = validator_cache.remove(&height_and_round)?;
             let mut validator = validator_stage
@@ -1288,6 +1261,26 @@ fn handle_incoming_proposal_part(
             Ok(None)
         }
     }
+}
+
+fn append_and_persist_part(
+    height_and_round: HeightAndRound,
+    proposal_part: ProposalPart,
+    proposals_db: &ConsensusProposals<'_>,
+    parts: &mut Vec<ProposalPart>,
+) -> Result<ContractAddress, ProposalHandlingError> {
+    parts.push(proposal_part);
+    let proposer_address = proposer_address_from_parts(parts, &height_and_round)?;
+    let updated = proposals_db
+        .persist_parts(
+            height_and_round.height(),
+            height_and_round.round(),
+            &proposer_address,
+            parts,
+        )
+        .map_err(ProposalHandlingError::Fatal)?;
+    assert!(updated);
+    Ok(proposer_address)
 }
 
 /// Either defer or execute the proposal finalization depending on whether
