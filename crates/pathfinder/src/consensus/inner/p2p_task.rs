@@ -730,6 +730,15 @@ fn commit_finalized_block(
 /// - a complete proposal has been received but it cannot be executed yet.
 ///
 /// Returns `Err` if there was an error processing the proposal part.
+///
+/// # Important
+///
+/// We always enforce the following order of proposal parts:
+/// 1. Proposal Init
+/// 2. Block Info for non-empty proposals (or Proposal Commitment for empty
+///    proposals)
+/// The rest can come in any order. The [spec](https://github.com/starknet-io/starknet-p2p-specs/blob/main/p2p/proto/consensus/consensus.md#order-of-messages).
+/// is more restrictive.
 #[allow(clippy::too_many_arguments)]
 fn handle_incoming_proposal_part(
     chain_id: ChainId,
@@ -770,7 +779,14 @@ fn handle_incoming_proposal_part(
                     parts.len()
                 );
             }
-
+            // If this is a valid proposal, then this may be an empty proposal:
+            // - [x] Proposal Init
+            // - [ ] Proposal Commitment
+            // - [ ] Proposal Fin
+            // or the first part of a non-empty proposal:
+            // - [x] Proposal Init
+            // - [ ] Block Info
+            // (...)
             let proposal_init = prop_init.clone();
             parts.push(proposal_part);
             let proposer_address = ContractAddress(proposal_init.proposer.0);
@@ -827,11 +843,14 @@ fn handle_incoming_proposal_part(
                     parts.len()
                 );
             }
-            // Looks like this could be a non-empty proposal:
+            // Looks like a non-empty proposal:
             // - [x] Proposal Init
             // - [x] Block Info
-            // - [x] at least one non-empty Transaction Batch
-            // (...)
+            // - [ ] in any order:
+            //      - [x] at least one Transaction Batch
+            //      - [?] Transactions Fin
+            //      - [?] Proposal Commitment
+            //      - [?] Proposal Fin
             tracing::debug!(
                 "🖧  ⚙️ executing transaction batch for height and round {height_and_round}..."
             );
@@ -881,14 +900,15 @@ fn handle_incoming_proposal_part(
                     validator_cache.insert(height_and_round, validator);
                     Ok(None)
                 }
-                3.. => {
-                    // Looks like this could be a valid non-empty proposal:
+                2.. => {
+                    // Looks like a non-empty proposal:
                     // - [x] Proposal Init
                     // - [x] Block Info
-                    // - [x] at least one Transaction Batch
-                    // - [x] Transactions Fin (canonical) | Proposal Commitment (non-canonical)
-                    // - [x] Proposal Commitment (canonical) | Transactions Fin (non-canonical)
-                    // - [ ] Proposal Fin
+                    // - [ ] in any order:
+                    //      - [?] at least one Transaction Batch
+                    //      - [?] Transactions Fin
+                    //      - [x] Proposal Commitment
+                    //      - [?] Proposal Fin
                     append_and_persist_part(
                         height_and_round,
                         proposal_part.clone(),
@@ -924,42 +944,15 @@ fn handle_incoming_proposal_part(
             );
 
             match parts.len() {
-                2 => {
-                    // Looks like this is an empty proposal:
+                2.. if parts.get(1).expect("2 parts").is_block_info() => {
+                    // Looks like a non-empty proposal:
                     // - [x] Proposal Init
-                    // - [x] Proposal Commitment
-                    // - [x] Proposal Fin
-                    let proposer_address = append_and_persist_part(
-                        height_and_round,
-                        proposal_part,
-                        proposals_db,
-                        &mut parts,
-                    )?;
-
-                    let valid_round = valid_round_from_parts(&parts)?;
-                    let proposal_commitment = Some(ProposalCommitmentWithOrigin {
-                        proposal_commitment: ProposalCommitment(proposal_commitment.0),
-                        proposer_address,
-                        pol_round: valid_round.map(Round::new).unwrap_or(Round::nil()),
-                    });
-
-                    // We don't retrieve the validator from cache here, it'll be retrieved for
-                    // block finalization
-                    Ok(proposal_commitment)
-                }
-                // TODO `3..` means that we're permissive here, so we assume that only the
-                // following are present:
-                // - [x] Proposal Init
-                // - [x] Block Info
-                // - [x] at least one Transaction Batch
-                // If we want to be more strict, we should rather assume `5..`
-                // - [x] Proposal Init
-                // - [x] Block Info
-                // - [x] at least one Transaction Batch
-                // - [x] Proposal Commitment
-                // - [x] Transactions Fin
-                3.. => {
-                    // Maybe a valid non-empty proposal
+                    // - [x] Block Info
+                    // - [ ] in any order:
+                    //      - [?] at least one Transaction Batch
+                    //      - [?] Transactions Fin
+                    //      - [?] Proposal Commitment
+                    //      - [x] Proposal Fin
                     let validator_stage = validator_cache.remove(&height_and_round)?;
                     let validator = validator_stage.try_into_transaction_batch_stage()?;
 
@@ -992,6 +985,29 @@ fn handle_incoming_proposal_part(
                     validator_cache.insert(height_and_round, validator);
                     Ok(proposal_commitment)
                 }
+                2 => {
+                    // Looks like an empty proposal:
+                    // - [x] Proposal Init
+                    // - [x] Proposal Commitment
+                    // - [x] Proposal Fin
+                    let proposer_address = append_and_persist_part(
+                        height_and_round,
+                        proposal_part,
+                        proposals_db,
+                        &mut parts,
+                    )?;
+
+                    let valid_round = valid_round_from_parts(&parts)?;
+                    let proposal_commitment = Some(ProposalCommitmentWithOrigin {
+                        proposal_commitment: ProposalCommitment(proposal_commitment.0),
+                        proposer_address,
+                        pol_round: valid_round.map(Round::new).unwrap_or(Round::nil()),
+                    });
+
+                    // We don't retrieve the validator from cache here, it'll be retrieved for
+                    // block finalization
+                    Ok(proposal_commitment)
+                }
                 _ => {
                     anyhow::bail!(
                         "Unexpected proposal ProposalFin for height and round {} at position {}",
@@ -1006,21 +1022,21 @@ fn handle_incoming_proposal_part(
                 "🖧  ⚙️ handling TransactionsFin for height and round {height_and_round}..."
             );
 
-            // Looks like this could be a valid non-empty proposal:
-            // - [x] Proposal Init
-            // - [x] Block Info
-            // - [x] at least one Transaction Batch
-            // - [x] Transactions Fin (canonical) | Proposal Commitment (non-canonical)
-            // - [x] Proposal Commitment (canonical) | Transactions Fin (non-canonical)
-            // - [ ] Proposal Fin
-            if parts.len() < 3 {
+            if !parts.get(1).map(|p| p.is_block_info()).unwrap_or_default() {
                 anyhow::bail!(
                     "Unexpected proposal TransactionsFin for height and round {} at position {}",
                     height_and_round,
                     parts.len()
                 );
             }
-
+            // Looks like a non-empty proposal:
+            // - [x] Proposal Init
+            // - [x] Block Info
+            // - [ ] in any order:
+            //      - [?] at least one Transaction Batch
+            //      - [x] Transactions Fin
+            //      - [?] Proposal Commitment
+            //      - [?] Proposal Fin
             append_and_persist_part(
                 height_and_round,
                 proposal_part.clone(),
