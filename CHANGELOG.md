@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Pathfinder exits after receiving an internal server error from the feeder gateway.
 - `starknet_estimateFee` and `starknet_simulateTransactions` fails if one of the transactions is using a class that has been declared by a simulated DECLARE transaction in the batch.
+- Cairo Native is not working correctly with Docker images published on Docker Hub due to a linker error.
 
 ## [0.21.0] - 2025-11-11
 
