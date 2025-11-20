@@ -737,6 +737,7 @@ fn commit_finalized_block(
 /// 1. Proposal Init
 /// 2. Block Info for non-empty proposals (or Proposal Commitment for empty
 ///    proposals)
+///
 /// The rest can come in any order. The [spec](https://github.com/starknet-io/starknet-p2p-specs/blob/main/p2p/proto/consensus/consensus.md#order-of-messages).
 /// is more restrictive.
 #[allow(clippy::too_many_arguments)]
