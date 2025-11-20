@@ -281,6 +281,10 @@ impl ProposalPart {
             None
         }
     }
+
+    pub fn is_block_info(&self) -> bool {
+        matches!(self, Self::BlockInfo(_))
+    }
 }
 
 impl ToProtobuf<consensus_proto::consensus_transaction::Txn> for TransactionVariant {
