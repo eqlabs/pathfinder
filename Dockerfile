@@ -53,7 +53,7 @@ RUN groupadd --gid 1000 pathfinder && useradd --no-log-init --uid 1000 --gid pat
 COPY --from=rust-builder /usr/src/pathfinder/pathfinder-${TARGETARCH} /usr/local/bin/pathfinder
 
 # Hack to enable `ld` link with glibc without the libc6-dev package being installed
-RUN if [[ ${TARGETARCH} == "amd64" ]]; then ln -s /lib/x86_64-linux-gnu/libc.so.6 /lib/x86_64-linux-gnu/libc.so; fi
+RUN if [ "${TARGETARCH}" = "amd64" ]; then ln -s /lib/x86_64-linux-gnu/libc.so.6 /lib/x86_64-linux-gnu/libc.so; fi
 
 # Create directory and volume for persistent data
 RUN install --owner 1000 --group 1000 --mode 0755 -d /usr/share/pathfinder/data
