@@ -256,7 +256,9 @@ impl ValidatorBlockInfoStage {
     }
 }
 
-/// Executes transactions and manages the block execution state.
+/// An empty proposal contains the following: Init, Commitment, Fin. This
+/// stage occurs after the ValidatorBlockInfoStage ingests the Commitment and is
+/// specific only to the empty proposal path.
 pub struct ValidatorEmptyProposalStage {
     expected_block_header: BlockHeader,
 }
@@ -589,8 +591,7 @@ impl ValidatorTransactionBatchStage {
         ))
     }
 
-    // TODO this fn is only used in tests, consider removing it, or making it into
-    // some test specific API
+    #[cfg(test)]
     /// Finalize with the current state (up to the last executed transaction)
     pub fn finalize(&mut self) -> anyhow::Result<Option<pathfinder_executor::types::StateDiff>> {
         if self.executor.is_none() {
