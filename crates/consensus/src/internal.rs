@@ -105,7 +105,23 @@ impl<
             "Recovering consensus from WAL entries"
         );
 
+        // Check if any entry is a Decision, which indicates this height is finalized.
+        let has_decision = entries
+            .iter()
+            .any(|e| matches!(e, WalEntry::Decision { .. }));
+
+        // Mark the WAL as finalized if we're recovering from a Decision entry.
+        if has_decision {
+            self.wal.mark_as_finalized();
+        }
+
+        // Now process the entries.
         for (i, entry) in entries.into_iter().enumerate() {
+            // We skip Decision entries as they're just markers.
+            if matches!(entry, WalEntry::Decision { .. }) {
+                continue;
+            }
+
             let input = convert_wal_entry_to_input(entry);
             if let Err(e) = self.process_input(input) {
                 tracing::error!(

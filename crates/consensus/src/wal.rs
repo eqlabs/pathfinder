@@ -29,6 +29,12 @@ pub(crate) trait WalSink<V, A>: Send {
     fn is_finalized(&self) -> bool {
         false // Default impl. for WALs that don't track finalization
     }
+
+    /// Mark this WAL as finalized. Used during recovery when we detect a
+    /// Decision entry.
+    fn mark_as_finalized(&mut self) {
+        // Default impl does nothing
+    }
 }
 
 /// A write-ahead log entry.
@@ -128,6 +134,10 @@ impl<V: Serialize, A: Serialize> WalSink<V, A> for FileWalSink {
 
     fn is_finalized(&self) -> bool {
         self.has_decision
+    }
+
+    fn mark_as_finalized(&mut self) {
+        self.has_decision = true;
     }
 }
 
@@ -234,13 +244,21 @@ pub(crate) mod recovery {
     ///
     /// Returns a tuple of:
     /// - Incomplete heights that need to be recovered
+    /// - Finalized heights (for potential restoration within history_depth)
     /// - The highest Decision height found in the WAL (even if
     ///   finalized/skipped)
     #[allow(clippy::type_complexity)]
     pub(crate) fn recover_incomplete_heights<V, A>(
         wal_dir: &Path,
         highest_finalized: Option<u64>,
-    ) -> Result<(Vec<(u64, Vec<WalEntry<V, A>>)>, Option<u64>), std::io::Error>
+    ) -> Result<
+        (
+            Vec<(u64, Vec<WalEntry<V, A>>)>,
+            Vec<(u64, Vec<WalEntry<V, A>>)>,
+            Option<u64>,
+        ),
+        std::io::Error,
+    >
     where
         V: for<'de> Deserialize<'de>,
         A: for<'de> Deserialize<'de>,
@@ -251,7 +269,7 @@ pub(crate) mod recovery {
                 wal_dir = %wal_dir.display(),
                 "WAL directory does not exist, no recovery needed"
             );
-            return Ok((Vec::new(), None));
+            return Ok((Vec::new(), Vec::new(), None));
         }
 
         let files = collect_wal_files(wal_dir)?;
@@ -259,11 +277,12 @@ pub(crate) mod recovery {
             files = ?files,
             "Recovering incomplete heights from WAL",
         );
-        let mut result = Vec::new();
+        let mut incomplete = Vec::new();
+        let mut finalized = Vec::new();
         let mut highest_decision: Option<u64> = None;
 
-        // For each file, read the entries and add them to the result if the height is
-        // not finalized. Also track the highest Decision height encountered.
+        // For each file, read the entries and categorize them as incomplete or
+        // finalized. Also track the highest Decision height encountered.
         for (height, path) in files {
             let entries: Vec<WalEntry<V, A>> = read_entries(&path)?;
 
@@ -303,18 +322,19 @@ pub(crate) mod recovery {
                 tracing::debug!(
                     height = %height,
                     path = %path.display(),
-                    "Skipping finalized height"
+                    "\"Recovering\" finalized height (may be restored if within history_depth)"
                 );
-                continue;
+                finalized.push((height, entries));
+            } else {
+                tracing::debug!(
+                    height = %height,
+                    path = %path.display(),
+                    entry_count = entries.len(),
+                    "Recovering incomplete height"
+                );
+                incomplete.push((height, entries));
             }
-            tracing::debug!(
-                height = %height,
-                path = %path.display(),
-                entry_count = entries.len(),
-                "Recovering incomplete height"
-            );
-            result.push((height, entries));
         }
-        Ok((result, highest_decision))
+        Ok((incomplete, finalized, highest_decision))
     }
 }
