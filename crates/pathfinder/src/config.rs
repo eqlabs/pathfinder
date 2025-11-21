@@ -404,6 +404,14 @@ This should only be enabled for debugging purposes as it adds substantial proces
     )]
     fee_estimation_epsilon: Percentage,
 
+    #[arg(
+        long = "rpc.block-trace-cache-size",
+        long_help = "Number of block traces to cache in memory for RPC calls.",
+        default_value = "128",
+        env = "PATHFINDER_RPC_BLOCK_TRACE_CACHE_SIZE"
+    )]
+    rpc_block_trace_cache_size: std::num::NonZeroUsize,
+
     #[cfg_attr(
         all(
             feature = "consensus-integration-tests",
@@ -872,6 +880,7 @@ pub struct Config {
     pub native_execution: NativeExecutionConfig,
     pub submission_tracker_time_limit: NonZeroU64,
     pub submission_tracker_size_limit: NonZeroUsize,
+    pub rpc_block_trace_cache_size: NonZeroUsize,
     pub consensus: Option<ConsensusConfig>,
     /// Integration testing config, only available on debug builds with `p2p`
     /// and `consensus-integration-tests` features enabled.
@@ -1139,6 +1148,7 @@ impl Config {
             native_execution: NativeExecutionConfig::parse(cli.native_execution),
             submission_tracker_time_limit: cli.submission_tracker_time_limit,
             submission_tracker_size_limit: cli.submission_tracker_size_limit,
+            rpc_block_trace_cache_size: cli.rpc_block_trace_cache_size,
             consensus: ConsensusConfig::parse_or_exit(cli.consensus),
             integration_testing: integration_testing::IntegrationTestingConfig::parse(
                 cli.integration_testing,

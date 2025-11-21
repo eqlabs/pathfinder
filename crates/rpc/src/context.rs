@@ -75,6 +75,7 @@ pub struct RpcConfig {
     pub native_class_cache_size: NonZeroUsize,
     pub submission_tracker_time_limit: NonZeroU64,
     pub submission_tracker_size_limit: NonZeroUsize,
+    pub block_trace_cache_size: NonZeroUsize,
 }
 
 #[derive(Clone)]
@@ -121,7 +122,7 @@ impl RpcContext {
             None
         };
         Self {
-            cache: Default::default(),
+            cache: TraceCache::with_size(config.block_trace_cache_size),
             storage,
             execution_storage,
             sync_status,
@@ -240,6 +241,7 @@ impl RpcContext {
             native_class_cache_size: NonZeroUsize::new(10).unwrap(),
             submission_tracker_time_limit: NonZeroU64::new(300).unwrap(),
             submission_tracker_size_limit: NonZeroUsize::new(30000).unwrap(),
+            block_trace_cache_size: NonZeroUsize::new(1).unwrap(),
         };
 
         let ethereum =
