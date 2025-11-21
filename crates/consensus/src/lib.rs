@@ -170,7 +170,7 @@ use serde::{Deserialize, Serialize};
 // Re-export consensus types needed by the public API
 pub use crate::config::{Config, TimeoutValues};
 use crate::internal::{InternalConsensus, InternalParams};
-use crate::wal::{FileWalSink, NoopWal, WalSink};
+use crate::wal::{delete_wal_file, FileWalSink, NoopWal, WalSink};
 
 mod config;
 mod internal;
@@ -474,18 +474,19 @@ impl<
         );
 
         // Read the write-ahead log and recover all incomplete heights.
-        // This also returns the highest Decision height found (even in finalized
-        // heights).
-        let (incomplete_heights, highest_decision) =
+        // This also returns finalized heights and the highest Decision height found
+        // (even in finalized heights).
+        let (incomplete_heights, finalized_heights, highest_decision) =
             match recovery::recover_incomplete_heights(&config.wal_dir, highest_finalized) {
-                Ok((heights, decision_height)) => {
+                Ok((incomplete, finalized, decision_height)) => {
                     tracing::info!(
                         validator = ?config.address,
-                        incomplete_heights = heights.len(),
+                        incomplete_heights = incomplete.len(),
+                        finalized_heights = finalized.len(),
                         highest_decision = ?decision_height,
-                        "Found incomplete heights and highest Decision in WAL"
+                        "Found incomplete and finalized heights in WAL"
                     );
-                    (heights, decision_height)
+                    (incomplete, finalized, decision_height)
                 }
                 Err(e) => {
                     tracing::error!(
@@ -494,7 +495,7 @@ impl<
                         error = %e,
                         "Failed to recover incomplete heights from WAL"
                     );
-                    (Vec::new(), None)
+                    (Vec::new(), Vec::new(), None)
                 }
             };
 
@@ -508,13 +509,67 @@ impl<
             );
         }
 
+        // Determine the maximum height we're recovering (incomplete or finalized).
+        let max_height = incomplete_heights
+            .iter()
+            .chain(finalized_heights.iter())
+            .map(|(height, _)| *height)
+            .max()
+            .or(highest_decision);
+
+        // Calculate the minimum height to keep based on history_depth.
+        // This matches the pruning logic used during normal operation.
+        let min_height_to_restore =
+            max_height.and_then(|max| max.checked_sub(config.history_depth));
+
+        // Restore finalized heights that are within history_depth.
+        // This ensures we can accept votes for these heights, matching the behavior
+        // during normal operation where finalized heights remain in memory until
+        // pruned.
+        for (height, entries) in finalized_heights {
+            // Only restore finalized heights that are within history_depth.
+            // (if max_height < history_depth, restore all finalized heights)
+            let should_restore = min_height_to_restore
+                .map(|min| height >= min)
+                .unwrap_or(true);
+
+            if should_restore {
+                tracing::info!(
+                    validator = ?consensus.config.address,
+                    height = %height,
+                    "Restoring finalized height within history_depth"
+                );
+
+                let validator_set = validator_sets.get_validator_set(height)?;
+                let mut internal_consensus = consensus.create_consensus(height, &validator_set);
+
+                // Recover from WAL first to restore the engine state.
+                internal_consensus.recover_from_wal(entries);
+
+                // Only call StartHeight if the height is not already finalized.
+                if !internal_consensus.is_finalized() {
+                    internal_consensus
+                        .handle_command(ConsensusCommand::StartHeight(height, validator_set));
+                }
+
+                consensus.internal.insert(height, internal_consensus);
+            } else {
+                tracing::debug!(
+                    validator = ?consensus.config.address,
+                    height = %height,
+                    min_height = ?min_height_to_restore,
+                    "Skipping finalized height outside history_depth"
+                );
+            }
+        }
+
         // Manually recover all incomplete heights.
         for (height, entries) in incomplete_heights {
             tracing::info!(
                 validator = ?consensus.config.address,
                 height = %height,
                 entry_count = entries.len(),
-                "Recovering height from WAL"
+                "Recovering incomplete height from WAL"
             );
 
             let validator_set = validator_sets.get_validator_set(height)?;
@@ -524,10 +579,15 @@ impl<
             consensus.internal.insert(height, internal_consensus);
         }
 
+        // Set min_kept_height to match what we've restored, so that is_height_finalized
+        // correctly identifies finalized heights that were pruned.
+        consensus.min_kept_height = min_height_to_restore;
+
         tracing::info!(
             validator = ?consensus.config.address,
             recovered_heights = consensus.internal.len(),
             last_decided_height = ?consensus.last_decided_height,
+            min_kept_height = ?consensus.min_kept_height,
             "Completed consensus recovery"
         );
 
@@ -695,14 +755,38 @@ impl<
             let new_min_height = max_height.checked_sub(self.config.history_depth);
 
             if let Some(new_min) = new_min_height {
+                // Collect heights that will be pruned (before we remove them from the map).
+                let pruned_heights: Vec<u64> = self
+                    .internal
+                    .keys()
+                    .filter(|height| **height < new_min)
+                    .copied()
+                    .collect();
+
+                // Prune the internal map and set the new min_kept_height.
                 self.min_kept_height = Some(new_min);
                 self.internal.retain(|height, _| *height >= new_min);
+
+                // Delete WAL files for pruned heights.
+                for height in &pruned_heights {
+                    if let Err(e) =
+                        delete_wal_file(&self.config.address, *height, &self.config.wal_dir)
+                    {
+                        tracing::warn!(
+                            validator = ?self.config.address,
+                            height = %height,
+                            error = %e,
+                            "Failed to delete WAL file for pruned height"
+                        );
+                    }
+                }
 
                 tracing::debug!(
                     validator = ?self.config.address,
                     min_height = %new_min,
                     max_height = %max_height,
-                    "Pruned old consensus engines"
+                    pruned_count = pruned_heights.len(),
+                    "Pruned old consensus engines and deleted WAL files"
                 );
             }
         }
