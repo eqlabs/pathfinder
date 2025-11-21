@@ -95,6 +95,16 @@ impl<'a> WalTestHelper<'a> {
             "WAL file for height {height} should exist",
         );
     }
+
+    /// Verifies that a WAL file does NOT exist for the given height.
+    pub fn verify_not_exists(&self, height: u64) {
+        let wal_filename = format!("wal-{}-{height}.json", self.addr);
+        let wal_path = self.wal_dir.join(&wal_filename);
+        assert!(
+            !wal_path.exists(),
+            "WAL file for height {height} should NOT exist",
+        );
+    }
 }
 
 #[tokio::test]
@@ -769,4 +779,183 @@ async fn recover_skips_finalized_heights_outside_history_depth() {
     // This should not cause errors even though the height is not in the internal
     // map. The system should handle votes for finalized heights gracefully.
     consensus.handle_command(ConsensusCommand::Vote(signed_vote));
+}
+
+#[tokio::test]
+async fn finalized_wal_files_kept_within_history_depth() {
+    use std::sync::Arc;
+
+    use pathfinder_consensus::{
+        Config,
+        ConsensusCommand,
+        ConsensusEvent,
+        Proposal,
+        Round,
+        SignedProposal,
+    };
+
+    pause();
+
+    // Create a temporary directory for WAL files
+    let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+    let wal_dir = temp_dir.path();
+
+    // Static validator
+    let addr = NodeAddress("0x1".to_string());
+    let validators = create_single_validator_set(addr.clone());
+
+    // Config with history_depth = 5
+    let history_depth = 5;
+    let config = Config::new(addr.clone())
+        .with_wal_dir(wal_dir.to_path_buf())
+        .with_history_depth(history_depth);
+
+    let wal_helper = WalTestHelper::new(wal_dir, &addr);
+
+    // Height 100: Will be finalized and within history_depth
+    // Height 101: Will be incomplete (establishes max_height = 101)
+    // min_height_to_restore = 101 - 5 = 96
+    // So height 100 should be kept (100 >= 96)
+    let finalized_height = 100;
+    let incomplete_height = 101;
+
+    // Step 1: Create a finalized height within history_depth
+    {
+        let mut consensus: DefaultConsensus<ConsensusValue, NodeAddress> =
+            DefaultConsensus::new(config.clone());
+        consensus.handle_command(ConsensusCommand::StartHeight(
+            finalized_height,
+            validators.clone(),
+        ));
+
+        // Wait for RequestProposal
+        let _ = drive_until(&mut consensus, Duration::from_secs(1), 5, |evt| {
+            matches!(evt, ConsensusEvent::RequestProposal { .. })
+        })
+        .await;
+
+        // Send a proposal to reach Decision
+        let value = ConsensusValue("Finalized value".to_string());
+        let proposal = Proposal {
+            height: finalized_height,
+            round: Round::new(0),
+            value: value.clone(),
+            pol_round: Round::nil(),
+            proposer: addr.clone(),
+        };
+        let signed = SignedProposal {
+            proposal,
+            signature: Signature::from_bytes([0u8; 64]),
+        };
+        consensus.handle_command(ConsensusCommand::Proposal(signed));
+
+        // Wait for Decision event
+        let decision_event = drive_until(&mut consensus, Duration::from_secs(1), 10, |evt| {
+            matches!(evt, ConsensusEvent::Decision { .. })
+        })
+        .await;
+
+        assert!(
+            decision_event.is_some(),
+            "Consensus should reach a Decision at height {finalized_height}",
+        );
+
+        // Verify WAL file exists before dropping consensus
+        wal_helper.verify_exists(finalized_height);
+    }
+
+    // Step 2: After dropping consensus, verify WAL file is STILL there
+    wal_helper.verify_exists(finalized_height);
+
+    // Step 3: Create an incomplete height to establish max_height
+    {
+        let mut consensus: DefaultConsensus<ConsensusValue, NodeAddress> =
+            DefaultConsensus::new(config.clone());
+        consensus.handle_command(ConsensusCommand::StartHeight(
+            incomplete_height,
+            validators.clone(),
+        ));
+
+        // Wait for RequestProposal but don't complete the height
+        let _ = drive_until(&mut consensus, Duration::from_secs(1), 5, |evt| {
+            matches!(evt, ConsensusEvent::RequestProposal { .. })
+        })
+        .await;
+
+        // Verify the incomplete height WAL file exists
+        wal_helper.verify_exists(incomplete_height);
+    }
+
+    // Step 4: Recover from WAL - the finalized height should be restored
+    debug!("---------------------- Recovering from WAL ----------------------");
+
+    // Clone validators before recover since StaticSet takes ownership
+    let validators_for_recovery = validators.clone();
+    let mut consensus: DefaultConsensus<ConsensusValue, NodeAddress> = DefaultConsensus::recover(
+        config.clone(),
+        Arc::new(StaticSet(validators_for_recovery)),
+        None,
+    )
+    .unwrap();
+
+    // Verify the finalized height is restored (within history_depth)
+    assert!(
+        consensus.is_height_active(finalized_height),
+        "Finalized height {finalized_height} should be restored (within history_depth)",
+    );
+
+    assert!(
+        consensus.is_height_finalized(finalized_height),
+        "Height {finalized_height} should be marked as finalized",
+    );
+
+    // Step 5: Create more heights to push finalized_height outside history_depth
+    // and verify WAL file is deleted during pruning
+    let heights_to_create = history_depth + 2; // Push it well outside history_depth
+    for h in incomplete_height + 1..=incomplete_height + heights_to_create {
+        consensus.handle_command(ConsensusCommand::StartHeight(h, validators.clone()));
+
+        // Wait for RequestProposal
+        let _ = drive_until(&mut consensus, Duration::from_secs(1), 5, |evt| {
+            matches!(evt, ConsensusEvent::RequestProposal { .. })
+        })
+        .await;
+
+        // Send a proposal to reach Decision (this triggers pruning)
+        let value = ConsensusValue(format!("Value for height {h}"));
+        let proposal = Proposal {
+            height: h,
+            round: Round::new(0),
+            value: value.clone(),
+            pol_round: Round::nil(),
+            proposer: addr.clone(),
+        };
+        let signed = SignedProposal {
+            proposal,
+            signature: Signature::from_bytes([0u8; 64]),
+        };
+        consensus.handle_command(ConsensusCommand::Proposal(signed));
+
+        // Wait for Decision event (this triggers pruning)
+        let _ = drive_until(&mut consensus, Duration::from_secs(1), 10, |evt| {
+            matches!(evt, ConsensusEvent::Decision { .. })
+        })
+        .await;
+    }
+
+    // Step 6: Verify finalized_height WAL file is now deleted (pruned)
+    // The height should be outside history_depth now
+    wal_helper.verify_not_exists(finalized_height);
+
+    // Verify the height is no longer active
+    assert!(
+        !consensus.is_height_active(finalized_height),
+        "Finalized height {finalized_height} should NOT be active (pruned)",
+    );
+
+    // But it should still be considered finalized
+    assert!(
+        consensus.is_height_finalized(finalized_height),
+        "Height {finalized_height} should still be considered finalized even if pruned",
+    );
 }
