@@ -172,6 +172,16 @@ impl BlockHeaderBuilder {
         self
     }
 
+    pub fn state_diff_commitment(mut self, state_diff_commitment: StateDiffCommitment) -> Self {
+        self.0.state_diff_commitment = state_diff_commitment;
+        self
+    }
+
+    pub fn state_diff_length(mut self, state_diff_length: u64) -> Self {
+        self.0.state_diff_length = state_diff_length;
+        self
+    }
+
     pub fn finalize_with_hash(mut self, hash: BlockHash) -> BlockHeader {
         self.0.hash = hash;
         self.0
