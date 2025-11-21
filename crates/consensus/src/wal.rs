@@ -20,6 +20,31 @@ pub(crate) fn filename(address: &impl ToString, height: u64) -> String {
     format!("{WAL_FILE_PREFIX}{address}-{height}.{WAL_FILE_EXTENSION}")
 }
 
+/// Delete the WAL file for a given validator and height.
+pub(crate) fn delete_wal_file(
+    address: &impl ToString,
+    height: u64,
+    wal_dir: &Path,
+) -> Result<(), std::io::Error> {
+    let filename = filename(address, height);
+    let path = wal_dir.join(&filename);
+
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| {
+            std::io::Error::other(format!(
+                "Failed to delete WAL file {}: {}",
+                path.display(),
+                e
+            ))
+        })?;
+        tracing::debug!(
+            path = %path.display(),
+            "Deleted WAL file for pruned height"
+        );
+    }
+    Ok(())
+}
+
 /// A trait for types that can append to a write-ahead log.
 pub(crate) trait WalSink<V, A>: Send {
     /// Append an entry to the write-ahead log.
@@ -84,7 +109,7 @@ impl FileWalSink {
 
 impl Drop for FileWalSink {
     fn drop(&mut self) {
-        // Ensure all data is flushed to disk before we potentially delete the file
+        // Ensure all data is flushed to disk before drop
         if let Err(e) = self.file.flush() {
             tracing::error!(
                 path = %self.path.display(),
@@ -93,27 +118,14 @@ impl Drop for FileWalSink {
             );
         }
 
-        if self.has_decision {
-            // Only delete the WAL file if we've reached a decision
-            if let Err(e) = fs::remove_file(&self.path) {
-                tracing::error!(
-                    path = %self.path.display(),
-                    error = %e,
-                    "Failed to delete WAL file after decision"
-                );
-            } else {
-                tracing::debug!(
-                    path = %self.path.display(),
-                    "Successfully deleted WAL file after decision"
-                );
-            }
-        } else {
-            // Keep the WAL file if no decision was reached
-            tracing::debug!(
-                path = %self.path.display(),
-                "Keeping WAL file as no decision was reached"
-            );
-        }
+        // Note: We no longer delete WAL files here - we keep them for recovery
+        // in case they're still within `history_depth`. WAL files for finalized
+        // heights will be deleted during pruning (in `prune_old_engines`) when
+        // they're actually removed from memory.
+        tracing::debug!(
+            path = %self.path.display(),
+            "Keeping WAL file for potential recovery (will be deleted during pruning if outside `history_depth`)"
+        );
     }
 }
 

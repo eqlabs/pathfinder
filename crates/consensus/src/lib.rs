@@ -170,7 +170,7 @@ use serde::{Deserialize, Serialize};
 // Re-export consensus types needed by the public API
 pub use crate::config::{Config, TimeoutValues};
 use crate::internal::{InternalConsensus, InternalParams};
-use crate::wal::{FileWalSink, NoopWal, WalSink};
+use crate::wal::{delete_wal_file, FileWalSink, NoopWal, WalSink};
 
 mod config;
 mod internal;
@@ -755,14 +755,38 @@ impl<
             let new_min_height = max_height.checked_sub(self.config.history_depth);
 
             if let Some(new_min) = new_min_height {
+                // Collect heights that will be pruned (before we remove them from the map).
+                let pruned_heights: Vec<u64> = self
+                    .internal
+                    .keys()
+                    .filter(|height| **height < new_min)
+                    .copied()
+                    .collect();
+
+                // Prune the internal map and set the new min_kept_height.
                 self.min_kept_height = Some(new_min);
                 self.internal.retain(|height, _| *height >= new_min);
+
+                // Delete WAL files for pruned heights.
+                for height in &pruned_heights {
+                    if let Err(e) =
+                        delete_wal_file(&self.config.address, *height, &self.config.wal_dir)
+                    {
+                        tracing::warn!(
+                            validator = ?self.config.address,
+                            height = %height,
+                            error = %e,
+                            "Failed to delete WAL file for pruned height"
+                        );
+                    }
+                }
 
                 tracing::debug!(
                     validator = ?self.config.address,
                     min_height = %new_min,
                     max_height = %max_height,
-                    "Pruned old consensus engines"
+                    pruned_count = pruned_heights.len(),
+                    "Pruned old consensus engines and deleted WAL files"
                 );
             }
         }
