@@ -452,6 +452,13 @@ pub mod test_utils {
         let header0 = BlockHeader::builder()
             .number(BlockNumber::GENESIS)
             .calculated_state_commitment(storage_commitment0, class_commitment0)
+            .event_commitment(event_commitment!("0xec00"))
+            .event_count(0)
+            .receipt_commitment(receipt_commitment!("0xdc00"))
+            .transaction_commitment(transaction_commitment!("0xac00"))
+            .transaction_count(0)
+            .state_diff_commitment(state_diff_commitment!("0xfc00"))
+            .state_diff_length(0)
             .finalize_with_hash(block_hash_bytes!(b"genesis"));
         db_txn.insert_block_header(&header0).unwrap();
         db_txn
@@ -494,6 +501,13 @@ pub mod test_utils {
             .calculated_state_commitment(storage_commitment1, class_commitment1)
             .eth_l1_gas_price(GasPrice::from(1))
             .sequencer_address(sequencer_address_bytes!(&[1u8]))
+            .event_commitment(event_commitment!("0xec01"))
+            .event_count(1)
+            .receipt_commitment(receipt_commitment!("0xdc01"))
+            .transaction_commitment(transaction_commitment!("0xac01"))
+            .transaction_count(1)
+            .state_diff_commitment(state_diff_commitment!("0xfc01"))
+            .state_diff_length(1)
             .finalize_with_hash(block_hash_bytes!(b"block 1"));
         db_txn.insert_block_header(&header1).unwrap();
         db_txn
@@ -578,6 +592,13 @@ pub mod test_utils {
             .calculated_state_commitment(storage_commitment2, class_commitment2)
             .eth_l1_gas_price(GasPrice::from(2))
             .sequencer_address(sequencer_address_bytes!(&[2u8]))
+            .event_commitment(event_commitment!("0xec02"))
+            .event_count(2)
+            .receipt_commitment(receipt_commitment!("0xdc02"))
+            .transaction_commitment(transaction_commitment!("0xac02"))
+            .transaction_count(2)
+            .state_diff_commitment(state_diff_commitment!("0xfc02"))
+            .state_diff_length(2)
             .finalize_with_hash(block_hash_bytes!(b"latest"));
 
         db_txn.insert_block_header(&header2).unwrap();
