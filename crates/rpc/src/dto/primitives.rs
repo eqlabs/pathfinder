@@ -723,6 +723,12 @@ mod pathfinder_common_types {
         }
     }
 
+    impl SerializeForVersion for pathfinder_common::StateDiffCommitment {
+        fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
+            serializer.serialize_str(&hex_str::bytes_to_hex_str_stripped(self.0.as_be_bytes()))
+        }
+    }
+
     impl SerializeForVersion for pathfinder_common::StorageAddress {
         fn serialize(&self, serializer: Serializer) -> Result<dto::Ok, dto::Error> {
             serializer.serialize_str(&hex_str::bytes_to_hex_str_stripped(self.0.as_be_bytes()))

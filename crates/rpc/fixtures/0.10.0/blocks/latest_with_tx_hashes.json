@@ -1,6 +1,8 @@
 {
   "block_hash": "0x6c6174657374",
   "block_number": 2,
+  "event_commitment": "0xec02",
+  "event_count": 2,
   "l1_da_mode": "CALLDATA",
   "l1_data_gas_price": {
     "price_in_fri": "0x0",
@@ -16,10 +18,15 @@
   },
   "new_root": "0x57b695c82af81429fdc8966088b0196105dfb5aa22b54cbc86fc95dc3b3ece1",
   "parent_hash": "0x626c6f636b2031",
+  "receipt_commitment": "0xdc02",
   "sequencer_address": "0x2",
   "starknet_version": "",
+  "state_diff_commitment": "0xfc02",
+  "state_diff_length": 2,
   "status": "ACCEPTED_ON_L2",
   "timestamp": 2,
+  "transaction_commitment": "0xac02",
+  "transaction_count": 2,
   "transactions": [
     "0x74786e2033",
     "0x74786e2034",

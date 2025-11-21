@@ -83,6 +83,16 @@ impl crate::dto::SerializeForVersion for pathfinder_common::BlockHeader {
             )?;
         }
 
+        if serializer.version >= RpcVersion::V10 {
+            serializer.serialize_field("event_commitment", &self.event_commitment)?;
+            serializer.serialize_field("transaction_commitment", &self.transaction_commitment)?;
+            serializer.serialize_field("receipt_commitment", &self.receipt_commitment)?;
+            serializer.serialize_field("state_diff_commitment", &self.state_diff_commitment)?;
+            serializer.serialize_field("event_count", &self.event_count)?;
+            serializer.serialize_field("transaction_count", &self.transaction_count)?;
+            serializer.serialize_field("state_diff_length", &self.state_diff_length)?;
+        }
+
         serializer.end()
     }
 }

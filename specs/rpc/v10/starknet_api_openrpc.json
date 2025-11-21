@@ -1,7 +1,7 @@
 {
   "openrpc": "1.0.0-rc1",
   "info": {
-    "version": "0.10.0-rc.1",
+    "version": "0.10.0-rc.2",
     "title": "StarkNet Node API",
     "license": {}
   },
@@ -1647,6 +1647,44 @@
             "title": "Starknet version",
             "description": "Semver of the current Starknet protocol",
             "type": "string"
+          },
+          "event_commitment": {
+            "title": "Event commitment",
+            "description": "The root of Merkle Patricia trie for events in the block",
+            "$ref": "#/components/schemas/FELT"
+          },
+          "transaction_commitment": {
+            "title": "Transaction commitment",
+            "description": "The root of Merkle Patricia trie for transactions in the block",
+            "$ref": "#/components/schemas/FELT"
+          },
+          "receipt_commitment": {
+            "title": "Receipt commitment",
+            "description": "The root of Merkle Patricia trie for receipts in the block",
+            "$ref": "#/components/schemas/FELT"
+          },
+          "state_diff_commitment": {
+            "title": "State diff commitment",
+            "description": "The state diff commitment hash in the block",
+            "$ref": "#/components/schemas/FELT"
+          },
+          "event_count": {
+            "title": "Event count",
+            "description": "The number of events in the block",
+            "type": "integer",
+            "minimum": 0
+          },
+          "transaction_count": {
+            "title": "Transaction count",
+            "description": "The number of transactions in the block",
+            "type": "integer",
+            "minimum": 0
+          },
+          "state_diff_length": {
+            "title": "State diff length",
+            "description": "The length of the state diff in the block",
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": [
@@ -1660,7 +1698,14 @@
           "l2_gas_price",
           "l1_data_gas_price",
           "l1_da_mode",
-          "starknet_version"
+          "starknet_version",
+          "event_commitment",
+          "transaction_commitment",
+          "receipt_commitment",
+          "state_diff_commitment",
+          "event_count",
+          "transaction_count",
+          "state_diff_length"
         ]
       },
       "PRE_CONFIRMED_BLOCK_HEADER": {
