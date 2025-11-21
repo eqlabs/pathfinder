@@ -9,9 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-### Added
+### Changed
 
--- The size of the block trace cache is now configurable by the new `--rpc.block-trace-cache-size` CLI argument.
+- Pathfinder now serves the JSON-RPC 0.10.0-rc.2 API on the `v0_10` routes.
+- The size of the block trace cache is now configurable by the new `--rpc.block-trace-cache-size` CLI argument.
 
 ## [0.21.1] - 2025-11-20
 
