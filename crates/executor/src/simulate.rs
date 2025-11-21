@@ -1,3 +1,4 @@
+use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
@@ -91,6 +92,12 @@ type Traces = Vec<(TransactionHash, TransactionTrace)>;
 impl Default for TraceCache {
     fn default() -> Self {
         Self(Arc::new(Mutex::new(SizedCache::with_size(128))))
+    }
+}
+
+impl TraceCache {
+    pub fn with_size(size: NonZeroUsize) -> Self {
+        Self(Arc::new(Mutex::new(SizedCache::with_size(size.get()))))
     }
 }
 

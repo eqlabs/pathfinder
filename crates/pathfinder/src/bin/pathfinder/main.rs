@@ -239,6 +239,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         native_class_cache_size: config.native_execution.class_cache_size(),
         submission_tracker_time_limit: config.submission_tracker_time_limit,
         submission_tracker_size_limit: config.submission_tracker_size_limit,
+        block_trace_cache_size: config.rpc_block_trace_cache_size,
     };
 
     let notifications = Notifications::default();
