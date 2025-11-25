@@ -161,8 +161,9 @@ impl<'tx> ConsensusProposals<'tx> {
 
 #[cfg(test)]
 mod tests {
-    use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
-    use p2p_proto::consensus::{BlockInfo, ProposalFin, ProposalInit};
+    use fake::{Fake, Faker};
+    use p2p_proto::common::Address;
+    use p2p_proto::consensus::{BlockInfo, ProposalCommitment, ProposalInit};
     use pathfinder_common::prelude::*;
     use pathfinder_crypto::Felt;
     use pathfinder_storage::StorageBuilder;
@@ -185,75 +186,42 @@ mod tests {
         proposer: ContractAddress,
     ) -> Vec<ProposalPart> {
         let proposer_addr = Address(proposer.0);
-        let zero_hash = Hash(Felt::ZERO);
         vec![
-            ProposalPart::Init(ProposalInit {
-                block_number: height,
-                round,
-                valid_round: None,
-                proposer: proposer_addr,
+            ProposalPart::Init({
+                let mut init: ProposalInit = Faker.fake();
+                init.block_number = height;
+                init.round = round;
+                init.valid_round = None;
+                init.proposer = proposer_addr;
+                init
             }),
-            ProposalPart::BlockInfo(BlockInfo {
-                block_number: height,
-                timestamp: 1000,
-                builder: proposer_addr,
-                l1_da_mode: L1DataAvailabilityMode::Calldata,
-                l2_gas_price_fri: 1,
-                l1_gas_price_wei: 1_000_000_000,
-                l1_data_gas_price_wei: 1,
-                eth_to_strk_rate: 1_000_000_000,
+            ProposalPart::BlockInfo({
+                let mut block_info: BlockInfo = Faker.fake();
+                block_info.block_number = height;
+                block_info.builder = proposer_addr;
+                block_info
             }),
             ProposalPart::TransactionBatch(vec![]),
-            ProposalPart::TransactionsFin(p2p_proto::consensus::TransactionsFin {
-                executed_transaction_count: 0,
+            ProposalPart::TransactionsFin(Faker.fake()),
+            ProposalPart::ProposalCommitment({
+                let mut commitment: ProposalCommitment = Faker.fake();
+                commitment.block_number = height;
+                commitment.builder = proposer_addr;
+                commitment
             }),
-            ProposalPart::ProposalCommitment(p2p_proto::consensus::ProposalCommitment {
-                block_number: height,
-                parent_commitment: zero_hash,
-                builder: proposer_addr,
-                timestamp: 1000,
-                protocol_version: "0.14.0".to_string(),
-                old_state_root: zero_hash,
-                version_constant_commitment: zero_hash,
-                state_diff_commitment: zero_hash,
-                transaction_commitment: zero_hash,
-                event_commitment: zero_hash,
-                receipt_commitment: zero_hash,
-                concatenated_counts: Felt::ZERO,
-                l1_gas_price_fri: 0,
-                l1_data_gas_price_fri: 0,
-                l2_gas_price_fri: 0,
-                l2_gas_used: 0,
-                next_l2_gas_price_fri: 0,
-                l1_da_mode: L1DataAvailabilityMode::Calldata,
-            }),
-            ProposalPart::Fin(ProposalFin {
-                proposal_commitment: zero_hash,
-            }),
+            ProposalPart::Fin(Faker.fake()),
         ]
     }
 
     fn create_test_finalized_block(height: u64) -> FinalizedBlock {
-        use pathfinder_common::state_update::StateUpdateData;
-        use pathfinder_common::{
-            BlockHeader,
-            BlockNumber,
-            BlockTimestamp,
-            ClassCommitment,
-            SequencerAddress,
-            StorageCommitment,
-        };
+        use pathfinder_common::{BlockHeader, BlockNumber};
 
-        let header = BlockHeader::builder()
-            .number(BlockNumber::new_or_panic(height))
-            .timestamp(BlockTimestamp::new_or_panic(1000))
-            .calculated_state_commitment(StorageCommitment(Felt::ZERO), ClassCommitment(Felt::ZERO))
-            .sequencer_address(SequencerAddress::ZERO)
-            .finalize_with_hash(BlockHash(Felt::ZERO));
+        let mut header: BlockHeader = Faker.fake();
+        header.number = BlockNumber::new_or_panic(height);
 
         FinalizedBlock {
             header,
-            state_update: StateUpdateData::default(),
+            state_update: Faker.fake(),
             transactions_and_receipts: vec![],
             events: vec![],
         }
