@@ -1,4 +1,4 @@
-use libp2p::gossipsub::{self, IdentTopic};
+use libp2p::gossipsub::{self, IdentTopic, Sha256Topic};
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{identity, PeerId};
 use p2p_proto::consensus::Vote;
@@ -115,27 +115,41 @@ impl ApplicationBehaviour for Behaviour {
     ) {
         use gossipsub::Event::*;
         let BehaviourEvent::Gossipsub(e) = event;
+
+        tracing::trace!(event=?e, "Gossipsub event received");
+
+        let topic_proposals_hash = Sha256Topic::new(TOPIC_PROPOSALS).hash();
+        let topic_votes_hash = Sha256Topic::new(TOPIC_VOTES).hash();
+
         match e {
             Message {
                 propagation_source: _,
                 message_id,
                 message,
-            } => match message.topic.as_str() {
-                TOPIC_PROPOSALS => {
-                    if let Ok(stream_msg) = StreamMessage::from_protobuf_bytes(&message.data) {
-                        let events = handle_incoming_proposal_message(state, stream_msg);
-                        for event in events {
-                            let _ = event_sender.send(event);
+            } => match message.topic {
+                hash if hash == topic_proposals_hash => {
+                    match StreamMessage::from_protobuf_bytes(&message.data) {
+                        Ok(stream_msg) => {
+                            let events = handle_incoming_proposal_message(state, stream_msg);
+                            for event in events {
+                                tracing::trace!(?event, "Emitting proposal event");
+                                let _ = event_sender.send(event);
+                            }
                         }
-                    } else {
-                        error!("Failed to parse proposal message with id: {}", message_id);
+                        Err(error) => {
+                            error!(%message_id, %error, "Failed to parse proposal message");
+                        }
                     }
                 }
-                TOPIC_VOTES => {
-                    if let Ok(vote) = Vote::from_protobuf_bytes(&message.data) {
-                        let _ = event_sender.send(Event::Vote(vote));
-                    } else {
-                        error!("Failed to parse vote message with id: {}", message_id);
+                hash if hash == topic_votes_hash => {
+                    match Vote::from_protobuf_bytes(&message.data) {
+                        Ok(vote) => {
+                            tracing::trace!(?vote, "Emitting vote event");
+                            let _ = event_sender.send(Event::Vote(vote));
+                        }
+                        Err(error) => {
+                            error!(%message_id, %error, "Failed to parse vote message");
+                        }
                     }
                 }
                 _ => {}
@@ -163,8 +177,8 @@ impl Behaviour {
         )
         .expect("Failed to create gossipsub behaviour");
 
-        let proposals_topic = IdentTopic::new(TOPIC_PROPOSALS);
-        let votes_topic = IdentTopic::new(TOPIC_VOTES);
+        let proposals_topic = Sha256Topic::new(TOPIC_PROPOSALS);
+        let votes_topic = Sha256Topic::new(TOPIC_VOTES);
 
         gossipsub
             .subscribe(&proposals_topic)
