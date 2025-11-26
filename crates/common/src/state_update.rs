@@ -1074,6 +1074,51 @@ mod tests {
         );
     }
 
+    /// Source:
+    /// https://github.com/starkware-libs/starknet-api/blob/5565e5282f5fead364a41e49c173940fd83dee00/src/block_hash/state_diff_hash_test.rs#L14
+    #[test]
+    fn test_sequencer_state_diff_commitment() {
+        let contract_updates: HashMap<_, _> = [(
+            ContractAddress(1u64.into()),
+            ContractUpdate {
+                storage: [(StorageAddress(1u64.into()), StorageValue(1u64.into()))]
+                    .iter()
+                    .cloned()
+                    .collect(),
+                ..Default::default()
+            },
+        )]
+        .into_iter()
+        .collect();
+
+        let declared_sierra_classes: HashMap<_, _> = [(
+            SierraHash(felt!(
+                "0x49e1ada96693b3df6e13e362a286effd5fc3e3dc6a4db8133a401edbaa86246"
+            )),
+            CasmHash(felt!(
+                "0x215f3a501f0d751b87701128ff931b0814725197a833c509b9c331acea9e9a4"
+            )),
+        )]
+        .iter()
+        .cloned()
+        .collect();
+
+        let expected_hash = StateDiffCommitment(felt!(
+            "0x17ea8df468f22485c6fba6489112d1be111cd52af2734a041e8b126aea45f3f"
+        ));
+
+        assert_eq!(
+            expected_hash,
+            state_diff_commitment::compute(
+                &contract_updates,
+                &Default::default(),
+                &Default::default(),
+                &declared_sierra_classes,
+                &Default::default(),
+            )
+        );
+    }
+
     #[test]
     fn apply() {
         let state_update = StateUpdate::default()
