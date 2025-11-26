@@ -1,7 +1,7 @@
 {
   "openrpc": "1.0.0-rc1",
   "info": {
-    "version": "0.10.0-rc.2",
+    "version": "0.10.0",
     "title": "StarkNet Node API",
     "license": {}
   },
@@ -1650,22 +1650,22 @@
           },
           "event_commitment": {
             "title": "Event commitment",
-            "description": "The root of Merkle Patricia trie for events in the block",
+            "description": "The root of Merkle Patricia trie for events in the block. For blocks where this data is not available (e.g., old blocks), use 0x0",
             "$ref": "#/components/schemas/FELT"
           },
           "transaction_commitment": {
             "title": "Transaction commitment",
-            "description": "The root of Merkle Patricia trie for transactions in the block",
+            "description": "The root of Merkle Patricia trie for transactions in the block. For blocks where this data is not available (e.g., old blocks), use 0x0",
             "$ref": "#/components/schemas/FELT"
           },
           "receipt_commitment": {
             "title": "Receipt commitment",
-            "description": "The root of Merkle Patricia trie for receipts in the block",
+            "description": "The root of Merkle Patricia trie for receipts in the block. For blocks where this data is not available (e.g., old blocks), use 0x0",
             "$ref": "#/components/schemas/FELT"
           },
           "state_diff_commitment": {
             "title": "State diff commitment",
-            "description": "The state diff commitment hash in the block",
+            "description": "The state diff commitment hash in the block. For blocks where this data is not available (e.g., old blocks), use 0x0",
             "$ref": "#/components/schemas/FELT"
           },
           "event_count": {
@@ -1682,7 +1682,7 @@
           },
           "state_diff_length": {
             "title": "State diff length",
-            "description": "The length of the state diff in the block",
+            "description": "The length of the state diff in the block. For blocks where this data is not available (e.g., old blocks), compute from state diff if possible, otherwise use 0",
             "type": "integer",
             "minimum": 0
           }
