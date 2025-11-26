@@ -46,7 +46,7 @@ impl IntoModel<proto::ProposalPart> for dto::ProposalPart {
                 l2_gas_price_fri: p.l2_gas_price_fri,
                 l1_gas_price_wei: p.l1_gas_price_wei,
                 l1_data_gas_price_wei: p.l1_data_gas_price_wei,
-                eth_to_strk_rate: p.eth_to_strk_rate,
+                eth_to_fri_rate: p.eth_to_fri_rate,
                 l1_da_mode: p.l1_da_mode.into_model(),
             }),
             dto::ProposalPart::TransactionBatch(batch) => proto::ProposalPart::TransactionBatch(
@@ -307,7 +307,7 @@ impl TryIntoDto<proto::ProposalPart> for dto::ProposalPart {
                 l2_gas_price_fri: q.l2_gas_price_fri,
                 l1_gas_price_wei: q.l1_gas_price_wei,
                 l1_data_gas_price_wei: q.l1_data_gas_price_wei,
-                eth_to_strk_rate: q.eth_to_strk_rate,
+                eth_to_fri_rate: q.eth_to_fri_rate,
                 l1_da_mode: u8::try_into_dto(q.l1_da_mode)?,
             }),
             proto::ProposalPart::TransactionBatch(proto_batch) => {

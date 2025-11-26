@@ -148,7 +148,7 @@ mod tests {
             l2_gas_price_fri: 1000,
             l1_gas_price_wei: 2000,
             l1_data_gas_price_wei: 3000,
-            eth_to_strk_rate: 4000,
+            eth_to_fri_rate: 4000,
         };
         let proposal = p2p_proto::consensus::ProposalPart::BlockInfo(block_info);
 

@@ -28,20 +28,13 @@ message Vote {
     // We use a type field to distinguish between prevotes and precommits instead of different
     // messages, to make sure the data, and therefore the signatures, are unambiguous between
     // Prevote and Precommit.
-    VoteType      vote_type           = 1;
-    uint64        block_number        = 2;
-    uint32        round               = 3;
+    VoteType      vote_type           = 2;
+    uint64        block_number        = 3;
+    uint32        round               = 4;
     // This is optional since a vote can be NIL.
-    optional starknet.common.Hash proposal_commitment = 4;
+    optional starknet.common.Hash proposal_commitment = 5;
     // Identifies the voter.
-    starknet.common.Address       voter               = 5;
-}
-
-// Streaming of proposals is done on the "consensus_proposal" topic.
-message ConsensusStreamId {
-    uint64 block_number = 1;
-    uint32 round        = 2;
-    uint64 nonce        = 3;
+    starknet.common.Address       voter               = 6;
 }
 
 // Messages which make up a Proposal stream.
@@ -51,7 +44,7 @@ message ProposalPart {
         ProposalFin        fin             = 2;
         BlockInfo          block_info      = 3;
         TransactionBatch   transactions    = 4;
-        TransactionsFin    transaction_fin = 5;
+        uint64 executed_transaction_count  = 5;
         ProposalCommitment commitment      = 6;
     }
 }
@@ -116,12 +109,12 @@ message ProposalCommitment {
 }
 
 message BlockInfo {
-    uint64                 block_number          = 1;
-    starknet.common.Address                builder               = 2;
-    uint64                 timestamp             = 3;
-    starknet.common.Uint128                l2_gas_price_fri      = 4;
-    starknet.common.Uint128                l1_gas_price_wei      = 5;
-    starknet.common.Uint128                l1_data_gas_price_wei = 6;
-    starknet.common.Uint128                eth_to_strk_rate      = 7;
-    starknet.common.L1DataAvailabilityMode l1_da_mode            = 8;
+    uint64 block_number                               = 1;
+    uint64 timestamp                                  = 2;
+    starknet.common.Address builder                   = 3;
+    starknet.common.L1DataAvailabilityMode l1_da_mode = 4;
+    starknet.common.Uint128 l2_gas_price_fri          = 5;
+    starknet.common.Uint128 l1_gas_price_wei          = 6;
+    starknet.common.Uint128 l1_data_gas_price_wei     = 7;
+    starknet.common.Uint128 eth_to_fri_rate           = 8;
 }

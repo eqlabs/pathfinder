@@ -410,7 +410,7 @@ fn create_empty_proposal(
         l2_gas_price_fri: 1,
         l1_gas_price_wei: 1_000_000_000,
         l1_data_gas_price_wei: 1,
-        eth_to_strk_rate: 1_000_000_000,
+        eth_to_fri_rate: 1_000_000_000,
     };
     let current_block = BlockNumber::new(height).context("Invalid height")?;
     let parent_proposal_commitment_hash = if let Some(parent_number) = current_block.parent() {

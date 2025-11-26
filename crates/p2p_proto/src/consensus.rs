@@ -53,14 +53,6 @@ impl ProtobufSerializable for Vote {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "consensus_proto::ConsensusStreamId")]
-struct ConsensusStreamId {
-    pub block_number: u64,
-    pub round: u32,
-    pub nonce: u64,
-}
-
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Dummy)]
 pub enum ProposalPart {
@@ -109,7 +101,7 @@ pub struct BlockInfo {
     pub l2_gas_price_fri: u128,
     pub l1_gas_price_wei: u128,
     pub l1_data_gas_price_wei: u128,
-    pub eth_to_strk_rate: u128,
+    pub eth_to_fri_rate: u128,
     pub l1_da_mode: L1DataAvailabilityMode,
 }
 
@@ -187,9 +179,9 @@ impl ToProtobuf<consensus_proto::ProposalPart> for ProposalPart {
         use consensus_proto::proposal_part::Messages::{
             BlockInfo,
             Commitment,
+            ExecutedTransactionCount,
             Fin,
             Init,
-            TransactionFin,
             Transactions,
         };
         let msg = match self {
@@ -205,7 +197,7 @@ impl ToProtobuf<consensus_proto::ProposalPart> for ProposalPart {
                 })
             }
             ProposalPart::TransactionsFin(transactions_fin) => {
-                TransactionFin(transactions_fin.to_protobuf())
+                ExecutedTransactionCount(transactions_fin.executed_transaction_count)
             }
             ProposalPart::ProposalCommitment(proposal_commitment) => {
                 Commitment(proposal_commitment.to_protobuf())
@@ -225,9 +217,9 @@ impl TryFromProtobuf<consensus_proto::ProposalPart> for ProposalPart {
         use consensus_proto::proposal_part::Messages::{
             BlockInfo,
             Commitment,
+            ExecutedTransactionCount,
             Fin,
             Init,
-            TransactionFin,
             Transactions,
         };
         match proto_field(input.messages, field_name)? {
@@ -242,9 +234,10 @@ impl TryFromProtobuf<consensus_proto::ProposalPart> for ProposalPart {
                 .collect::<Result<Vec<_>, _>>()
                 .map(Self::TransactionBatch),
             Fin(fin) => TryFromProtobuf::try_from_protobuf(fin, field_name).map(Self::Fin),
-            TransactionFin(transactions_fin) => {
-                TryFromProtobuf::try_from_protobuf(transactions_fin, field_name)
-                    .map(Self::TransactionsFin)
+            ExecutedTransactionCount(executed_transaction_count) => {
+                Ok(Self::TransactionsFin(TransactionsFin {
+                    executed_transaction_count,
+                }))
             }
             Commitment(proposal_commitment) => {
                 TryFromProtobuf::try_from_protobuf(proposal_commitment, field_name)

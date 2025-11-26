@@ -110,7 +110,7 @@ impl ValidatorBlockInfoStage {
             l2_gas_price_fri,
             l1_gas_price_wei,
             l1_data_gas_price_wei,
-            eth_to_strk_rate,
+            eth_to_fri_rate,
         } = block_info;
 
         let block_info = pathfinder_executor::types::BlockInfo::try_from_proposal(
@@ -127,7 +127,7 @@ impl ValidatorBlockInfoStage {
                 l2_gas_price_fri,
                 l1_gas_price_wei,
                 l1_data_gas_price_wei,
-                eth_to_strk_rate,
+                eth_to_fri_rate,
             ),
             StarknetVersion::new(0, 14, 0, 0), /* TODO(validator) should probably come from
                                                 * somewhere... */
@@ -1440,7 +1440,7 @@ mod tests {
             l2_gas_price_fri: 1,
             l1_gas_price_wei: 1_000_000_000,
             l1_data_gas_price_wei: 1,
-            eth_to_strk_rate: 1_000_000_000,
+            eth_to_fri_rate: 1_000_000_000,
         };
 
         // Create validator stages (empty proposal path)
