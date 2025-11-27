@@ -30,6 +30,8 @@ use pathfinder_consensus::{
     SignedProposal,
     SignedVote,
 };
+use pathfinder_executor::{BlockExecutor, BlockExecutorExt};
+use pathfinder_storage::fake::Block;
 use pathfinder_storage::{Storage, Transaction, TransactionBehavior};
 use tokio::sync::mpsc;
 
@@ -43,7 +45,13 @@ use crate::consensus::inner::batch_execution::{
 };
 use crate::consensus::inner::persist_proposals::ConsensusProposals;
 use crate::consensus::inner::ConsensusValue;
-use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage, ValidatorStage};
+use crate::validator::{
+    FinalizedBlock,
+    ProdTransactionMapper,
+    TransactionMapper,
+    ValidatorBlockInfoStage,
+    ValidatorStage,
+};
 
 #[cfg(test)]
 mod handler_proptests;
@@ -79,7 +87,7 @@ pub fn spawn(
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     let validator_address = config.my_validator_address;
     // TODO validators are long-lived but not persisted
-    let validator_cache = ValidatorCache::new();
+    let validator_cache = ValidatorCache::<BlockExecutor>::new();
     // Contains transaction batches and proposal finalizations that are
     // waiting for previous block to be committed before they can be executed.
     let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
@@ -160,7 +168,10 @@ pub fn spawn(
                             Event::Proposal(height_and_round, proposal_part) => {
                                 let vcache = validator_cache.clone();
                                 let dex = deferred_executions.clone();
-                                let result = handle_incoming_proposal_part(
+                                let result = handle_incoming_proposal_part::<
+                                    BlockExecutor,
+                                    ProdTransactionMapper,
+                                >(
                                     chain_id,
                                     validator_address,
                                     height_and_round,
@@ -420,7 +431,10 @@ pub fn spawn(
                             anyhow::Ok(())
                         }?;
 
-                        let exec_success = execute_deferred_for_next_height(
+                        let exec_success = execute_deferred_for_next_height::<
+                            BlockExecutor,
+                            ProdTransactionMapper,
+                        >(
                             height_and_round,
                             validator_cache.clone(),
                             deferred_executions.clone(),
@@ -535,20 +549,25 @@ pub fn spawn(
     })
 }
 
-#[derive(Clone)]
-struct ValidatorCache(Arc<Mutex<HashMap<HeightAndRound, ValidatorStage>>>);
+struct ValidatorCache<E>(Arc<Mutex<HashMap<HeightAndRound, ValidatorStage<E>>>>);
 
-impl ValidatorCache {
+impl<E> Clone for ValidatorCache<E> {
+    fn clone(&self) -> Self {
+        Self(Arc::clone(&self.0))
+    }
+}
+
+impl<E> ValidatorCache<E> {
     fn new() -> Self {
         Self(Arc::new(Mutex::new(HashMap::new())))
     }
 
-    fn insert(&mut self, hnr: HeightAndRound, stage: ValidatorStage) {
+    fn insert(&mut self, hnr: HeightAndRound, stage: ValidatorStage<E>) {
         let mut cache = self.0.lock().unwrap();
         cache.insert(hnr, stage);
     }
 
-    fn remove(&mut self, hnr: &HeightAndRound) -> anyhow::Result<ValidatorStage> {
+    fn remove(&mut self, hnr: &HeightAndRound) -> anyhow::Result<ValidatorStage<E>> {
         let mut cache = self.0.lock().unwrap();
         cache
             .remove(hnr)
@@ -556,9 +575,9 @@ impl ValidatorCache {
     }
 }
 
-fn execute_deferred_for_next_height(
+fn execute_deferred_for_next_height<E: BlockExecutorExt, T: TransactionMapper>(
     height_and_round: HeightAndRound,
-    mut validator_cache: ValidatorCache,
+    mut validator_cache: ValidatorCache<E>,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
 ) -> anyhow::Result<Option<(HeightAndRound, ProposalCommitmentWithOrigin)>> {
@@ -586,7 +605,7 @@ fn execute_deferred_for_next_height(
             // Parent block is now committed, so we can execute directly without deferral
             // checks
             if !deferred.transactions.is_empty() {
-                batch_execution_manager.execute_batch(
+                batch_execution_manager.execute_batch::<E, T>(
                     hnr,
                     deferred.transactions,
                     &mut validator,
@@ -602,7 +621,7 @@ fn execute_deferred_for_next_height(
                 // transactions were non-empty). If transactions were empty,
                 // execute_batch handles marking execution as started, so we can
                 // process TransactionsFin immediately.
-                batch_execution_manager.process_transactions_fin(
+                batch_execution_manager.process_transactions_fin::<E, T>(
                     hnr,
                     transactions_fin,
                     &mut validator,
@@ -746,12 +765,12 @@ fn commit_finalized_block(
 /// The rest can come in any order. The [spec](https://github.com/starknet-io/starknet-p2p-specs/blob/main/p2p/proto/consensus/consensus.md#order-of-messages).
 /// is more restrictive.
 #[allow(clippy::too_many_arguments)]
-fn handle_incoming_proposal_part(
+fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionMapper>(
     chain_id: ChainId,
     validator_address: ContractAddress,
     height_and_round: HeightAndRound,
     proposal_part: ProposalPart,
-    mut validator_cache: ValidatorCache,
+    mut validator_cache: ValidatorCache<E>,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     db_tx: &Transaction<'_>,
     storage: Storage,
@@ -869,7 +888,7 @@ fn handle_incoming_proposal_part(
 
             // Use BatchExecutionManager to handle optimistic execution with checkpoints and
             // deferral
-            batch_execution_manager.process_batch_with_deferral(
+            batch_execution_manager.process_batch_with_deferral::<E, T>(
                 height_and_round,
                 tx_batch,
                 &mut validator,
@@ -1000,7 +1019,7 @@ fn handle_incoming_proposal_part(
                     )?;
 
                     let valid_round = valid_round_from_parts(&parts)?;
-                    let (validator, proposal_commitment) = defer_or_execute_proposal_fin(
+                    let (validator, proposal_commitment) = defer_or_execute_proposal_fin::<E, T>(
                         height_and_round,
                         proposal_commitment,
                         proposer_address,
@@ -1075,7 +1094,7 @@ fn handle_incoming_proposal_part(
                 );
             } else {
                 // Execution has started - process TransactionsFin immediately
-                batch_execution_manager.process_transactions_fin(
+                batch_execution_manager.process_transactions_fin::<E, T>(
                     height_and_round,
                     *transactions_fin,
                     &mut validator,
@@ -1137,16 +1156,16 @@ fn append_and_persist_part(
 /// execution is performed, any previously deferred transactions for the height
 /// and round are executed first, then the proposal is finalized.
 #[allow(clippy::too_many_arguments)]
-fn defer_or_execute_proposal_fin(
+fn defer_or_execute_proposal_fin<E: BlockExecutorExt, T: TransactionMapper>(
     height_and_round: HeightAndRound,
     proposal_commitment: Hash,
     proposer_address: ContractAddress,
     valid_round: Option<u32>,
     db_tx: &Transaction<'_>,
-    mut validator: Box<crate::validator::ValidatorTransactionBatchStage>,
+    mut validator: Box<crate::validator::ValidatorTransactionBatchStage<E>>,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
-) -> anyhow::Result<(ValidatorStage, Option<ProposalCommitmentWithOrigin>)> {
+) -> anyhow::Result<(ValidatorStage<E>, Option<ProposalCommitmentWithOrigin>)> {
     let commitment = ProposalCommitmentWithOrigin {
         proposal_commitment: ProposalCommitment(proposal_commitment.0),
         proposer_address,
@@ -1178,7 +1197,7 @@ fn defer_or_execute_proposal_fin(
 
         if let Some(deferred) = deferred {
             if !deferred.transactions.is_empty() {
-                batch_execution_manager.execute_batch(
+                batch_execution_manager.execute_batch::<E, T>(
                     height_and_round,
                     deferred.transactions,
                     &mut validator,
@@ -1193,7 +1212,7 @@ fn defer_or_execute_proposal_fin(
                 );
                 // Execution has started at this point (from execute_batch),
                 // so we can process TransactionsFin immediately
-                batch_execution_manager.process_transactions_fin(
+                batch_execution_manager.process_transactions_fin::<E, T>(
                     height_and_round,
                     transactions_fin,
                     &mut validator,
