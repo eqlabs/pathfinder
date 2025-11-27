@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use fake::Fake as _;
 use p2p::consensus::HeightAndRound;
-use p2p_proto::common::{Address, Hash};
+use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
 use p2p_proto::consensus::{
     BlockInfo,
     ProposalCommitment,
@@ -57,15 +57,7 @@ fn test_handle_incoming_proposal_part() {
     let proposals_db = ConsensusProposals::new(consensus_db_tx);
     let mut batch_execution_manager = BatchExecutionManager::new();
 
-    let (proposal_parts, _finalized_block) = create_empty_proposal(
-        ChainId::SEPOLIA_TESTNET,
-        0,
-        Round::new(0),
-        ContractAddress::ZERO,
-        main_storage.clone(),
-    )
-    .unwrap();
-    let proposal_parts = create_structurally_valid_non_empty_proposal(42);
+    let proposal_parts = create_structurally_valid_empty_proposal(42);
     let proposal_parts_len = proposal_parts.len();
 
     for (proposal_part, is_last) in proposal_parts
@@ -93,6 +85,47 @@ fn test_handle_incoming_proposal_part() {
             .unwrap();
         assert_eq!(proposal_commitment_w_origin.is_some(), is_last);
     }
+}
+
+/// Creates a structurally valid, empty proposal.
+///
+/// The proposal parts will be ordered as follows:
+/// - Proposal Init
+/// - Proposal Commitment
+/// - Proposal Fin
+fn create_structurally_valid_empty_proposal(seed: u64) -> Vec<ProposalPart> {
+    use rand::SeedableRng;
+    // Explicitly choose RNG to make sure seeded proposals are always reproducible
+    let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
+    let mut proposal_parts = Vec::new();
+    let init = ProposalPart::Init(ProposalInit {
+        block_number: 0,
+        round: 0,
+        valid_round: None,
+        proposer: Address(ContractAddress::ZERO.0),
+    });
+    proposal_parts.push(init);
+
+    let mut proposal_commitment: ProposalCommitment = fake::Faker.fake_with_rng(&mut rng);
+    proposal_commitment.block_number = 0;
+    proposal_commitment.builder = Address(ContractAddress::ZERO.0);
+    proposal_commitment.state_diff_commitment = Hash::ZERO;
+    proposal_commitment.transaction_commitment = Hash::ZERO;
+    proposal_commitment.event_commitment = Hash::ZERO;
+    proposal_commitment.receipt_commitment = Hash::ZERO;
+    proposal_commitment.l1_gas_price_fri = 0;
+    proposal_commitment.l1_data_gas_price_fri = 0;
+    proposal_commitment.l2_gas_price_fri = 0;
+    proposal_commitment.l2_gas_used = 0;
+    proposal_commitment.l1_da_mode = L1DataAvailabilityMode::Calldata;
+    let proposal_commitment = ProposalPart::ProposalCommitment(proposal_commitment);
+    proposal_parts.push(proposal_commitment);
+
+    let proposal_fin = ProposalPart::Fin(ProposalFin {
+        proposal_commitment: Hash::ZERO,
+    });
+    proposal_parts.push(proposal_fin);
+    proposal_parts
 }
 
 /// Creates a structurally valid, non-empty proposal with random parts.
@@ -304,7 +337,7 @@ mod strategy {
     pub fn composite() -> BoxedStrategy<(ProposalCase, u64)> {
         prop_oneof![
             // 1/20 (4% of the time)
-            1 => (Just(ProposalCase::ValidEmpty), Just(0)),
+            1 => (Just(ProposalCase::ValidEmpty), any::<u64>()),
             // 4/20 (20% of the time)
             4 => (Just(ProposalCase::StructurallyValidNonEmptyExecutionOk), any::<u64>()),
             // 5/20 (25% of the time)
