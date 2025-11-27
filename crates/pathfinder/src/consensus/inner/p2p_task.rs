@@ -53,7 +53,7 @@ use crate::consensus::inner::batch_execution::{
 };
 use crate::validator::{
     ProdTransactionMapper,
-    TransactionMapper,
+    TransactionExt,
     ValidatorBlockInfoStage,
     ValidatorStage,
 };
@@ -633,7 +633,7 @@ impl<E> ValidatorCache<E> {
     }
 }
 
-fn execute_deferred_for_next_height<E: BlockExecutorExt, T: TransactionMapper>(
+fn execute_deferred_for_next_height<E: BlockExecutorExt, T: TransactionExt>(
     height_and_round: HeightAndRound,
     mut validator_cache: ValidatorCache<E>,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
@@ -867,7 +867,7 @@ fn read_committed_block(
 /// The rest can come in any order. The [spec](https://github.com/starknet-io/starknet-p2p-specs/blob/main/p2p/proto/consensus/consensus.md#order-of-messages).
 /// is more restrictive.
 #[allow(clippy::too_many_arguments)]
-fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionMapper>(
+fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
     chain_id: ChainId,
     validator_address: ContractAddress,
     height_and_round: HeightAndRound,
@@ -1332,7 +1332,7 @@ fn append_and_persist_part(
 /// execution is performed, any previously deferred transactions for the height
 /// and round are executed first, then the proposal is finalized.
 #[allow(clippy::too_many_arguments)]
-fn defer_or_execute_proposal_fin<E: BlockExecutorExt, T: TransactionMapper>(
+fn defer_or_execute_proposal_fin<E: BlockExecutorExt, T: TransactionExt>(
     height_and_round: HeightAndRound,
     proposal_commitment: Hash,
     proposer_address: ContractAddress,

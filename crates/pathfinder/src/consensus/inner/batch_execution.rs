@@ -13,7 +13,7 @@ use pathfinder_common::{BlockId, BlockNumber};
 use pathfinder_executor::BlockExecutorExt;
 use pathfinder_storage::Transaction as DbTransaction;
 
-use crate::validator::{TransactionMapper, ValidatorTransactionBatchStage};
+use crate::validator::{TransactionExt, ValidatorTransactionBatchStage};
 
 /// Manages batch execution with rollback support for TransactionsFin
 #[derive(Debug, Clone)]
@@ -69,7 +69,7 @@ impl BatchExecutionManager {
     /// Process a transaction batch with deferral support
     ///
     /// This is the main method that should be used by the P2P task
-    pub fn process_batch_with_deferral<E: BlockExecutorExt, T: TransactionMapper>(
+    pub fn process_batch_with_deferral<E: BlockExecutorExt, T: TransactionExt>(
         &mut self,
         height_and_round: HeightAndRound,
         transactions: Vec<proto_consensus::Transaction>,
@@ -144,7 +144,7 @@ impl BatchExecutionManager {
     /// know execution should proceed immediately (e.g., when executing
     /// previously deferred transactions after the parent block is
     /// committed).
-    pub fn execute_batch<E: BlockExecutorExt, T: TransactionMapper>(
+    pub fn execute_batch<E: BlockExecutorExt, T: TransactionExt>(
         &mut self,
         height_and_round: HeightAndRound,
         transactions: Vec<proto_consensus::Transaction>,
@@ -181,7 +181,7 @@ impl BatchExecutionManager {
     /// execution has already started (at least one batch executed). If
     /// transactions are deferred, deferral should be handled by the caller
     /// before calling this function.
-    pub fn process_transactions_fin<E: BlockExecutorExt, T: TransactionMapper>(
+    pub fn process_transactions_fin<E: BlockExecutorExt, T: TransactionExt>(
         &mut self,
         height_and_round: HeightAndRound,
         transactions_fin: proto_consensus::TransactionsFin,

@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use fake::Fake as _;
 use p2p::consensus::HeightAndRound;
-use p2p_proto::common::Address;
+use p2p_proto::common::{Address, Hash};
 use p2p_proto::consensus::{
     BlockInfo,
     ProposalCommitment,
@@ -27,7 +27,7 @@ use crate::consensus::inner::consensus_task::create_empty_proposal;
 use crate::consensus::inner::open_consensus_storage;
 use crate::consensus::inner::p2p_task::{handle_incoming_proposal_part, ValidatorCache};
 use crate::consensus::inner::persist_proposals::ConsensusProposals;
-use crate::validator::TransactionMapper;
+use crate::validator::TransactionExt;
 
 /// This test is focused more on correct parsing of the icoming parts rather
 /// than actual execution. This is why we're mocking the executor to force
@@ -142,7 +142,9 @@ fn create_structurally_valid_non_empty_proposal(seed: u64) -> Vec<ProposalPart> 
     let mut proposal_commitment: ProposalCommitment = fake::Faker.fake_with_rng(&mut rng);
     proposal_commitment.block_number = 0;
     proposal_commitment.builder = Address(ContractAddress::ZERO.0);
-    let state_diff_commitment = proposal_commitment.state_diff_commitment;
+    proposal_commitment.state_diff_commitment = Hash::ZERO;
+    proposal_commitment.transaction_commitment = Hash::ZERO;
+    proposal_commitment.receipt_commitment = Hash::ZERO;
     let proposal_commitment = ProposalPart::ProposalCommitment(proposal_commitment);
 
     relaxed_ordered_parts.push(transactions_fin);
@@ -153,7 +155,7 @@ fn create_structurally_valid_non_empty_proposal(seed: u64) -> Vec<ProposalPart> 
     proposal_parts.extend(relaxed_ordered_parts);
 
     let proposal_fin = ProposalPart::Fin(ProposalFin {
-        proposal_commitment: state_diff_commitment,
+        proposal_commitment: Hash::ZERO,
     });
     proposal_parts.push(proposal_fin);
     proposal_parts
@@ -355,7 +357,7 @@ impl BlockExecutorExt for MockExecutor {
 
 struct MockMapper;
 
-impl TransactionMapper for MockMapper {
+impl TransactionExt for MockMapper {
     fn try_map_transaction(
         _: p2p_proto::consensus::Transaction,
     ) -> anyhow::Result<(
@@ -363,10 +365,12 @@ impl TransactionMapper for MockMapper {
         pathfinder_executor::Transaction,
     )> {
         Ok((
-            pathfinder_common::transaction::Transaction::default(),
-            pathfinder_executor::Transaction::L1Handler(
-                starknet_api::executable_transaction::L1HandlerTransaction::default(),
-            ),
+            Default::default(),
+            pathfinder_executor::Transaction::L1Handler(Default::default()),
         ))
+    }
+
+    fn verify_hash(_: &pathfinder_common::transaction::Transaction, _: ChainId) -> bool {
+        true
     }
 }

@@ -121,7 +121,7 @@ impl<T> Dummy<T> for BlockInfo {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[protobuf(name = "consensus_proto::ProposalCommitment")]
 pub struct ProposalCommitment {
     pub block_number: u64,
@@ -142,6 +142,32 @@ pub struct ProposalCommitment {
     pub l2_gas_used: u128,
     pub next_l2_gas_price_fri: u128,
     pub l1_da_mode: L1DataAvailabilityMode,
+}
+
+impl<T> Dummy<T> for ProposalCommitment {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        Self {
+            block_number: rng.gen_range(0..i64::MAX) as u64,
+            parent_commitment: fake::Faker.fake_with_rng(rng),
+            builder: fake::Faker.fake_with_rng(rng),
+            timestamp: rng.gen_range(0..i64::MAX) as u64,
+            protocol_version: "0.14.1".to_string(),
+            old_state_root: fake::Faker.fake_with_rng(rng),
+            version_constant_commitment: fake::Faker.fake_with_rng(rng),
+            state_diff_commitment: fake::Faker.fake_with_rng(rng),
+            transaction_commitment: fake::Faker.fake_with_rng(rng),
+            event_commitment: fake::Faker.fake_with_rng(rng),
+            receipt_commitment: fake::Faker.fake_with_rng(rng),
+            concatenated_counts: fake::Faker.fake_with_rng(rng),
+            // Keep the prices low enough to avoid overflow when converting between fri and wei
+            l1_gas_price_fri: rng.gen_range(1..i64::MAX) as u128,
+            l1_data_gas_price_fri: rng.gen_range(1..i64::MAX) as u128,
+            l2_gas_price_fri: rng.gen_range(1..i64::MAX) as u128,
+            l2_gas_used: rng.gen_range(1..i64::MAX) as u128,
+            next_l2_gas_price_fri: rng.gen_range(1..i64::MAX) as u128,
+            l1_da_mode: fake::Faker.fake_with_rng(rng),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
