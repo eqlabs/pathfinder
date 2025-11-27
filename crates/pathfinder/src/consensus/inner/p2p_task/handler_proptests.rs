@@ -16,6 +16,7 @@ use p2p_proto::consensus::{
 };
 use pathfinder_common::{ChainId, ContractAddress};
 use pathfinder_consensus::Round;
+use pathfinder_executor::BlockExecutorExt;
 use pathfinder_storage::StorageBuilder;
 use proptest::prelude::*;
 use rand::seq::SliceRandom as _;
@@ -26,6 +27,7 @@ use crate::consensus::inner::consensus_task::create_empty_proposal;
 use crate::consensus::inner::open_consensus_storage;
 use crate::consensus::inner::p2p_task::{handle_incoming_proposal_part, ValidatorCache};
 use crate::consensus::inner::persist_proposals::ConsensusProposals;
+use crate::validator::TransactionMapper;
 
 /// This test is focused more on correct parsing of the icoming parts rather
 /// than actual execution. This is why we're mocking the executor to force
@@ -42,7 +44,10 @@ use crate::consensus::inner::persist_proposals::ConsensusProposals;
 /// Ultimately, we end up with 5 possible paths, 2 of them leading to success.
 #[test]
 fn test_handle_incoming_proposal_part() {
-    let validator_cache = ValidatorCache::new();
+    // TODO swap out BlockExecutor with a mock that can be instructed to
+    // either succeed or fail execution based on the proposal case in some random
+    // transaction
+    let validator_cache = ValidatorCache::<MockExecutor>::new();
     let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
     let main_storage = StorageBuilder::in_tempdir().unwrap();
     let mut main_db_conn = main_storage.connection().unwrap();
@@ -69,25 +74,26 @@ fn test_handle_incoming_proposal_part() {
         .into_iter()
         .zip((0..proposal_parts_len).map(|x| x == proposal_parts_len - 1))
     {
-        let proposal_commitment_w_origin = handle_incoming_proposal_part(
-            ChainId::SEPOLIA_TESTNET,
-            // Arbitrary contract address for testing
-            ContractAddress::ONE,
-            HeightAndRound::new(0, 0),
-            proposal_part,
-            validator_cache.clone(),
-            deferred_executions.clone(),
-            &main_db_tx,
-            main_storage.clone(),
-            &proposals_db,
-            &mut batch_execution_manager,
-            // Utilized by failure injection which is not happening in this test, so we can safely
-            // use an empty path
-            &PathBuf::new(),
-            // No failure injection in this test
-            None,
-        )
-        .unwrap();
+        let proposal_commitment_w_origin =
+            handle_incoming_proposal_part::<MockExecutor, MockMapper>(
+                ChainId::SEPOLIA_TESTNET,
+                // Arbitrary contract address for testing
+                ContractAddress::ONE,
+                HeightAndRound::new(0, 0),
+                proposal_part,
+                validator_cache.clone(),
+                deferred_executions.clone(),
+                &main_db_tx,
+                main_storage.clone(),
+                &proposals_db,
+                &mut batch_execution_manager,
+                // Utilized by failure injection which is not happening in this test, so we can
+                // safely use an empty path
+                &PathBuf::new(),
+                // No failure injection in this test
+                None,
+            )
+            .unwrap();
         assert_eq!(proposal_commitment_w_origin.is_some(), is_last);
     }
 }
@@ -296,5 +302,74 @@ mod strategy {
             5 => (Just(ProposalCase::StructurallyInvalidExecutionFails), any::<u64>()),
         ]
         .boxed()
+    }
+}
+
+struct MockExecutor;
+
+impl BlockExecutorExt for MockExecutor {
+    fn new(
+        _: ChainId,
+        _: pathfinder_executor::types::BlockInfo,
+        _: ContractAddress,
+        _: ContractAddress,
+        _: pathfinder_storage::Connection,
+    ) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        Ok(Self)
+    }
+
+    fn new_with_pending_state(
+        _: ChainId,
+        _: pathfinder_executor::types::BlockInfo,
+        _: ContractAddress,
+        _: ContractAddress,
+        _: pathfinder_storage::Connection,
+        _: std::sync::Arc<pathfinder_common::StateUpdate>,
+    ) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        Ok(Self)
+    }
+
+    fn execute(
+        &mut self,
+        _: Vec<pathfinder_executor::Transaction>,
+    ) -> Result<
+        Vec<pathfinder_executor::types::ReceiptAndEvents>,
+        pathfinder_executor::TransactionExecutionError,
+    > {
+        Ok(vec![])
+    }
+
+    fn finalize(self) -> anyhow::Result<pathfinder_executor::types::StateDiff> {
+        Ok(pathfinder_executor::types::StateDiff::default())
+    }
+
+    fn set_transaction_index(&mut self, _: usize) {}
+
+    fn extract_state_diff(&self) -> anyhow::Result<pathfinder_executor::types::StateDiff> {
+        Ok(pathfinder_executor::types::StateDiff::default())
+    }
+}
+
+struct MockMapper;
+
+impl TransactionMapper for MockMapper {
+    fn try_map_transaction(
+        _: p2p_proto::consensus::Transaction,
+    ) -> anyhow::Result<(
+        pathfinder_common::transaction::Transaction,
+        pathfinder_executor::Transaction,
+    )> {
+        Ok((
+            pathfinder_common::transaction::Transaction::default(),
+            pathfinder_executor::Transaction::L1Handler(
+                starknet_api::executable_transaction::L1HandlerTransaction::default(),
+            ),
+        ))
     }
 }

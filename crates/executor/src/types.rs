@@ -48,6 +48,8 @@ pub struct Receipt {
     pub transaction_index: TransactionIndex,
 }
 
+pub type ReceiptAndEvents = (Receipt, Vec<pathfinder_common::event::Event>);
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct BlockInfo {
     pub number: BlockNumber,
