@@ -380,7 +380,7 @@ fn start_height(
 /// corresponds to this proposal.
 ///
 /// https://github.com/starknet-io/starknet-p2p-specs/blob/main/p2p/proto/consensus/consensus.md#empty-proposals
-fn create_empty_proposal(
+pub(crate) fn create_empty_proposal(
     chain_id: ChainId,
     height: u64,
     round: Round,
