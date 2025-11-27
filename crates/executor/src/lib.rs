@@ -13,7 +13,7 @@ pub(crate) mod state_reader;
 pub(crate) mod transaction;
 pub mod types;
 
-pub use block::BlockExecutor;
+pub use block::{BlockExecutor, BlockExecutorExt};
 // re-export blockifier transaction type since it's exposed on our API
 pub use blockifier::blockifier_versioned_constants::{VersionedConstants, VersionedConstantsError};
 pub use blockifier::transaction::account_transaction::{

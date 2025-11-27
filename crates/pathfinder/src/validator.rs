@@ -36,7 +36,7 @@ use pathfinder_common::{
     TransactionHash,
 };
 use pathfinder_executor::types::{to_starknet_api_transaction, BlockInfoPriceConverter};
-use pathfinder_executor::{BlockExecutor, ClassInfo, IntoStarkFelt};
+use pathfinder_executor::{BlockExecutorExt, ClassInfo, IntoStarkFelt};
 use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
 use pathfinder_storage::Storage;
@@ -85,11 +85,11 @@ impl ValidatorBlockInfoStage {
         })
     }
 
-    pub fn validate_consensus_block_info(
+    pub fn validate_consensus_block_info<E>(
         self,
         block_info: BlockInfo,
-        consensus_storage: Storage,
-    ) -> anyhow::Result<ValidatorTransactionBatchStage> {
+        storage: Storage,
+    ) -> anyhow::Result<ValidatorTransactionBatchStage<E>> {
         let _span = tracing::debug_span!(
             "Validator::validate_block_info",
             height = %block_info.block_number,
@@ -155,7 +155,7 @@ impl ValidatorBlockInfoStage {
             cumulative_state_updates: Vec::new(),
             batch_sizes: Vec::new(),
             batch_p2p_transactions: Vec::new(),
-            consensus_storage,
+            consensus_storage: storage,
         })
     }
 
@@ -292,7 +292,7 @@ impl ValidatorEmptyProposalStage {
 }
 
 /// Executes transactions and manages the block execution state.
-pub struct ValidatorTransactionBatchStage {
+pub struct ValidatorTransactionBatchStage<E> {
     chain_id: ChainId,
     block_info: pathfinder_executor::types::BlockInfo,
     expected_block_header: Option<BlockHeader>,
@@ -300,7 +300,7 @@ pub struct ValidatorTransactionBatchStage {
     receipts: Vec<Receipt>,
     events: Vec<Vec<Event>>,
     /// Single executor for all batches (optimized from multiple executors)
-    executor: Option<BlockExecutor>,
+    executor: Option<E>,
     /// Cumulative state updates after each batch (for rollback reconstruction)
     cumulative_state_updates: Vec<StateUpdateData>,
     /// Size of each batch (for proper rollback calculations)
@@ -312,7 +312,7 @@ pub struct ValidatorTransactionBatchStage {
     consensus_storage: Storage,
 }
 
-impl ValidatorTransactionBatchStage {
+impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
     /// Create a new ValidatorTransactionBatchStage
     #[cfg(test)]
     pub fn new(
@@ -350,7 +350,7 @@ impl ValidatorTransactionBatchStage {
     fn reconstruct_executor_from_state_update(
         &self,
         state_update_data: &StateUpdateData,
-    ) -> anyhow::Result<BlockExecutor> {
+    ) -> anyhow::Result<E> {
         // Convert StateUpdateData to StateUpdate
         let state_update = StateUpdate {
             block_hash: pathfinder_common::BlockHash::ZERO,
@@ -364,7 +364,7 @@ impl ValidatorTransactionBatchStage {
         };
 
         // Create BlockExecutor from the StateUpdate
-        BlockExecutor::new_with_pending_state(
+        E::new_with_pending_state(
             self.chain_id,
             self.block_info,
             ETH_FEE_TOKEN_ADDRESS,
@@ -379,7 +379,7 @@ impl ValidatorTransactionBatchStage {
 
     /// Execute a batch of transactions using a single executor and extract
     /// state diffs
-    pub fn execute_batch(
+    pub fn execute_batch<T: TransactionMapper>(
         &mut self,
         transactions: Vec<p2p_proto::consensus::Transaction>,
     ) -> anyhow::Result<()> {
@@ -399,7 +399,7 @@ impl ValidatorTransactionBatchStage {
         // Convert transactions to executor format
         let txns = transactions
             .iter()
-            .map(|t| try_map_transaction(t.clone()))
+            .map(|t| T::try_map_transaction(t.clone()))
             .collect::<anyhow::Result<Vec<_>>>()?;
         let (common_txns, executor_txns): (Vec<_>, Vec<_>) = txns.into_iter().unzip();
 
@@ -422,7 +422,7 @@ impl ValidatorTransactionBatchStage {
         // Initialize executor on first batch, or use existing executor
         if self.executor.is_none() {
             // First batch - start from initial state
-            self.executor = Some(BlockExecutor::new(
+            self.executor = Some(E::new(
                 self.chain_id,
                 self.block_info,
                 ETH_FEE_TOKEN_ADDRESS,
@@ -537,7 +537,7 @@ impl ValidatorTransactionBatchStage {
     }
 
     /// Rollback to a specific transaction count
-    pub fn rollback_to_transaction(
+    pub fn rollback_to_transaction<T: TransactionMapper>(
         &mut self,
         target_transaction_count: usize,
     ) -> anyhow::Result<()> {
@@ -568,7 +568,7 @@ impl ValidatorTransactionBatchStage {
                 // Execute the partial batch
                 let partial_transactions =
                     &original_p2p_transactions[..transactions_in_target_batch + 1];
-                self.execute_batch(partial_transactions.to_vec())?;
+                self.execute_batch::<T>(partial_transactions.to_vec())?;
             } else {
                 // Store the original p2p transactions before rollback
                 let original_p2p_transactions = self.batch_p2p_transactions[target_batch].clone();
@@ -579,7 +579,7 @@ impl ValidatorTransactionBatchStage {
                 // Execute the partial batch that's left
                 let partial_transactions =
                     &original_p2p_transactions[..transactions_in_target_batch + 1];
-                self.execute_batch(partial_transactions.to_vec())?;
+                self.execute_batch::<T>(partial_transactions.to_vec())?;
             }
 
             Ok(())
@@ -949,9 +949,9 @@ impl ValidatorFinalizeStage {
     }
 }
 
-pub enum ValidatorStage {
+pub enum ValidatorStage<E> {
     BlockInfo(ValidatorBlockInfoStage),
-    TransactionBatch(Box<ValidatorTransactionBatchStage>),
+    TransactionBatch(Box<ValidatorTransactionBatchStage<E>>),
     Finalize(Box<ValidatorFinalizeStage>),
 }
 
@@ -964,7 +964,7 @@ pub struct WrongValidatorStageError {
     pub actual: &'static str,
 }
 
-impl ValidatorStage {
+impl<E> ValidatorStage<E> {
     pub fn try_into_block_info_stage(
         self,
     ) -> Result<ValidatorBlockInfoStage, WrongValidatorStageError> {
@@ -979,7 +979,7 @@ impl ValidatorStage {
 
     pub fn try_into_transaction_batch_stage(
         self,
-    ) -> Result<Box<ValidatorTransactionBatchStage>, WrongValidatorStageError> {
+    ) -> Result<Box<ValidatorTransactionBatchStage<E>>, WrongValidatorStageError> {
         match self {
             ValidatorStage::TransactionBatch(stage) => Ok(stage),
             _ => Err(WrongValidatorStageError {
@@ -1010,60 +1010,74 @@ impl ValidatorStage {
     }
 }
 
-/// Maps consensus transaction to a pair of:
-/// - common transaction, which is used for verifying the transaction hash
-/// - executor transaction, which is used for executing the transaction
-fn try_map_transaction(
-    transaction: p2p_proto::consensus::Transaction,
-) -> anyhow::Result<(
-    pathfinder_common::transaction::Transaction,
-    pathfinder_executor::Transaction,
-)> {
-    let p2p_proto::consensus::Transaction {
-        txn,
-        transaction_hash,
-    } = transaction;
-    let (variant, class_info) = match txn {
-        ConsensusVariant::DeclareV3(DeclareV3WithClass { common, class }) => (
-            SyncVariant::DeclareV3(DeclareV3WithoutClass {
-                common,
-                class_hash: Default::default(),
-            }),
-            Some(class_info(class)?),
-        ),
-        ConsensusVariant::DeployAccountV3(v) => (SyncVariant::DeployAccountV3(v), None),
-        ConsensusVariant::InvokeV3(v) => (SyncVariant::InvokeV3(v), None),
-        ConsensusVariant::L1HandlerV0(v) => (SyncVariant::L1HandlerV0(v), None),
-    };
+pub trait TransactionMapper {
+    /// Maps consensus transaction to a pair of:
+    /// - common transaction, which is used for verifying the transaction hash
+    /// - executor transaction, which is used for executing the transaction
+    fn try_map_transaction(
+        transaction: p2p_proto::consensus::Transaction,
+    ) -> anyhow::Result<(
+        pathfinder_common::transaction::Transaction,
+        pathfinder_executor::Transaction,
+    )>;
+}
 
-    let common_txn_variant = TransactionVariant::try_from_dto(variant)?;
+pub struct ProdTransactionMapper;
 
-    let deployed_address = deployed_address(&common_txn_variant);
+impl TransactionMapper for ProdTransactionMapper {
+    fn try_map_transaction(
+        transaction: p2p_proto::consensus::Transaction,
+    ) -> anyhow::Result<(
+        pathfinder_common::transaction::Transaction,
+        pathfinder_executor::Transaction,
+    )> {
+        let p2p_proto::consensus::Transaction {
+            txn,
+            transaction_hash,
+        } = transaction;
+        let (variant, class_info) = match txn {
+            ConsensusVariant::DeclareV3(DeclareV3WithClass { common, class }) => (
+                SyncVariant::DeclareV3(DeclareV3WithoutClass {
+                    common,
+                    class_hash: Default::default(),
+                }),
+                Some(class_info(class)?),
+            ),
+            ConsensusVariant::DeployAccountV3(v) => (SyncVariant::DeployAccountV3(v), None),
+            ConsensusVariant::InvokeV3(v) => (SyncVariant::InvokeV3(v), None),
+            ConsensusVariant::L1HandlerV0(v) => (SyncVariant::L1HandlerV0(v), None),
+        };
 
-    // TODO(validator) why 10^12?
-    let paid_fee_on_l1 = match &common_txn_variant {
-        TransactionVariant::L1Handler(_) => {
-            Some(starknet_api::transaction::fields::Fee(1_000_000_000_000))
-        }
-        _ => None,
-    };
+        let common_txn_variant = TransactionVariant::try_from_dto(variant)?;
 
-    let api_txn = to_starknet_api_transaction(common_txn_variant.clone())?;
-    let tx_hash = starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt());
-    let executor_txn = pathfinder_executor::Transaction::from_api(
-        api_txn,
-        tx_hash,
-        class_info,
-        paid_fee_on_l1,
-        deployed_address,
-        pathfinder_executor::AccountTransactionExecutionFlags::default(),
-    )?;
-    let common_txn = pathfinder_common::transaction::Transaction {
-        hash: TransactionHash(transaction_hash.0),
-        variant: common_txn_variant,
-    };
+        let deployed_address = deployed_address(&common_txn_variant);
 
-    Ok((common_txn, executor_txn))
+        // TODO(validator) why 10^12?
+        let paid_fee_on_l1 = match &common_txn_variant {
+            TransactionVariant::L1Handler(_) => {
+                Some(starknet_api::transaction::fields::Fee(1_000_000_000_000))
+            }
+            _ => None,
+        };
+
+        let api_txn = to_starknet_api_transaction(common_txn_variant.clone())?;
+        let tx_hash =
+            starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt());
+        let executor_txn = pathfinder_executor::Transaction::from_api(
+            api_txn,
+            tx_hash,
+            class_info,
+            paid_fee_on_l1,
+            deployed_address,
+            pathfinder_executor::AccountTransactionExecutionFlags::default(),
+        )?;
+        let common_txn = pathfinder_common::transaction::Transaction {
+            hash: TransactionHash(transaction_hash.0),
+            variant: common_txn_variant,
+        };
+
+        Ok((common_txn, executor_txn))
+    }
 }
 
 fn class_info(class: Cairo1Class) -> anyhow::Result<ClassInfo> {
@@ -1171,6 +1185,7 @@ mod tests {
     };
     use pathfinder_crypto::Felt;
     use pathfinder_executor::types::BlockInfo;
+    use pathfinder_executor::BlockExecutor;
     use pathfinder_storage::StorageBuilder;
 
     use super::*;
@@ -1229,9 +1244,12 @@ mod tests {
             starknet_version: StarknetVersion::new(0, 14, 0, 0),
         };
 
-        let mut validator_stage =
-            ValidatorTransactionBatchStage::new(chain_id, block_info, storage.clone())
-                .expect("Failed to create validator stage");
+        let mut validator_stage = ValidatorTransactionBatchStage::<BlockExecutor>::new(
+            chain_id,
+            block_info,
+            storage.clone(),
+        )
+        .expect("Failed to create validator stage");
 
         // Create batches: 3 batches with 2 transactions each
         let batches = [
@@ -1242,7 +1260,7 @@ mod tests {
 
         // Execute batch 1
         validator_stage
-            .execute_batch(batches[0].clone())
+            .execute_batch::<ProdTransactionMapper>(batches[0].clone())
             .expect("Failed to execute batch 1");
 
         // Should have 1 batch (state update) after first execution
@@ -1259,7 +1277,7 @@ mod tests {
 
         // Execute batch 2
         validator_stage
-            .execute_batch(batches[1].clone())
+            .execute_batch::<ProdTransactionMapper>(batches[1].clone())
             .expect("Failed to execute batch 2");
 
         // Should have 2 batches and 2 state updates
@@ -1272,7 +1290,7 @@ mod tests {
 
         // Execute batch 3
         validator_stage
-            .execute_batch(batches[2].clone())
+            .execute_batch::<ProdTransactionMapper>(batches[2].clone())
             .expect("Failed to execute batch 3");
 
         // Should have 3 batches now with 6 transactions
@@ -1301,7 +1319,7 @@ mod tests {
 
         // Make sure we can continue executing after rollback
         validator_stage
-            .execute_batch(batches[2].clone())
+            .execute_batch::<ProdTransactionMapper>(batches[2].clone())
             .expect("Failed to execute batch 3 after rollback");
 
         assert_eq!(
@@ -1362,35 +1380,41 @@ mod tests {
         ];
 
         // Create first validator and execute both batches
-        let mut validator1 =
-            ValidatorTransactionBatchStage::new(chain_id, block_info, storage.clone())
-                .expect("Failed to create validator stage");
+        let mut validator1 = ValidatorTransactionBatchStage::<BlockExecutor>::new(
+            chain_id,
+            block_info,
+            storage.clone(),
+        )
+        .expect("Failed to create validator stage");
 
         validator1
-            .execute_batch(batches[0].clone())
+            .execute_batch::<ProdTransactionMapper>(batches[0].clone())
             .expect("Failed to execute batch 1");
         validator1
-            .execute_batch(batches[1].clone())
+            .execute_batch::<ProdTransactionMapper>(batches[1].clone())
             .expect("Failed to execute batch 2");
 
         let receipts1 = validator1.receipts().to_vec();
 
         // Create second validator and execute, then rollback and re-execute
-        let mut validator2 =
-            ValidatorTransactionBatchStage::new(chain_id, block_info, storage.clone())
-                .expect("Failed to create validator stage");
+        let mut validator2 = ValidatorTransactionBatchStage::<BlockExecutor>::new(
+            chain_id,
+            block_info,
+            storage.clone(),
+        )
+        .expect("Failed to create validator stage");
 
         validator2
-            .execute_batch(batches[0].clone())
+            .execute_batch::<ProdTransactionMapper>(batches[0].clone())
             .expect("Failed to execute batch 1");
         validator2
-            .execute_batch(batches[1].clone())
+            .execute_batch::<ProdTransactionMapper>(batches[1].clone())
             .expect("Failed to execute batch 2");
 
         // Rollback and re-execute
         validator2.rollback_to_batch(0).expect("Failed to rollback");
         validator2
-            .execute_batch(batches[1].clone())
+            .execute_batch::<ProdTransactionMapper>(batches[1].clone())
             .expect("Failed to re-execute batch 2");
 
         let receipts2 = validator2.receipts();
@@ -1438,9 +1462,12 @@ mod tests {
             starknet_version: StarknetVersion::new(0, 14, 0, 0),
         };
 
-        let mut validator_stage =
-            ValidatorTransactionBatchStage::new(chain_id, block_info, storage.clone())
-                .expect("Failed to create validator stage");
+        let mut validator_stage = ValidatorTransactionBatchStage::<BlockExecutor>::new(
+            chain_id,
+            block_info,
+            storage.clone(),
+        )
+        .expect("Failed to create validator stage");
 
         // Create batches with different sizes to test boundary conditions
         // Batch 0: 3 transactions (tx's 0, 1, 2)
@@ -1458,13 +1485,13 @@ mod tests {
 
         // Execute all batches
         validator_stage
-            .execute_batch(batches[0].clone())
+            .execute_batch::<ProdTransactionMapper>(batches[0].clone())
             .expect("Failed to execute batch 0");
         validator_stage
-            .execute_batch(batches[1].clone())
+            .execute_batch::<ProdTransactionMapper>(batches[1].clone())
             .expect("Failed to execute batch 1");
         validator_stage
-            .execute_batch(batches[2].clone())
+            .execute_batch::<ProdTransactionMapper>(batches[2].clone())
             .expect("Failed to execute batch 2");
 
         assert_eq!(
@@ -1476,7 +1503,7 @@ mod tests {
         // Rollback to transaction at batch boundary (end of batch 0 = transaction 2)
         // This should rollback to batch 0
         validator_stage
-            .rollback_to_transaction(2)
+            .rollback_to_transaction::<ProdTransactionMapper>(2)
             .expect("Failed to rollback to transaction 2");
         assert_eq!(
             validator_stage.transaction_count(),
@@ -1491,16 +1518,16 @@ mod tests {
 
         // Re-execute to get back to 7 transactions
         validator_stage
-            .execute_batch(batches[1].clone())
+            .execute_batch::<ProdTransactionMapper>(batches[1].clone())
             .expect("Failed to re-execute batch 1");
         validator_stage
-            .execute_batch(batches[2].clone())
+            .execute_batch::<ProdTransactionMapper>(batches[2].clone())
             .expect("Failed to re-execute batch 2");
 
         // Rollback to transaction at batch boundary (start of batch 1 = transaction 3)
         // This should rollback to batch 1 (which includes transaction 3)
         validator_stage
-            .rollback_to_transaction(3)
+            .rollback_to_transaction::<ProdTransactionMapper>(3)
             .expect("Failed to rollback to transaction 3");
         assert_eq!(
             validator_stage.transaction_count(),
@@ -1515,13 +1542,13 @@ mod tests {
 
         // Re-execute to get back to 7 transactions
         validator_stage
-            .execute_batch(batches[2].clone())
+            .execute_batch::<ProdTransactionMapper>(batches[2].clone())
             .expect("Failed to re-execute batch 2");
 
         // Rollback to transaction in middle of batch (transaction 1 in batch 0)
         // This should rollback to transaction 1, keeping only first 2 transactions
         validator_stage
-            .rollback_to_transaction(1)
+            .rollback_to_transaction::<ProdTransactionMapper>(1)
             .expect("Failed to rollback to transaction 1");
         assert_eq!(
             validator_stage.transaction_count(),
@@ -1538,14 +1565,14 @@ mod tests {
         // This should keep only the first transaction
         // First, we need to get back to having multiple transactions
         validator_stage
-            .execute_batch(vec![create_test_transaction(2)])
+            .execute_batch::<ProdTransactionMapper>(vec![create_test_transaction(2)])
             .expect("Failed to add transaction 2 back");
         validator_stage
-            .execute_batch(batches[1].clone())
+            .execute_batch::<ProdTransactionMapper>(batches[1].clone())
             .expect("Failed to re-execute batch 1");
 
         validator_stage
-            .rollback_to_transaction(0)
+            .rollback_to_transaction::<ProdTransactionMapper>(0)
             .expect("Failed to rollback to transaction 0");
         assert_eq!(
             validator_stage.transaction_count(),
@@ -1559,7 +1586,7 @@ mod tests {
         );
 
         // Verify an out of bounds rollback error
-        let result = validator_stage.rollback_to_transaction(10);
+        let result = validator_stage.rollback_to_transaction::<ProdTransactionMapper>(10);
         assert!(
             result.is_err(),
             "Rollback to transaction 10 (out of bounds) should error"
@@ -1602,7 +1629,7 @@ mod tests {
             .expect("Failed to create ValidatorBlockInfoStage");
 
         let validator_transaction_batch = validator_block_info
-            .validate_consensus_block_info(block_info, storage.clone())
+            .validate_consensus_block_info::<BlockExecutor>(block_info, storage.clone())
             .expect("Failed to validate block info");
 
         // Verify the validator is in the expected empty state
