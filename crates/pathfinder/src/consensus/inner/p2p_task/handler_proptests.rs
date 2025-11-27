@@ -1,3 +1,16 @@
+//! This test is focused more on correct parsing of the icoming parts rather
+//! than actual execution. This is why we're mocking the executor to force
+//! either success or failure. There is no deferred execution in the test
+//! either. We're also starting with a fresh database and we're using one of the
+//! 3 proposal types:
+//! - valid and empty, execution always succeeds,
+//! - structurally always valid with some fake transactions that nominally
+//!   should always succeed on empty db, however only sometimes passing
+//!   execution without error,
+//! - invalid proposal (proposal parts well formed but the entire proposal not
+//!   always conforming to the spec), execution sometimes succeeds.
+//!
+//! Ultimately, we end up with 5 possible paths, 2 of them leading to success.
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -15,7 +28,6 @@ use p2p_proto::consensus::{
     TransactionsFin,
 };
 use pathfinder_common::{ChainId, ContractAddress};
-use pathfinder_consensus::Round;
 use pathfinder_executor::BlockExecutorExt;
 use pathfinder_storage::StorageBuilder;
 use proptest::prelude::*;
@@ -23,70 +35,80 @@ use rand::seq::SliceRandom as _;
 use rand::Rng as _;
 
 use crate::consensus::inner::batch_execution::BatchExecutionManager;
-use crate::consensus::inner::consensus_task::create_empty_proposal;
 use crate::consensus::inner::open_consensus_storage;
 use crate::consensus::inner::p2p_task::{handle_incoming_proposal_part, ValidatorCache};
 use crate::consensus::inner::persist_proposals::ConsensusProposals;
 use crate::validator::TransactionExt;
 
-/// This test is focused more on correct parsing of the icoming parts rather
-/// than actual execution. This is why we're mocking the executor to force
-/// either success or failure. There is no deferred execution in the test
-/// either. We're also starting with a fresh database and we're using one of the
-/// 3 proposal types:
-/// - valid and empty, execution always succeeds,
-/// - structurally always valid with some fake transactions that nominally
-///   should always succeed on empty db, however only sometimes passing
-///   execution without error,
-/// - invalid proposal (proposal parts well formed but the entire proposal not
-///   always conforming to the spec), execution sometimes succeeds.
-///
-/// Ultimately, we end up with 5 possible paths, 2 of them leading to success.
-#[test]
-fn test_handle_incoming_proposal_part() {
-    // TODO swap out BlockExecutor with a mock that can be instructed to
-    // either succeed or fail execution based on the proposal case in some random
-    // transaction
-    let validator_cache = ValidatorCache::<MockExecutor>::new();
-    let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
-    let main_storage = StorageBuilder::in_tempdir().unwrap();
-    let mut main_db_conn = main_storage.connection().unwrap();
-    let main_db_tx = main_db_conn.transaction().unwrap();
-    let consensus_storage_tempdir = tempfile::tempdir().unwrap();
-    let consensus_storage = open_consensus_storage(consensus_storage_tempdir.path()).unwrap();
-    let mut consensus_db_conn = consensus_storage.connection().unwrap();
-    let consensus_db_tx = consensus_db_conn.transaction().unwrap();
-    let proposals_db = ConsensusProposals::new(&consensus_db_tx);
-    let mut batch_execution_manager = BatchExecutionManager::new();
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(25))]
+    #[test]
+    fn test_handle_incoming_proposal_part((proposal_type, seed) in strategy::composite()) {
+        let validator_cache = ValidatorCache::<MockExecutor>::new();
+        let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
+        let main_storage = StorageBuilder::in_tempdir().unwrap();
+        let mut main_db_conn = main_storage.connection().unwrap();
+        let main_db_tx = main_db_conn.transaction().unwrap();
+        let consensus_storage_tempdir = tempfile::tempdir().unwrap();
+        let consensus_storage = open_consensus_storage(consensus_storage_tempdir.path()).unwrap();
+        let mut consensus_db_conn = consensus_storage.connection().unwrap();
+        let consensus_db_tx = consensus_db_conn.transaction().unwrap();
+        let proposals_db = ConsensusProposals::new(&consensus_db_tx);
+        let mut batch_execution_manager = BatchExecutionManager::new();
 
-    let proposal_parts = create_structurally_valid_empty_proposal(42);
-    let proposal_parts_len = proposal_parts.len();
+        let (proposal_parts, expect_success) = match proposal_type {
+            strategy::ProposalCase::ValidEmpty => (create_structurally_valid_empty_proposal(seed), true),
+            strategy::ProposalCase::StructurallyValidNonEmptyExecutionOk |
+            strategy::ProposalCase::StructurallyValidNonEmptyExecutionFails =>
+                (create_structurally_valid_non_empty_proposal(seed), true),
+            strategy::ProposalCase::StructurallyInvalidExecutionOk |
+            strategy::ProposalCase::StructurallyInvalidExecutionFails =>
+                (create_structurally_invalid_proposal(seed), false),
+        };
 
-    for (proposal_part, is_last) in proposal_parts
-        .into_iter()
-        .zip((0..proposal_parts_len).map(|x| x == proposal_parts_len - 1))
-    {
-        let proposal_commitment_w_origin =
-            handle_incoming_proposal_part::<MockExecutor, MockMapper>(
-                ChainId::SEPOLIA_TESTNET,
-                // Arbitrary contract address for testing
-                ContractAddress::ONE,
-                HeightAndRound::new(0, 0),
-                proposal_part,
-                validator_cache.clone(),
-                deferred_executions.clone(),
-                &main_db_tx,
-                main_storage.clone(),
-                &proposals_db,
-                &mut batch_execution_manager,
-                // Utilized by failure injection which is not happening in this test, so we can
-                // safely use an empty path
-                &PathBuf::new(),
-                // No failure injection in this test
-                None,
-            )
-            .unwrap();
-        assert_eq!(proposal_commitment_w_origin.is_some(), is_last);
+        let mut result = if expect_success { Err(anyhow::anyhow!("No proposal parts processed")) } else { Ok(None) };
+
+        let proposal_parts_len = proposal_parts.len();
+
+        for (proposal_part, is_last) in proposal_parts
+            .into_iter()
+            .zip((0..proposal_parts_len).map(|x| x == proposal_parts_len - 1))
+        {
+            result =
+                handle_incoming_proposal_part::<MockExecutor, MockMapper>(
+                    ChainId::SEPOLIA_TESTNET,
+                    // Arbitrary contract address for testing
+                    ContractAddress::ONE,
+                    HeightAndRound::new(0, 0),
+                    proposal_part,
+                    validator_cache.clone(),
+                    deferred_executions.clone(),
+                    &main_db_tx,
+                    main_storage.clone(),
+                    &proposals_db,
+                    &mut batch_execution_manager,
+                    // Utilized by failure injection which is not happening in this test, so we can
+                    // safely use an empty path
+                    &PathBuf::new(),
+                    // No failure injection in this test
+                    None,
+                );
+
+            if expect_success {
+                prop_assert!(result.is_ok());
+                // If we expect success, all results must be Ok, and the last must contain valid value
+                prop_assert_eq!(result.as_ref().unwrap().is_some(), is_last);
+            } else {
+                if result.is_err() {
+                    break;
+                }
+            }
+        }
+
+        // If we expect failure, the last result must be an error
+        if !expect_success {
+            prop_assert!(result.is_err());
+        }
     }
 }
 
