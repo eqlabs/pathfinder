@@ -90,6 +90,7 @@ pub fn spawn(
         let mut consensus =
             Consensus::<ConsensusValue, ContractAddress, L2ProposerSelector>::recover_with_proposal_selector(
                 Config::new(validator_address)
+                    .with_history_depth(config.history_depth)
                     .with_wal_dir(wal_directory),
                 // TODO use a dynamic validator set provider, once fetching the validator set from
                 // the staking contract is implemented. Related issue: https://github.com/eqlabs/pathfinder/issues/2936
