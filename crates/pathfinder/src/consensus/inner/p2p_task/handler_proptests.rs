@@ -164,6 +164,13 @@ fn create_structurally_valid_non_empty_proposal(seed: u64) -> Vec<ProposalPart> 
     proposal_parts
 }
 
+#[derive(Debug, Clone, Copy, fake::Dummy)]
+enum ModifyPart {
+    DoNothing,
+    Remove,
+    Duplicate,
+}
+
 /// Takes the output of [`create_structurally_valid_non_empty_proposal`] and
 /// does at least one of the following:
 /// - removes all transaction batches,
@@ -178,69 +185,74 @@ fn create_structurally_invalid_proposal(seed: u64) -> Vec<ProposalPart> {
 
     let mut proposal_parts = create_structurally_valid_non_empty_proposal(seed);
     let remove_all_txns: bool = rng.gen();
-    let remove_not_duplicate_init: bool = rng.gen();
-    let remove_not_duplicate_info: bool = rng.gen();
-    let remove_not_duplicate_txn_fin: bool = rng.gen();
-    let remove_not_duplicate_proposal_commitment: bool = rng.gen();
-    let remove_not_duplicate_proposal_fin: bool = rng.gen();
+    let modify_init: ModifyPart = fake::Faker.fake_with_rng(&mut rng);
+    let modify_block_info: ModifyPart = fake::Faker.fake_with_rng(&mut rng);
+    let modify_txn_fin: ModifyPart = fake::Faker.fake_with_rng(&mut rng);
+    let modify_proposal_commitment: ModifyPart = fake::Faker.fake_with_rng(&mut rng);
+    let modify_proposal_fin: ModifyPart = fake::Faker.fake_with_rng(&mut rng);
     let shuffle: bool = rng.gen();
     if remove_all_txns {
         proposal_parts.retain(|x| !x.is_transaction_batch());
     }
-    remove_or_duplicate_part(
+    modify_part(&mut proposal_parts, &mut rng, modify_init, |x| {
+        x.is_proposal_init()
+    });
+    modify_part(&mut proposal_parts, &mut rng, modify_block_info, |x| {
+        x.is_block_info()
+    });
+    modify_part(&mut proposal_parts, &mut rng, modify_txn_fin, |x| {
+        x.is_transactions_fin()
+    });
+    modify_part(
         &mut proposal_parts,
         &mut rng,
-        remove_not_duplicate_init,
-        |x| x.is_proposal_init(),
-    );
-    remove_or_duplicate_part(
-        &mut proposal_parts,
-        &mut rng,
-        remove_not_duplicate_info,
-        |x| x.is_block_info(),
-    );
-    remove_or_duplicate_part(
-        &mut proposal_parts,
-        &mut rng,
-        remove_not_duplicate_txn_fin,
-        |x| x.is_transactions_fin(),
-    );
-    remove_or_duplicate_part(
-        &mut proposal_parts,
-        &mut rng,
-        remove_not_duplicate_proposal_commitment,
+        modify_proposal_commitment,
         |x| x.is_proposal_commitment(),
     );
-    remove_or_duplicate_part(
-        &mut proposal_parts,
-        &mut rng,
-        remove_not_duplicate_proposal_fin,
-        |x| x.is_proposal_fin(),
-    );
+    modify_part(&mut proposal_parts, &mut rng, modify_proposal_fin, |x| {
+        x.is_proposal_fin()
+    });
+
     if shuffle {
         proposal_parts.shuffle(&mut rng);
     }
+
+    // If we were unfortuante enough to get an unmodified proposal, let's at least
+    // force removing the init at the head, so that the proposal is invalid for sure
+    let force_remove_init = !remove_all_txns
+        && matches!(modify_init, ModifyPart::DoNothing)
+        && matches!(modify_block_info, ModifyPart::DoNothing)
+        && matches!(modify_txn_fin, ModifyPart::DoNothing)
+        && matches!(modify_proposal_commitment, ModifyPart::DoNothing)
+        && matches!(modify_proposal_fin, ModifyPart::DoNothing)
+        && !shuffle;
+    if force_remove_init {
+        proposal_parts.remove(0);
+    }
+
     proposal_parts
 }
 
 /// Removes a proposal part if the flag is true, or duplicates int if the flag
 /// is false
-fn remove_or_duplicate_part(
+fn modify_part(
     proposal_parts: &mut Vec<ProposalPart>,
     rng: &mut impl rand::Rng,
-    remove_or_duplicate: bool,
+    modify_part: ModifyPart,
     match_fn: impl Fn(&ProposalPart) -> bool,
 ) {
-    if remove_or_duplicate {
-        proposal_parts.retain(|x| !match_fn(x));
-    } else {
-        let found = proposal_parts
-            .iter()
-            .enumerate()
-            .find_map(|(i, x)| match_fn(x).then_some((i, x.clone())));
-        if let Some((i, proposal)) = found {
-            let offset = rng.gen_range(i..proposal_parts.len());
-            proposal_parts.insert(offset, proposal);
+    match modify_part {
+        ModifyPart::DoNothing => {}
+        ModifyPart::Remove => proposal_parts.retain(|x| !match_fn(x)),
+        ModifyPart::Duplicate => {
+            let found = proposal_parts
+                .iter()
+                .enumerate()
+                .find_map(|(i, x)| match_fn(x).then_some((i, x.clone())));
+            if let Some((i, proposal)) = found {
+                let offset = rng.gen_range(i..proposal_parts.len());
+                proposal_parts.insert(offset, proposal);
+            }
         }
     }
 }
