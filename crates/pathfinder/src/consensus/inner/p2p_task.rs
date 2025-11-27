@@ -53,6 +53,11 @@ use crate::consensus::inner::batch_execution::{
 use crate::validator::{ValidatorBlockInfoStage, ValidatorStage};
 use crate::SyncRequestToConsensus;
 
+#[cfg(test)]
+mod handler_proptests;
+#[cfg(test)]
+mod task_tests;
+
 // Successful result of handling an incoming message in a dedicated
 // thread; carried data are used for async handling (e.g. gossiping).
 enum ComputationSuccess {
@@ -981,7 +986,7 @@ fn handle_incoming_proposal_part(
             //      - [x] at least one Transaction Batch
             //      - [?] Transactions Fin
             //      - [?] Proposal Commitment
-            //      - [?] Proposal Fin
+            // - [ ] Proposal Fin
             tracing::debug!(
                 "🖧  ⚙️ executing transaction batch for height and round {height_and_round}..."
             );
@@ -1050,7 +1055,7 @@ fn handle_incoming_proposal_part(
                     //      - [?] at least one Transaction Batch
                     //      - [?] Transactions Fin
                     //      - [x] Proposal Commitment
-                    //      - [?] Proposal Fin
+                    // - [ ] Proposal Fin
                     append_and_persist_part(
                         height_and_round,
                         proposal_part.clone(),
@@ -1096,7 +1101,30 @@ fn handle_incoming_proposal_part(
             );
 
             match parts.len() {
-                2.. if parts.get(1).expect("2 parts").is_block_info() => {
+                2 => {
+                    // Looks like an empty proposal:
+                    // - [x] Proposal Init
+                    // - [x] Proposal Commitment
+                    // - [x] Proposal Fin
+                    let proposer_address = append_and_persist_part(
+                        height_and_round,
+                        proposal_part,
+                        proposals_db,
+                        &mut parts,
+                    )?;
+
+                    let valid_round = valid_round_from_parts(&parts, &height_and_round)?;
+                    let proposal_commitment = Some(ProposalCommitmentWithOrigin {
+                        proposal_commitment: ProposalCommitment(proposal_commitment.0),
+                        proposer_address,
+                        pol_round: valid_round.map(Round::new).unwrap_or(Round::nil()),
+                    });
+
+                    // We don't retrieve the validator from cache here, it'll be retrieved for
+                    // block finalization
+                    Ok(proposal_commitment)
+                }
+                5.. if parts.get(1).expect("2 parts").is_block_info() => {
                     // Looks like a non-empty proposal:
                     // - [x] Proposal Init
                     // - [x] Block Info
@@ -1104,7 +1132,7 @@ fn handle_incoming_proposal_part(
                     //      - [?] at least one Transaction Batch
                     //      - [?] Transactions Fin
                     //      - [?] Proposal Commitment
-                    //      - [x] Proposal Fin
+                    // - [x] Proposal Fin
                     let validator_stage = validator_cache.remove(&height_and_round)?;
                     let validator = validator_stage
                         .try_into_transaction_batch_stage()
@@ -1146,29 +1174,6 @@ fn handle_incoming_proposal_part(
                     validator_cache.insert(height_and_round, validator);
                     Ok(proposal_commitment)
                 }
-                2 => {
-                    // Looks like an empty proposal:
-                    // - [x] Proposal Init
-                    // - [x] Proposal Commitment
-                    // - [x] Proposal Fin
-                    let proposer_address = append_and_persist_part(
-                        height_and_round,
-                        proposal_part,
-                        proposals_db,
-                        &mut parts,
-                    )?;
-
-                    let valid_round = valid_round_from_parts(&parts, &height_and_round)?;
-                    let proposal_commitment = Some(ProposalCommitmentWithOrigin {
-                        proposal_commitment: ProposalCommitment(proposal_commitment.0),
-                        proposer_address,
-                        pol_round: valid_round.map(Round::new).unwrap_or(Round::nil()),
-                    });
-
-                    // We don't retrieve the validator from cache here, it'll be retrieved for
-                    // block finalization
-                    Ok(proposal_commitment)
-                }
                 _ => {
                     return Err(ProposalHandlingError::Recoverable(
                         ProposalError::UnexpectedProposalPart {
@@ -1207,7 +1212,7 @@ fn handle_incoming_proposal_part(
             //      - [?] at least one Transaction Batch
             //      - [x] Transactions Fin
             //      - [?] Proposal Commitment
-            //      - [?] Proposal Fin
+            // - [ ] Proposal Fin
             append_and_persist_part(
                 height_and_round,
                 proposal_part.clone(),

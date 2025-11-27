@@ -1,4 +1,4 @@
-use fake::Dummy;
+use fake::{Dummy, Fake as _};
 use pathfinder_crypto::Felt;
 use prost::Message;
 use proto::consensus::consensus as consensus_proto;
@@ -92,7 +92,7 @@ pub struct TransactionsFin {
     pub executed_transaction_count: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[protobuf(name = "consensus_proto::BlockInfo")]
 pub struct BlockInfo {
     pub block_number: u64,
@@ -103,6 +103,22 @@ pub struct BlockInfo {
     pub l1_data_gas_price_wei: u128,
     pub eth_to_strk_rate: u128,
     pub l1_da_mode: L1DataAvailabilityMode,
+}
+
+impl<T> Dummy<T> for BlockInfo {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        Self {
+            block_number: rng.gen_range(0..i64::MAX) as u64,
+            builder: fake::Faker.fake_with_rng(rng),
+            timestamp: rng.gen_range(0..i64::MAX) as u64,
+            // Keep the prices low enough to avoid overflow when converting between fri and wei
+            l2_gas_price_fri: rng.gen_range(1..i64::MAX) as u128,
+            l1_gas_price_wei: rng.gen_range(1..i64::MAX) as u128,
+            l1_data_gas_price_wei: rng.gen_range(1..i64::MAX) as u128,
+            eth_to_strk_rate: rng.gen_range(1..i64::MAX) as u128,
+            l1_da_mode: fake::Faker.fake_with_rng(rng),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -282,8 +298,28 @@ impl ProposalPart {
         }
     }
 
+    pub fn is_proposal_init(&self) -> bool {
+        matches!(self, Self::Init(_))
+    }
+
     pub fn is_block_info(&self) -> bool {
         matches!(self, Self::BlockInfo(_))
+    }
+
+    pub fn is_transaction_batch(&self) -> bool {
+        matches!(self, Self::TransactionBatch(_))
+    }
+
+    pub fn is_transactions_fin(&self) -> bool {
+        matches!(self, Self::TransactionsFin(_))
+    }
+
+    pub fn is_proposal_commitment(&self) -> bool {
+        matches!(self, Self::ProposalCommitment(_))
+    }
+
+    pub fn is_proposal_fin(&self) -> bool {
+        matches!(self, Self::Fin(_))
     }
 }
 
