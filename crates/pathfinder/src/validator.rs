@@ -369,7 +369,7 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
 
     /// Execute a batch of transactions using a single executor and extract
     /// state diffs
-    pub fn execute_batch<T: TransactionMapper>(
+    pub fn execute_batch<T: TransactionExt>(
         &mut self,
         transactions: Vec<p2p_proto::consensus::Transaction>,
     ) -> anyhow::Result<()> {
@@ -397,7 +397,7 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
         let txn_hashes = common_txns
             .par_iter()
             .map(|t| {
-                if t.verify_hash(self.chain_id) {
+                if T::verify_hash(t, self.chain_id) {
                     Ok(t.hash)
                 } else {
                     Err(anyhow::anyhow!(
@@ -527,7 +527,7 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
     }
 
     /// Rollback to a specific transaction count
-    pub fn rollback_to_transaction<T: TransactionMapper>(
+    pub fn rollback_to_transaction<T: TransactionExt>(
         &mut self,
         target_transaction_count: usize,
     ) -> anyhow::Result<()> {
@@ -993,7 +993,7 @@ impl<E> ValidatorStage<E> {
     }
 }
 
-pub trait TransactionMapper {
+pub trait TransactionExt {
     /// Maps consensus transaction to a pair of:
     /// - common transaction, which is used for verifying the transaction hash
     /// - executor transaction, which is used for executing the transaction
@@ -1003,11 +1003,13 @@ pub trait TransactionMapper {
         pathfinder_common::transaction::Transaction,
         pathfinder_executor::Transaction,
     )>;
+
+    fn verify_hash(transaction: &Transaction, chain_id: ChainId) -> bool;
 }
 
 pub struct ProdTransactionMapper;
 
-impl TransactionMapper for ProdTransactionMapper {
+impl TransactionExt for ProdTransactionMapper {
     fn try_map_transaction(
         transaction: p2p_proto::consensus::Transaction,
     ) -> anyhow::Result<(
@@ -1060,6 +1062,10 @@ impl TransactionMapper for ProdTransactionMapper {
         };
 
         Ok((common_txn, executor_txn))
+    }
+
+    fn verify_hash(transaction: &Transaction, chain_id: ChainId) -> bool {
+        transaction.verify_hash(chain_id)
     }
 }
 
