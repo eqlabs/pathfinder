@@ -130,7 +130,9 @@ impl TestEnvironment {
             transactions_and_receipts: vec![],
             events: vec![],
         };
-        proposals_db.persist_finalized_block(height, round, block);
+        proposals_db
+            .persist_finalized_block(height, round, block)
+            .unwrap();
         db_tx.commit().unwrap();
     }
 
@@ -459,6 +461,7 @@ async fn test_proposal_fin_deferred_until_transactions_fin_processed() {
     let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
     let mut env = TestEnvironment::new(chain_id, validator_address);
     env.create_committed_parent_block(0);
+    env.create_uncommitted_finalized_block(1, 0);
     // env.create_committed_parent_block(1);
     env.wait_for_task_initialization().await;
 
@@ -629,8 +632,6 @@ async fn test_proposal_fin_deferred_until_transactions_fin_processed() {
     // env.verify_task_alive().await;
 
     let height_and_round1 = HeightAndRound::new(1, 0);
-
-    env.create_uncommitted_finalized_block(1, 0);
 
     env._tx_to_p2p
         .send(crate::consensus::inner::P2PTaskEvent::CommitBlock(
