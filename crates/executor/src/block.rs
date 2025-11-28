@@ -13,7 +13,7 @@ use crate::types::{
     transaction_declared_deprecated_class,
     transaction_type,
     BlockInfo,
-    Receipt,
+    ReceiptAndEvents,
     StateDiff,
 };
 use crate::{ExecutionState, Transaction, TransactionExecutionError};
@@ -27,44 +27,59 @@ pub struct BlockExecutor {
     next_txn_idx: usize,
 }
 
-type ReceiptAndEvents = (Receipt, Vec<pathfinder_common::event::Event>);
-
-impl BlockExecutor {
-    pub fn new(
+pub trait BlockExecutorExt {
+    fn new(
         chain_id: ChainId,
         block_info: BlockInfo,
         eth_fee_address: ContractAddress,
         strk_fee_address: ContractAddress,
         db_conn: pathfinder_storage::Connection,
-    ) -> anyhow::Result<Self> {
-        let execution_state = ExecutionState::validation(
-            chain_id,
-            block_info,
-            None,
-            Default::default(),
-            eth_fee_address,
-            strk_fee_address,
-            None,
-        );
-        let storage_adapter = ConcurrentStorageAdapter::new(db_conn);
-        let executor = create_executor(storage_adapter, execution_state)?;
-        let initial_state = executor
-            .block_state
-            .as_ref()
-            .expect(BLOCK_STATE_ACCESS_ERR)
-            .clone();
+    ) -> anyhow::Result<Self>
+    where
+        Self: Sized;
 
-        Ok(Self {
-            executor,
-            initial_state,
-            declared_deprecated_classes: Vec::new(),
-            next_txn_idx: 0,
-        })
-    }
+    /// Create a new BlockExecutor from a StateUpdate
+    /// This allows reconstructing an executor from a stored state diff
+    /// checkpoint
+    fn new_with_pending_state(
+        chain_id: ChainId,
+        block_info: BlockInfo,
+        eth_fee_address: ContractAddress,
+        strk_fee_address: ContractAddress,
+        db_conn: pathfinder_storage::Connection,
+        pending_state: std::sync::Arc<pathfinder_common::StateUpdate>,
+    ) -> anyhow::Result<Self>
+    where
+        Self: Sized;
 
+    /// Evecute a batch of transactions in the current block.
+    fn execute(
+        &mut self,
+        txns: Vec<Transaction>,
+    ) -> Result<Vec<ReceiptAndEvents>, TransactionExecutionError>;
+
+    fn finalize(self) -> anyhow::Result<StateDiff>;
+
+    /// This allows for setting the correct starting index for chained executors
+    fn set_transaction_index(&mut self, index: usize);
+
+    /// Extract state diff without consuming the executor
+    /// This allows extracting the diff for rollback scenarios without losing
+    /// the executor
+    ///
+    /// Note: This method does NOT call `executor.finalize()`, which means it
+    /// doesn't include stateful compression changes (system contract 0x2
+    /// updates). These changes are only needed when finalizing the proposal
+    /// for commitment computation, not for intermediate diff extraction
+    /// during batch execution.
+    fn extract_state_diff(&self) -> anyhow::Result<StateDiff>;
+}
+
+impl BlockExecutor {
     /// Create a new BlockExecutor with a pre-existing initial state
     /// This allows for executor chaining where the new executor starts with
     /// the final state of a previous executor
+    #[cfg(test)]
     pub fn new_with_initial_state(
         chain_id: ChainId,
         block_info: BlockInfo,
@@ -98,10 +113,66 @@ impl BlockExecutor {
         })
     }
 
+    /// Get the final state of the executor
+    /// This allows for state extraction before finalizing
+    #[cfg(test)]
+    fn get_final_state(
+        &self,
+    ) -> anyhow::Result<PathfinderExecutionState<ConcurrentStorageAdapter>> {
+        let final_state = self
+            .executor
+            .block_state
+            .as_ref()
+            .expect(BLOCK_STATE_ACCESS_ERR)
+            .clone();
+        Ok(final_state)
+    }
+
+    /// Get the current transaction index
+    /// This allows for tracking transaction indices across chained executors
+    #[cfg(test)]
+    pub fn get_transaction_index(&self) -> usize {
+        self.next_txn_idx
+    }
+}
+
+impl BlockExecutorExt for BlockExecutor {
+    fn new(
+        chain_id: ChainId,
+        block_info: BlockInfo,
+        eth_fee_address: ContractAddress,
+        strk_fee_address: ContractAddress,
+        db_conn: pathfinder_storage::Connection,
+    ) -> anyhow::Result<Self> {
+        let execution_state = ExecutionState::validation(
+            chain_id,
+            block_info,
+            None,
+            Default::default(),
+            eth_fee_address,
+            strk_fee_address,
+            None,
+        );
+        let storage_adapter = ConcurrentStorageAdapter::new(db_conn);
+        let executor = create_executor(storage_adapter, execution_state)?;
+        let initial_state = executor
+            .block_state
+            .as_ref()
+            .expect(BLOCK_STATE_ACCESS_ERR)
+            .clone();
+
+        Ok(Self {
+            executor,
+            initial_state,
+            declared_deprecated_classes: Vec::new(),
+            next_txn_idx: 0,
+        })
+    }
+
     /// Create a new BlockExecutor from a StateUpdate
     /// This allows reconstructing an executor from a stored state diff
     /// checkpoint
-    pub fn new_with_pending_state(
+    fn new_with_pending_state(
         chain_id: ChainId,
         block_info: BlockInfo,
         eth_fee_address: ContractAddress,
@@ -135,7 +206,7 @@ impl BlockExecutor {
     }
 
     /// Evecute a batch of transactions in the current block.
-    pub fn execute(
+    fn execute(
         &mut self,
         txns: Vec<Transaction>,
     ) -> Result<Vec<ReceiptAndEvents>, TransactionExecutionError> {
@@ -196,7 +267,7 @@ impl BlockExecutor {
     }
 
     /// Finalizes block execution and returns the state diff for the block.
-    pub fn finalize(self) -> anyhow::Result<StateDiff> {
+    fn finalize(self) -> anyhow::Result<StateDiff> {
         let Self {
             mut executor,
             initial_state,
@@ -216,29 +287,9 @@ impl BlockExecutor {
         Ok(diff)
     }
 
-    /// Get the final state of the executor
-    /// This allows for state extraction before finalizing
-    pub fn get_final_state(
-        &self,
-    ) -> anyhow::Result<PathfinderExecutionState<ConcurrentStorageAdapter>> {
-        let final_state = self
-            .executor
-            .block_state
-            .as_ref()
-            .expect(BLOCK_STATE_ACCESS_ERR)
-            .clone();
-        Ok(final_state)
-    }
-
-    /// Get the current transaction index
-    /// This allows for tracking transaction indices across chained executors
-    pub fn get_transaction_index(&self) -> usize {
-        self.next_txn_idx
-    }
-
     /// Set the transaction index
     /// This allows for setting the correct starting index for chained executors
-    pub fn set_transaction_index(&mut self, index: usize) {
+    fn set_transaction_index(&mut self, index: usize) {
         self.next_txn_idx = index;
     }
 
@@ -251,7 +302,7 @@ impl BlockExecutor {
     /// updates). These changes are only needed when finalizing the proposal
     /// for commitment computation, not for intermediate diff extraction
     /// during batch execution.
-    pub fn extract_state_diff(&self) -> anyhow::Result<StateDiff> {
+    fn extract_state_diff(&self) -> anyhow::Result<StateDiff> {
         let current_state = self
             .executor
             .block_state
@@ -272,7 +323,6 @@ impl BlockExecutor {
 
 #[cfg(test)]
 mod tests {
-
     use pathfinder_common::state_update::StateUpdateData;
     use pathfinder_common::transaction::{L1HandlerTransaction, TransactionVariant};
     use pathfinder_common::{
@@ -288,7 +338,7 @@ mod tests {
     use pathfinder_storage::StorageBuilder;
 
     use crate::execution_state::create_executor;
-    use crate::BlockExecutor;
+    use crate::{BlockExecutor, BlockExecutorExt as _};
 
     // Fee token addresses (same as in pathfinder_rpc::context)
     const ETH_FEE_TOKEN_ADDRESS: ContractAddress =
