@@ -62,7 +62,7 @@ use crate::SyncRequestToConsensus;
 #[cfg(test)]
 mod handler_proptest;
 #[cfg(test)]
-mod task_tests;
+mod p2p_task_tests;
 
 // Successful result of handling an incoming message in a dedicated
 // thread; carried data are used for async handling (e.g. gossiping).
