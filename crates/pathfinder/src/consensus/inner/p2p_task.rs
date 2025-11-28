@@ -786,6 +786,13 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
         )?
         .unwrap_or_default();
 
+    let has_txns_fin = parts
+        .iter()
+        .any(|part| matches!(part, ProposalPart::TransactionsFin(_)));
+    let has_commitment = parts
+        .iter()
+        .any(|part| matches!(part, ProposalPart::ProposalCommitment(_)));
+
     // Does nothing in production builds.
     integration_testing::debug_fail_on_proposal_part(
         &proposal_part,
@@ -925,6 +932,13 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                     Ok(None)
                 }
                 2.. => {
+                    if has_commitment {
+                        anyhow::bail!(
+                            "Duplicate ProposalCommitment for height and round {}",
+                            height_and_round
+                        );
+                    }
+
                     // Looks like a non-empty proposal:
                     // - [x] Proposal Init
                     // - [x] Block Info
@@ -968,7 +982,11 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
             );
 
             match parts.len() {
-                2 => {
+                2 if parts
+                    .get(1)
+                    .expect("part 1 to exist")
+                    .is_proposal_commitment() =>
+                {
                     // Looks like an empty proposal:
                     // - [x] Proposal Init
                     // - [x] Proposal Commitment
@@ -991,7 +1009,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                     // block finalization
                     Ok(proposal_commitment)
                 }
-                5.. if parts.get(1).expect("2 parts").is_block_info() => {
+                5.. if parts.get(1).expect("part 1 to exist").is_block_info() => {
                     // Looks like a non-empty proposal:
                     // - [x] Proposal Init
                     // - [x] Block Info
@@ -1051,6 +1069,13 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                     "Unexpected proposal TransactionsFin for height and round {} at position {}",
                     height_and_round,
                     parts.len()
+                );
+            }
+
+            if has_txns_fin {
+                anyhow::bail!(
+                    "Duplicate TransactionsFin for height and round {}",
+                    height_and_round
                 );
             }
             // Looks like a non-empty proposal:
