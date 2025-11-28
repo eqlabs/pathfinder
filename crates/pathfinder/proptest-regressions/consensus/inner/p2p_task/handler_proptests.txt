@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 65ab450aa5ac3b3cb9fd05cc0073fed253ad757338c6bffb242cf6919353f15b # shrinks to (proposal_type, seed) = (StructurallyInvalidExecutionOk, 14774658799269555950)
+cc bd3644c258f2b87d94ad2fefacf8b776dc6dc858d32e40ae4e689eb7dd04901a # shrinks to (proposal_type, seed) = (StructurallyValidNonEmptyExecutionFails, 8467432240279251058)
