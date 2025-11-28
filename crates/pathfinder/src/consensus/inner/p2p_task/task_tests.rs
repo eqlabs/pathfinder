@@ -23,6 +23,7 @@ use tokio::time::timeout;
 use crate::consensus::inner::persist_proposals::ConsensusProposals;
 use crate::consensus::inner::test_helpers::{create_test_proposal, create_transaction_batch};
 use crate::consensus::inner::{p2p_task, ConsensusTaskEvent, ConsensusValue, P2PTaskConfig};
+use crate::validator::FinalizedBlock;
 
 /// Helper struct to setup and manage the test environment (databases,
 /// channels, mock client)
@@ -106,6 +107,30 @@ impl TestEnvironment {
             .sequencer_address(SequencerAddress::ZERO)
             .finalize_with_hash(BlockHash(Felt::ZERO));
         db_tx.insert_block_header(&parent_header).unwrap();
+        db_tx.commit().unwrap();
+    }
+
+    fn create_uncommitted_finalized_block(&self, height: u64, round: u32) {
+        let mut db_conn = self.consensus_storage.connection().unwrap();
+        let db_tx = db_conn.transaction().unwrap();
+        let proposals_db = ConsensusProposals::new(&db_tx);
+        let block = FinalizedBlock {
+            header: BlockHeader::builder()
+                .number(BlockNumber::new_or_panic(height))
+                .timestamp(BlockTimestamp::new_or_panic(1000))
+                .calculated_state_commitment(
+                    StorageCommitment(Felt::ZERO),
+                    ClassCommitment(Felt::ZERO),
+                )
+                .sequencer_address(SequencerAddress::ZERO)
+                // Let's differ from block @H=2
+                .state_diff_commitment(StateDiffCommitment(Felt::ONE))
+                .finalize_with_hash(BlockHash(Felt::ONE)),
+            state_update: Default::default(),
+            transactions_and_receipts: vec![],
+            events: vec![],
+        };
+        proposals_db.persist_finalized_block(height, round, block);
         db_tx.commit().unwrap();
     }
 
@@ -433,7 +458,8 @@ async fn test_proposal_fin_deferred_until_transactions_fin_processed() {
     let chain_id = ChainId::SEPOLIA_TESTNET;
     let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
     let mut env = TestEnvironment::new(chain_id, validator_address);
-    env.create_committed_parent_block(1);
+    env.create_committed_parent_block(0);
+    // env.create_committed_parent_block(1);
     env.wait_for_task_initialization().await;
 
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
@@ -487,6 +513,7 @@ async fn test_proposal_fin_deferred_until_transactions_fin_processed() {
 
     // Step 5: Send ProposalFin BEFORE TransactionsFin
     // This should be DEFERRED because TransactionsFin hasn't been processed
+    /*
     env.p2p_tx
         .send(Event::Proposal(
             height_and_round,
@@ -495,6 +522,16 @@ async fn test_proposal_fin_deferred_until_transactions_fin_processed() {
             }),
         ))
         .expect("Failed to send ProposalFin");
+    env.verify_task_alive().await;
+    */
+    env.p2p_tx
+        .send(Event::Proposal(
+            height_and_round,
+            ProposalPart::TransactionsFin(p2p_proto::consensus::TransactionsFin {
+                executed_transaction_count: 5,
+            }),
+        ))
+        .expect("Failed to send TransactionsFin");
     env.verify_task_alive().await;
 
     // Verify: Still no proposal event (ProposalFin was deferred)
@@ -521,6 +558,7 @@ async fn test_proposal_fin_deferred_until_transactions_fin_processed() {
 
     // Step 6: Send TransactionsFin
     // This should trigger finalization of the deferred ProposalFin
+    /*
     env.p2p_tx
         .send(Event::Proposal(
             height_and_round,
@@ -529,6 +567,81 @@ async fn test_proposal_fin_deferred_until_transactions_fin_processed() {
             }),
         ))
         .expect("Failed to send TransactionsFin");
+    env.verify_task_alive().await;
+    */
+    env.p2p_tx
+        .send(Event::Proposal(
+            height_and_round,
+            ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
+                proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
+            }),
+        ))
+        .expect("Failed to send ProposalFin");
+    env.verify_task_alive().await;
+    // env.create_committed_parent_block(1);
+    /*
+        // Step ???: Send An entire dummy proposal for H=1 to
+        // trigger deferred execution of the fin @H=2
+        let height_and_round1 = HeightAndRound::new(1, 0);
+
+        let (proposal_init1, block_info1) =
+            create_test_proposal(chain_id, 1, 0, proposer_address, vec![]);
+
+        env.p2p_tx
+            .send(Event::Proposal(
+                height_and_round1,
+                ProposalPart::Init(proposal_init1),
+            ))
+            .expect("Failed to send ProposalInit");
+        env.verify_task_alive().await;
+        env.p2p_tx
+            .send(Event::Proposal(
+                height_and_round1,
+                // ProposalPart::BlockInfo(block_info1),
+                create_proposal_commitment_part(1, proposal_commitment),
+            ))
+            .expect("Failed to send ProposalInit");
+        env.verify_task_alive().await;
+        env.p2p_tx
+            .send(Event::Proposal(
+                height_and_round1,
+                ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
+                    proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
+                }),
+            ))
+            .expect("Failed to send ProposalFin");
+
+        // Verify: Proposal event should be sent now
+        let proposal_cmd = wait_for_proposal_event(&mut env.rx_from_p2p, Duration::from_secs(3))
+            .await
+            .expect("Expected proposal event after TransactionsFin");
+        verify_proposal_event(proposal_cmd, 1, proposal_commitment);
+    */
+
+    // env.p2p_tx
+    //     .send(Event::Proposal(
+    //         height_and_round,
+    //         ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
+    //             proposal_commitment:
+    // p2p_proto::common::Hash(proposal_commitment.0),         }),
+    //     ))
+    //     .expect("Failed to send ProposalFin");
+    // env.verify_task_alive().await;
+
+    let height_and_round1 = HeightAndRound::new(1, 0);
+
+    env.create_uncommitted_finalized_block(1, 0);
+
+    env._tx_to_p2p
+        .send(crate::consensus::inner::P2PTaskEvent::CommitBlock(
+            height_and_round1,
+            ConsensusValue(ProposalCommitment(Felt::ONE)),
+        ))
+        .await
+        .expect("TODO");
+    env.verify_task_alive().await;
+
+    tokio::time::sleep(Duration::from_millis(1000)).await;
     env.verify_task_alive().await;
 
     // Verify: Proposal event should be sent now
