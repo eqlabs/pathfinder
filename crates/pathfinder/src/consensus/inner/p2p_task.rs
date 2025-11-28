@@ -760,9 +760,11 @@ fn commit_finalized_block(
 /// 1. Proposal Init
 /// 2. Block Info for non-empty proposals (or Proposal Commitment for empty
 ///    proposals)
+/// 3. In random order: at least one Transaction Batch, Proposal Commitment,
+///    Transactions Fin
+/// 4. Proposal Fin
 ///
-/// The rest can come in any order. The [spec](https://github.com/starknet-io/starknet-p2p-specs/blob/main/p2p/proto/consensus/consensus.md#order-of-messages).
-/// is more restrictive.
+/// The [spec](https://github.com/starknet-io/starknet-p2p-specs/blob/main/p2p/proto/consensus/consensus.md#order-of-messages) is more restrictive.
 #[allow(clippy::too_many_arguments)]
 fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
     chain_id: ChainId,
