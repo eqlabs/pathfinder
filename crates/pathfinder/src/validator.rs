@@ -879,6 +879,7 @@ impl ValidatorFinalizeStage {
     ///
     /// This function performs database operations and is computationally
     /// and IO intensive.
+    // TODO make it into a trait, we don't want this heavy stuff in proptests
     pub fn finalize(
         self,
         db_tx: DbTransaction<'_>,
@@ -1137,7 +1138,7 @@ fn class_info(class: Cairo1Class) -> anyhow::Result<ClassInfo> {
     Ok(ci)
 }
 
-fn deployed_address(txnv: &TransactionVariant) -> Option<starknet_api::core::ContractAddress> {
+pub fn deployed_address(txnv: &TransactionVariant) -> Option<starknet_api::core::ContractAddress> {
     match txnv {
         TransactionVariant::DeployAccountV3(t) => Some(starknet_api::core::ContractAddress(
             starknet_api::core::PatriciaKey::try_from(t.contract_address.get().into_starkfelt())
