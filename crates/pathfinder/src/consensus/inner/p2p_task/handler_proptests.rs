@@ -13,10 +13,13 @@
 //! Ultimately, we end up with 5 possible paths, 2 of them leading to success.
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, AtomicUsize};
 use std::sync::{Arc, Mutex};
+use std::usize;
 
 use fake::Fake as _;
 use p2p::consensus::HeightAndRound;
+use p2p::sync::client::conv::TryFromDto;
 use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
 use p2p_proto::consensus::{
     BlockInfo,
@@ -25,10 +28,15 @@ use p2p_proto::consensus::{
     ProposalInit,
     ProposalPart,
     Transaction,
+    TransactionVariant as ConsensusVariant,
     TransactionsFin,
 };
-use pathfinder_common::{ChainId, ContractAddress};
-use pathfinder_executor::BlockExecutorExt;
+use p2p_proto::sync::transaction::{DeclareV3WithoutClass, TransactionVariant as SyncVariant};
+use p2p_proto::transaction::DeclareV3WithClass;
+use pathfinder_common::transaction::TransactionVariant;
+use pathfinder_common::{ChainId, ContractAddress, TransactionHash};
+use pathfinder_executor::types::to_starknet_api_transaction;
+use pathfinder_executor::{BlockExecutorExt, IntoStarkFelt};
 use pathfinder_storage::StorageBuilder;
 use proptest::prelude::*;
 use rand::seq::SliceRandom as _;
@@ -39,12 +47,13 @@ use crate::consensus::inner::open_consensus_storage;
 use crate::consensus::inner::p2p_task::{handle_incoming_proposal_part, ValidatorCache};
 use crate::consensus::inner::persist_proposals::ConsensusProposals;
 use crate::consensus::inner::proposal_error::ProposalHandlingError;
-use crate::validator::TransactionExt;
+use crate::validator::{deployed_address, TransactionExt};
 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(25))]
     #[test]
     fn test_handle_incoming_proposal_part((proposal_type, seed) in strategy::composite()) {
+        MockExecutor::set_seed(seed);
         let validator_cache = ValidatorCache::<MockExecutor>::new();
         let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
         let main_storage = StorageBuilder::in_tempdir().unwrap();
@@ -57,18 +66,26 @@ proptest! {
 
         let (proposal_parts, expect_success) = match proposal_type {
             strategy::ProposalCase::ValidEmpty => (create_structurally_valid_empty_proposal(seed), true),
-            strategy::ProposalCase::StructurallyValidNonEmptyExecutionOk |
+            strategy::ProposalCase::StructurallyValidNonEmptyExecutionOk =>
+                create_structurally_valid_non_empty_proposal(seed, true),
             strategy::ProposalCase::StructurallyValidNonEmptyExecutionFails =>
-                (create_structurally_valid_non_empty_proposal(seed), true),
-            strategy::ProposalCase::StructurallyInvalidExecutionOk |
+                create_structurally_valid_non_empty_proposal(seed, false),
+            strategy::ProposalCase::StructurallyInvalidExecutionOk =>
+                create_structurally_invalid_proposal(seed, true),
             strategy::ProposalCase::StructurallyInvalidExecutionFails =>
-                (create_structurally_invalid_proposal(seed), false),
+                create_structurally_invalid_proposal(seed, false),
         };
 
-        let mut result = if expect_success { Err(ProposalHandlingError::Fatal(anyhow::anyhow!("No proposal parts processed"))) }
-            else { Ok(None) };
+        let mut result = if expect_success {
+            Err(ProposalHandlingError::Fatal(anyhow::anyhow!(
+                "No proposal parts processed"
+            )))
+        } else {
+            Ok(None)
+        };
 
         let proposal_parts_len = proposal_parts.len();
+        let no_fin = proposal_parts.iter().all(|part| !part.is_proposal_fin());
 
         for (proposal_part, is_last) in proposal_parts
             .into_iter()
@@ -104,9 +121,135 @@ proptest! {
             }
         }
 
-        // If we expect failure, the last result must be an error
+        // If we expect failure, we stop at the first error or Fin could be missing as well
+        //
+        // TODO proposals which are invalid because they're missing Fin
+        // should be dropped and purged from storage ASAP
         if !expect_success {
-            prop_assert!(result.is_err());
+            prop_assert!(result.is_err() || no_fin);
+        }
+    }
+}
+
+#[test]
+fn regression() {
+    let (proposal_type, seed) = (
+        strategy::ProposalCase::StructurallyValidNonEmptyExecutionFails,
+        8467432240279251058,
+    );
+
+    MockExecutor::set_seed(seed);
+    let validator_cache = ValidatorCache::<MockExecutor>::new();
+    let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
+    let main_storage = StorageBuilder::in_tempdir().unwrap();
+    let consensus_storage_tempdir = tempfile::tempdir().unwrap();
+    let consensus_storage = open_consensus_storage(consensus_storage_tempdir.path()).unwrap();
+    let mut consensus_db_conn = consensus_storage.connection().unwrap();
+    let consensus_db_tx = consensus_db_conn.transaction().unwrap();
+    let proposals_db = ConsensusProposals::new(consensus_db_tx);
+    let mut batch_execution_manager = BatchExecutionManager::new();
+
+    let (proposal_parts, expect_success) = match proposal_type {
+        strategy::ProposalCase::ValidEmpty => {
+            (create_structurally_valid_empty_proposal(seed), true)
+        }
+        strategy::ProposalCase::StructurallyValidNonEmptyExecutionOk => {
+            create_structurally_valid_non_empty_proposal(seed, true)
+        }
+        strategy::ProposalCase::StructurallyValidNonEmptyExecutionFails => {
+            create_structurally_valid_non_empty_proposal(seed, false)
+        }
+        strategy::ProposalCase::StructurallyInvalidExecutionOk => {
+            create_structurally_invalid_proposal(seed, true)
+        }
+        strategy::ProposalCase::StructurallyInvalidExecutionFails => {
+            create_structurally_invalid_proposal(seed, false)
+        }
+    };
+
+    let mut result = if expect_success {
+        Err(ProposalHandlingError::Fatal(anyhow::anyhow!(
+            "No proposal parts processed"
+        )))
+    } else {
+        Ok(None)
+    };
+
+    let proposal_parts_len = proposal_parts.len();
+    let no_fin = proposal_parts.iter().all(|part| !part.is_proposal_fin());
+
+    let dump = dump(&proposal_parts);
+    println!("Testing proposal parts: {}", dump);
+
+    for (proposal_part, is_last) in proposal_parts
+        .into_iter()
+        .zip((0..proposal_parts_len).map(|x| x == proposal_parts_len - 1))
+    {
+        result = handle_incoming_proposal_part::<MockExecutor, MockMapper>(
+            ChainId::SEPOLIA_TESTNET,
+            // Arbitrary contract address for testing
+            ContractAddress::ONE,
+            HeightAndRound::new(0, 0),
+            proposal_part,
+            validator_cache.clone(),
+            deferred_executions.clone(),
+            main_storage.clone(),
+            &proposals_db,
+            &mut batch_execution_manager,
+            // Utilized by failure injection which is not happening in this test, so we can
+            // safely use an empty path
+            &PathBuf::new(),
+            // No failure injection in this test
+            None,
+        );
+
+        if expect_success {
+            assert!(result.is_ok());
+            // If we expect success, all results must be Ok, and the last must contain valid
+            // value
+            assert_eq!(result.as_ref().unwrap().is_some(), is_last);
+        } else {
+            if result.is_err() {
+                break;
+            }
+        }
+    }
+
+    // If we expect failure, we stop at the first error or Fin could be missing as
+    // well
+    //
+    // TODO proposals which are invalid because they're missing Fin
+    // should be dropped and purged from storage ASAP
+    if !expect_success {
+        assert!(result.is_err() || no_fin);
+    }
+}
+
+fn dump(proposal_parts: &[ProposalPart]) -> String {
+    let output = String::new();
+    let output = proposal_parts.iter().fold(output, |mut output, part| {
+        output.push_str(&dump_part(part));
+        output.push_str(", ");
+        output
+    });
+    output
+}
+
+fn dump_part(part: &ProposalPart) -> String {
+    match part {
+        ProposalPart::Init(init) => format!("Init"),
+        ProposalPart::BlockInfo(info) => format!("BlockInfo"),
+        ProposalPart::TransactionBatch(batch) => {
+            format!("Batch(len: {})", batch.len())
+        }
+        ProposalPart::TransactionsFin(fin) => {
+            format!("TxnsFin")
+        }
+        ProposalPart::ProposalCommitment(commitment) => {
+            format!("Commitment")
+        }
+        ProposalPart::Fin(fin) => {
+            format!("Fin")
         }
     }
 }
@@ -163,7 +306,10 @@ fn create_structurally_valid_empty_proposal(seed: u64) -> Vec<ProposalPart> {
 /// - In random order: one or more Transaction Batches, Transactions Fin,
 ///   Proposal Commitment
 /// - Proposal Fin
-fn create_structurally_valid_non_empty_proposal(seed: u64) -> Vec<ProposalPart> {
+fn create_structurally_valid_non_empty_proposal(
+    seed: u64,
+    execution_succeeds: bool,
+) -> (Vec<ProposalPart>, bool) {
     use rand::SeedableRng;
     // Explicitly choose RNG to make sure seeded proposals are always reproducible
     let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
@@ -184,6 +330,9 @@ fn create_structurally_valid_non_empty_proposal(seed: u64) -> Vec<ProposalPart> 
     proposal_parts.push(block_info);
 
     let num_txns = rng.gen_range(1..1000);
+
+    println!("Generating proposal with {} transactions", num_txns);
+
     let transactions = (0..num_txns)
         .map(|_| fake::Faker.fake_with_rng(&mut rng))
         .collect::<Vec<Transaction>>();
@@ -193,6 +342,17 @@ fn create_structurally_valid_non_empty_proposal(seed: u64) -> Vec<ProposalPart> 
         .collect::<Vec<_>>();
 
     let executed_transaction_count = rng.gen_range(1..=num_txns).try_into().unwrap();
+
+    if execution_succeeds {
+        MockExecutor::set_fail_at_txn(DONT_FAIL);
+    } else {
+        let fail_at = rng.gen_range(0..num_txns);
+
+        println!("Injecting failure at txn index {}", fail_at);
+
+        MockExecutor::set_fail_at_txn(fail_at);
+    }
+
     let transactions_fin = ProposalPart::TransactionsFin(TransactionsFin {
         executed_transaction_count,
     });
@@ -215,7 +375,7 @@ fn create_structurally_valid_non_empty_proposal(seed: u64) -> Vec<ProposalPart> 
         proposal_commitment: Hash::ZERO,
     });
     proposal_parts.push(proposal_fin);
-    proposal_parts
+    (proposal_parts, execution_succeeds)
 }
 
 #[derive(Debug, Clone, Copy, fake::Dummy)]
@@ -232,12 +392,12 @@ enum ModifyPart {
 ///   transactions fin, proposal commitment, proposal fin
 /// - reshuffles all of the parts without respect to to the spec, or how
 ///   permissive we are wrt the ordering,
-fn create_structurally_invalid_proposal(seed: u64) -> Vec<ProposalPart> {
+fn create_structurally_invalid_proposal(seed: u64, fail_at_txn: bool) -> (Vec<ProposalPart>, bool) {
     use rand::SeedableRng;
     // Explicitly choose RNG to make sure seeded proposals are always reproducible
     let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
 
-    let mut proposal_parts = create_structurally_valid_non_empty_proposal(seed);
+    let (mut proposal_parts, _) = create_structurally_valid_non_empty_proposal(seed, fail_at_txn);
     let remove_all_txns: bool = rng.gen();
     let modify_init: ModifyPart = fake::Faker.fake_with_rng(&mut rng);
     let modify_block_info: ModifyPart = fake::Faker.fake_with_rng(&mut rng);
@@ -284,7 +444,8 @@ fn create_structurally_invalid_proposal(seed: u64) -> Vec<ProposalPart> {
         proposal_parts.remove(0);
     }
 
-    proposal_parts
+    // This proposal should always fail, regardless of execution outcome
+    (proposal_parts, false)
 }
 
 /// Removes a proposal part if the flag is true, or duplicates int if the flag
@@ -403,14 +564,54 @@ impl BlockExecutorExt for MockExecutor {
         Ok(Self)
     }
 
+    /// We want execution in the proptests to be deterministic based on the seed
+    /// set in the MockMapper. This way we can have proposals that, if they're
+    /// not configured to be failures, produce consistent results which can then
+    /// be serialized into the consensus DB. This way we bypass real execution
+    /// but can still heavily test the other parts of the proposal handling
+    /// logic, including the consensus DB serialization.
     fn execute(
         &mut self,
-        _: Vec<pathfinder_executor::Transaction>,
+        txns: Vec<pathfinder_executor::Transaction>,
     ) -> Result<
         Vec<pathfinder_executor::types::ReceiptAndEvents>,
         pathfinder_executor::TransactionExecutionError,
     > {
-        Ok(vec![])
+        MockExecutor::add_executed_txn_count(txns.len());
+
+        println!(
+            "MockExecutor executed {} transactions",
+            MockExecutor::get_executed_txn_count()
+        );
+
+        let fail_at_txn = MockExecutor::get_fail_at_txn();
+        if fail_at_txn != DONT_FAIL && MockExecutor::get_executed_txn_count() > fail_at_txn {
+            return Err(
+                pathfinder_executor::TransactionExecutionError::ExecutionError {
+                    transaction_index: fail_at_txn,
+                    error: "Injected execution failure for proptests".to_string(),
+                    error_stack: Default::default(),
+                },
+            );
+        }
+
+        use rand::SeedableRng;
+        let seed = MockExecutor::get_seed();
+        // Explicitly choose RNG to make sure seeded proposals are always reproducible
+        let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
+
+        let dummy = (
+            // Garbage is fine as long as it's serializable
+            pathfinder_executor::types::Receipt {
+                actual_fee: fake::Faker.fake_with_rng(&mut rng),
+                execution_resources: fake::Faker.fake_with_rng(&mut rng),
+                l2_to_l1_messages: fake::Faker.fake_with_rng(&mut rng),
+                execution_status: fake::Faker.fake_with_rng(&mut rng),
+                transaction_index: fake::Faker.fake_with_rng(&mut rng),
+            },
+            fake::Faker.fake_with_rng(&mut rng),
+        );
+        Ok(vec![dummy; txns.len()])
     }
 
     fn finalize(self) -> anyhow::Result<pathfinder_executor::types::StateDiff> {
@@ -424,19 +625,117 @@ impl BlockExecutorExt for MockExecutor {
     }
 }
 
+const DONT_FAIL: usize = usize::MAX;
+
+// Thread-local is a precaution to ensure that the seed is passed correctly
+// even if multiple runs for a particular proptest are running in parallel,
+// which I'm pretty sure doesn't happen with proptest as of now (28/11/2025).
+// Anyway, it will still serve well in case we have more than one proptest here.
+thread_local! {
+    pub static MOCK_EXECUTOR_SEED: AtomicU64 = const { AtomicU64::new(0) };
+    pub static MOCK_EXECUTOR_EXECUTED_TXN_COUNT: AtomicUsize = const { AtomicUsize::new(0) };
+    pub static MOCK_EXECUTOR_FAIL_AT_TXN: AtomicUsize = const { AtomicUsize::new(DONT_FAIL) };
+}
+
+impl MockExecutor {
+    pub fn set_seed(seed: u64) {
+        MOCK_EXECUTOR_SEED.with(|s| {
+            s.store(seed, std::sync::atomic::Ordering::SeqCst);
+        });
+    }
+
+    pub fn get_seed() -> u64 {
+        MOCK_EXECUTOR_SEED.with(|s| s.load(std::sync::atomic::Ordering::SeqCst))
+    }
+
+    pub fn add_executed_txn_count(count: usize) {
+        MOCK_EXECUTOR_EXECUTED_TXN_COUNT.with(|s| {
+            s.fetch_add(count, std::sync::atomic::Ordering::SeqCst);
+        });
+    }
+
+    pub fn get_executed_txn_count() -> usize {
+        MOCK_EXECUTOR_EXECUTED_TXN_COUNT.with(|s| s.load(std::sync::atomic::Ordering::SeqCst))
+    }
+
+    pub fn set_fail_at_txn(txn_index: usize) {
+        MOCK_EXECUTOR_FAIL_AT_TXN.with(|s| {
+            s.store(txn_index, std::sync::atomic::Ordering::SeqCst);
+        });
+    }
+
+    pub fn get_fail_at_txn() -> usize {
+        MOCK_EXECUTOR_FAIL_AT_TXN.with(|s| s.load(std::sync::atomic::Ordering::SeqCst))
+    }
+}
+
 struct MockMapper;
 
+/// Does the same as ProdTransactionMapper with some exceptions:
+/// - fills ClassInfo with dummy data
 impl TransactionExt for MockMapper {
     fn try_map_transaction(
-        _: p2p_proto::consensus::Transaction,
+        transaction: p2p_proto::consensus::Transaction,
     ) -> anyhow::Result<(
         pathfinder_common::transaction::Transaction,
         pathfinder_executor::Transaction,
     )> {
-        Ok((
-            Default::default(),
-            pathfinder_executor::Transaction::L1Handler(Default::default()),
-        ))
+        let p2p_proto::consensus::Transaction {
+            txn,
+            transaction_hash,
+        } = transaction;
+        let (variant, class_info) = match txn {
+            ConsensusVariant::DeclareV3(DeclareV3WithClass {
+                common,
+                class: _, /* Ignore */
+            }) => (
+                SyncVariant::DeclareV3(DeclareV3WithoutClass {
+                    common,
+                    class_hash: Default::default(),
+                }),
+                Some(starknet_api::contract_class::ClassInfo {
+                    contract_class: starknet_api::contract_class::ContractClass::V0(
+                        starknet_api::deprecated_contract_class::ContractClass::default(),
+                    ),
+                    sierra_program_length: 0,
+                    abi_length: 0,
+                    sierra_version: starknet_api::contract_class::SierraVersion::DEPRECATED,
+                }),
+            ),
+            ConsensusVariant::DeployAccountV3(v) => (SyncVariant::DeployAccountV3(v), None),
+            ConsensusVariant::InvokeV3(v) => (SyncVariant::InvokeV3(v), None),
+            ConsensusVariant::L1HandlerV0(v) => (SyncVariant::L1HandlerV0(v), None),
+        };
+
+        let common_txn_variant = TransactionVariant::try_from_dto(variant)?;
+
+        let deployed_address = deployed_address(&common_txn_variant);
+
+        // TODO(validator) why 10^12?
+        let paid_fee_on_l1 = match &common_txn_variant {
+            TransactionVariant::L1Handler(_) => {
+                Some(starknet_api::transaction::fields::Fee(1_000_000_000_000))
+            }
+            _ => None,
+        };
+
+        let api_txn = to_starknet_api_transaction(common_txn_variant.clone())?;
+        let tx_hash =
+            starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt());
+        let executor_txn = pathfinder_executor::Transaction::from_api(
+            api_txn,
+            tx_hash,
+            class_info,
+            paid_fee_on_l1,
+            deployed_address,
+            pathfinder_executor::AccountTransactionExecutionFlags::default(),
+        )?;
+        let common_txn = pathfinder_common::transaction::Transaction {
+            hash: TransactionHash(transaction_hash.0),
+            variant: common_txn_variant,
+        };
+
+        Ok((common_txn, executor_txn))
     }
 
     fn verify_hash(_: &pathfinder_common::transaction::Transaction, _: ChainId) -> bool {
