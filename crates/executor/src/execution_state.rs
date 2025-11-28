@@ -60,7 +60,7 @@ impl VersionedConstantsMap {
     }
 
     pub fn latest_version() -> StarknetVersion {
-        versions::STARKNET_VERSION_0_14_0
+        versions::STARKNET_VERSION_0_14_1
     }
 
     fn fill_default(data: &mut BTreeMap<StarknetVersion, Cow<'static, VersionedConstants>>) {
