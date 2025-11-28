@@ -16,7 +16,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, AtomicUsize};
 use std::sync::{Arc, Mutex};
-use std::usize;
 
 use fake::Fake as _;
 use p2p::consensus::HeightAndRound;
@@ -116,10 +115,8 @@ proptest! {
                 prop_assert!(result.is_ok(), "{}", debug_info);
                 // If we expect success, all results must be Ok, and the last must contain valid value
                 prop_assert_eq!(result.as_ref().unwrap().is_some(), is_last, "{}", debug_info);
-            } else {
-                if result.is_err() {
-                    break;
-                }
+            } else if result.is_err() {
+                break;
             }
         }
 
@@ -171,7 +168,7 @@ fn dump_part(part: &ProposalPart) -> Cow<'static, str> {
         ProposalPart::TransactionBatch(batch) => format!("Batch(len: {})", batch.len()).into(),
         ProposalPart::TransactionsFin(TransactionsFin {
             executed_transaction_count,
-        }) => format!("TxnFin(count: {})", executed_transaction_count).into(),
+        }) => format!("TxnFin(count: {executed_transaction_count})").into(),
         ProposalPart::ProposalCommitment(_) => "Commitment".into(),
         ProposalPart::Fin(_) => "Fin".into(),
     }
