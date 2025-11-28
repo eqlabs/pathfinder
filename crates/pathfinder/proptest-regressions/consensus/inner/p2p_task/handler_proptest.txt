@@ -8,3 +8,4 @@ cc 65ab450aa5ac3b3cb9fd05cc0073fed253ad757338c6bffb242cf6919353f15b # shrinks to
 cc bd3644c258f2b87d94ad2fefacf8b776dc6dc858d32e40ae4e689eb7dd04901a # shrinks to (proposal_type, seed) = (StructurallyValidNonEmptyExecutionFails, 8467432240279251058)
 cc 8773afd684ac46fd41aafb884b7679f57a4450fe3b297fd8a9efd0390d8959d8 # shrinks to (proposal_type, seed) = (StructurallyInvalidExecutionOk, 9181708935074874480)
 cc 102b2839e4f00df2f7d70c33871ab16a1a23bae6230551778c7335855a33d360 # shrinks to (proposal_type, seed) = (StructurallyInvalidExecutionOk, 10609718920510075896)
+cc b33e8ec389839f514689ca7e29df1e11a2254e917de4e3077485e97ddf747eb3 # shrinks to (proposal_type, seed) = (StructurallyInvalidExecutionFails, 8605337213757032975)
