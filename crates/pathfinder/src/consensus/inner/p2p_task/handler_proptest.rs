@@ -369,7 +369,7 @@ fn create_structurally_invalid_proposal(seed: u64, fail_at_txn: bool) -> (Vec<Pr
         proposal_parts.shuffle(&mut rng);
     }
 
-    // If we were unfortuante enough to get an unmodified proposal, let's at least
+    // If we were unfortunate enough to get an unmodified proposal, let's at least
     // force removing the init at the head, so that the proposal is invalid for
     // sure.
     if config.maybe_valid() {
