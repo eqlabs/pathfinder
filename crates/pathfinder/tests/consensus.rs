@@ -27,7 +27,7 @@ mod test {
     use rstest::rstest;
 
     use crate::common::pathfinder_instance::{respawn_on_fail, PathfinderInstance};
-    use crate::common::rpc_client::wait_for_height;
+    use crate::common::rpc_client::{wait_for_block_exists, wait_for_height};
     use crate::common::utils;
 
     // TODO Test cases that should be supported by the integration tests:
@@ -133,5 +133,64 @@ mod test {
         };
 
         utils::wait_for_test_end(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT).await
+    }
+
+    #[tokio::test]
+    async fn consensus_fourth_node_joins_late_can_catch_up() -> anyhow::Result<()> {
+        const NUM_NODES: usize = 4;
+        // System contracts start to matter after block 10
+        const HEIGHT_TO_ADD_FOURTH_NODE: u64 = 15;
+        const FINAL_HEIGHT: u64 = 20;
+        const READY_TIMEOUT: Duration = Duration::from_secs(20);
+        const TEST_TIMEOUT: Duration = Duration::from_secs(120);
+        const POLL_READY: Duration = Duration::from_millis(500);
+        const POLL_HEIGHT: Duration = Duration::from_secs(1);
+
+        let (configs, stopwatch) = utils::setup(NUM_NODES)?;
+        let mut configs = configs.into_iter();
+
+        let alice = PathfinderInstance::spawn(configs.next().unwrap())?;
+        alice.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
+
+        let boot_port = alice.consensus_p2p_port();
+        let mut configs = configs.map(|cfg| cfg.with_boot_port(boot_port));
+
+        let bob = PathfinderInstance::spawn(configs.next().unwrap())?;
+        let charlie = PathfinderInstance::spawn(configs.next().unwrap())?;
+
+        let (bob_rdy, charlie_rdy) = tokio::join!(
+            bob.wait_for_ready(POLL_READY, READY_TIMEOUT),
+            charlie.wait_for_ready(POLL_READY, READY_TIMEOUT)
+        );
+        bob_rdy?;
+        charlie_rdy?;
+
+        utils::log_elapsed(stopwatch);
+
+        // Use channels to send and update of the rpc port
+        let alice_client = wait_for_height(&alice, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
+        let bob_client = wait_for_height(&bob, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
+        let charlie_client = wait_for_height(&charlie, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
+
+        utils::wait_for_test_end(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT)
+            .await?;
+
+        let dan_cfg = configs.next().unwrap().with_sync_enabled();
+
+        let dan = PathfinderInstance::spawn(dan_cfg.clone())?;
+        dan.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
+
+        let alice_client = wait_for_height(&alice, FINAL_HEIGHT, POLL_HEIGHT);
+        let bob_client = wait_for_height(&bob, FINAL_HEIGHT, POLL_HEIGHT);
+        let charlie_client = wait_for_height(&charlie, FINAL_HEIGHT, POLL_HEIGHT);
+
+        // Wait for a block that was decided before this node joined to be synced.
+        let dan_client = wait_for_block_exists(&dan, HEIGHT_TO_ADD_FOURTH_NODE - 2, POLL_HEIGHT);
+
+        utils::wait_for_test_end(
+            vec![alice_client, bob_client, charlie_client, dan_client],
+            TEST_TIMEOUT,
+        )
+        .await
     }
 }

@@ -1,22 +1,28 @@
 use anyhow::Context;
 use p2p_proto::consensus::ProposalPart;
-use pathfinder_common::ContractAddress;
+use pathfinder_common::{ContractAddress, L2Block};
 use pathfinder_storage::Transaction;
 
 use crate::consensus::inner::conv::{IntoModel, TryIntoDto};
 use crate::consensus::inner::dto;
-use crate::validator::FinalizedBlock;
 
 /// A wrapper around a consensus database transaction that provides
 /// methods for persisting and retrieving proposal parts and finalized blocks.
 pub struct ConsensusProposals<'tx> {
-    tx: &'tx Transaction<'tx>,
+    pub tx: Transaction<'tx>,
 }
 
 impl<'tx> ConsensusProposals<'tx> {
     /// Create a new `ConsensusProposals` wrapper around a transaction.
-    pub fn new(tx: &'tx Transaction<'tx>) -> Self {
+    pub fn new(tx: Transaction<'tx>) -> Self {
         Self { tx }
+    }
+
+    /// Commit the underlying transaction.
+    pub fn commit(self) -> anyhow::Result<()> {
+        self.tx
+            .commit()
+            .context("Committing consensus proposals transaction")
     }
 
     /// Persist proposal parts for a given height, round, and proposer.
@@ -108,7 +114,7 @@ impl<'tx> ConsensusProposals<'tx> {
         &self,
         height: u64,
         round: u32,
-        block: FinalizedBlock,
+        block: L2Block,
     ) -> anyhow::Result<bool> {
         let serde_block = dto::FinalizedBlock::try_into_dto(block)?;
         let finalized_block = dto::PersistentFinalizedBlock::V0(serde_block);
@@ -121,11 +127,7 @@ impl<'tx> ConsensusProposals<'tx> {
     }
 
     /// Read a finalized block for a given height and round.
-    pub fn read_finalized_block(
-        &self,
-        height: u64,
-        round: u32,
-    ) -> anyhow::Result<Option<FinalizedBlock>> {
+    pub fn read_finalized_block(&self, height: u64, round: u32) -> anyhow::Result<Option<L2Block>> {
         if let Some(buf) = self.tx.read_consensus_finalized_block(height, round)? {
             let block = Self::decode_finalized_block(&buf[..])?;
             Ok(Some(block))
@@ -149,7 +151,7 @@ impl<'tx> ConsensusProposals<'tx> {
         Ok(parts)
     }
 
-    fn decode_finalized_block(buf: &[u8]) -> anyhow::Result<FinalizedBlock> {
+    fn decode_finalized_block(buf: &[u8]) -> anyhow::Result<L2Block> {
         let persistent_block: dto::PersistentFinalizedBlock =
             bincode::serde::decode_from_slice(buf, bincode::config::standard())
                 .context("Deserializing finalized block")?

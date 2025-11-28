@@ -7,7 +7,7 @@ use tokio::sync::{mpsc, watch};
 
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
-use crate::sync::catch_up::BlockData;
+use crate::SyncRequestToConsensus;
 
 #[cfg(feature = "p2p")]
 mod inner;
@@ -25,17 +25,8 @@ pub struct ConsensusTaskHandles {
 pub struct ConsensusChannels {
     /// Watcher for the latest [ConsensusInfo].
     pub consensus_info_watch: watch::Receiver<Option<ConsensusInfo>>,
-    /// Watcher for the first block that the node is missing, either because it
-    /// joined the network late or is lagging behind for a different reason.
-    ///
-    /// Intended to be used by the [catch up sync](crate::sync::catch_up) task.
-    pub catch_up_rx: watch::Receiver<Option<u64>>,
-    /// Messages on this channel indicate that a new block has been synced and
-    /// needs to be stored in the database.
-    ///
-    /// Intended to be used by the [catch up sync](crate::sync::catch_up) task.
-    /// This is done in order to keep all database writes in a single place.
-    pub store_synced_block_tx: mpsc::Sender<BlockData>,
+    /// Channel for the sync task to send requests to consensus.
+    pub sync_to_consensus_tx: mpsc::Sender<SyncRequestToConsensus>,
 }
 
 impl ConsensusTaskHandles {
@@ -51,8 +42,8 @@ impl ConsensusTaskHandles {
 #[allow(clippy::too_many_arguments)]
 pub fn start(
     config: ConsensusConfig,
-    storage: Storage,
     chain_id: ChainId,
+    main_storage: Storage,
     p2p_consensus_client: p2p::consensus::Client,
     p2p_event_rx: mpsc::UnboundedReceiver<Event>,
     wal_directory: PathBuf,
@@ -63,14 +54,14 @@ pub fn start(
 ) -> ConsensusTaskHandles {
     inner::start(
         config,
-        storage,
         chain_id,
+        main_storage,
         p2p_consensus_client,
         p2p_event_rx,
         wal_directory,
         data_directory,
-        inject_failure_config,
         verify_tree_hashes,
+        inject_failure_config,
     )
 }
 
@@ -81,8 +72,8 @@ mod inner {
     #[allow(clippy::too_many_arguments)]
     pub fn start(
         _: ConsensusConfig,
-        _: Storage,
         _: ChainId,
+        _: Storage,
         _: p2p::consensus::Client,
         _: mpsc::UnboundedReceiver<Event>,
         _: PathBuf,

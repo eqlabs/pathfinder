@@ -31,6 +31,7 @@ use pathfinder_common::{
     ChainId,
     ConsensusInfo,
     ContractAddress,
+    L2Block,
     ProposalCommitment,
     StarknetVersion,
 };
@@ -59,7 +60,7 @@ use crate::state::block_hash::{
     calculate_receipt_commitment,
     calculate_transaction_commitment,
 };
-use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage};
+use crate::validator::ValidatorBlockInfoStage;
 
 #[allow(clippy::too_many_arguments)]
 pub fn spawn(
@@ -68,10 +69,9 @@ pub fn spawn(
     wal_directory: PathBuf,
     tx_to_p2p: mpsc::Sender<P2PTaskEvent>,
     mut rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
-    catch_up_tx: watch::Sender<Option<u64>>,
     info_watch_tx: watch::Sender<Option<ConsensusInfo>>,
-    storage: Storage,
-    fake_proposals_storage: Storage,
+    main_storage: Storage,
+    consensus_storage: Storage,
     data_directory: &Path,
     // Does nothing in production builds. Used for integration testing only.
     inject_failure: Option<InjectFailureConfig>,
@@ -79,14 +79,15 @@ pub fn spawn(
     let data_directory = data_directory.to_path_buf();
 
     util::task::spawn(async move {
-        let highest_finalized = highest_finalized(&storage)?;
+        let highest_finalized = highest_finalized(&consensus_storage)?;
         // Get the validator address and validator set provider
         let validator_address = config.my_validator_address;
         let validator_set_provider =
-            L2ValidatorSetProvider::new(storage.clone(), chain_id, config.clone());
+            L2ValidatorSetProvider::new(consensus_storage.clone(), chain_id, config.clone());
 
         // Get the proposer selector
-        let proposer_selector = L2ProposerSelector::new(storage.clone(), chain_id, config.clone());
+        let proposer_selector =
+            L2ProposerSelector::new(consensus_storage.clone(), chain_id, config.clone());
 
         let mut consensus =
             Consensus::<ConsensusValue, ContractAddress, L2ProposerSelector>::recover_with_proposal_selector(
@@ -154,7 +155,7 @@ pub fn spawn(
                                  {round}",
                             );
 
-                            let fake_proposals_storage = fake_proposals_storage.clone();
+                            let main_storage = main_storage.clone();
                             let (wire_proposal, finalized_block) =
                                 util::task::spawn_blocking(move |_| {
                                     create_empty_proposal(
@@ -162,7 +163,7 @@ pub fn spawn(
                                         height,
                                         round.into(),
                                         validator_address,
-                                        fake_proposals_storage,
+                                        main_storage,
                                     )
                                 })
                                 .await?
@@ -327,15 +328,6 @@ pub fn spawn(
                                         "🧠 ⏩  {validator_address} catching up current height \
                                          {next_height} -> {cmd_height}",
                                     );
-
-                                    // TODO: We are initiating catch-up sync but from here onwards
-                                    // the node is still participating in consensus. If we stop
-                                    // before the catch-up is complete, there will be a gap between
-                                    // the blocks that have been synced and `cmd_height` which we
-                                    // won't have a way of filling (as things stand at the moment).
-                                    catch_up_tx
-                                        .send(Some(next_height))
-                                        .expect("Catch-up sync should be running");
                                     next_height = cmd_height;
                                 } else {
                                     last_nil_vote_height = Some(last_nil);
@@ -399,8 +391,8 @@ fn create_empty_proposal(
     height: u64,
     round: Round,
     proposer: ContractAddress,
-    storage: Storage,
-) -> anyhow::Result<(Vec<ProposalPart>, FinalizedBlock)> {
+    main_storage: Storage,
+) -> anyhow::Result<(Vec<ProposalPart>, L2Block)> {
     let round = round.as_u32().expect("Round not to be Nil???");
     let proposer = Address(proposer.0);
     let timestamp = SystemTime::now()
@@ -425,7 +417,7 @@ fn create_empty_proposal(
     };
     let current_block = BlockNumber::new(height).context("Invalid height")?;
     let parent_proposal_commitment_hash = if let Some(parent_number) = current_block.parent() {
-        let mut db_conn = storage
+        let mut db_conn = main_storage
             .connection()
             .context("Creating database connection")?;
         let db_txn = db_conn
@@ -441,15 +433,22 @@ fn create_empty_proposal(
     };
 
     let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())?
-        .validate_consensus_block_info(block_info.clone(), storage.clone())?;
+        .validate_consensus_block_info(block_info.clone(), main_storage.clone())?;
     let validator = validator.consensus_finalize0()?;
-    let mut db_conn = storage
+
+    let readonly_storage = main_storage.clone();
+    let mut db_conn = main_storage
         .connection()
         .context("Creating database connection")?;
     let db_txn = db_conn
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .context("Create database transaction")?;
-    let finalized_block = validator.finalize(db_txn, storage.clone())?;
+    let finalized_block = validator.finalize(
+        &db_txn,
+        readonly_storage,
+        false, // Do not verify hashes for empty proposals
+    )?;
+    db_txn.commit().context("Committing database transaction")?;
     let proposal_commitment_hash = Hash(finalized_block.header.state_diff_commitment.0);
 
     // The only version handled by consensus, so far

@@ -1,5 +1,5 @@
 use p2p_proto::consensus as proto;
-use pathfinder_common::{receipt, state_update};
+use pathfinder_common::{receipt, state_update, L2Block};
 use pathfinder_storage::{
     DataAvailabilityMode,
     DeclareTransactionV4,
@@ -12,7 +12,6 @@ use pathfinder_storage::{
 };
 
 use crate::consensus::inner::dto;
-use crate::validator::FinalizedBlock;
 
 /// Convert a DTO type to a data model type (`protobuf` in case of raw
 /// proposals, and `pathfinder_common` types in case of finalized blocks)
@@ -607,15 +606,15 @@ impl TryIntoDto<p2p_proto::common::L1DataAvailabilityMode> for u8 {
     }
 }
 
-impl IntoModel<FinalizedBlock> for dto::FinalizedBlock {
-    fn into_model(self) -> FinalizedBlock {
+impl IntoModel<L2Block> for dto::FinalizedBlock {
+    fn into_model(self) -> L2Block {
         let dto::FinalizedBlock {
             header,
             state_update,
             transactions_and_receipts,
             events,
         } = self;
-        FinalizedBlock {
+        L2Block {
             header: header.into_model(),
             state_update: state_update.into_model(),
             transactions_and_receipts: transactions_and_receipts
@@ -855,9 +854,9 @@ impl IntoModel<receipt::ExecutionStatus> for dto::ExecutionStatus {
     }
 }
 
-impl TryIntoDto<FinalizedBlock> for dto::FinalizedBlock {
-    fn try_into_dto(b: FinalizedBlock) -> anyhow::Result<dto::FinalizedBlock> {
-        let FinalizedBlock {
+impl TryIntoDto<L2Block> for dto::FinalizedBlock {
+    fn try_into_dto(b: L2Block) -> anyhow::Result<dto::FinalizedBlock> {
+        let L2Block {
             header,
             state_update,
             transactions_and_receipts,

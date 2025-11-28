@@ -73,11 +73,11 @@ impl BatchExecutionManager {
         height_and_round: HeightAndRound,
         transactions: Vec<proto_consensus::Transaction>,
         validator: &mut ValidatorTransactionBatchStage,
-        db_tx: &DbTransaction<'_>,
+        cons_db_tx: &DbTransaction<'_>,
         deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
     ) -> anyhow::Result<()> {
         // Check if execution should be deferred
-        if should_defer_execution(height_and_round, db_tx)? {
+        if should_defer_execution(height_and_round, cons_db_tx)? {
             tracing::debug!(
                 "🖧  ⚙️ transaction batch execution for height and round {height_and_round} is \
                  deferred"
@@ -293,14 +293,14 @@ impl Default for ProposalCommitmentWithOrigin {
 /// be deferred because the previous block is not committed yet.
 pub fn should_defer_execution(
     height_and_round: HeightAndRound,
-    db_tx: &DbTransaction<'_>,
+    cons_db_tx: &DbTransaction<'_>,
 ) -> anyhow::Result<bool> {
     let parent_block = height_and_round.height().checked_sub(1);
     let defer = if let Some(parent_block) = parent_block {
         let parent_block =
             BlockNumber::new(parent_block).context("Block number is larger than i64::MAX")?;
         let parent_block = BlockId::Number(parent_block);
-        let parent_committed = db_tx.block_exists(parent_block)?;
+        let parent_committed = cons_db_tx.block_exists(parent_block)?;
         !parent_committed
     } else {
         false
