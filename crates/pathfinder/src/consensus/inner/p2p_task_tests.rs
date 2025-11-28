@@ -27,11 +27,12 @@ mod tests {
     /// Helper struct to setup and manage the test environment (databases,
     /// channels, mock client)
     struct TestEnvironment {
-        storage: pathfinder_storage::Storage,
+        _main_storage: pathfinder_storage::Storage,
         consensus_storage: pathfinder_storage::Storage,
         p2p_tx: mpsc::UnboundedSender<Event>,
         rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
         _tx_to_p2p: mpsc::Sender<crate::consensus::inner::P2PTaskEvent>, /* Keep alive to prevent receiver from being dropped */
+        _sync_request_tx: mpsc::Sender<crate::SyncRequestToConsensus>,   /* Same, keep alive */
         handle: Arc<Mutex<Option<tokio::task::JoinHandle<anyhow::Result<()>>>>>,
     }
 
@@ -65,7 +66,7 @@ mod tests {
             let (p2p_tx, p2p_rx) = mpsc::unbounded_channel();
             let (tx_to_consensus, rx_from_p2p) = mpsc::channel(100);
             let (tx_to_p2p, rx_from_consensus) = mpsc::channel(100);
-            let (_sync_requests_tx, sync_requests_rx) = mpsc::channel(1);
+            let (sync_requests_tx, sync_requests_rx) = mpsc::channel(1);
 
             // Create mock Client (used for receiving events in these tests)
             let keypair = Keypair::generate_ed25519();
@@ -92,17 +93,18 @@ mod tests {
             );
 
             Self {
-                storage: main_storage,
+                _main_storage: main_storage,
                 consensus_storage,
                 p2p_tx,
                 rx_from_p2p,
                 _tx_to_p2p: tx_to_p2p,
+                _sync_request_tx: sync_requests_tx,
                 handle: Arc::new(Mutex::new(Some(handle))),
             }
         }
 
         fn create_committed_parent_block(&self, parent_height: u64) {
-            let mut db_conn = self.storage.connection().unwrap();
+            let mut db_conn = self.consensus_storage.connection().unwrap();
             let db_tx = db_conn.transaction().unwrap();
             let parent_header = BlockHeader::builder()
                 .number(BlockNumber::new_or_panic(parent_height))

@@ -136,7 +136,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn consensus_fourth_node_joins_late_can_catch_up() -> anyhow::Result<()> {
+    async fn consensus_3_nodes_fourth_node_joins_late_can_catch_up() -> anyhow::Result<()> {
         const NUM_NODES: usize = 4;
         // System contracts start to matter after block 10
         const HEIGHT_TO_ADD_FOURTH_NODE: u64 = 15;
