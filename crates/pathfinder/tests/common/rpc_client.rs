@@ -139,7 +139,6 @@ async fn wait_for_block_exists_fut(
                 continue;
             };
 
-
         let Ok(reply) = reqwest::Client::new()
             .post(format!("http://127.0.0.1:{rpc_port}"))
             .body(format!(
