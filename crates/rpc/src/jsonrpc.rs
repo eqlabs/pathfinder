@@ -20,7 +20,6 @@ pub use router::{
     RpcSubscriptionFlow,
     SubscriptionMessage,
 };
-use starknet_gateway_types::reply::Block;
 use tokio::sync::broadcast;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -42,7 +41,7 @@ impl RequestId {
 #[derive(Debug, Clone)]
 pub struct Notifications {
     pub block_headers: broadcast::Sender<Arc<pathfinder_common::BlockHeader>>,
-    pub l2_blocks: broadcast::Sender<Arc<Block>>,
+    pub l2_blocks: broadcast::Sender<Arc<pathfinder_common::L2Block>>,
     pub reorgs: broadcast::Sender<Arc<Reorg>>,
 }
 

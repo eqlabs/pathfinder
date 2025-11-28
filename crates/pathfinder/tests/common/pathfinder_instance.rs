@@ -36,6 +36,7 @@ pub struct PathfinderInstance {
 pub struct Config {
     pub name: &'static str,
     pub boot_port: Option<u16>,
+    pub sync_enabled: bool,
     pub my_validator_address: u8,
     pub validator_addresses: Vec<u8>,
     pub pathfinder_bin: PathBuf,
@@ -82,7 +83,6 @@ impl PathfinderInstance {
                 "--debug.pretty-log=true",
                 "--color=never",
                 "--monitor-address=127.0.0.1:0",
-                "--sync.enable=false",
                 "--rpc.enable=true",
                 "--http-rpc=127.0.0.1:0",
                 "--consensus.enable=true",
@@ -116,6 +116,7 @@ impl PathfinderInstance {
                  12D3KooWDJryKaxjwNCk6yTtZ4GbtbLrH7JrEUTngvStaDttLtid"
             ));
         }
+        command.arg(format!("--sync.enable={}", config.sync_enabled));
 
         config.inject_failure.map(|i| {
             command
@@ -428,6 +429,7 @@ impl Config {
             .map(|i| Self {
                 name: Self::NAMES[i],
                 boot_port: None,
+                sync_enabled: false,
                 my_validator_address: (i + 1) as u8,
                 // The set is deduplicated when consensus task is started, so including the own
                 // validator address is fine.
@@ -447,6 +449,11 @@ impl Config {
 
     pub fn with_boot_port(mut self, port: u16) -> Self {
         self.boot_port = Some(port);
+        self
+    }
+
+    pub fn with_sync_enabled(mut self) -> Self {
+        self.sync_enabled = true;
         self
     }
 }

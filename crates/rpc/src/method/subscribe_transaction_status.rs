@@ -271,13 +271,19 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
                                     }
                                 }
 
+                                let status_in_l2 = l2_block.transactions_and_receipts
+                                    .iter()
+                                    .find_map(|(tx, receipt)| {
+                                        (tx.hash == tx_hash).then_some(&receipt.execution_status)
+                                    });
+
                                 // 2. Transactions accepted on L2.
-                                if let Some(receipt) = find_tx_receipt(&l2_block.transaction_receipts, tx_hash) {
+                                if let Some(status) = status_in_l2 {
                                     if sender
                                         .send_and_update(
-                                            l2_block.block_number,
+                                            l2_block.header.number,
                                             FinalityStatus::AcceptedOnL2,
-                                            Some(receipt.execution_status.clone()),
+                                            Some(status.clone()),
                                         )
                                         .await
                                         .is_err()
@@ -324,6 +330,7 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
                 }
             }
         }
+
         Ok(())
     }
 }
@@ -513,11 +520,12 @@ mod tests {
     use pathfinder_common::prelude::*;
     use pathfinder_common::receipt::{ExecutionStatus, Receipt};
     use pathfinder_common::transaction::Transaction;
+    use pathfinder_common::L2Block;
     use pathfinder_crypto::Felt;
     use pathfinder_ethereum::EthereumStateUpdate;
     use pathfinder_storage::StorageBuilder;
     use pretty_assertions_sorted::assert_eq;
-    use starknet_gateway_types::reply::{Block, PendingBlock, PreConfirmedBlock, PreLatestBlock};
+    use starknet_gateway_types::reply::{PendingBlock, PreConfirmedBlock, PreLatestBlock};
     use tokio::sync::mpsc;
 
     use crate::context::{RpcContext, WebsocketContext};
@@ -570,9 +578,12 @@ mod tests {
             .notifications
             .l2_blocks
             .send(
-                Block {
-                    block_number: BlockNumber::GENESIS + 1,
-                    block_hash: BlockHash(Felt::from_u64(1)),
+                L2Block {
+                    header: BlockHeader {
+                        number: BlockNumber::GENESIS + 1,
+                        hash: BlockHash(Felt::from_u64(1)),
+                        ..Default::default()
+                    },
                     ..Default::default()
                 }
                 .into(),
@@ -606,9 +617,12 @@ mod tests {
             .notifications
             .l2_blocks
             .send(
-                Block {
-                    block_number: BlockNumber::GENESIS + 2,
-                    block_hash: BlockHash(Felt::from_u64(2)),
+                L2Block {
+                    header: BlockHeader {
+                        number: BlockNumber::GENESIS + 2,
+                        hash: BlockHash(Felt::from_u64(2)),
+                        ..Default::default()
+                    },
                     ..Default::default()
                 }
                 .into(),
@@ -755,9 +769,12 @@ mod tests {
                     BlockNumber::GENESIS + 1,
                 )),
                 TestEvent::L2Block(
-                    Block {
-                        block_number: BlockNumber::GENESIS + 1,
-                        block_hash: BlockHash(Felt::from_u64(1)),
+                    L2Block {
+                        header: BlockHeader {
+                            number: BlockNumber::GENESIS + 1,
+                            hash: BlockHash(Felt::from_u64(1)),
+                            ..Default::default()
+                        },
                         ..Default::default()
                     }
                     .into(),
@@ -782,20 +799,23 @@ mod tests {
                     BlockNumber::GENESIS + 2,
                 )),
                 TestEvent::L2Block(
-                    Block {
-                        block_number: BlockNumber::GENESIS + 2,
-                        block_hash: BlockHash(Felt::from_u64(2)),
-                        transactions: vec![Transaction {
-                            hash: TARGET_TX_HASH,
+                    L2Block {
+                        header: BlockHeader {
+                            number: BlockNumber::GENESIS + 2,
+                            hash: BlockHash(Felt::from_u64(2)),
                             ..Default::default()
-                        }],
-                        transaction_receipts: vec![(
+                        },
+                        transactions_and_receipts: vec![(
+                            Transaction {
+                                hash: TARGET_TX_HASH,
+                                ..Default::default()
+                            },
                             Receipt {
                                 transaction_hash: TARGET_TX_HASH,
                                 ..Default::default()
                             },
-                            vec![],
                         )],
+                        events: vec![vec![]],
                         ..Default::default()
                     }
                     .into(),
@@ -816,20 +836,23 @@ mod tests {
                 })),
                 // Irrelevant block.
                 TestEvent::L2Block(
-                    Block {
-                        block_number: BlockNumber::GENESIS + 3,
-                        block_hash: BlockHash(Felt::from_u64(3)),
-                        transactions: vec![Transaction {
-                            hash: TransactionHash(Felt::from_u64(5)),
+                    L2Block {
+                        header: BlockHeader {
+                            number: BlockNumber::GENESIS + 3,
+                            hash: BlockHash(Felt::from_u64(3)),
                             ..Default::default()
-                        }],
-                        transaction_receipts: vec![(
+                        },
+                        transactions_and_receipts: vec![(
+                            Transaction {
+                                hash: TransactionHash(Felt::from_u64(5)),
+                                ..Default::default()
+                            },
                             Receipt {
                                 transaction_hash: TransactionHash(Felt::from_u64(5)),
                                 ..Default::default()
                             },
-                            vec![],
                         )],
+                        events: vec![vec![]],
                         ..Default::default()
                     }
                     .into(),
@@ -840,9 +863,12 @@ mod tests {
                     block_hash: Default::default(),
                 }),
                 TestEvent::L2Block(
-                    Block {
-                        block_number: BlockNumber::GENESIS + 4,
-                        block_hash: BlockHash(Felt::from_u64(4)),
+                    L2Block {
+                        header: BlockHeader {
+                            number: BlockNumber::GENESIS + 4,
+                            hash: BlockHash(Felt::from_u64(4)),
+                            ..Default::default()
+                        },
                         ..Default::default()
                     }
                     .into(),
@@ -923,9 +949,12 @@ mod tests {
                     BlockNumber::GENESIS + 1,
                 )),
                 TestEvent::L2Block(
-                    Block {
-                        block_number: BlockNumber::GENESIS + 1,
-                        block_hash: BlockHash(Felt::from_u64(1)),
+                    L2Block {
+                        header: BlockHeader {
+                            number: BlockNumber::GENESIS + 1,
+                            hash: BlockHash(Felt::from_u64(1)),
+                            ..Default::default()
+                        },
                         ..Default::default()
                     }
                     .into(),
@@ -950,20 +979,23 @@ mod tests {
                     BlockNumber::GENESIS + 2,
                 )),
                 TestEvent::L2Block(
-                    Block {
-                        block_number: BlockNumber::GENESIS + 2,
-                        block_hash: BlockHash(Felt::from_u64(2)),
-                        transactions: vec![Transaction {
-                            hash: TARGET_TX_HASH,
+                    L2Block {
+                        header: BlockHeader {
+                            number: BlockNumber::GENESIS + 2,
+                            hash: BlockHash(Felt::from_u64(2)),
                             ..Default::default()
-                        }],
-                        transaction_receipts: vec![(
+                        },
+                        transactions_and_receipts: vec![(
+                            Transaction {
+                                hash: TARGET_TX_HASH,
+                                ..Default::default()
+                            },
                             Receipt {
                                 transaction_hash: TARGET_TX_HASH,
                                 ..Default::default()
                             },
-                            vec![],
                         )],
+                        events: vec![vec![]],
                         ..Default::default()
                     }
                     .into(),
@@ -1006,9 +1038,12 @@ mod tests {
                     .unwrap(),
                 ),
                 TestEvent::L2Block(
-                    Block {
-                        block_number: BlockNumber::GENESIS + 1,
-                        block_hash: BlockHash(Felt::from_u64(1)),
+                    L2Block {
+                        header: BlockHeader {
+                            number: BlockNumber::GENESIS + 1,
+                            hash: BlockHash(Felt::from_u64(1)),
+                            ..Default::default()
+                        },
                         ..Default::default()
                     }
                     .into(),
@@ -1037,20 +1072,23 @@ mod tests {
                     .unwrap(),
                 ),
                 TestEvent::L2Block(
-                    Block {
-                        block_number: BlockNumber::GENESIS + 2,
-                        block_hash: BlockHash(Felt::from_u64(2)),
-                        transactions: vec![Transaction {
-                            hash: TARGET_TX_HASH,
+                    L2Block {
+                        header: BlockHeader {
+                            number: BlockNumber::GENESIS + 2,
+                            hash: BlockHash(Felt::from_u64(2)),
                             ..Default::default()
-                        }],
-                        transaction_receipts: vec![(
+                        },
+                        transactions_and_receipts: vec![(
+                            Transaction {
+                                hash: TARGET_TX_HASH,
+                                ..Default::default()
+                            },
                             Receipt {
                                 transaction_hash: TARGET_TX_HASH,
                                 ..Default::default()
                             },
-                            vec![],
                         )],
+                        events: vec![vec![]],
                         ..Default::default()
                     }
                     .into(),
@@ -1107,9 +1145,12 @@ mod tests {
                     .unwrap(),
                 ),
                 TestEvent::L2Block(
-                    Block {
-                        block_number: BlockNumber::GENESIS + 1,
-                        block_hash: BlockHash(Felt::from_u64(1)),
+                    L2Block {
+                        header: BlockHeader {
+                            number: BlockNumber::GENESIS + 1,
+                            hash: BlockHash(Felt::from_u64(1)),
+                            ..Default::default()
+                        },
                         ..Default::default()
                     }
                     .into(),
@@ -1224,20 +1265,23 @@ mod tests {
                     }
                 })),
                 TestEvent::L2Block(
-                    Block {
-                        block_number: BlockNumber::GENESIS + 2,
-                        block_hash: BlockHash(Felt::from_u64(2)),
-                        transactions: vec![Transaction {
-                            hash: TARGET_TX_HASH,
+                    L2Block {
+                        header: BlockHeader {
+                            number: BlockNumber::GENESIS + 2,
+                            hash: BlockHash(Felt::from_u64(2)),
                             ..Default::default()
-                        }],
-                        transaction_receipts: vec![(
+                        },
+                        transactions_and_receipts: vec![(
+                            Transaction {
+                                hash: TARGET_TX_HASH,
+                                ..Default::default()
+                            },
                             Receipt {
                                 transaction_hash: TARGET_TX_HASH,
                                 ..Default::default()
                             },
-                            vec![],
                         )],
+                        events: vec![vec![]],
                         ..Default::default()
                     }
                     .into(),
@@ -1267,9 +1311,12 @@ mod tests {
                     .unwrap(),
                 ),
                 TestEvent::L2Block(
-                    Block {
-                        block_number: BlockNumber::GENESIS + 1,
-                        block_hash: BlockHash(Felt::from_u64(1)),
+                    L2Block {
+                        header: BlockHeader {
+                            number: BlockNumber::GENESIS + 1,
+                            hash: BlockHash(Felt::from_u64(1)),
+                            ..Default::default()
+                        },
                         ..Default::default()
                     }
                     .into(),
@@ -1292,20 +1339,23 @@ mod tests {
                     .unwrap(),
                 ),
                 TestEvent::L2Block(
-                    Block {
-                        block_number: BlockNumber::GENESIS + 2,
-                        block_hash: BlockHash(Felt::from_u64(2)),
-                        transactions: vec![Transaction {
-                            hash: TARGET_TX_HASH,
+                    L2Block {
+                        header: BlockHeader {
+                            number: BlockNumber::GENESIS + 2,
+                            hash: BlockHash(Felt::from_u64(2)),
                             ..Default::default()
-                        }],
-                        transaction_receipts: vec![(
+                        },
+                        transactions_and_receipts: vec![(
+                            Transaction {
+                                hash: TARGET_TX_HASH,
+                                ..Default::default()
+                            },
                             Receipt {
                                 transaction_hash: TARGET_TX_HASH,
                                 ..Default::default()
                             },
-                            vec![],
                         )],
+                        events: vec![vec![]],
                         ..Default::default()
                     }
                     .into(),
@@ -1427,28 +1477,34 @@ mod tests {
                     )),
                     // Irrelevant block update.
                     TestEvent::L2Block(
-                        Block {
-                            block_number: BlockNumber::GENESIS + 1,
-                            block_hash: BlockHash(Felt::from_u64(1)),
+                        L2Block {
+                            header: BlockHeader {
+                                number: BlockNumber::GENESIS + 1,
+                                hash: BlockHash(Felt::from_u64(1)),
+                                ..Default::default()
+                            },
                             ..Default::default()
                         }
                         .into(),
                     ),
                     TestEvent::L2Block(
-                        Block {
-                            block_number: BlockNumber::GENESIS + 2,
-                            block_hash: BlockHash(Felt::from_u64(2)),
-                            transactions: vec![Transaction {
-                                hash: TARGET_TX_HASH,
+                        L2Block {
+                            header: BlockHeader {
+                                number: BlockNumber::GENESIS + 2,
+                                hash: BlockHash(Felt::from_u64(2)),
                                 ..Default::default()
-                            }],
-                            transaction_receipts: vec![(
+                            },
+                            transactions_and_receipts: vec![(
+                                Transaction {
+                                    hash: TARGET_TX_HASH,
+                                    ..Default::default()
+                                },
                                 Receipt {
                                     transaction_hash: TARGET_TX_HASH,
                                     ..Default::default()
                                 },
-                                vec![],
                             )],
+                            events: vec![vec![]],
                             ..Default::default()
                         }
                         .into(),
@@ -1574,22 +1630,16 @@ mod tests {
                             let mut conn = storage.connection().unwrap();
                             let db = conn.transaction().unwrap();
                             db.insert_block_header(&BlockHeader {
-                                hash: block.block_hash,
-                                number: block.block_number,
-                                parent_hash: BlockHash(block.block_hash.0 - Felt::from_u64(1)),
+                                hash: block.header.hash,
+                                number: block.header.number,
+                                parent_hash: BlockHash(block.header.hash.0 - Felt::from_u64(1)),
                                 ..Default::default()
                             })
                             .unwrap();
-                            let (transactions, events_per_tx): (Vec<_>, Vec<_>) = block
-                                .transactions
-                                .into_iter()
-                                .zip(block.transaction_receipts)
-                                .map(|(tx, (receipt, events))| ((tx, receipt), events))
-                                .unzip();
                             db.insert_transaction_data(
-                                block.block_number,
-                                &transactions,
-                                Some(&events_per_tx),
+                                block.header.number,
+                                &block.transactions_and_receipts,
+                                Some(&block.events),
                             )
                             .unwrap();
                             db.commit().unwrap();
@@ -1748,7 +1798,7 @@ mod tests {
     #[derive(Debug)]
     enum TestEvent {
         Pending(PendingData),
-        L2Block(Box<Block>),
+        L2Block(Box<L2Block>),
         Reorg(Reorg),
         L1State(EthereumStateUpdate),
         Message(serde_json::Value),

@@ -18,29 +18,30 @@ use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
-use p2p::consensus::{Client, Event, HeightAndRound};
+use p2p::consensus::{Event, HeightAndRound};
 use p2p_proto::consensus::ProposalPart;
-use pathfinder_common::{ChainId, ContractAddress, ProposalCommitment};
+use pathfinder_common::{ChainId, ContractAddress, L2Block, ProposalCommitment};
 use pathfinder_consensus::{ConsensusCommand, ConsensusEvent, NetworkMessage};
 use pathfinder_storage::pruning::BlockchainHistoryMode;
 use pathfinder_storage::{JournalMode, Storage, TriePruneMode};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, watch};
 
-use super::ConsensusTaskHandles;
+use super::{ConsensusChannels, ConsensusTaskHandles};
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
-use crate::validator::FinalizedBlock;
+use crate::SyncRequestToConsensus;
 
 #[allow(clippy::too_many_arguments)]
 pub fn start(
     config: ConsensusConfig,
     chain_id: ChainId,
-    storage: Storage,
-    wal_directory: PathBuf,
-    p2p_client: Client,
+    main_storage: Storage,
+    p2p_consensus_client: p2p::consensus::Client,
     p2p_event_rx: mpsc::UnboundedReceiver<Event>,
+    wal_directory: PathBuf,
     data_directory: &Path,
+    verify_tree_hashes: bool,
     inject_failure_config: Option<InjectFailureConfig>,
 ) -> ConsensusTaskHandles {
     // Events that are produced by the P2P task and consumed by the consensus task.
@@ -49,6 +50,8 @@ pub fn start(
     // Events that are produced by the consensus task and consumed by the P2P task.
     // TODO determine sufficient buffer size. 1 is not enough.
     let (tx_to_p2p, rx_from_consensus) = mpsc::channel::<P2PTaskEvent>(10);
+    // Requests sent to consensus by the sync task.
+    let (sync_to_consensus_tx, sync_to_consensus_rx) = mpsc::channel::<SyncRequestToConsensus>(10);
 
     let consensus_storage =
         open_consensus_storage(data_directory).expect("Consensus storage cannot be opened");
@@ -56,13 +59,15 @@ pub fn start(
     let consensus_p2p_event_processing_handle = p2p_task::spawn(
         chain_id,
         (&config).into(),
-        p2p_client,
-        storage.clone(),
+        p2p_consensus_client,
         p2p_event_rx,
         tx_to_consensus,
         rx_from_consensus,
+        sync_to_consensus_rx,
+        main_storage.clone(),
         consensus_storage.clone(),
         data_directory,
+        verify_tree_hashes,
         inject_failure_config,
     );
 
@@ -75,8 +80,8 @@ pub fn start(
         tx_to_p2p,
         rx_from_p2p,
         info_watch_tx,
+        main_storage,
         consensus_storage,
-        storage,
         data_directory,
         inject_failure_config,
     );
@@ -84,7 +89,10 @@ pub fn start(
     ConsensusTaskHandles {
         consensus_p2p_event_processing_handle,
         consensus_engine_handle,
-        consensus_info_watch: Some(consensus_info_watch),
+        consensus_channels: Some(ConsensusChannels {
+            consensus_info_watch,
+            sync_to_consensus_tx,
+        }),
     }
 }
 
@@ -126,10 +134,12 @@ enum P2PTaskEvent {
     /// An event coming from the P2P network (from the consensus P2P network
     /// main loop).
     P2PEvent(Event),
+    /// A request coming from the sync task.
+    SyncRequest(SyncRequestToConsensus),
     /// The consensus engine requested that we produce a proposal, so we
     /// create it, feed it back to the consensus engine, and we must
     /// cache it for gossiping when the engine requests so.
-    CacheProposal(HeightAndRound, Vec<ProposalPart>, FinalizedBlock),
+    CacheProposal(HeightAndRound, Vec<ProposalPart>, L2Block),
     /// Consensus requested that we gossip a message via the P2P network.
     GossipRequest(NetworkMessage<ConsensusValue, ContractAddress>),
     /// Commit the given block and state update to the database. All proposals
