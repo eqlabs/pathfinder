@@ -60,7 +60,7 @@ use crate::validator::{
 use crate::SyncRequestToConsensus;
 
 #[cfg(test)]
-mod handler_proptests;
+mod handler_proptest;
 #[cfg(test)]
 mod task_tests;
 
