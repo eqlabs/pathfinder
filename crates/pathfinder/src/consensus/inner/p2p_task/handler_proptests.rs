@@ -11,6 +11,7 @@
 //!   always conforming to the spec), execution sometimes succeeds.
 //!
 //! Ultimately, we end up with 5 possible paths, 2 of them leading to success.
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, AtomicUsize};
@@ -50,7 +51,7 @@ use crate::consensus::inner::proposal_error::ProposalHandlingError;
 use crate::validator::{deployed_address, TransactionExt};
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(25))]
+    #![proptest_config(ProptestConfig::with_cases(100))]
     #[test]
     fn test_handle_incoming_proposal_part((proposal_type, seed) in strategy::composite()) {
         MockExecutor::set_seed(seed);
@@ -86,6 +87,7 @@ proptest! {
 
         let proposal_parts_len = proposal_parts.len();
         let no_fin = proposal_parts.iter().all(|part| !part.is_proposal_fin());
+        let debug_info = debug_info(&proposal_parts);
 
         for (proposal_part, is_last) in proposal_parts
             .into_iter()
@@ -111,9 +113,9 @@ proptest! {
                 );
 
             if expect_success {
-                prop_assert!(result.is_ok());
+                prop_assert!(result.is_ok(), "{}", debug_info);
                 // If we expect success, all results must be Ok, and the last must contain valid value
-                prop_assert_eq!(result.as_ref().unwrap().is_some(), is_last);
+                prop_assert_eq!(result.as_ref().unwrap().is_some(), is_last, "{}", debug_info);
             } else {
                 if result.is_err() {
                     break;
@@ -121,136 +123,57 @@ proptest! {
             }
         }
 
-        // If we expect failure, we stop at the first error or Fin could be missing as well
+        // If we expect failure, we stop at the first error, Fin could be missing as well
+        // but the handler does not error out in such case.
         //
         // TODO proposals which are invalid because they're missing Fin
         // should be dropped and purged from storage ASAP
         if !expect_success {
-            prop_assert!(result.is_err() || no_fin);
+            prop_assert!(result.is_err() || no_fin, "{}", debug_info);
         }
     }
 }
 
-#[test]
-fn regression() {
-    let (proposal_type, seed) = (
-        strategy::ProposalCase::StructurallyValidNonEmptyExecutionFails,
-        8467432240279251058,
-    );
-
-    MockExecutor::set_seed(seed);
-    let validator_cache = ValidatorCache::<MockExecutor>::new();
-    let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
-    let main_storage = StorageBuilder::in_tempdir().unwrap();
-    let consensus_storage_tempdir = tempfile::tempdir().unwrap();
-    let consensus_storage = open_consensus_storage(consensus_storage_tempdir.path()).unwrap();
-    let mut consensus_db_conn = consensus_storage.connection().unwrap();
-    let consensus_db_tx = consensus_db_conn.transaction().unwrap();
-    let proposals_db = ConsensusProposals::new(consensus_db_tx);
-    let mut batch_execution_manager = BatchExecutionManager::new();
-
-    let (proposal_parts, expect_success) = match proposal_type {
-        strategy::ProposalCase::ValidEmpty => {
-            (create_structurally_valid_empty_proposal(seed), true)
-        }
-        strategy::ProposalCase::StructurallyValidNonEmptyExecutionOk => {
-            create_structurally_valid_non_empty_proposal(seed, true)
-        }
-        strategy::ProposalCase::StructurallyValidNonEmptyExecutionFails => {
-            create_structurally_valid_non_empty_proposal(seed, false)
-        }
-        strategy::ProposalCase::StructurallyInvalidExecutionOk => {
-            create_structurally_invalid_proposal(seed, true)
-        }
-        strategy::ProposalCase::StructurallyInvalidExecutionFails => {
-            create_structurally_invalid_proposal(seed, false)
-        }
-    };
-
-    let mut result = if expect_success {
-        Err(ProposalHandlingError::Fatal(anyhow::anyhow!(
-            "No proposal parts processed"
-        )))
-    } else {
-        Ok(None)
-    };
-
-    let proposal_parts_len = proposal_parts.len();
-    let no_fin = proposal_parts.iter().all(|part| !part.is_proposal_fin());
-
-    let dump = dump(&proposal_parts);
-    println!("Testing proposal parts: {}", dump);
-
-    for (proposal_part, is_last) in proposal_parts
-        .into_iter()
-        .zip((0..proposal_parts_len).map(|x| x == proposal_parts_len - 1))
-    {
-        result = handle_incoming_proposal_part::<MockExecutor, MockMapper>(
-            ChainId::SEPOLIA_TESTNET,
-            // Arbitrary contract address for testing
-            ContractAddress::ONE,
-            HeightAndRound::new(0, 0),
-            proposal_part,
-            validator_cache.clone(),
-            deferred_executions.clone(),
-            main_storage.clone(),
-            &proposals_db,
-            &mut batch_execution_manager,
-            // Utilized by failure injection which is not happening in this test, so we can
-            // safely use an empty path
-            &PathBuf::new(),
-            // No failure injection in this test
-            None,
-        );
-
-        if expect_success {
-            assert!(result.is_ok());
-            // If we expect success, all results must be Ok, and the last must contain valid
-            // value
-            assert_eq!(result.as_ref().unwrap().is_some(), is_last);
-        } else {
-            if result.is_err() {
-                break;
-            }
-        }
+fn debug_info(proposal_parts: &[ProposalPart]) -> String {
+    let num_txns = proposal_parts
+        .iter()
+        .filter_map(|part| match part {
+            ProposalPart::TransactionBatch(batch) => Some(batch.len()),
+            _ => None,
+        })
+        .sum::<usize>();
+    let fail_at_txn = MockExecutor::get_fail_at_txn();
+    let mut s = dump_parts(proposal_parts);
+    s.push_str(&format!("\nTotal txns: {num_txns}"));
+    if fail_at_txn != DONT_FAIL {
+        s.push_str(&format!("\nExec fail at txn: {fail_at_txn}"));
     }
-
-    // If we expect failure, we stop at the first error or Fin could be missing as
-    // well
-    //
-    // TODO proposals which are invalid because they're missing Fin
-    // should be dropped and purged from storage ASAP
-    if !expect_success {
-        assert!(result.is_err() || no_fin);
-    }
+    s.push_str("\n=====\n");
+    s
 }
 
-fn dump(proposal_parts: &[ProposalPart]) -> String {
-    let output = String::new();
-    let output = proposal_parts.iter().fold(output, |mut output, part| {
-        output.push_str(&dump_part(part));
-        output.push_str(", ");
-        output
+fn dump_parts(proposal_parts: &[ProposalPart]) -> String {
+    let s = "\n=====\n[".to_string();
+    let mut s = proposal_parts.iter().fold(s, |mut s, part| {
+        s.push_str(&dump_part(part));
+        s.push(',');
+        s
     });
-    output
+    s.pop(); // Remove last comma
+    s.push(']');
+    s
 }
 
-fn dump_part(part: &ProposalPart) -> String {
+fn dump_part(part: &ProposalPart) -> Cow<'static, str> {
     match part {
-        ProposalPart::Init(init) => format!("Init"),
-        ProposalPart::BlockInfo(info) => format!("BlockInfo"),
-        ProposalPart::TransactionBatch(batch) => {
-            format!("Batch(len: {})", batch.len())
-        }
-        ProposalPart::TransactionsFin(fin) => {
-            format!("TxnsFin")
-        }
-        ProposalPart::ProposalCommitment(commitment) => {
-            format!("Commitment")
-        }
-        ProposalPart::Fin(fin) => {
-            format!("Fin")
-        }
+        ProposalPart::Init(_) => "Init".into(),
+        ProposalPart::BlockInfo(_) => "BlockInfo".into(),
+        ProposalPart::TransactionBatch(batch) => format!("Batch(len: {})", batch.len()).into(),
+        ProposalPart::TransactionsFin(TransactionsFin {
+            executed_transaction_count,
+        }) => format!("TxnFin(count: {})", executed_transaction_count).into(),
+        ProposalPart::ProposalCommitment(_) => "Commitment".into(),
+        ProposalPart::Fin(_) => "Fin".into(),
     }
 }
 
@@ -329,9 +252,7 @@ fn create_structurally_valid_non_empty_proposal(
     proposal_parts.push(init);
     proposal_parts.push(block_info);
 
-    let num_txns = rng.gen_range(1..1000);
-
-    println!("Generating proposal with {} transactions", num_txns);
+    let num_txns = rng.gen_range(1..200);
 
     let transactions = (0..num_txns)
         .map(|_| fake::Faker.fake_with_rng(&mut rng))
@@ -347,9 +268,6 @@ fn create_structurally_valid_non_empty_proposal(
         MockExecutor::set_fail_at_txn(DONT_FAIL);
     } else {
         let fail_at = rng.gen_range(0..num_txns);
-
-        println!("Injecting failure at txn index {}", fail_at);
-
         MockExecutor::set_fail_at_txn(fail_at);
     }
 
@@ -385,62 +303,76 @@ enum ModifyPart {
     Duplicate,
 }
 
+#[derive(Debug, Clone, Copy, fake::Dummy)]
+struct InvalidProposalConfig {
+    remove_all_txns: bool,
+    init: ModifyPart,
+    block_info: ModifyPart,
+    txn_fin: ModifyPart,
+    proposal_commitment: ModifyPart,
+    proposal_fin: ModifyPart,
+    shuffle: bool,
+}
+
+impl InvalidProposalConfig {
+    /// Returns true if the configuration would result in a probable valid
+    /// proposal.
+    fn maybe_valid(&self) -> bool {
+        // We don't take shuffling into account here because it can still result
+        // in a valid proposal.
+        !self.remove_all_txns
+            && matches!(self.init, ModifyPart::DoNothing)
+            && matches!(self.block_info, ModifyPart::DoNothing)
+            && matches!(self.txn_fin, ModifyPart::DoNothing)
+            && matches!(self.proposal_commitment, ModifyPart::DoNothing)
+            && matches!(self.proposal_fin, ModifyPart::DoNothing)
+    }
+}
+
 /// Takes the output of [`create_structurally_valid_non_empty_proposal`] and
 /// does at least one of the following:
 /// - removes all transaction batches,
 /// - removes or duplicates some of the following: proposal init, block info,
 ///   transactions fin, proposal commitment, proposal fin
 /// - reshuffles all of the parts without respect to to the spec, or how
-///   permissive we are wrt the ordering,
+///   permissive we are wrt the ordering.
 fn create_structurally_invalid_proposal(seed: u64, fail_at_txn: bool) -> (Vec<ProposalPart>, bool) {
     use rand::SeedableRng;
     // Explicitly choose RNG to make sure seeded proposals are always reproducible
     let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
-
     let (mut proposal_parts, _) = create_structurally_valid_non_empty_proposal(seed, fail_at_txn);
-    let remove_all_txns: bool = rng.gen();
-    let modify_init: ModifyPart = fake::Faker.fake_with_rng(&mut rng);
-    let modify_block_info: ModifyPart = fake::Faker.fake_with_rng(&mut rng);
-    let modify_txn_fin: ModifyPart = fake::Faker.fake_with_rng(&mut rng);
-    let modify_proposal_commitment: ModifyPart = fake::Faker.fake_with_rng(&mut rng);
-    let modify_proposal_fin: ModifyPart = fake::Faker.fake_with_rng(&mut rng);
-    let shuffle: bool = rng.gen();
-    if remove_all_txns {
+    let config: InvalidProposalConfig = fake::Faker.fake_with_rng(&mut rng);
+
+    if config.remove_all_txns {
         proposal_parts.retain(|x| !x.is_transaction_batch());
     }
-    modify_part(&mut proposal_parts, &mut rng, modify_init, |x| {
+    modify_part(&mut proposal_parts, &mut rng, config.init, |x| {
         x.is_proposal_init()
     });
-    modify_part(&mut proposal_parts, &mut rng, modify_block_info, |x| {
+    modify_part(&mut proposal_parts, &mut rng, config.block_info, |x| {
         x.is_block_info()
     });
-    modify_part(&mut proposal_parts, &mut rng, modify_txn_fin, |x| {
+    modify_part(&mut proposal_parts, &mut rng, config.txn_fin, |x| {
         x.is_transactions_fin()
     });
     modify_part(
         &mut proposal_parts,
         &mut rng,
-        modify_proposal_commitment,
+        config.proposal_commitment,
         |x| x.is_proposal_commitment(),
     );
-    modify_part(&mut proposal_parts, &mut rng, modify_proposal_fin, |x| {
+    modify_part(&mut proposal_parts, &mut rng, config.proposal_fin, |x| {
         x.is_proposal_fin()
     });
 
-    if shuffle {
+    if config.shuffle {
         proposal_parts.shuffle(&mut rng);
     }
 
     // If we were unfortuante enough to get an unmodified proposal, let's at least
-    // force removing the init at the head, so that the proposal is invalid for sure
-    let force_remove_init = !remove_all_txns
-        && matches!(modify_init, ModifyPart::DoNothing)
-        && matches!(modify_block_info, ModifyPart::DoNothing)
-        && matches!(modify_txn_fin, ModifyPart::DoNothing)
-        && matches!(modify_proposal_commitment, ModifyPart::DoNothing)
-        && matches!(modify_proposal_fin, ModifyPart::DoNothing)
-        && !shuffle;
-    if force_remove_init {
+    // force removing the init at the head, so that the proposal is invalid for
+    // sure.
+    if config.maybe_valid() {
         proposal_parts.remove(0);
     }
 
@@ -460,18 +392,18 @@ fn modify_part(
         ModifyPart::DoNothing => {}
         ModifyPart::Remove => proposal_parts.retain(|x| !match_fn(x)),
         ModifyPart::Duplicate => {
-            let found = proposal_parts
+            let (i, proposal) = proposal_parts
                 .iter()
                 .enumerate()
-                .find_map(|(i, x)| match_fn(x).then_some((i, x.clone())));
-            if let Some((i, proposal)) = found {
-                let offset = rng.gen_range(i..proposal_parts.len());
-                proposal_parts.insert(offset, proposal);
-            }
+                .find_map(|(i, x)| match_fn(x).then_some((i, x.clone())))
+                .expect("Part to be present");
+            let insert_pos = rng.gen_range(i..proposal_parts.len());
+            proposal_parts.insert(insert_pos, proposal);
         }
     }
 }
 
+/// Splits a slice into a random number of parts (between 1 and slice length)
 fn split_random<T: Clone>(v: &[T], rng: &mut impl rand::Rng) -> Vec<Vec<T>> {
     let n = v.len();
 
@@ -565,11 +497,11 @@ impl BlockExecutorExt for MockExecutor {
     }
 
     /// We want execution in the proptests to be deterministic based on the seed
-    /// set in the MockMapper. This way we can have proposals that, if they're
-    /// not configured to be failures, produce consistent results which can then
-    /// be serialized into the consensus DB. This way we bypass real execution
-    /// but can still heavily test the other parts of the proposal handling
-    /// logic, including the consensus DB serialization.
+    /// set in the MockMapper. This way we can have proposals that produce
+    /// consistent results which, in case of a successful test case, can then be
+    /// serialized into the consensus DB. This way we bypass real execution but
+    /// can still heavily test the other parts of the proposal handling logic,
+    /// including the consensus DB ops.
     fn execute(
         &mut self,
         txns: Vec<pathfinder_executor::Transaction>,
@@ -578,11 +510,6 @@ impl BlockExecutorExt for MockExecutor {
         pathfinder_executor::TransactionExecutionError,
     > {
         MockExecutor::add_executed_txn_count(txns.len());
-
-        println!(
-            "MockExecutor executed {} transactions",
-            MockExecutor::get_executed_txn_count()
-        );
 
         let fail_at_txn = MockExecutor::get_fail_at_txn();
         if fail_at_txn != DONT_FAIL && MockExecutor::get_executed_txn_count() > fail_at_txn {
@@ -627,10 +554,12 @@ impl BlockExecutorExt for MockExecutor {
 
 const DONT_FAIL: usize = usize::MAX;
 
-// Thread-local is a precaution to ensure that the seed is passed correctly
-// even if multiple runs for a particular proptest are running in parallel,
+// Thread-local is a precaution to ensure that the settings are passed correctly
+// even if multiple cases for a particular proptest are running in parallel,
 // which I'm pretty sure doesn't happen with proptest as of now (28/11/2025).
-// Anyway, it will still serve well in case we have more than one proptest here.
+// Anyway, it will still serve well in case we have more than one proptest
+// instance in this module, which would then mean that there are at least 2
+// proptests running in parallel.
 thread_local! {
     pub static MOCK_EXECUTOR_SEED: AtomicU64 = const { AtomicU64::new(0) };
     pub static MOCK_EXECUTOR_EXECUTED_TXN_COUNT: AtomicUsize = const { AtomicUsize::new(0) };
@@ -671,7 +600,7 @@ impl MockExecutor {
 
 struct MockMapper;
 
-/// Does the same as ProdTransactionMapper with some exceptions:
+/// Does the same as ProdTransactionMapper with an exception:
 /// - fills ClassInfo with dummy data
 impl TransactionExt for MockMapper {
     fn try_map_transaction(
