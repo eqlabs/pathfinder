@@ -65,11 +65,13 @@ pub fn spawn(
     p2p_client: Client,
     storage: Storage,
     mut p2p_event_rx: mpsc::UnboundedReceiver<Event>,
+    mut store_synced_block_rx: mpsc::Receiver<crate::sync::catch_up::BlockData>,
     tx_to_consensus: mpsc::Sender<ConsensusTaskEvent>,
     mut rx_from_consensus: mpsc::Receiver<P2PTaskEvent>,
     consensus_storage: Storage,
     data_directory: &Path,
     // Does nothing in production builds. Used for integration testing only.
+    verify_tree_hashes: bool,
     inject_failure: Option<InjectFailureConfig>,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     let validator_address = config.my_validator_address;
@@ -118,7 +120,21 @@ pub fn spawn(
                     }
                 }
                 from_consensus = rx_from_consensus.recv() => {
-                    from_consensus.expect("Receiver not to be dropped")
+                    from_consensus.expect("Sender not to be dropped")
+                }
+                block_data = store_synced_block_rx.recv() => {
+                    let storage = storage.clone();
+                    let block_data = block_data.expect("Sender not to be dropped");
+                    util::task::spawn_blocking(move |_| {
+                        // TODO: `store_synced_block` depends on a lot of types in the `sync` module so it
+                        // is defined there but but ideally it should be moved out of there since it is only
+                        // used in this task.
+                        crate::sync::catch_up::store_synced_block(storage, block_data, verify_tree_hashes)
+                            .context("Storing synced block")?;
+
+                        anyhow::Ok(())
+                    }).await??;
+                    continue;
                 }
             };
 

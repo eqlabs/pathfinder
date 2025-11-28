@@ -11,16 +11,18 @@ use ::p2p::sync::client::peer_agnostic::Client as P2PSyncClient;
 use anyhow::Context;
 use config::BlockchainHistory;
 use metrics_exporter_prometheus::PrometheusBuilder;
-use pathfinder_common::{BlockNumber, Chain, ChainId, EthereumChain};
+use pathfinder_common::{BlockNumber, Chain, ChainId, ConsensusInfo, EthereumChain};
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
-use pathfinder_lib::consensus::ConsensusTaskHandles;
+use pathfinder_lib::consensus::{ConsensusChannels, ConsensusTaskHandles};
 use pathfinder_lib::state::SyncContext;
+use pathfinder_lib::sync::catch_up::BlockData;
 use pathfinder_lib::{config, consensus, monitoring, p2p_network, state};
 use pathfinder_rpc::context::{EthContractAddresses, WebsocketContext};
 use pathfinder_rpc::{Notifications, SyncState};
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
 use tokio::signal::unix::{signal, SignalKind};
+use tokio::sync::{mpsc, watch};
 use tokio::task::JoinError;
 use tracing::{info, warn};
 
@@ -292,7 +294,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     .await;
 
     let chain_id = pathfinder_context.network_id;
-    let (consensus_p2p_handle, consensus_p2p_client_and_event_rx) = p2p_network::consensus::start(
+    let (consensus_p2p_handle, event_rx_and_consensus_p2p_client) = p2p_network::consensus::start(
         chain_id,
         config.consensus_p2p.clone(),
         config.data_directory.clone(),
@@ -303,8 +305,14 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     let ConsensusTaskHandles {
         consensus_p2p_event_processing_handle,
         consensus_engine_handle,
-        consensus_info_watch,
+        consensus_channels,
     } = if let Some(consensus_config) = &config.consensus {
+        if !config.is_sync_enabled {
+            anyhow::bail!(
+                "Consensus requires sync to be enabled. Please enable sync via `--sync.enable` or \
+                 disable consensus."
+            );
+        }
         let wal_directory = config.data_directory.join("consensus").join("wal");
         if !wal_directory.exists() {
             std::fs::DirBuilder::new()
@@ -313,17 +321,18 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
                 .context("Creating consensus wal directory")?;
         }
 
-        if let Some((event_rx, client)) = consensus_p2p_client_and_event_rx {
+        if let Some((event_rx, consensus_client)) = event_rx_and_consensus_p2p_client {
             consensus::start(
                 consensus_config.clone(),
-                chain_id,
                 consensus_storage,
-                wal_directory,
-                client,
+                chain_id,
+                consensus_client,
                 event_rx,
+                wal_directory,
                 &config.data_directory,
                 // Does nothing in production builds. Used for integration testing only.
                 integration_testing_config.inject_failure_config(),
+                config.verify_tree_hashes,
             )
         } else {
             ConsensusTaskHandles::pending()
@@ -332,7 +341,10 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         ConsensusTaskHandles::pending()
     };
 
-    let context = if let Some(consensus_info_watch) = consensus_info_watch {
+    let context = if let Some(consensus_info_watch) = consensus_channels
+        .as_ref()
+        .map(|cc| cc.consensus_info_watch.clone())
+    {
         context.with_consensus_info_watch(consensus_info_watch)
     } else {
         context
@@ -364,6 +376,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             notifications,
             gateway_public_key,
             sync_p2p_client,
+            consensus_channels,
             config.verify_tree_hashes,
         )
     } else {
@@ -525,10 +538,11 @@ fn start_sync(
     sync_state: Arc<SyncState>,
     config: &config::Config,
     submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker,
-    tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
+    tx_pending: watch::Sender<pathfinder_rpc::PendingData>,
     notifications: Notifications,
     gateway_public_key: pathfinder_common::PublicKey,
     p2p_client: Option<P2PSyncClient>,
+    consensus_channels: Option<ConsensusChannels>,
     verify_tree_hashes: bool,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     if config.sync_p2p.proxy {
@@ -545,15 +559,29 @@ fn start_sync(
         )
     } else {
         let p2p_client = p2p_client.expect("P2P client is expected with the p2p feature enabled");
-        start_p2p_sync(
-            storage,
-            pathfinder_context,
-            ethereum_client,
-            p2p_client,
-            gateway_public_key,
-            config.sync_p2p.l1_checkpoint_override,
-            verify_tree_hashes,
-        )
+        if let Some(cc) = consensus_channels {
+            start_p2p_catch_up_sync(
+                storage,
+                p2p_client,
+                cc.catch_up_rx,
+                cc.consensus_info_watch,
+                cc.store_synced_block_tx,
+                pathfinder_context,
+                ethereum_client,
+                gateway_public_key,
+                config.sync_p2p.l1_checkpoint_override,
+            )
+        } else {
+            start_p2p_sync(
+                storage,
+                pathfinder_context,
+                ethereum_client,
+                p2p_client,
+                gateway_public_key,
+                config.sync_p2p.l1_checkpoint_override,
+                verify_tree_hashes,
+            )
+        }
     }
 }
 
@@ -566,11 +594,12 @@ fn start_sync(
     sync_state: Arc<SyncState>,
     config: &config::Config,
     submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker,
-    tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
+    tx_pending: watch::Sender<pathfinder_rpc::PendingData>,
     notifications: Notifications,
     gateway_public_key: pathfinder_common::PublicKey,
     _p2p_client: Option<P2PSyncClient>,
-    _verify_tree_hashes: bool,
+    _consensus_channels: Option<ConsensusChannels>,
+    verify_tree_hashes: bool,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     start_feeder_gateway_sync(
         storage,
@@ -623,6 +652,7 @@ fn start_feeder_gateway_sync(
 }
 
 #[cfg(feature = "p2p")]
+#[allow(clippy::too_many_arguments)]
 fn start_p2p_sync(
     storage: Storage,
     pathfinder_context: PathfinderContext,
@@ -647,6 +677,41 @@ fn start_p2p_sync(
         block_hash_db: Some(BlockHashDb::new(pathfinder_context.network)),
     };
     util::task::spawn(sync.run())
+}
+
+#[cfg(feature = "p2p")]
+#[allow(clippy::too_many_arguments)]
+/// Start a sync task that waits for a [Consensus](crate::consensus)
+/// notification that the node has fallen behind the P2P network and needs to
+/// catch up, then runs P2P sync until the node has caught up to the consensus
+/// height.
+fn start_p2p_catch_up_sync(
+    storage: Storage,
+    p2p_client: P2PSyncClient,
+    catch_up_start: watch::Receiver<Option<u64>>,
+    consensus_info_rx: watch::Receiver<Option<ConsensusInfo>>,
+    store_block_tx: mpsc::Sender<BlockData>,
+    pathfinder_context: PathfinderContext,
+    ethereum_client: EthereumClient,
+    gateway_public_key: pathfinder_common::PublicKey,
+    l1_checkpoint_override: Option<pathfinder_ethereum::EthereumStateUpdate>,
+) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+    use pathfinder_block_hashes::BlockHashDb;
+
+    pathfinder_lib::sync::catch_up::spawn(
+        storage,
+        p2p_client,
+        catch_up_start,
+        consensus_info_rx,
+        store_block_tx,
+        pathfinder_context.gateway,
+        ethereum_client,
+        pathfinder_context.contract_addresses.l1_contract_address,
+        pathfinder_context.network_id,
+        gateway_public_key,
+        l1_checkpoint_override,
+        Some(BlockHashDb::new(pathfinder_context.network)),
+    )
 }
 
 /// Spawns the monitoring task at the given address.
