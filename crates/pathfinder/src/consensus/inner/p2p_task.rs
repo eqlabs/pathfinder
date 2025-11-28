@@ -1073,9 +1073,14 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                 }
                 2.. => {
                     if has_commitment {
-                        anyhow::bail!(
-                            "Duplicate ProposalCommitment for height and round {height_and_round}",
-                        );
+                        return Err(ProposalHandlingError::Recoverable(
+                            ProposalError::UnexpectedProposalPart {
+                                message: format!(
+                                    "Duplicate ProposalCommitment for height and round \
+                                     {height_and_round}",
+                                ),
+                            },
+                        ));
                     }
 
                     // Looks like a non-empty proposal:
@@ -1241,7 +1246,13 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
             }
 
             if has_txns_fin {
-                anyhow::bail!("Duplicate TransactionsFin for height and round {height_and_round}",);
+                return Err(ProposalHandlingError::Recoverable(
+                    ProposalError::UnexpectedProposalPart {
+                        message: format!(
+                            "Duplicate TransactionsFin for height and round {height_and_round}",
+                        ),
+                    },
+                ));
             }
             // Looks like a non-empty proposal:
             // - [x] Proposal Init
