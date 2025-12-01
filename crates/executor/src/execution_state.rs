@@ -13,6 +13,7 @@ use pathfinder_common::prelude::*;
 use pathfinder_common::L1DataAvailabilityMode;
 use starknet_api::block::{BlockHashAndNumber, GasPrice, NonzeroGasPrice};
 use starknet_api::core::PatriciaKey;
+use starknet_api::versioned_constants_logic::VersionedConstantsTrait;
 
 use super::pending::PendingStateReader;
 use super::state_reader::PathfinderStateReader;

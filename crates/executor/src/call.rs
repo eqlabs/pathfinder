@@ -16,6 +16,7 @@ use blockifier::transaction::objects::{DeprecatedTransactionInfo, TransactionInf
 use pathfinder_common::{felt, CallParam, CallResultValue, ContractAddress, EntryPoint};
 use starknet_api::contract_class::EntryPointType;
 use starknet_api::core::PatriciaKey;
+use starknet_api::versioned_constants_logic::VersionedConstantsTrait;
 
 use super::error::CallError;
 use super::execution_state::ExecutionState;
