@@ -122,9 +122,6 @@ proptest! {
 
         // If we expect failure, we stop at the first error, Fin could be missing as well
         // but the handler does not error out in such case.
-        //
-        // TODO proposals which are invalid because they're missing Fin
-        // should be dropped and purged from storage ASAP
         if !expect_success {
             prop_assert!(result.is_err() || no_fin, "{}", debug_info);
         }
