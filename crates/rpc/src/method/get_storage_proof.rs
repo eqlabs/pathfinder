@@ -506,6 +506,7 @@ mod tests {
     use pathfinder_common::*;
     use pathfinder_merkle_tree::starknet_state::update_starknet_state;
     use pathfinder_storage::fake::{Block, Config, OccurrencePerBlock};
+    use pathfinder_storage::TriePruneMode;
 
     use super::*;
     use crate::dto::SerializeForVersion;
@@ -813,7 +814,12 @@ mod tests {
 
     #[tokio::test]
     async fn chain_without_declarations_and_contract_updates() {
-        let storage = pathfinder_storage::StorageBuilder::in_memory().unwrap();
+        let storage =
+            pathfinder_storage::StorageBuilder::in_tempdir_with_trie_pruning_and_pool_size(
+                TriePruneMode::Archive,
+                NonZeroU32::new(32).unwrap(),
+            )
+            .unwrap();
         let blocks = pathfinder_storage::fake::generate::with_config(
             1,
             Config {
