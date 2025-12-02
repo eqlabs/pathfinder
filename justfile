@@ -3,12 +3,12 @@ default:
 
 test $RUST_BACKTRACE="1" *args="": build-pathfinder-release
     cargo nextest run --no-fail-fast --all-targets --features p2p --workspace --locked \
-    -E 'not (test(/^p2p_network::sync_handlers::tests::prop/) | test(/^consensus::inner::p2p_task::handler_proptest/) | test(/^test::consensus_3_nodes/))' \
+    -E 'not (test(/^p2p_network::sync::sync_handlers::tests::prop/) | test(/^consensus::inner::p2p_task::handler_proptest/) | test(/^test::consensus_3_nodes/))' \
     {{args}}
 
 test-all-features $RUST_BACKTRACE="1" *args="": build-pathfinder-release
     cargo nextest run --no-fail-fast --all-targets --all-features --workspace --locked \
-    -E 'not (test(/^p2p_network::sync_handlers::tests::prop/) | test(/^consensus::inner::p2p_task::handler_proptest/) | test(/^test::consensus_3_nodes/))' \
+    -E 'not (test(/^p2p_network::sync::sync_handlers::tests::prop/) | test(/^consensus::inner::p2p_task::handler_proptest/) | test(/^test::consensus_3_nodes/))' \
     {{args}}
 
 test-consensus $RUST_BACKTRACE="1" *args="": build-pathfinder-release
