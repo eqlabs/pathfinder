@@ -1,7 +1,6 @@
 //! Common data structures used by the JSON-RPC API methods.
 
 pub(crate) mod class;
-pub(crate) mod receipt;
 pub mod syncing;
 
 pub(crate) use class::ContractClass;
