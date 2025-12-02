@@ -618,7 +618,6 @@ mod tests {
         TransactionTrace,
     };
     use crate::method::call::FunctionCall;
-    use crate::method::get_state_update::types::{DeployedContract, Nonce, StateDiff};
     use crate::method::simulate_transactions::tests::fixtures;
     use crate::types::request::{
         BroadcastedDeclareTransaction,

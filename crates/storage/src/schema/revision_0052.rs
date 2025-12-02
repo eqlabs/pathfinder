@@ -289,12 +289,6 @@ mod dto {
 
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    pub enum EventsForBlock {
-        V0 { events: Vec<Vec<Event>> },
-    }
-
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-    #[serde(deny_unknown_fields)]
     pub struct Event {
         pub data: Vec<MinimalFelt>,
         pub from_address: MinimalFelt,
@@ -657,12 +651,6 @@ mod dto {
                 max_price_per_unit: value.max_price_per_unit,
             }
         }
-    }
-
-    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-    pub struct TransactionWithReceipt {
-        pub transaction: Transaction,
-        pub receipt: Receipt,
     }
 
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -2887,13 +2875,5 @@ pub(crate) mod old_dto {
         pub calldata: Vec<CallParam>,
         pub transaction_hash: TransactionHash,
         pub version: TransactionVersion,
-    }
-
-    /// Describes L2 transaction failure details.
-    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-    #[serde(deny_unknown_fields)]
-    pub struct Failure {
-        pub code: String,
-        pub error_message: String,
     }
 }

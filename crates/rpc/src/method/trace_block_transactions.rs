@@ -904,7 +904,7 @@ pub(crate) mod tests {
         ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 1)).await;
         let context = RpcContext::for_tests().with_storage(storage.clone());
 
-        let transactions = vec![
+        let transactions = &[
             fixtures::input::declare(account_contract_address).try_into_common(context.chain_id)?,
             fixtures::input::universal_deployer(
                 account_contract_address,
@@ -914,7 +914,7 @@ pub(crate) mod tests {
             fixtures::input::invoke(account_contract_address).try_into_common(context.chain_id)?,
         ];
 
-        let traces = vec![
+        let traces = &[
             fixtures::expected_output_0_13_1_1::declare(
                 account_contract_address,
                 &last_block_header,
@@ -1023,7 +1023,7 @@ pub(crate) mod tests {
         ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 14, 0, 0)).await;
         let context = RpcContext::for_tests().with_storage(storage.clone());
 
-        let pre_latest_transactions = vec![
+        let pre_latest_transactions = [
             fixtures::input::declare(account_contract_address).try_into_common(context.chain_id)?,
             fixtures::input::universal_deployer(
                 account_contract_address,
@@ -1033,7 +1033,7 @@ pub(crate) mod tests {
             fixtures::input::invoke(account_contract_address).try_into_common(context.chain_id)?,
         ];
 
-        let traces = vec![
+        let traces = &[
             fixtures::expected_output_0_14_0_0::declare(
                 account_contract_address,
                 &last_block_header,
@@ -1087,7 +1087,7 @@ pub(crate) mod tests {
                 status: starknet_gateway_types::reply::Status::Pending,
                 timestamp: last_block_header.timestamp,
                 transaction_receipts,
-                transactions: pre_latest_transactions.clone(),
+                transactions: pre_latest_transactions.clone().into(),
                 starknet_version: last_block_header.starknet_version,
                 l1_da_mode: L1DataAvailabilityMode::Blob,
             };
@@ -1179,7 +1179,7 @@ pub(crate) mod tests {
             fixtures::input::invoke(account_contract_address).try_into_common(context.chain_id)?,
         ];
 
-        let traces = vec![
+        let traces = &[
             fixtures::expected_output_0_14_0_0::declare(
                 account_contract_address,
                 &last_block_header,

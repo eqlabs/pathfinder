@@ -488,8 +488,6 @@ mod tests {
             }
 
             #[derive(Debug, Deserialize, Serialize)]
-            struct GetDataInput;
-            #[derive(Debug, Deserialize, Serialize)]
             struct GetDataOutput(Vec<Value>);
             async fn get_data() -> Result<GetDataOutput, ExampleError> {
                 Ok(GetDataOutput(vec![

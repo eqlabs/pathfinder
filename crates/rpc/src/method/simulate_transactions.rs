@@ -654,6 +654,7 @@ pub(crate) mod tests {
 
     pub(crate) mod fixtures {
         use pathfinder_common::{CasmHash, ContractAddress, Fee};
+        use pathfinder_executor::types::StorageDiff;
 
         use super::*;
 
@@ -850,16 +851,18 @@ pub(crate) mod tests {
             }
         }
 
+        type StorageDiffs = (ContractAddress, Vec<StorageDiff>);
+
         pub mod expected_output_0_13_1_1 {
 
             use pathfinder_common::{BlockHeader, ContractAddress, SierraHash, StorageValue};
 
             use super::*;
-            use crate::method::get_state_update::types::{StorageDiff, StorageEntry};
 
             const DECLARE_OVERALL_FEE: u64 = 1262;
             const DECLARE_GAS_CONSUMED: u64 = 878;
             const DECLARE_DATA_GAS_CONSUMED: u64 = 192;
+
             pub fn declare(
                 account_contract_address: ContractAddress,
                 last_block_header: &BlockHeader,
@@ -932,25 +935,11 @@ pub(crate) mod tests {
 
             fn declare_state_diff(
                 account_contract_address: ContractAddress,
-                storage_diffs: Vec<StorageDiff>,
+                storage_diffs: Vec<StorageDiffs>,
             ) -> pathfinder_executor::types::StateDiff {
                 pathfinder_executor::types::StateDiff {
                     storage_diffs: BTreeMap::from_iter(
-                        storage_diffs
-                            .into_iter()
-                            .map(|diff| {
-                                (
-                                    diff.address,
-                                    diff.storage_entries
-                                        .into_iter()
-                                        .map(|entry| pathfinder_executor::types::StorageDiff {
-                                            key: entry.key,
-                                            value: entry.value,
-                                        })
-                                        .collect(),
-                                )
-                            })
-                            .collect::<Vec<_>>(),
+                        storage_diffs.into_iter().collect::<Vec<_>>(),
                     ),
                     deprecated_declared_classes: HashSet::new(),
                     declared_classes: vec![pathfinder_executor::types::DeclaredSierraClass {
@@ -964,20 +953,18 @@ pub(crate) mod tests {
                 }
             }
 
-            fn declare_fee_transfer_storage_diffs() -> Vec<StorageDiff> {
-                vec![StorageDiff {
-                    address: ETH_FEE_TOKEN_ADDRESS,
-                    storage_entries: vec![
-                        StorageEntry {
+            fn declare_fee_transfer_storage_diffs() -> Vec<StorageDiffs> {
+                vec![(ETH_FEE_TOKEN_ADDRESS, vec![
+                        StorageDiff {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
                             value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffffb12")
                         },
-                        StorageEntry {
+                        StorageDiff {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
                             value: StorageValue(DECLARE_OVERALL_FEE.into()),
                         },
-                    ],
-                }]
+                    ])
+                ]
             }
 
             fn declare_fee_transfer(
@@ -1138,25 +1125,11 @@ pub(crate) mod tests {
 
             fn universal_deployer_state_diff(
                 account_contract_address: ContractAddress,
-                storage_diffs: Vec<StorageDiff>,
+                storage_diffs: Vec<StorageDiffs>,
             ) -> pathfinder_executor::types::StateDiff {
                 pathfinder_executor::types::StateDiff {
                     storage_diffs: BTreeMap::from_iter(
-                        storage_diffs
-                            .into_iter()
-                            .map(|diff| {
-                                (
-                                    diff.address,
-                                    diff.storage_entries
-                                        .into_iter()
-                                        .map(|entry| pathfinder_executor::types::StorageDiff {
-                                            key: entry.key,
-                                            value: entry.value,
-                                        })
-                                        .collect(),
-                                )
-                            })
-                            .collect::<Vec<_>>(),
+                        storage_diffs.into_iter().collect::<Vec<_>>(),
                     ),
                     deprecated_declared_classes: HashSet::new(),
                     declared_classes: vec![],
@@ -1172,20 +1145,20 @@ pub(crate) mod tests {
 
             fn universal_deployer_fee_transfer_storage_diffs(
                 overall_fee_correction: u64,
-            ) -> Vec<StorageDiff> {
-                vec![StorageDiff {
-                    address: ETH_FEE_TOKEN_ADDRESS,
-                    storage_entries: vec![
-                        StorageEntry {
+            ) -> Vec<StorageDiffs> {
+                vec![(
+                    ETH_FEE_TOKEN_ADDRESS,
+                    vec![
+                        StorageDiff {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
                             value: StorageValue((0xfffffffffffffffffffffffff93fu128 + u128::from(overall_fee_correction)).into()),
                         },
-                        StorageEntry {
+                        StorageDiff {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
                             value: StorageValue((DECLARE_OVERALL_FEE + UNIVERSAL_DEPLOYER_OVERALL_FEE - overall_fee_correction).into()),
                         },
                     ],
-                }]
+                    )]
             }
 
             fn universal_deployer_validate(
@@ -1464,25 +1437,11 @@ pub(crate) mod tests {
 
             fn invoke_state_diff(
                 account_contract_address: ContractAddress,
-                storage_diffs: Vec<StorageDiff>,
+                storage_diffs: Vec<StorageDiffs>,
             ) -> pathfinder_executor::types::StateDiff {
                 pathfinder_executor::types::StateDiff {
                     storage_diffs: BTreeMap::from_iter(
-                        storage_diffs
-                            .into_iter()
-                            .map(|diff| {
-                                (
-                                    diff.address,
-                                    diff.storage_entries
-                                        .into_iter()
-                                        .map(|entry| pathfinder_executor::types::StorageDiff {
-                                            key: entry.key,
-                                            value: entry.value,
-                                        })
-                                        .collect(),
-                                )
-                            })
-                            .collect::<Vec<_>>(),
+                        storage_diffs.into_iter().collect::<Vec<_>>(),
                     ),
                     deprecated_declared_classes: HashSet::new(),
                     declared_classes: vec![],
@@ -1493,20 +1452,19 @@ pub(crate) mod tests {
                 }
             }
 
-            fn invoke_fee_transfer_storage_diffs(overall_fee_correction: u64) -> Vec<StorageDiff> {
-                vec![StorageDiff {
-                    address: ETH_FEE_TOKEN_ADDRESS,
-                    storage_entries: vec![
-                        StorageEntry {
+            fn invoke_fee_transfer_storage_diffs(overall_fee_correction: u64) -> Vec<StorageDiffs> {
+                vec![(ETH_FEE_TOKEN_ADDRESS,
+                    vec![
+                        StorageDiff {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
                             value: StorageValue((0xfffffffffffffffffffffffff831u128 + u128::from(2 * overall_fee_correction)).into()),
                         },
-                        StorageEntry {
+                        StorageDiff {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
                             value: StorageValue((DECLARE_OVERALL_FEE + UNIVERSAL_DEPLOYER_OVERALL_FEE + INVOKE_OVERALL_FEE - 2 * overall_fee_correction).into()),
                         },
                     ],
-                }]
+                    )]
             }
 
             fn invoke_validate(
@@ -1642,7 +1600,6 @@ pub(crate) mod tests {
             use pathfinder_common::{BlockHeader, ContractAddress, SierraHash, StorageValue};
 
             use super::*;
-            use crate::method::get_state_update::types::{StorageDiff, StorageEntry};
 
             const DECLARE_OVERALL_FEE: u64 = 1266;
             const DECLARE_GAS_CONSUMED: u64 = 882;
@@ -1719,25 +1676,11 @@ pub(crate) mod tests {
 
             fn declare_state_diff(
                 account_contract_address: ContractAddress,
-                storage_diffs: Vec<StorageDiff>,
+                storage_diffs: Vec<StorageDiffs>,
             ) -> pathfinder_executor::types::StateDiff {
                 pathfinder_executor::types::StateDiff {
                     storage_diffs: BTreeMap::from_iter(
-                        storage_diffs
-                            .into_iter()
-                            .map(|diff| {
-                                (
-                                    diff.address,
-                                    diff.storage_entries
-                                        .into_iter()
-                                        .map(|entry| pathfinder_executor::types::StorageDiff {
-                                            key: entry.key,
-                                            value: entry.value,
-                                        })
-                                        .collect(),
-                                )
-                            })
-                            .collect::<Vec<_>>(),
+                        storage_diffs.into_iter().collect::<Vec<_>>(),
                     ),
                     deprecated_declared_classes: HashSet::new(),
                     declared_classes: vec![pathfinder_executor::types::DeclaredSierraClass {
@@ -1751,20 +1694,20 @@ pub(crate) mod tests {
                 }
             }
 
-            fn declare_fee_transfer_storage_diffs() -> Vec<StorageDiff> {
-                vec![StorageDiff {
-                    address: ETH_FEE_TOKEN_ADDRESS,
-                    storage_entries: vec![
-                        StorageEntry {
+            fn declare_fee_transfer_storage_diffs() -> Vec<StorageDiffs> {
+                vec![(
+                    ETH_FEE_TOKEN_ADDRESS,
+                    vec![
+                        StorageDiff {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
                             value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffffb12")
                         },
-                        StorageEntry {
+                        StorageDiff {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
                             value: StorageValue(DECLARE_OVERALL_FEE.into()),
                         },
                     ],
-                }]
+                    )]
             }
 
             fn declare_fee_transfer(
@@ -1925,25 +1868,11 @@ pub(crate) mod tests {
 
             fn universal_deployer_state_diff(
                 account_contract_address: ContractAddress,
-                storage_diffs: Vec<StorageDiff>,
+                storage_diffs: Vec<StorageDiffs>,
             ) -> pathfinder_executor::types::StateDiff {
                 pathfinder_executor::types::StateDiff {
                     storage_diffs: BTreeMap::from_iter(
-                        storage_diffs
-                            .into_iter()
-                            .map(|diff| {
-                                (
-                                    diff.address,
-                                    diff.storage_entries
-                                        .into_iter()
-                                        .map(|entry| pathfinder_executor::types::StorageDiff {
-                                            key: entry.key,
-                                            value: entry.value,
-                                        })
-                                        .collect(),
-                                )
-                            })
-                            .collect::<Vec<_>>(),
+                        storage_diffs.into_iter().collect::<Vec<_>>(),
                     ),
                     deprecated_declared_classes: HashSet::new(),
                     declared_classes: vec![],
@@ -1959,20 +1888,19 @@ pub(crate) mod tests {
 
             fn universal_deployer_fee_transfer_storage_diffs(
                 overall_fee_correction: u64,
-            ) -> Vec<StorageDiff> {
-                vec![StorageDiff {
-                    address: ETH_FEE_TOKEN_ADDRESS,
-                    storage_entries: vec![
-                        StorageEntry {
+            ) -> Vec<StorageDiffs> {
+                vec![(ETH_FEE_TOKEN_ADDRESS,
+                    vec![
+                        StorageDiff {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
                             value: StorageValue((0xfffffffffffffffffffffffff93fu128 + u128::from(overall_fee_correction)).into()),
                         },
-                        StorageEntry {
+                        StorageDiff {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
                             value: StorageValue((DECLARE_OVERALL_FEE + UNIVERSAL_DEPLOYER_OVERALL_FEE - overall_fee_correction).into()),
                         },
                     ],
-                }]
+                    )]
             }
 
             fn universal_deployer_validate(
@@ -2251,25 +2179,11 @@ pub(crate) mod tests {
 
             fn invoke_state_diff(
                 account_contract_address: ContractAddress,
-                storage_diffs: Vec<StorageDiff>,
+                storage_diffs: Vec<StorageDiffs>,
             ) -> pathfinder_executor::types::StateDiff {
                 pathfinder_executor::types::StateDiff {
                     storage_diffs: BTreeMap::from_iter(
-                        storage_diffs
-                            .into_iter()
-                            .map(|diff| {
-                                (
-                                    diff.address,
-                                    diff.storage_entries
-                                        .into_iter()
-                                        .map(|entry| pathfinder_executor::types::StorageDiff {
-                                            key: entry.key,
-                                            value: entry.value,
-                                        })
-                                        .collect(),
-                                )
-                            })
-                            .collect::<Vec<_>>(),
+                        storage_diffs.into_iter().collect::<Vec<_>>(),
                     ),
                     deprecated_declared_classes: HashSet::new(),
                     declared_classes: vec![],
@@ -2280,20 +2194,19 @@ pub(crate) mod tests {
                 }
             }
 
-            fn invoke_fee_transfer_storage_diffs(overall_fee_correction: u64) -> Vec<StorageDiff> {
-                vec![StorageDiff {
-                    address: ETH_FEE_TOKEN_ADDRESS,
-                    storage_entries: vec![
-                        StorageEntry {
+            fn invoke_fee_transfer_storage_diffs(overall_fee_correction: u64) -> Vec<StorageDiffs> {
+                vec![(ETH_FEE_TOKEN_ADDRESS,
+                    vec![
+                        StorageDiff {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
                             value: StorageValue((0xfffffffffffffffffffffffff831u128 + u128::from(2 * overall_fee_correction)).into()),
                         },
-                        StorageEntry {
+                        StorageDiff {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
                             value: StorageValue((DECLARE_OVERALL_FEE + UNIVERSAL_DEPLOYER_OVERALL_FEE + INVOKE_OVERALL_FEE - 2 * overall_fee_correction).into()),
                         },
                     ],
-                }]
+                    )]
             }
 
             fn invoke_validate(

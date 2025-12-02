@@ -53,14 +53,6 @@ impl ProtobufSerializable for Vote {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "consensus_proto::ConsensusStreamId")]
-struct ConsensusStreamId {
-    pub block_number: u64,
-    pub round: u32,
-    pub nonce: u64,
-}
-
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Dummy)]
 pub enum ProposalPart {
