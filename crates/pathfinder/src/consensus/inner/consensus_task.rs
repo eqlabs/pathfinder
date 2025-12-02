@@ -156,49 +156,76 @@ pub fn spawn(
                             );
 
                             let main_storage = main_storage.clone();
-                            let (wire_proposal, finalized_block) =
-                                util::task::spawn_blocking(move |_| {
-                                    create_empty_proposal(
-                                        chain_id,
+                            match util::task::spawn_blocking(move |_| {
+                                create_empty_proposal(
+                                    chain_id,
+                                    height,
+                                    round.into(),
+                                    validator_address,
+                                    main_storage,
+                                )
+                            })
+                            .await
+                            .context("Task join error during proposal creation")
+                            .and_then(|result| result.context("Failed to create empty proposal"))
+                            {
+                                Ok((wire_proposal, finalized_block)) => {
+                                    let ProposalFin {
+                                        proposal_commitment,
+                                    } = wire_proposal
+                                        .last()
+                                        .and_then(ProposalPart::as_fin)
+                                        .ok_or_else(|| {
+                                            anyhow::anyhow!(
+                                                "Proposal for height {height} round {round} is \
+                                                 missing ProposalFin part - logic error"
+                                            )
+                                        })?;
+
+                                    let value =
+                                        ConsensusValue(ProposalCommitment(proposal_commitment.0));
+
+                                    tx_to_p2p
+                                        .send(P2PTaskEvent::CacheProposal(
+                                            HeightAndRound::new(height, round),
+                                            wire_proposal,
+                                            finalized_block,
+                                        ))
+                                        .await
+                                        .expect("Cache proposal receiver not to be dropped");
+
+                                    let proposal = Proposal {
                                         height,
-                                        round.into(),
-                                        validator_address,
-                                        main_storage,
-                                    )
-                                })
-                                .await?
-                                .context("Creating empty proposal")?;
+                                        round: round.into(),
+                                        proposer: validator_address,
+                                        pol_round: Round::nil(),
+                                        value,
+                                    };
 
-                            let ProposalFin {
-                                proposal_commitment,
-                            } = wire_proposal.last().and_then(ProposalPart::as_fin).expect(
-                                "Proposals produced by our node are always coherent and complete",
-                            );
+                                    tracing::info!(
+                                        "🧠 ⚙️  {validator_address} handling command \
+                                         Propose({proposal:?})"
+                                    );
 
-                            let value = ConsensusValue(ProposalCommitment(proposal_commitment.0));
-
-                            tx_to_p2p
-                                .send(P2PTaskEvent::CacheProposal(
-                                    HeightAndRound::new(height, round),
-                                    wire_proposal,
-                                    finalized_block,
-                                ))
-                                .await
-                                .expect("Cache proposal receiver not to be dropped");
-
-                            let proposal = Proposal {
-                                height,
-                                round: round.into(),
-                                proposer: validator_address,
-                                pol_round: Round::nil(),
-                                value,
-                            };
-
-                            tracing::info!(
-                                "🧠 ⚙️  {validator_address} handling command Propose({proposal:?})"
-                            );
-
-                            consensus.handle_command(ConsensusCommand::Propose(proposal));
+                                    consensus.handle_command(ConsensusCommand::Propose(proposal));
+                                }
+                                Err(e) => {
+                                    // Proposal creation failed - skip this round but continue
+                                    // consensus (we can still vote on other validators' proposals)
+                                    //
+                                    // NOTE: The consensus engine is event-driven and doesn't block
+                                    // waiting for our proposal. If we're the designated proposer
+                                    // and don't propose, the round will timeout and move to the
+                                    // next round.
+                                    tracing::warn!(
+                                        validator = %validator_address,
+                                        height = height,
+                                        round = round,
+                                        error = %e,
+                                        "Failed to create proposal - skipping this round."
+                                    );
+                                }
+                            }
                         }
                         // The consensus engine wants us to gossip a message via the P2P consensus
                         // network.
