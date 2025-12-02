@@ -1023,7 +1023,7 @@ mod tests {
             .finalize_with_hash(block_hash!("0x1234"));
 
         // Note: hashes are reverse ordered to trigger the sorting bug.
-        let transactions = vec![
+        let transactions = &[
             common::Transaction {
                 hash: transaction_hash!("0xF"),
                 variant: common::TransactionVariant::InvokeV0(common::InvokeTransactionV0 {
@@ -1050,7 +1050,7 @@ mod tests {
             },
         ];
 
-        let receipts = vec![
+        let receipts = &[
             Receipt {
                 transaction_hash: transactions[0].hash,
                 transaction_index: pathfinder_common::TransactionIndex::new_or_panic(0),
@@ -1072,7 +1072,7 @@ mod tests {
         tx.insert_block_header(&header).unwrap();
         tx.insert_transaction_data(
             header.number,
-            &vec![
+            &[
                 (transactions[0].clone(), receipts[0].clone()),
                 (transactions[1].clone(), receipts[1].clone()),
             ],

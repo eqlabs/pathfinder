@@ -1298,7 +1298,7 @@ mod tests {
                 state_update.with_parent_state_commitment(parent_state_commitment)
             });
 
-            let transactions = vec![
+            let transactions = [
                 Transaction {
                     hash: transaction_hash_bytes!(
                         &format!("declare v0 tx hash {block_num}").into_bytes()
