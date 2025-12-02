@@ -360,7 +360,12 @@ pub fn spawn(
                         // so we did start a new height upon successful decision, before any p2p
                         // messages for the new height were received.
                         ConsensusCommand::StartHeight(..) | ConsensusCommand::Propose(_) => {
-                            assert!(cmd_height >= next_height);
+                            // Commands from P2P should always be for current or future heights.
+                            assert!(
+                                cmd_height >= next_height,
+                                "Received command for height {cmd_height} < current height \
+                                 {next_height}"
+                            );
                         }
                         // Sometimes messages for the next height are received before the engine
                         // decides upon the current height. In such case we need to ensure that a
