@@ -293,11 +293,29 @@ pub fn spawn(
                             }
                         }
                         ConsensusEvent::Error(error) => {
-                            // TODO are all of these errors fatal or recoverable?
-                            // What is the best way to handle them?
-                            tracing::error!("🧠 ❌ {validator_address} consensus error: {error:?}");
-                            // Bail out, stop the consensus
-                            return Err(error);
+                            if error.is_recoverable() {
+                                // Recoverable errors: log and continue
+                                // - WAL entry errors: can skip corrupted entries
+                                // - Invalid peer messages: engine should handle, we continue
+                                tracing::warn!(
+                                    validator = %validator_address,
+                                    error = %error,
+                                    error_chain = %format!("{:#}", error),
+                                    "Recoverable consensus error - continuing operation"
+                                );
+                                // Continue to next event - don't restart task
+                            } else {
+                                tracing::error!(
+                                    validator = %validator_address,
+                                    error = %error,
+                                    error_chain = %format!("{:#}", error),
+                                    "Fatal consensus error"
+                                );
+                                // Bail out, stop the consensus
+                                return Err(
+                                    anyhow::Error::from(error).context("Fatal consensus error")
+                                );
+                            }
                         }
                     }
                 }
