@@ -79,7 +79,8 @@ pub fn spawn(
     let data_directory = data_directory.to_path_buf();
 
     util::task::spawn(async move {
-        let highest_finalized = highest_finalized(&consensus_storage)?;
+        let highest_finalized = highest_finalized(&consensus_storage)
+            .context("Failed to read highest finalized block at startup")?;
         // Get the validator address and validator set provider
         let validator_address = config.my_validator_address;
         let validator_set_provider =
@@ -123,7 +124,9 @@ pub fn spawn(
         start_height(
             &mut consensus,
             next_height,
-            validator_set_provider.get_validator_set(next_height)?,
+            validator_set_provider
+                .get_validator_set(next_height)
+                .context("Failed to get validator set at startup")?,
         );
 
         loop {
@@ -315,7 +318,9 @@ pub fn spawn(
                                 start_height(
                                     &mut consensus,
                                     next_height,
-                                    validator_set_provider.get_validator_set(next_height)?,
+                                    validator_set_provider
+                                        .get_validator_set(next_height)
+                                        .context("Failed to get validator set")?,
                                 );
                             }
                         }
@@ -390,7 +395,9 @@ pub fn spawn(
                                 start_height(
                                     &mut consensus,
                                     cmd_height,
-                                    validator_set_provider.get_validator_set(cmd_height)?,
+                                    validator_set_provider
+                                        .get_validator_set(cmd_height)
+                                        .context("Failed to get validator set")?,
                                 );
                             }
                         }
@@ -410,11 +417,14 @@ pub fn spawn(
 fn highest_finalized(storage: &Storage) -> anyhow::Result<Option<u64>> {
     let mut db_conn = storage
         .connection()
-        .context("Creating database connection")?;
+        .context("Failed to create database connection for reading highest finalized block")?;
     let db_txn = db_conn
         .transaction()
-        .context("Creating database transaction")?;
-    let highest_finalized = db_txn.block_number(BlockId::Latest)?.map(|x| x.get());
+        .context("Failed to create database transaction for reading highest finalized block")?;
+    let highest_finalized = db_txn
+        .block_number(BlockId::Latest)
+        .context("Failed to query latest block number")?
+        .map(|x| x.get());
     Ok(highest_finalized)
 }
 
@@ -438,7 +448,9 @@ fn create_empty_proposal(
     proposer: ContractAddress,
     main_storage: Storage,
 ) -> anyhow::Result<(Vec<ProposalPart>, L2Block)> {
-    let round = round.as_u32().expect("Round not to be Nil???");
+    let round = round.as_u32().ok_or_else(|| {
+        anyhow::anyhow!("Attempted to create proposal with Nil round at height {height}")
+    })?;
     let proposer = Address(proposer.0);
     let timestamp = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -460,7 +472,8 @@ fn create_empty_proposal(
         l1_data_gas_price_wei: 1,
         eth_to_strk_rate: 1_000_000_000,
     };
-    let current_block = BlockNumber::new(height).context("Invalid height")?;
+    let current_block = BlockNumber::new(height)
+        .with_context(|| format!("Invalid block number: Height {height} exceeds i64::MAX"))?;
     let parent_proposal_commitment_hash = if let Some(parent_number) = current_block.parent() {
         let mut db_conn = main_storage
             .connection()
@@ -477,9 +490,13 @@ fn create_empty_proposal(
         BlockHash::ZERO
     };
 
-    let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())?
-        .validate_consensus_block_info(block_info.clone(), main_storage.clone())?;
-    let validator = validator.consensus_finalize0()?;
+    let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())
+        .context("Failed to create validator block info stage")?
+        .validate_consensus_block_info(block_info.clone(), main_storage.clone())
+        .context("Failed to validate consensus block info")?;
+    let validator = validator
+        .consensus_finalize0()
+        .context("Failed to finalize consensus block info")?;
 
     let readonly_storage = main_storage.clone();
     let mut db_conn = main_storage
@@ -488,22 +505,29 @@ fn create_empty_proposal(
     let db_txn = db_conn
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .context("Create database transaction")?;
-    let finalized_block = validator.finalize(
-        &db_txn,
-        readonly_storage,
-        false, // Do not verify hashes for empty proposals
-    )?;
-    db_txn.commit().context("Committing database transaction")?;
+    let finalized_block = validator
+        .finalize(
+            &db_txn,
+            readonly_storage,
+            false, // Do not verify hashes for empty proposals
+        )
+        .context("Failed to finalize block")?;
+    db_txn
+        .commit()
+        .context("Failed to commit finalized block")?;
     let proposal_commitment_hash = Hash(finalized_block.header.state_diff_commitment.0);
 
     // The only version handled by consensus, so far
     let starknet_version = StarknetVersion::new(0, 14, 0, 0);
     let transactions = vec![];
-    let transaction_commitment = calculate_transaction_commitment(&transactions, starknet_version)?;
+    let transaction_commitment = calculate_transaction_commitment(&transactions, starknet_version)
+        .context("Failed to calculate transaction commitment")?;
     let transaction_events = vec![];
-    let event_commitment = calculate_event_commitment(&transaction_events, starknet_version)?;
+    let event_commitment = calculate_event_commitment(&transaction_events, starknet_version)
+        .context("Failed to calculate event commitment")?;
     let receipts = vec![];
-    let receipt_commitment = calculate_receipt_commitment(&receipts)?;
+    let receipt_commitment = calculate_receipt_commitment(&receipts)
+        .context("Failed to calculate receipt commitment")?;
     let proposal_commitment = ProposalCommitmentProto {
       block_number: height,
         parent_commitment: Hash(parent_proposal_commitment_hash.0),

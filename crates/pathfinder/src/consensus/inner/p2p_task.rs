@@ -839,7 +839,9 @@ fn read_committed_block(
 
     let transaction_data = cons_db_tx
         .transaction_data_for_block(block_id)?
-        .expect("block exists");
+        .ok_or_else(|| {
+            anyhow::anyhow!("Block {height} exists (header found) but transaction data is missing")
+        })?;
     let (transactions_and_receipts, events) = transaction_data
         .into_iter()
         .map(|(tx, receipt, events)| ((tx, receipt), events))
@@ -854,7 +856,9 @@ fn read_committed_block(
             declared_sierra_classes: su.declared_sierra_classes,
             migrated_compiled_classes: su.migrated_compiled_classes,
         })
-        .expect("block exists");
+        .ok_or_else(|| {
+            anyhow::anyhow!("Block {height} exists (header found) but state update is missing",)
+        })?;
 
     let finalized_block = L2Block {
         header,
@@ -969,8 +973,7 @@ fn handle_incoming_proposal_part(
                 })?
             else {
                 return Err(ProposalHandlingError::Fatal(anyhow::anyhow!(
-                    "First proposal part is not Init for {height_and_round} - expected Init, got \
-                     different part type"
+                    "First proposal part is not Init for {height_and_round}"
                 )));
             };
 
