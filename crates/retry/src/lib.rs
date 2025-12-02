@@ -114,12 +114,8 @@ impl From<Strategy> for MaybeLimited {
         #[cfg(not(test))]
         const FACTOR: u32 = 1000;
 
-        let backoff = ExponentialBackoff::from_millis(s.base_secs.get()).factor(
-            s.factor
-                .get()
-                .checked_mul(FACTOR as u64)
-                .unwrap_or(u64::MAX),
-        );
+        let backoff = ExponentialBackoff::from_millis(s.base_secs.get())
+            .factor(s.factor.get().saturating_mul(FACTOR as u64));
         let backoff = match s.max_delay {
             Some(max_delay) => backoff.max_delay(max_delay),
             None => backoff,
