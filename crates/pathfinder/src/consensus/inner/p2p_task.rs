@@ -923,7 +923,10 @@ fn handle_incoming_proposal_part(
             }
 
             let validator_stage = validator_cache.remove(&height_and_round)?;
-            let validator = validator_stage.try_into_block_info_stage()?;
+
+            let validator = validator_stage
+                .try_into_block_info_stage()
+                .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
 
             let block_info = block_info.clone();
             parts.push(proposal_part);
@@ -964,7 +967,10 @@ fn handle_incoming_proposal_part(
             );
 
             let validator_stage = validator_cache.remove(&height_and_round)?;
-            let mut validator = validator_stage.try_into_transaction_batch_stage()?;
+
+            let mut validator = validator_stage
+                .try_into_transaction_batch_stage()
+                .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
 
             let tx_batch = tx_batch.clone();
             parts.push(proposal_part);
@@ -1003,7 +1009,10 @@ fn handle_incoming_proposal_part(
         }
         ProposalPart::ProposalCommitment(proposal_commitment) => {
             let validator_stage = validator_cache.remove(&height_and_round)?;
-            let mut validator = validator_stage.try_into_transaction_batch_stage()?;
+
+            let mut validator = validator_stage
+                .try_into_transaction_batch_stage()
+                .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
 
             validator.record_proposal_commitment(proposal_commitment)?;
             validator_cache.insert(
@@ -1020,7 +1029,10 @@ fn handle_incoming_proposal_part(
             );
 
             let validator_stage = validator_cache.remove(&height_and_round)?;
-            let validator = validator_stage.try_into_transaction_batch_stage()?;
+
+            let validator = validator_stage
+                .try_into_transaction_batch_stage()
+                .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
 
             if !validator.has_proposal_commitment() {
                 anyhow::bail!(
