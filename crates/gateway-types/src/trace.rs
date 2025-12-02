@@ -41,7 +41,6 @@ pub struct Event {
 
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct FunctionInvocation {
     pub calldata: Vec<Felt>,
     pub contract_address: ContractAddress,
