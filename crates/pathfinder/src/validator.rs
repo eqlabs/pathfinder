@@ -39,7 +39,6 @@ use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
 use pathfinder_storage::Storage;
 use rayon::prelude::*;
-use thiserror::Error;
 use tracing::debug;
 
 use crate::state::block_hash::{
@@ -819,7 +818,7 @@ pub enum ValidatorStage {
 
 /// Error indicating that a validator stage conversion failed because the stage
 /// type was incorrect.
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 #[error("Expected {expected} stage, got {actual}")]
 pub struct WrongValidatorStageError {
     pub expected: &'static str,

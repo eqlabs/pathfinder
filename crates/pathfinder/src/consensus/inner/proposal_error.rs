@@ -1,14 +1,12 @@
 //! Error types for proposal handling.
 
-use thiserror::Error;
-
 use crate::validator::WrongValidatorStageError;
 
 /// Errors that can occur when handling incoming proposal parts.
 ///
 /// These errors are classified as recoverable (from peers) or fatal (our
 /// state).
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum ProposalError {
     /// Unexpected proposal part received (e.g., Init when expecting BlockInfo).
     #[error("Unexpected proposal part: {message}")]
@@ -43,7 +41,7 @@ impl From<WrongValidatorStageError> for ProposalHandlingError {
 /// This enum wraps all possible error types, automatically classifying them:
 /// - `ProposalError` is always recoverable (from peers)
 /// - `anyhow::Error` is always fatal (our state, DB errors, etc.)
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum ProposalHandlingError {
     /// Recoverable error from peer data (malformed proposals, out-of-order
     /// parts).

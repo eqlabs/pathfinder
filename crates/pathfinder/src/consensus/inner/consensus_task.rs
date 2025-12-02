@@ -178,12 +178,10 @@ pub fn spawn(
                                     } = wire_proposal
                                         .last()
                                         .and_then(ProposalPart::as_fin)
-                                        .ok_or_else(|| {
-                                            anyhow::anyhow!(
-                                                "Proposal for height {height} round {round} is \
-                                                 missing ProposalFin part - logic error"
-                                            )
-                                        })?;
+                                        .context(format!(
+                                            "Proposal for height {height} round {round} is \
+                                             missing ProposalFin part"
+                                        ))?;
 
                                     let value =
                                         ConsensusValue(ProposalCommitment(proposal_commitment.0));
@@ -360,7 +358,12 @@ pub fn spawn(
                         // so we did start a new height upon successful decision, before any p2p
                         // messages for the new height were received.
                         ConsensusCommand::StartHeight(..) | ConsensusCommand::Propose(_) => {
-                            assert!(cmd_height >= next_height);
+                            // Commands from P2P should always be for current or future heights.
+                            assert!(
+                                cmd_height >= next_height,
+                                "Received command for height {cmd_height} < current height \
+                                 {next_height}"
+                            );
                         }
                         // Sometimes messages for the next height are received before the engine
                         // decides upon the current height. In such case we need to ensure that a
@@ -448,9 +451,9 @@ fn create_empty_proposal(
     proposer: ContractAddress,
     main_storage: Storage,
 ) -> anyhow::Result<(Vec<ProposalPart>, L2Block)> {
-    let round = round.as_u32().ok_or_else(|| {
-        anyhow::anyhow!("Attempted to create proposal with Nil round at height {height}")
-    })?;
+    let round = round.as_u32().context(format!(
+        "Attempted to create proposal with Nil round at height {height}"
+    ))?;
     let proposer = Address(proposer.0);
     let timestamp = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -472,8 +475,9 @@ fn create_empty_proposal(
         l1_data_gas_price_wei: 1,
         eth_to_strk_rate: 1_000_000_000,
     };
-    let current_block = BlockNumber::new(height)
-        .with_context(|| format!("Invalid block number: Height {height} exceeds i64::MAX"))?;
+    let current_block = BlockNumber::new(height).context(format!(
+        "Invalid block number: Height {height} exceeds i64::MAX"
+    ))?;
     let parent_proposal_commitment_hash = if let Some(parent_number) = current_block.parent() {
         let mut db_conn = main_storage
             .connection()
