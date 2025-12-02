@@ -30,6 +30,7 @@ impl From<NodeAddress> for Vec<u8> {
 
 /// A simple consensus value type.
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ConsensusValue(pub String);
 
 impl Display for ConsensusValue {
