@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `blockifier` has been upgraded to 0.16.0-rc.2.
 
+### Fixed
+
+- `starknet_traceTransaction` times out for some transactions because fetching transaction traces from the feeder gateway fails due to some unknown fields in the response.
+
 ## [0.21.2] - 2025-11-27
 
 ### Changed
