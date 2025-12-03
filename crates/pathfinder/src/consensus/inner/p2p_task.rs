@@ -1068,8 +1068,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                         // Chris: FIXME this is actually a bug: verification can result in both
                         // fatal (storage related) and recoverable (all other) errors
                         .map_err(ProposalHandlingError::Fatal)?;
-                    let validator =
-                        ValidatorStage::Finalize(Box::new(validator.consensus_finalize()));
+                    let validator = ValidatorStage::Finalize(Box::new(validator));
                     validator_cache.insert(height_and_round, validator);
                     Ok(None)
                 }

@@ -506,14 +506,13 @@ pub(crate) fn create_empty_proposal(
         // TODO keep the value from the last block as per spec
         next_l2_gas_price_fri: 0,
         // Equivalent to zero on the wire
-        l1_da_mode: L1DataAvailabilityMode::Calldata,
+        l1_da_mode: L1DataAvailabilityMode::default(),
     };
 
     let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())
         .context("Failed to create validator block info stage")?
         .verify_proposal_commitment(&proposal_commitment)
-        .context("Failed to verify proposal commitment")?
-        .consensus_finalize();
+        .context("Failed to verify proposal commitment")?;
     let mut db_conn = main_storage
         .connection()
         .context("Creating database connection")?;
