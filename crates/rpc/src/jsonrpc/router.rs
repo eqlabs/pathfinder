@@ -126,10 +126,15 @@ impl RpcRouter {
 
         metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => self.version.to_str());
 
+        let start = std::time::Instant::now();
+        
         let method = method
             .invoke(self.context.clone(), request.params, self.version)
             .instrument(tracing::debug_span!("rpc_call", method=%method_name));
         let result = std::panic::AssertUnwindSafe(method).catch_unwind().await;
+        
+        let duration = start.elapsed();
+        metrics::histogram!("rpc_method_calls_duration_milliseconds", duration.as_millis() as f64, "method" => method_name, "version" => self.version.to_str());
 
         let output = match result {
             Ok(output) => output,
