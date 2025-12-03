@@ -5,7 +5,7 @@
   },
   "parent_hash": "0x6c6174657374",
   "sequencer_address": "0x70656e64696e672073657175656e6365722061646472657373",
-  "starknet_version": "0.11.0",
+  "starknet_version": "0.13.2",
   "timestamp": 1234567,
   "transactions": [
     {
