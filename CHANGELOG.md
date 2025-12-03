@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `blockifier` has been upgraded to 0.16.0-rc.2.
+- Pathfinder no longer returns `event_commitment` and `transaction_commitment` values for Starknet blocks older than Starknet version 0.13.2.
 
 ### Fixed
 

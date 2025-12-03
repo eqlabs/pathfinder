@@ -14,7 +14,7 @@
   },
   "block_number": 3,
   "sequencer_address": "0x70656e64696e672073657175656e6365722061646472657373",
-  "starknet_version": "0.11.0",
+  "starknet_version": "0.13.2",
   "timestamp": 1234567,
   "transactions": [
     "0x70656e64696e6720747820686173682030",

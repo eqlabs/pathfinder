@@ -1,138 +1,112 @@
 {
-    "l1_gas_price":{
-        "price_in_fri":"0x7374726b20676173207072696365",
-        "price_in_wei":"0x676173207072696365"
+    "l1_gas_price": {
+        "price_in_fri": "0x7374726b20676173207072696365",
+        "price_in_wei": "0x676173207072696365"
     },
-    "parent_hash":"0x6c6174657374",
-    "sequencer_address":"0x70656e64696e672073657175656e6365722061646472657373",
-    "starknet_version":"0.11.0",
-    "timestamp":1234567,
-    "transactions":[
+    "parent_hash": "0x6c6174657374",
+    "sequencer_address": "0x70656e64696e672073657175656e6365722061646472657373",
+    "starknet_version": "0.13.2",
+    "timestamp": 1234567,
+    "transactions": [
         {
-            "receipt":{
-                "actual_fee":{
-                    "amount":"0x0",
-                    "unit":"WEI"
+            "receipt": {
+                "actual_fee": {
+                    "amount": "0x0",
+                    "unit": "WEI"
                 },
-                "events":[
+                "events": [
                     {
-                        "data":[
-                            
-                        ],
-                        "from_address":"0xabcddddddd",
-                        "keys":[
+                        "data": [],
+                        "from_address": "0xabcddddddd",
+                        "keys": [
                             "0x70656e64696e67206b6579"
                         ]
                     },
                     {
-                        "data":[
-                            
-                        ],
-                        "from_address":"0xabcddddddd",
-                        "keys":[
+                        "data": [],
+                        "from_address": "0xabcddddddd",
+                        "keys": [
                             "0x70656e64696e67206b6579",
                             "0x7365636f6e642070656e64696e67206b6579"
                         ]
                     },
                     {
-                        "data":[
-                            
-                        ],
-                        "from_address":"0xabcaaaaaaa",
-                        "keys":[
+                        "data": [],
+                        "from_address": "0xabcaaaaaaa",
+                        "keys": [
                             "0x70656e64696e67206b65792032"
                         ]
                     }
                 ],
-                "execution_resources":{
-                    "steps":0
+                "execution_resources": {
+                    "steps": 0
                 },
-                "execution_status":"SUCCEEDED",
-                "finality_status":"ACCEPTED_ON_L2",
-                "messages_sent":[
-                    
-                ],
-                "transaction_hash":"0x70656e64696e6720747820686173682030",
-                "type":"INVOKE"
+                "execution_status": "SUCCEEDED",
+                "finality_status": "ACCEPTED_ON_L2",
+                "messages_sent": [],
+                "transaction_hash": "0x70656e64696e6720747820686173682030",
+                "type": "INVOKE"
             },
-            "transaction":{
-                "calldata":[
-                    
-                ],
-                "contract_address":"0x70656e64696e6720636f6e747261637420616464722030",
-                "entry_point_selector":"0x656e74727920706f696e742030",
-                "max_fee":"0x0",
-                "signature":[
-                    
-                ],
-                "type":"INVOKE",
-                "version":"0x0"
+            "transaction": {
+                "calldata": [],
+                "contract_address": "0x70656e64696e6720636f6e747261637420616464722030",
+                "entry_point_selector": "0x656e74727920706f696e742030",
+                "max_fee": "0x0",
+                "signature": [],
+                "type": "INVOKE",
+                "version": "0x0"
             }
         },
         {
-            "receipt":{
-                "actual_fee":{
-                    "amount":"0x0",
-                    "unit":"WEI"
+            "receipt": {
+                "actual_fee": {
+                    "amount": "0x0",
+                    "unit": "WEI"
                 },
-                "contract_address":"0x1122355",
-                "events":[
-                    
-                ],
-                "execution_resources":{
-                    "steps":0
+                "contract_address": "0x1122355",
+                "events": [],
+                "execution_resources": {
+                    "steps": 0
                 },
-                "execution_status":"SUCCEEDED",
-                "finality_status":"ACCEPTED_ON_L2",
-                "messages_sent":[
-                    
-                ],
-                "transaction_hash":"0x70656e64696e6720747820686173682031",
-                "type":"DEPLOY"
+                "execution_status": "SUCCEEDED",
+                "finality_status": "ACCEPTED_ON_L2",
+                "messages_sent": [],
+                "transaction_hash": "0x70656e64696e6720747820686173682031",
+                "type": "DEPLOY"
             },
-            "transaction":{
-                "class_hash":"0x70656e64696e6720636c61737320686173682031",
-                "constructor_calldata":[
-                    
-                ],
-                "contract_address_salt":"0x73616c7479",
-                "type":"DEPLOY",
-                "version":"0x0"
+            "transaction": {
+                "class_hash": "0x70656e64696e6720636c61737320686173682031",
+                "constructor_calldata": [],
+                "contract_address_salt": "0x73616c7479",
+                "type": "DEPLOY",
+                "version": "0x0"
             }
         },
         {
-            "receipt":{
-                "actual_fee":{
-                    "amount":"0x0",
-                    "unit":"WEI"
+            "receipt": {
+                "actual_fee": {
+                    "amount": "0x0",
+                    "unit": "WEI"
                 },
-                "events":[
-                    
-                ],
-                "execution_resources":{
-                    "steps":0
+                "events": [],
+                "execution_resources": {
+                    "steps": 0
                 },
-                "execution_status":"REVERTED",
-                "finality_status":"ACCEPTED_ON_L2",
-                "messages_sent":[
-                    
-                ],
-                "revert_reason":"Reverted!",
-                "transaction_hash":"0x70656e64696e67207265766572746564",
-                "type":"INVOKE"
+                "execution_status": "REVERTED",
+                "finality_status": "ACCEPTED_ON_L2",
+                "messages_sent": [],
+                "revert_reason": "Reverted!",
+                "transaction_hash": "0x70656e64696e67207265766572746564",
+                "type": "INVOKE"
             },
-            "transaction":{
-                "calldata":[
-                    
-                ],
-                "contract_address":"0x70656e64696e6720636f6e747261637420616464722030",
-                "entry_point_selector":"0x656e74727920706f696e742030",
-                "max_fee":"0x0",
-                "signature":[
-                    
-                ],
-                "type":"INVOKE",
-                "version":"0x0"
+            "transaction": {
+                "calldata": [],
+                "contract_address": "0x70656e64696e6720636f6e747261637420616464722030",
+                "entry_point_selector": "0x656e74727920706f696e742030",
+                "max_fee": "0x0",
+                "signature": [],
+                "type": "INVOKE",
+                "version": "0x0"
             }
         }
     ]

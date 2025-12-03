@@ -20,7 +20,7 @@
     "parent_hash": "0x626c6f636b2031",
     "receipt_commitment": "0xdc02",
     "sequencer_address": "0x2",
-    "starknet_version": "",
+    "starknet_version": "0.13.2",
     "state_diff_commitment": "0xfc02",
     "state_diff_length": 2,
     "status": "ACCEPTED_ON_L2",

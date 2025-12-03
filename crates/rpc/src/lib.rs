@@ -459,6 +459,7 @@ pub mod test_utils {
             .transaction_count(0)
             .state_diff_commitment(state_diff_commitment!("0xfc00"))
             .state_diff_length(0)
+            .starknet_version(StarknetVersion::V_0_13_2)
             .finalize_with_hash(block_hash_bytes!(b"genesis"));
         db_txn.insert_block_header(&header0).unwrap();
         db_txn
@@ -508,6 +509,7 @@ pub mod test_utils {
             .transaction_count(1)
             .state_diff_commitment(state_diff_commitment!("0xfc01"))
             .state_diff_length(1)
+            .starknet_version(StarknetVersion::V_0_13_2)
             .finalize_with_hash(block_hash_bytes!(b"block 1"));
         db_txn.insert_block_header(&header1).unwrap();
         db_txn
@@ -599,6 +601,7 @@ pub mod test_utils {
             .transaction_count(2)
             .state_diff_commitment(state_diff_commitment!("0xfc02"))
             .state_diff_length(2)
+            .starknet_version(StarknetVersion::V_0_13_2)
             .finalize_with_hash(block_hash_bytes!(b"latest"));
 
         db_txn.insert_block_header(&header2).unwrap();
@@ -876,7 +879,7 @@ pub mod test_utils {
             timestamp: BlockTimestamp::new_or_panic(1234567),
             transaction_receipts,
             transactions,
-            starknet_version: StarknetVersion::new(0, 11, 0, 0),
+            starknet_version: StarknetVersion::new(0, 13, 2, 0),
             l1_da_mode: starknet_gateway_types::reply::L1DataAvailabilityMode::Calldata,
         };
 
@@ -1070,7 +1073,7 @@ pub mod test_utils {
                 timestamp: BlockTimestamp::new_or_panic(1234567),
                 transaction_receipts,
                 transactions,
-                starknet_version: StarknetVersion::new(0, 11, 0, 0),
+                starknet_version: StarknetVersion::V_0_13_2,
                 l1_da_mode: L1DataAvailabilityMode::Calldata,
             }
             .into(),
@@ -1268,7 +1271,7 @@ pub mod test_utils {
             timestamp: BlockTimestamp::new_or_panic(1234567),
             transaction_receipts: pre_latest_tx_receipts,
             transactions: pre_latest_transactions,
-            starknet_version: StarknetVersion::new(0, 11, 0, 0),
+            starknet_version: StarknetVersion::V_0_13_2,
             l1_da_mode: L1DataAvailabilityMode::Calldata,
         };
 
@@ -1420,7 +1423,7 @@ pub mod test_utils {
                 timestamp: BlockTimestamp::new_or_panic(1234567),
                 transaction_receipts: pre_confirmed_tx_receipts,
                 transactions: pre_confirmed_transactions,
-                starknet_version: StarknetVersion::new(0, 11, 0, 0),
+                starknet_version: StarknetVersion::V_0_13_2,
                 l1_da_mode: L1DataAvailabilityMode::Calldata,
             }
             .into(),
