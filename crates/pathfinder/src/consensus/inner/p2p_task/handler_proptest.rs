@@ -369,7 +369,7 @@ fn create_structurally_invalid_proposal(seed: u64, fail_at_txn: bool) -> (Vec<Pr
     (proposal_parts, false)
 }
 
-/// Removes a proposal part if the flag is true, or duplicates int if the flag
+/// Removes a proposal part if the flag is true, or duplicates it if the flag
 /// is false
 fn modify_part(
     proposal_parts: &mut Vec<ProposalPart>,
