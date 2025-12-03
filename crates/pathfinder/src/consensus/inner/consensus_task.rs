@@ -427,7 +427,7 @@ pub(crate) fn create_empty_proposal(
         builder: proposer,
         timestamp,
         protocol_version: starknet_version.to_string(),
-        // TODO not used by 0.14.0, but the spec requires it for empty proposals
+        // TODO required by the spec
         old_state_root: Default::default(),
         // TODO required by the spec
         version_constant_commitment: Default::default(),
