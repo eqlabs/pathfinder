@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- The new histogram metric `rpc_method_calls_duration_milliseconds` has been added to expose JSON-RPC method call latency data.
+
 ### Changed
 
 - `blockifier` has been upgraded to 0.16.0-rc.2.
