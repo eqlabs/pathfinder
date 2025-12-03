@@ -444,12 +444,11 @@ pub(crate) fn create_empty_proposal(
         // TODO keep the value from the last block as per spec
         next_l2_gas_price_fri: 0,
         // Equivalent to zero on the wire
-        l1_da_mode: L1DataAvailabilityMode::Calldata,
+        l1_da_mode: L1DataAvailabilityMode::default(),
     };
 
     let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())?
-        .verify_proposal_commitment(&proposal_commitment)?
-        .consensus_finalize();
+        .verify_proposal_commitment(&proposal_commitment)?;
     let mut db_conn = storage
         .connection()
         .context("Creating database connection")?;

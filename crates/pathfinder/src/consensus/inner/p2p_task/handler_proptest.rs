@@ -196,7 +196,7 @@ fn create_structurally_valid_empty_proposal(seed: u64) -> Vec<ProposalPart> {
     proposal_commitment.l1_data_gas_price_fri = 0;
     proposal_commitment.l2_gas_price_fri = 0;
     proposal_commitment.l2_gas_used = 0;
-    proposal_commitment.l1_da_mode = L1DataAvailabilityMode::Calldata;
+    proposal_commitment.l1_da_mode = L1DataAvailabilityMode::default();
     let proposal_commitment = ProposalPart::ProposalCommitment(proposal_commitment);
     proposal_parts.push(proposal_commitment);
 

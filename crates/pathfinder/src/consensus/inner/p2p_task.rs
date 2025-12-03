@@ -928,8 +928,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                     let validator_stage = validator_cache.remove(&height_and_round)?;
                     let validator = validator_stage.try_into_block_info_stage()?;
                     let validator = validator.verify_proposal_commitment(proposal_commitment)?;
-                    let validator =
-                        ValidatorStage::Finalize(Box::new(validator.consensus_finalize()));
+                    let validator = ValidatorStage::Finalize(Box::new(validator));
                     validator_cache.insert(height_and_round, validator);
                     Ok(None)
                 }

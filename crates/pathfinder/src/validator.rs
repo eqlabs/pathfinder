@@ -154,7 +154,7 @@ impl ValidatorBlockInfoStage {
     pub fn verify_proposal_commitment(
         self,
         proposal_commitment: &p2p_proto::consensus::ProposalCommitment,
-    ) -> anyhow::Result<ValidatorEmptyProposalStage> {
+    ) -> anyhow::Result<ValidatorFinalizeStage> {
         if proposal_commitment.state_diff_commitment != Hash::ZERO {
             return Err(anyhow::anyhow!(
                 "Empty proposal commitment should have zero state_diff_commitment, got: {}",
@@ -250,36 +250,13 @@ impl ValidatorBlockInfoStage {
             state_diff_commitment: StateDiffCommitment::ZERO,
             state_diff_length: 0,
         };
-        Ok(ValidatorEmptyProposalStage {
-            expected_block_header,
-        })
-    }
-}
-
-/// An empty proposal contains the following: Init, Commitment, Fin. This
-/// stage occurs after the ValidatorBlockInfoStage ingests the Commitment and is
-/// specific only to the empty proposal path.
-pub struct ValidatorEmptyProposalStage {
-    expected_block_header: BlockHeader,
-}
-
-impl ValidatorEmptyProposalStage {
-    /// Finalizes the empty proposal, producing a header with all commitments
-    /// except the state commitment and block hash, which are computed in the
-    /// last stage. Also verifies that the computed proposal commitment matches
-    /// the expected one.
-    pub fn consensus_finalize(self) -> ValidatorFinalizeStage {
-        let Self {
-            expected_block_header,
-        } = self;
-
-        ValidatorFinalizeStage {
+        Ok(ValidatorFinalizeStage {
             header: expected_block_header,
             state_update: StateUpdateData::default(),
             transactions: Vec::new(),
             receipts: Vec::new(),
             events: Vec::new(),
-        }
+        })
     }
 }
 

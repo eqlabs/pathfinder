@@ -85,8 +85,9 @@ pub struct BlockId {
     pub hash: Hash,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Dummy)]
 pub enum L1DataAvailabilityMode {
+    #[default]
     Calldata,
     Blob,
 }

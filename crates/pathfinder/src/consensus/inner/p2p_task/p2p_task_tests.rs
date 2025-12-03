@@ -440,7 +440,7 @@ fn create_proposal_commitment_part(
         l2_gas_price_fri: 0,
         l2_gas_used: 0,
         next_l2_gas_price_fri: 0,
-        l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
+        l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::default(),
     })
 }
 
