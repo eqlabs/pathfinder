@@ -80,7 +80,7 @@ pub fn create_test_proposal(
         block_number: height,
         timestamp,
         builder: proposer_address,
-        l1_da_mode: L1DataAvailabilityMode::Calldata,
+        l1_da_mode: L1DataAvailabilityMode::default(),
         l2_gas_price_fri: 1,
         l1_gas_price_wei: 1_000_000_000,
         l1_data_gas_price_wei: 1,

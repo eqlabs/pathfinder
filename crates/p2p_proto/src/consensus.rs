@@ -1,4 +1,4 @@
-use fake::Dummy;
+use fake::{Dummy, Fake as _};
 use pathfinder_crypto::Felt;
 use prost::Message;
 use proto::consensus::consensus as consensus_proto;
@@ -86,13 +86,13 @@ pub struct TransactionBatch {
     pub transactions: Vec<Transaction>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "consensus_proto::TransactionsFin")]
 pub struct TransactionsFin {
     pub executed_transaction_count: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[protobuf(name = "consensus_proto::BlockInfo")]
 pub struct BlockInfo {
     pub block_number: u64,
@@ -105,7 +105,23 @@ pub struct BlockInfo {
     pub l1_da_mode: L1DataAvailabilityMode,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+impl<T> Dummy<T> for BlockInfo {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        Self {
+            block_number: rng.gen_range(0..i64::MAX) as u64,
+            builder: fake::Faker.fake_with_rng(rng),
+            timestamp: rng.gen_range(0..i64::MAX) as u64,
+            // Keep the prices low enough to avoid overflow when converting between fri and wei
+            l2_gas_price_fri: rng.gen_range(1..i64::MAX) as u128,
+            l1_gas_price_wei: rng.gen_range(1..i64::MAX) as u128,
+            l1_data_gas_price_wei: rng.gen_range(1..i64::MAX) as u128,
+            eth_to_strk_rate: rng.gen_range(1..i64::MAX) as u128,
+            l1_da_mode: fake::Faker.fake_with_rng(rng),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[protobuf(name = "consensus_proto::ProposalCommitment")]
 pub struct ProposalCommitment {
     pub block_number: u64,
@@ -126,6 +142,32 @@ pub struct ProposalCommitment {
     pub l2_gas_used: u128,
     pub next_l2_gas_price_fri: u128,
     pub l1_da_mode: L1DataAvailabilityMode,
+}
+
+impl<T> Dummy<T> for ProposalCommitment {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        Self {
+            block_number: rng.gen_range(0..i64::MAX) as u64,
+            parent_commitment: fake::Faker.fake_with_rng(rng),
+            builder: fake::Faker.fake_with_rng(rng),
+            timestamp: rng.gen_range(0..i64::MAX) as u64,
+            protocol_version: "0.14.1".to_string(),
+            old_state_root: fake::Faker.fake_with_rng(rng),
+            version_constant_commitment: fake::Faker.fake_with_rng(rng),
+            state_diff_commitment: fake::Faker.fake_with_rng(rng),
+            transaction_commitment: fake::Faker.fake_with_rng(rng),
+            event_commitment: fake::Faker.fake_with_rng(rng),
+            receipt_commitment: fake::Faker.fake_with_rng(rng),
+            concatenated_counts: fake::Faker.fake_with_rng(rng),
+            // Keep the prices low enough to avoid overflow when converting between fri and wei
+            l1_gas_price_fri: rng.gen_range(1..i64::MAX) as u128,
+            l1_data_gas_price_fri: rng.gen_range(1..i64::MAX) as u128,
+            l2_gas_price_fri: rng.gen_range(1..i64::MAX) as u128,
+            l2_gas_used: rng.gen_range(1..i64::MAX) as u128,
+            next_l2_gas_price_fri: rng.gen_range(1..i64::MAX) as u128,
+            l1_da_mode: fake::Faker.fake_with_rng(rng),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -280,6 +322,30 @@ impl ProposalPart {
         } else {
             None
         }
+    }
+
+    pub fn is_proposal_init(&self) -> bool {
+        matches!(self, Self::Init(_))
+    }
+
+    pub fn is_block_info(&self) -> bool {
+        matches!(self, Self::BlockInfo(_))
+    }
+
+    pub fn is_transaction_batch(&self) -> bool {
+        matches!(self, Self::TransactionBatch(_))
+    }
+
+    pub fn is_transactions_fin(&self) -> bool {
+        matches!(self, Self::TransactionsFin(_))
+    }
+
+    pub fn is_proposal_commitment(&self) -> bool {
+        matches!(self, Self::ProposalCommitment(_))
+    }
+
+    pub fn is_proposal_fin(&self) -> bool {
+        matches!(self, Self::Fin(_))
     }
 }
 

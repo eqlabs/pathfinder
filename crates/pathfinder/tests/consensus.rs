@@ -32,17 +32,15 @@ mod test {
 
     // TODO Test cases that should be supported by the integration tests:
     // - proposals:
-    //   - [ ] non-empty proposals (L1 handlers + transactions that modify storage),
-    //   - [ ] empty proposals, which follow the spec, ie. no transaction batches:
-    //      - ProposalInit,
-    //      - ProposalCommitment,
-    //      - ProposalFin,
-    //   - [x] consider supporting empty proposals with an empty transaction batch,
-    //     not fully following the spec:
+    //   - [ ] non-empty proposals (L1 handlers + transactions that modify storage):
     //      - ProposalInit,
     //      - BlockInfo,
-    //      - TransactionBatch([]),
-    //      - (TransactionsFin cannot be sent in this case),
+    //      - TransactionBatch(/*Non-empty vec of transactions*/),
+    //      - TransactionsFin,
+    //      - ProposalCommitment,
+    //      - ProposalFin,
+    //   - [x] empty proposals, which follow the spec, ie. no transaction batches:
+    //      - ProposalInit,
     //      - ProposalCommitment,
     //      - ProposalFin,
     // - node set sizes:
