@@ -88,6 +88,8 @@ The Prometheus Metrics endpoint (`/metrics`) exposes real-time operational data 
       Counts how many times each JSON-RPC method is called.
     - `rpc_method_calls_failed_total{method="<methodName>", version="<rpcVersion>"}`  
       Counts how many times each method call resulted in an error.
+    - `rpc_method_calls_duration_milliseconds{method="<methodName>", version="<rpcVersion>"}`
+      Histogram of JSON-RPC method call latency.
 
   **Gateway Request Metrics**  
     - `gateway_requests_total{method="<sequencerRequestType>", tag="<latest|pending>", reason="<optionalFailureReason>"}`  
