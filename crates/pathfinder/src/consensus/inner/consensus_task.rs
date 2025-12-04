@@ -68,6 +68,7 @@ pub fn spawn(
     wal_directory: PathBuf,
     tx_to_p2p: mpsc::Sender<P2PTaskEvent>,
     mut rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
+    catch_up_tx: watch::Sender<Option<u64>>,
     info_watch_tx: watch::Sender<Option<ConsensusInfo>>,
     storage: Storage,
     fake_proposals_storage: Storage,
@@ -326,6 +327,15 @@ pub fn spawn(
                                         "🧠 ⏩  {validator_address} catching up current height \
                                          {next_height} -> {cmd_height}",
                                     );
+
+                                    // TODO: We are initiating catch-up sync but from here onwards
+                                    // the node is still participating in consensus. If we stop
+                                    // before the catch-up is complete, there will be a gap between
+                                    // the blocks that have been synced and `cmd_height` which we
+                                    // won't have a way of filling (as things stand at the moment).
+                                    catch_up_tx
+                                        .send(Some(next_height))
+                                        .expect("Catch-up sync should be running");
                                     next_height = cmd_height;
                                 } else {
                                     last_nil_vote_height = Some(last_nil);
