@@ -412,7 +412,7 @@ pub fn spawn(
                             // anymore because they are being stored by the sync task (if enabled).
                             // Once we are ready to get rid of fake proposals, consider storing
                             // recently decided-upon blocks in memory (instead of a database) and
-                            // swapping out the notion of "commited" for something like "decided".
+                            // swapping out the notion of "committed" for something like "decided".
                             //
                             // NOTE: The main database still gets the state updates via consensus,
                             // which is the only reason why we still need the main database here at
