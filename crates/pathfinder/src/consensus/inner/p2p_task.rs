@@ -19,7 +19,7 @@ use anyhow::Context;
 use p2p::consensus::{Client, Event, HeightAndRound};
 use p2p::libp2p::gossipsub::PublishError;
 use p2p_proto::common::{Address, Hash};
-use p2p_proto::consensus::{ProposalFin, ProposalInit, ProposalPart};
+use p2p_proto::consensus::{BlockInfo, ProposalFin, ProposalInit, ProposalPart, TransactionsFin};
 use pathfinder_common::{BlockId, ChainId, ContractAddress, ProposalCommitment};
 use pathfinder_consensus::{
     ConsensusCommand,
@@ -85,8 +85,6 @@ pub fn spawn(
     inject_failure: Option<InjectFailureConfig>,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     let validator_address = config.my_validator_address;
-    // TODO validators are long-lived but not persisted
-    let validator_cache = ValidatorCache::<BlockExecutor>::new();
     // Contains transaction batches and proposal finalizations that are
     // waiting for previous block to be committed before they can be executed.
     let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
@@ -101,12 +99,44 @@ pub fn spawn(
 
     util::task::spawn(async move {
         let readonly_storage = storage.clone();
+        let main_storage2 = storage.clone();
+        let consensus_storage2 = consensus_storage.clone();
         let mut db_conn = storage
             .connection()
             .context("Creating database connection")?;
         let mut cons_conn = consensus_storage
             .connection()
             .context("Creating consensus database connection")?;
+        // TODO validators are long-lived but not persisted, and the recovery process
+        // right now works by re-executing all last proposals from the database
+        // for all heights found in the database.
+        let validator_cache = util::task::spawn_blocking(move |_| {
+            tracing::info!(
+                "🖧  🔧 {validator_address} Recovering validator cache from the database ..."
+            );
+            let mut cons_conn = consensus_storage2
+                .connection()
+                .context("Creating consensus database connection")?;
+            let consensus_db_tx = cons_conn
+                .transaction()
+                .context("Create consensus database transaction")?;
+            let stopwatch = std::time::Instant::now();
+            let cache = ValidatorCache::<BlockExecutor>::recover::<ProdTransactionMapper>(
+                main_storage2,
+                consensus_db_tx,
+                &validator_address,
+                chain_id,
+            )?;
+            tracing::info!(
+                "🖧  🔧 {validator_address} Recovered validator cache from the database in {} ms",
+                stopwatch.elapsed().as_millis()
+            );
+            anyhow::Ok(cache)
+        })
+        .await
+        .context("Joining blocking task")?
+        .context("Recovering validator cache")?;
+
         loop {
             let p2p_task_event = tokio::select! {
                 p2p_event = p2p_event_rx.recv() => {
@@ -557,6 +587,7 @@ impl<E> Clone for ValidatorCache<E> {
 }
 
 impl<E> ValidatorCache<E> {
+    #[cfg(test)]
     fn new() -> Self {
         Self(Arc::new(Mutex::new(HashMap::new())))
     }
@@ -571,6 +602,220 @@ impl<E> ValidatorCache<E> {
         cache
             .remove(hnr)
             .context(format!("No ValidatorStage for height and round {hnr}"))
+    }
+}
+
+impl<E: BlockExecutorExt> ValidatorCache<E> {
+    /// Reads the proposal parts for last rounds for all available heights from
+    /// the database and reconstructs the validator stages for those heights and
+    /// rounds.
+    ///
+    /// # Important
+    ///
+    /// This function re-executes all the proposal parts read from the database
+    /// to reconstruct the validator stage. Hence it is considered
+    /// **computationally expensive** and must be called from **blocking
+    /// context**.
+    fn recover<T: TransactionExt>(
+        main_storage: Storage,
+        consensus_db_tx: Transaction<'_>,
+        validator_address: &ContractAddress,
+        chain_id: ChainId,
+    ) -> anyhow::Result<Self> {
+        let proposals_db: ConsensusProposals<'_> = ConsensusProposals::new(&consensus_db_tx);
+        let all_last_parts = proposals_db.all_last_parts(validator_address)?;
+        let mut cache = HashMap::new();
+
+        for (height, round, parts) in all_last_parts {
+            tracing::info!(
+                "Reconstructing validator stage for height {height} and round {round} ..."
+            );
+            let stopwatch = std::time::Instant::now();
+            let validator = Self::recover_one::<T>(
+                main_storage.clone(),
+                height,
+                round,
+                parts,
+                validator_address,
+                chain_id,
+            )?;
+            tracing::info!(
+                "Reconstructed validator stage for height {height} and round {round} in {} ms",
+                stopwatch.elapsed().as_millis()
+            );
+            cache.insert(HeightAndRound::new(height, round), validator);
+        }
+        Ok(Self(Arc::new(Mutex::new(cache))))
+    }
+
+    /// Reads the latest proposal parts from the database and reconstructs the
+    /// validator stage.
+    ///
+    /// # Important
+    ///
+    /// This function re-executes all the proposal parts to reconstruct the
+    /// validator stage. Hence it is considered **computationally expensive**
+    /// and must be called from **blocking context**.
+    fn recover_one<T: TransactionExt>(
+        main_storage: Storage,
+        height: u64,
+        round: u32,
+        parts: Vec<ProposalPart>,
+        validator_address: &ContractAddress,
+        chain_id: ChainId,
+    ) -> anyhow::Result<ValidatorStage<E>> {
+        let hnr = HeightAndRound::new(height, round);
+
+        if parts.is_empty() {
+            anyhow::bail!(
+                "No proposal parts found for height and round {hnr} for validator \
+                 {validator_address}. This is a fatal inconsistency in the consensus_proposals \
+                 table.",
+            );
+        }
+
+        let mut parts = parts.into_iter();
+
+        let Some(ProposalPart::Init(init)) = parts.next() else {
+            anyhow::bail!("Proposal init expected!");
+        };
+
+        let validator = ValidatorBlockInfoStage::new(chain_id, init)?;
+        let Some(part) = parts.next() else {
+            return Ok(validator.into());
+        };
+
+        match part {
+            ProposalPart::BlockInfo(block_info) => {
+                Self::recover_non_empty::<T>(main_storage, validator, block_info, parts, hnr)
+            }
+            ProposalPart::ProposalCommitment(proposal_commitment) => Ok(validator
+                .verify_proposal_commitment(&proposal_commitment)?
+                .into()),
+            _ => {
+                anyhow::bail!(
+                    "Unexpected proposal part for height and round {hnr}. Expected BlockInfo or \
+                     ProposalCommitment, got {}. This is a fatal inconsistency in the \
+                     consensus_proposals table.",
+                    part.variant_name()
+                );
+            }
+        }
+    }
+
+    fn recover_non_empty<T: TransactionExt>(
+        main_storage: Storage,
+        validator: ValidatorBlockInfoStage,
+        block_info: BlockInfo,
+        mut parts: impl Iterator<Item = ProposalPart>,
+        hnr: HeightAndRound,
+    ) -> anyhow::Result<ValidatorStage<E>> {
+        let mut validator =
+            validator.validate_consensus_block_info::<E>(block_info, main_storage)?;
+        // When parsing input from the network we always enforce the following order of
+        // proposal parts:
+        // 1. Proposal Init
+        // 2. Block Info for non-empty proposals (or Proposal Commitment for empty
+        //    proposals)
+        // 3. In random order: at least one Transaction Batch, Proposal Commitment,
+        //    Transactions Fin
+        // 4. Proposal Fin
+        //
+        // However, when reconstructing the validator stage from the database, we make
+        // our life easier and reorder the parts according to the spec, which is
+        // stricter about the ordering.
+        let executed_txns: usize = parts
+            .by_ref()
+            .find_map(|part| {
+                part.is_transactions_fin()
+                    .then_some(part.try_into().expect("TransactionsFin"))
+            })
+            .map(
+                |TransactionsFin {
+                     executed_transaction_count: x,
+                 }| { x.try_into().expect("ptr size is 64 bits") },
+            )
+            .unwrap_or(usize::MAX);
+        let proposal_commitment: Option<p2p_proto::consensus::ProposalCommitment> =
+            parts.by_ref().find_map(|part| {
+                part.is_proposal_commitment()
+                    .then_some(part.try_into().expect("ProposalCommitment"))
+            });
+        let proposal_fin: Option<ProposalFin> = parts.by_ref().find_map(|part| {
+            part.is_proposal_fin()
+                .then_some(part.try_into().expect("Fin"))
+        });
+
+        if proposal_fin.is_some() && proposal_commitment.is_none() {
+            anyhow::bail!(
+                "Unexpected proposal fin without commitment for height and round {hnr}. This is a \
+                 fatal inconsistency in the consensus_proposals table."
+            );
+        }
+
+        let mut total_txn_cnt = 0;
+        let mut _dgb_cnts = debug::Counts::default();
+
+        loop {
+            match parts.next() {
+                Some(ProposalPart::TransactionBatch(mut batch)) => {
+                    if total_txn_cnt + batch.len() > executed_txns {
+                        batch.truncate(executed_txns - total_txn_cnt);
+                        validator.execute_batch::<T>(batch)?;
+                        break;
+                    } else {
+                        total_txn_cnt += batch.len();
+                        validator.execute_batch::<T>(batch)?;
+                    }
+                }
+                Some(part) => Self::debug_check_duplicates(part, hnr, &mut _dgb_cnts)?,
+                None => break,
+            }
+        }
+
+        let Some(commitment) = proposal_commitment else {
+            return Ok(validator.into());
+        };
+
+        validator.record_proposal_commitment(&commitment)?;
+
+        let Some(ProposalFin {
+            proposal_commitment,
+        }) = proposal_fin
+        else {
+            return Ok(validator.into());
+        };
+
+        let validator = validator.consensus_finalize(ProposalCommitment(proposal_commitment.0))?;
+        Ok(validator.into())
+    }
+
+    fn debug_check_duplicates(
+        _part: ProposalPart,
+        _hnr: HeightAndRound,
+        _cnts: &mut debug::Counts,
+    ) -> anyhow::Result<()> {
+        #[cfg(debug_assertions)]
+        {
+            match _part {
+                ProposalPart::TransactionBatch(_) => {
+                    unreachable!("already handled in recover_non_empty")
+                }
+                // These can occur once
+                ProposalPart::TransactionsFin(_) => _cnts.txns_fin += 1,
+                ProposalPart::ProposalCommitment(_) => _cnts.commitment += 1,
+                ProposalPart::Fin(_) => _cnts.fin += 1,
+                // Another Init or BlockInfo is too much
+                _ => _cnts.init_info += 1,
+            };
+            anyhow::ensure!(
+                !_cnts._got_duplicate(),
+                "Unexpected duplicate {} while reconstructing validator stage for height and \
+                 round {_hnr}. This is a fatal inconsistency in the consensus_proposals table.",
+                _part.variant_name()
+            );
+        }
+        Ok(())
     }
 }
 
@@ -1344,4 +1589,42 @@ fn valid_round_from_parts(parts: &[ProposalPart]) -> anyhow::Result<Option<u32>>
         anyhow::bail!("First proposal part is not ProposalInit");
     };
     Ok(*valid_round)
+}
+
+#[cfg(debug_assertions)]
+mod debug {
+    pub struct Counts {
+        pub txns_fin: i8,
+        pub commitment: i8,
+        pub fin: i8,
+        pub init_info: i8,
+    }
+
+    impl Default for Counts {
+        fn default() -> Self {
+            Self {
+                txns_fin: -1,
+                commitment: -1,
+                fin: -1,
+                init_info: 0,
+            }
+        }
+    }
+
+    impl Counts {
+        pub fn _got_duplicate(&self) -> bool {
+            self.txns_fin > 0 || self.commitment > 0 || self.fin > 0 || self.init_info > 0
+        }
+    }
+}
+#[cfg(not(debug_assertions))]
+mod debug {
+    #[derive(Default)]
+    pub struct Counts;
+
+    impl Counts {
+        fn _got_duplicate(&self) -> bool {
+            false
+        }
+    }
 }

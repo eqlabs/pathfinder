@@ -147,6 +147,47 @@ impl Transaction<'_> {
             .map_err(|e| e.into())
     }
 
+    pub fn all_last_consensus_proposal_parts(
+        &self,
+        validator: &ContractAddress,
+    ) -> anyhow::Result<Vec<(i64, i64, Vec<u8>)>> {
+        let mut stmt = self.inner().prepare_cached(
+            r"
+                SELECT
+                    cp.height,
+                    cp.round,
+                    cp.parts
+                FROM consensus_proposals AS cp
+                JOIN (
+                    SELECT
+                        height,
+                        MAX(round) AS max_round
+                    FROM consensus_proposals
+                    WHERE proposer <> :proposer
+                    GROUP BY height
+                ) AS m
+                    ON cp.height = m.height
+                AND cp.round = m.max_round
+                WHERE cp.proposer <> :proposer
+                ORDER BY cp.height ASC",
+        )?;
+        let mut rows = stmt.query(named_params! {
+            ":proposer": validator,
+        })?;
+
+        let mut results = Vec::new();
+
+        while let Some(row) = rows.next()? {
+            let height = row.get_i64(0)?;
+            let round = row.get_i64(1)?;
+            let buf = row.get_blob(2).map(|x| x.to_vec())?;
+
+            results.push((height, round, buf));
+        }
+
+        Ok(results)
+    }
+
     /// Always all proposers
     pub fn remove_consensus_proposal_parts(
         &self,

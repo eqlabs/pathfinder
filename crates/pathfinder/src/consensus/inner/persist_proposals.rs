@@ -95,6 +95,23 @@ impl<'tx> ConsensusProposals<'tx> {
         }
     }
 
+    /// Retrieve the last proposal parts for all available heights from other
+    /// validators. Returns the heights, the last round numbers and the proposal
+    /// parts.
+    pub fn all_last_parts(
+        &self,
+        validator: &ContractAddress,
+    ) -> anyhow::Result<Vec<(u64, u32, Vec<ProposalPart>)>> {
+        let mut results = Vec::new();
+        for (height, round, buf) in self.tx.all_last_consensus_proposal_parts(validator)? {
+            let parts = Self::decode_proposal_parts(&buf[..])?;
+            let last_round = round.try_into().context("Round exceeds u32::MAX")?;
+            let height = height.try_into().context("Invalid height")?;
+            results.push((height, last_round, parts));
+        }
+        Ok(results)
+    }
+
     /// Remove proposal parts for a given height and optionally a specific
     /// round. If `round` is `None`, all rounds for that height are removed.
     pub fn remove_parts(&self, height: u64, round: Option<u32>) -> anyhow::Result<()> {
