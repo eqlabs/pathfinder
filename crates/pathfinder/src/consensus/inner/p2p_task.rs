@@ -79,8 +79,8 @@ pub fn spawn(
     main_storage: Storage,
     consensus_storage: Storage,
     data_directory: &Path,
-    // Does nothing in production builds. Used for integration testing only.
     verify_tree_hashes: bool,
+    // Does nothing in production builds. Used for integration testing only.
     inject_failure: Option<InjectFailureConfig>,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     let validator_address = config.my_validator_address;

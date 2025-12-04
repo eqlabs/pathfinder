@@ -429,7 +429,7 @@ where
 /// **consensus-aware** L2 sync results are combined.
 ///
 /// This function is also stripped of the sync status updater and pending block
-/// poller, since we this is a PoC for consensus integration and those features
+/// poller, since this is a PoC for consensus integration and those features
 /// are not needed here.
 pub async fn consensus_sync<Ethereum, SequencerClient, F1, F2, L1Sync, L2Sync>(
     context: SyncContext<SequencerClient, Ethereum>,
