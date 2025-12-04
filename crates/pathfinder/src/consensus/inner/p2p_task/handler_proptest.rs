@@ -85,6 +85,7 @@ proptest! {
         let proposal_parts_len = proposal_parts.len();
         let no_fin = proposal_parts.iter().all(|part| !part.is_proposal_fin());
         let debug_info = debug_info(&proposal_parts);
+        let mut handled_proposal_parts = HashMap::new();
 
         for (proposal_part, is_last) in proposal_parts
             .into_iter()
@@ -93,10 +94,10 @@ proptest! {
             result =
                 handle_incoming_proposal_part::<MockExecutor, MockMapper>(
                     ChainId::SEPOLIA_TESTNET,
-                    // Arbitrary contract address for testing
-                    ContractAddress::ONE,
                     HeightAndRound::new(0, 0),
                     proposal_part,
+                    false,
+                    &mut handled_proposal_parts,
                     validator_cache.clone(),
                     deferred_executions.clone(),
                     main_storage.clone(),
