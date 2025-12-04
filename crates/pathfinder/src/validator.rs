@@ -23,6 +23,7 @@ use pathfinder_common::{
     EntryPoint,
     EventCommitment,
     L1DataAvailabilityMode,
+    L2Block,
     ProposalCommitment,
     ReceiptCommitment,
     SequencerAddress,
@@ -36,7 +37,7 @@ use pathfinder_executor::types::{to_starknet_api_transaction, BlockInfoPriceConv
 use pathfinder_executor::{BlockExecutor, ClassInfo, IntoStarkFelt};
 use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
-use pathfinder_storage::{Storage, Transaction as DbTransaction};
+use pathfinder_storage::Storage;
 use rayon::prelude::*;
 use tracing::debug;
 
@@ -46,6 +47,13 @@ use crate::state::block_hash::{
     calculate_receipt_commitment,
     calculate_transaction_commitment,
 };
+
+/// TODO: Use this type as validation result.
+pub enum ValidationResult {
+    Valid,
+    Invalid,
+    Error(anyhow::Error),
+}
 
 pub fn new(
     chain_id: ChainId,
@@ -78,7 +86,7 @@ impl ValidatorBlockInfoStage {
     pub fn validate_consensus_block_info(
         self,
         block_info: BlockInfo,
-        storage: Storage,
+        consensus_storage: Storage,
     ) -> anyhow::Result<ValidatorTransactionBatchStage> {
         let _span = tracing::debug_span!(
             "Validator::validate_block_info",
@@ -145,7 +153,7 @@ impl ValidatorBlockInfoStage {
             cumulative_state_updates: Vec::new(),
             batch_sizes: Vec::new(),
             batch_p2p_transactions: Vec::new(),
-            storage,
+            consensus_storage,
         })
     }
 }
@@ -167,7 +175,7 @@ pub struct ValidatorTransactionBatchStage {
     /// Original p2p transactions per batch (for partial execution)
     batch_p2p_transactions: Vec<Vec<p2p_proto::consensus::Transaction>>,
     /// Storage for creating new connections
-    storage: Storage,
+    consensus_storage: Storage,
 }
 
 impl ValidatorTransactionBatchStage {
@@ -175,7 +183,7 @@ impl ValidatorTransactionBatchStage {
     pub fn new(
         chain_id: ChainId,
         block_info: pathfinder_executor::types::BlockInfo,
-        storage: Storage,
+        consensus_storage: Storage,
     ) -> anyhow::Result<Self> {
         Ok(ValidatorTransactionBatchStage {
             chain_id,
@@ -188,7 +196,7 @@ impl ValidatorTransactionBatchStage {
             cumulative_state_updates: Vec::new(),
             batch_sizes: Vec::new(),
             batch_p2p_transactions: Vec::new(),
-            storage,
+            consensus_storage,
         })
     }
 
@@ -226,7 +234,7 @@ impl ValidatorTransactionBatchStage {
             self.block_info,
             ETH_FEE_TOKEN_ADDRESS,
             STRK_FEE_TOKEN_ADDRESS,
-            self.storage
+            self.consensus_storage
                 .connection()
                 .context("Creating database connection for executor reconstruction")?,
             Arc::new(state_update),
@@ -284,7 +292,7 @@ impl ValidatorTransactionBatchStage {
                 self.block_info,
                 ETH_FEE_TOKEN_ADDRESS,
                 STRK_FEE_TOKEN_ADDRESS,
-                self.storage
+                self.consensus_storage
                     .connection()
                     .context("Creating database connection")?,
             )?);
@@ -727,14 +735,6 @@ pub struct ValidatorFinalizeStage {
     events: Vec<Vec<Event>>,
 }
 
-#[derive(Clone, Debug)]
-pub struct FinalizedBlock {
-    pub header: BlockHeader,
-    pub state_update: StateUpdateData,
-    pub transactions_and_receipts: Vec<(Transaction, Receipt)>,
-    pub events: Vec<Vec<Event>>,
-}
-
 impl ValidatorFinalizeStage {
     /// Updates the tries, computes the state commitment and block hash.
     ///
@@ -744,14 +744,10 @@ impl ValidatorFinalizeStage {
     /// and IO intensive.
     pub fn finalize(
         self,
-        db_tx: DbTransaction<'_>,
-        storage: Storage,
-    ) -> anyhow::Result<FinalizedBlock> {
-        #[cfg(debug_assertions)]
-        const VERIFY_HASHES: bool = true;
-        #[cfg(not(debug_assertions))]
-        const VERIFY_HASHES: bool = false;
-
+        main_db_tx: &pathfinder_storage::Transaction<'_>,
+        main_readonly_storage: Storage,
+        verify_tree_hashes: bool,
+    ) -> anyhow::Result<L2Block> {
         let Self {
             mut header,
             state_update,
@@ -770,21 +766,21 @@ impl ValidatorFinalizeStage {
         let start = Instant::now();
 
         if let Some(parent_number) = header.number.parent() {
-            header.parent_hash = db_tx.block_hash(parent_number.into())?.unwrap_or_default();
+            header.parent_hash = main_db_tx
+                .block_hash(parent_number.into())?
+                .unwrap_or_default();
         } else {
             // Parent block hash for the genesis block is zero by definition.
             header.parent_hash = BlockHash::ZERO;
         }
 
         let (storage_commitment, class_commitment) = update_starknet_state(
-            &db_tx,
-            (&state_update).into(),
-            VERIFY_HASHES,
+            main_db_tx,
+            state_update.as_ref(),
+            verify_tree_hashes,
             header.number,
-            storage.clone(),
+            main_readonly_storage.clone(),
         )?;
-
-        db_tx.commit().context("Committing database transaction")?;
 
         debug!(
             "Block {} tries updated in {} ms",
@@ -805,7 +801,7 @@ impl ValidatorFinalizeStage {
 
         let transactions_and_receipts = transactions.into_iter().zip(receipts).collect::<Vec<_>>();
 
-        Ok(FinalizedBlock {
+        Ok(L2Block {
             header,
             state_update,
             transactions_and_receipts,

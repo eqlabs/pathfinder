@@ -20,7 +20,15 @@ use p2p::consensus::{Client, Event, HeightAndRound};
 use p2p::libp2p::gossipsub::PublishError;
 use p2p_proto::common::{Address, Hash};
 use p2p_proto::consensus::{ProposalFin, ProposalInit, ProposalPart};
-use pathfinder_common::{BlockId, ChainId, ContractAddress, ProposalCommitment};
+use pathfinder_common::state_update::StateUpdateData;
+use pathfinder_common::{
+    BlockId,
+    BlockNumber,
+    ChainId,
+    ContractAddress,
+    L2Block,
+    ProposalCommitment,
+};
 use pathfinder_consensus::{
     ConsensusCommand,
     NetworkMessage,
@@ -43,7 +51,8 @@ use crate::consensus::inner::batch_execution::{
 };
 use crate::consensus::inner::persist_proposals::ConsensusProposals;
 use crate::consensus::inner::ConsensusValue;
-use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage, ValidatorStage};
+use crate::validator::{ValidatorBlockInfoStage, ValidatorStage};
+use crate::SyncRequestToConsensus;
 
 // Successful result of handling an incoming message in a dedicated
 // thread; carried data are used for async handling (e.g. gossiping).
@@ -63,11 +72,11 @@ pub fn spawn(
     chain_id: ChainId,
     config: P2PTaskConfig,
     p2p_client: Client,
-    storage: Storage,
     mut p2p_event_rx: mpsc::UnboundedReceiver<Event>,
-    mut store_synced_block_rx: mpsc::Receiver<crate::sync::catch_up::BlockData>,
     tx_to_consensus: mpsc::Sender<ConsensusTaskEvent>,
     mut rx_from_consensus: mpsc::Receiver<P2PTaskEvent>,
+    mut rx_from_sync: mpsc::Receiver<SyncRequestToConsensus>,
+    main_storage: Storage,
     consensus_storage: Storage,
     data_directory: &Path,
     // Does nothing in production builds. Used for integration testing only.
@@ -90,11 +99,11 @@ pub fn spawn(
     let data_directory = data_directory.to_path_buf();
 
     util::task::spawn(async move {
-        let readonly_storage = storage.clone();
-        let mut db_conn = storage
+        let main_readonly_storage = main_storage.clone();
+        let mut main_db_conn = main_storage
             .connection()
-            .context("Creating database connection")?;
-        let mut cons_conn = consensus_storage
+            .context("Creating main database connection")?;
+        let mut cons_db_conn = consensus_storage
             .connection()
             .context("Creating consensus database connection")?;
         loop {
@@ -120,33 +129,26 @@ pub fn spawn(
                     }
                 }
                 from_consensus = rx_from_consensus.recv() => {
-                    from_consensus.expect("Sender not to be dropped")
+                    from_consensus.expect("Receiver not to be dropped")
                 }
-                block_data = store_synced_block_rx.recv() => {
-                    let storage = storage.clone();
-                    let block_data = block_data.expect("Sender not to be dropped");
-                    util::task::spawn_blocking(move |_| {
-                        // TODO: `store_synced_block` depends on a lot of types in the `sync` module so it
-                        // is defined there but but ideally it should be moved out of there since it is only
-                        // used in this task.
-                        crate::sync::catch_up::store_synced_block(storage, block_data, verify_tree_hashes)
-                            .context("Storing synced block")?;
-
-                        anyhow::Ok(())
-                    }).await??;
-                    continue;
+                from_sync = rx_from_sync.recv() => match from_sync {
+                    Some(request) => P2PTaskEvent::SyncRequest(request),
+                    None => {
+                        tracing::warn!("Sync request receiver was dropped, exiting P2P task");
+                        anyhow::bail!("Sync request receiver was dropped, exiting P2P task");
+                    }
                 }
             };
 
             let success = tokio::task::block_in_place(|| {
                 tracing::debug!("creating DB txs");
-                let mut db_tx = db_conn
+                let mut main_db_tx = main_db_conn
                     .transaction_with_behavior(TransactionBehavior::Immediate)
-                    .context("Create database transaction")?;
-                let mut cons_tx = cons_conn
+                    .context("Create main database transaction")?;
+                let mut proposals_db = cons_db_conn
                     .transaction_with_behavior(TransactionBehavior::Immediate)
-                    .context("Create database transaction")?;
-                let mut proposals_db = ConsensusProposals::new(&cons_tx);
+                    .map(ConsensusProposals::new)
+                    .context("Create consensus database transaction")?;
 
                 let success = match p2p_task_event {
                     P2PTaskEvent::P2PEvent(event) => {
@@ -162,7 +164,7 @@ pub fn spawn(
                         // for H, so the other 2 nodes will not make any progress at H. And since
                         // we're not keeping any historical engines (ie. including for H), we will
                         // not help the other 2 nodes in the voting process.
-                        if is_outdated_p2p_event(&db_tx, &event, config.history_depth)? {
+                        if is_outdated_p2p_event(&proposals_db.tx, &event, config.history_depth)? {
                             // TODO consider punishing the sender if the event is too old
                             return Ok(ComputationSuccess::Continue);
                         }
@@ -178,8 +180,7 @@ pub fn spawn(
                                     proposal_part,
                                     vcache,
                                     dex,
-                                    &db_tx,
-                                    readonly_storage.clone(),
+                                    main_readonly_storage.clone(),
                                     &proposals_db,
                                     &mut batch_execution_manager,
                                     &data_directory,
@@ -230,6 +231,60 @@ pub fn spawn(
                                 Ok(ComputationSuccess::EventVote(vote))
                             }
                         }
+                    }
+
+                    P2PTaskEvent::SyncRequest(request) => {
+                        tracing::info!("🖧  📥 {validator_address} processing request from sync");
+
+                        match request {
+                            SyncRequestToConsensus::GetFinalizedBlock { number, reply } => {
+                                let resp =
+                                    read_committed_block(&proposals_db.tx, number)?.map(Arc::new);
+                                reply
+                                    .send(resp)
+                                    .map_err(|_| anyhow::anyhow!("Reply channel closed"))?;
+                            }
+                            SyncRequestToConsensus::ValidateBlock { block, reply, .. } => {
+                                use pathfinder_common::StateCommitment;
+                                use pathfinder_merkle_tree::starknet_state::update_starknet_state;
+
+                                use crate::validator;
+
+                                let state_commitment = update_starknet_state(
+                                    &main_db_tx,
+                                    block.state_update.as_ref(),
+                                    verify_tree_hashes,
+                                    block.header.number,
+                                    main_readonly_storage.clone(),
+                                )
+                                .context("Updating Starknet state")
+                                .map(|(storage, class)| StateCommitment::calculate(storage, class));
+
+                                // Do not commit this.
+                                drop(main_db_tx);
+                                main_db_tx = main_db_conn
+                                    .transaction_with_behavior(TransactionBehavior::Immediate)
+                                    .context("Create database transaction")?;
+
+                                let resp = match state_commitment {
+                                    Ok(state_commitment) => {
+                                        if state_commitment == block.header.state_commitment {
+                                            validator::ValidationResult::Valid
+                                        } else {
+                                            validator::ValidationResult::Invalid
+                                        }
+                                    }
+                                    Err(e) => validator::ValidationResult::Error(e),
+                                };
+
+                                reply
+                                    .send(resp)
+                                    .map_err(|_| anyhow::anyhow!("Reply channel closed"))?;
+                            }
+                        }
+
+                        // No further action needed after serving the sync request.
+                        Ok(ComputationSuccess::Continue)
                     }
 
                     P2PTaskEvent::CacheProposal(
@@ -353,7 +408,18 @@ pub fn spawn(
                     },
                     P2PTaskEvent::CommitBlock(height_and_round, value) => {
                         {
-                            let storage = readonly_storage.clone();
+                            // TODO: We do not have to commit these blocks to the main database
+                            // anymore because they are being stored by the sync task (if enabled).
+                            // Once we are ready to get rid of fake proposals, consider storing
+                            // recently decided-upon blocks in memory (instead of a database) and
+                            // swapping out the notion of "commited" for something like "decided".
+                            //
+                            // NOTE: The main database still gets the state updates via consensus,
+                            // which is the only reason why we still need the main database here at
+                            // all. I could get it to work with only the consensus database in all
+                            // scenarios except for when the node is chosen as a proposer and needs
+                            // to cache the proposal for later.
+
                             let mut validator_cache = validator_cache.clone();
                             tracing::info!(
                                 "🖧  💾 {validator_address} Finalizing and committing block at \
@@ -373,8 +439,16 @@ pub fn spawn(
                                     let validator_stage =
                                         validator_cache.remove(&height_and_round)?;
                                     let validator = validator_stage.try_into_finalize_stage()?;
-                                    let block = validator.finalize(db_tx, storage)?;
-                                    db_tx = db_conn
+                                    let main_readonly_storage = main_readonly_storage.clone();
+                                    let block = validator.finalize(
+                                        &main_db_tx,
+                                        main_readonly_storage,
+                                        verify_tree_hashes,
+                                    )?;
+                                    main_db_tx
+                                        .commit()
+                                        .context("Committing main database transaction")?;
+                                    main_db_tx = main_db_conn
                                         .transaction_with_behavior(TransactionBehavior::Immediate)
                                         .context("Create database transaction")?;
                                     block
@@ -383,8 +457,15 @@ pub fn spawn(
 
                             assert_eq!(value.0 .0, finalized_block.header.state_diff_commitment.0);
 
-                            commit_finalized_block(&db_tx, finalized_block.clone())?;
-                            db_tx.commit().context("Committing database transaction")?;
+                            // Necessary for proper fake proposal creation at next heights.
+                            commit_finalized_block(&proposals_db.tx, finalized_block)?;
+                            proposals_db
+                                .commit()
+                                .context("Committing consensus database transaction")?;
+                            proposals_db = cons_db_conn
+                                .transaction_with_behavior(TransactionBehavior::Immediate)
+                                .map(ConsensusProposals::new)
+                                .context("Create consensus database transaction")?;
 
                             // Does nothing in production builds.
                             integration_testing::debug_fail_on_proposal_committed(
@@ -393,19 +474,6 @@ pub fn spawn(
                                 &data_directory,
                             );
 
-                            db_tx = db_conn
-                                .transaction()
-                                .context("Create unused database transaction")?;
-                            // Necessary for proper fake proposal creation at next heights.
-                            commit_finalized_block(&cons_tx, finalized_block)?;
-                            cons_tx
-                                .commit()
-                                .context("Committing database transaction")?;
-                            cons_tx = cons_conn
-                                .transaction_with_behavior(TransactionBehavior::Immediate)
-                                .context("Create consensus database transaction")?;
-                            // Recreate proposals_db wrapper with new transaction
-                            proposals_db = ConsensusProposals::new(&cons_tx);
                             tracing::info!(
                                 "🖧  💾 {validator_address} Finalized and committed block at \
                                  {height_and_round} to the database in {} ms",
@@ -426,7 +494,12 @@ pub fn spawn(
                                  height {}",
                                 height_and_round.height()
                             );
+
                             proposals_db.remove_parts(height_and_round.height(), None)?;
+                            tracing::debug!(
+                                "🖧  🗑️ {validator_address} removed my proposal parts for height {}",
+                                height_and_round.height()
+                            );
 
                             anyhow::Ok(())
                         }?;
@@ -451,8 +524,8 @@ pub fn spawn(
                     }
                 }?;
 
-                db_tx.commit()?;
-                cons_tx.commit()?;
+                main_db_tx.commit()?;
+                proposals_db.commit()?;
                 tracing::debug!("DB txs committed");
                 Ok(success)
             })?;
@@ -711,10 +784,10 @@ async fn send_proposal_to_consensus(
 
 /// Commit the given finalized block to the database.
 fn commit_finalized_block(
-    db_txn: &Transaction<'_>,
-    finalized_block: FinalizedBlock,
+    cons_db_tx: &Transaction<'_>,
+    finalized_block: L2Block,
 ) -> anyhow::Result<()> {
-    let FinalizedBlock {
+    let L2Block {
         header,
         state_update,
         transactions_and_receipts,
@@ -722,17 +795,57 @@ fn commit_finalized_block(
     } = finalized_block;
 
     let block_number = header.number;
-    db_txn
+    cons_db_tx
         .insert_block_header(&header)
         .context("Inserting block header")?;
-    db_txn
+    cons_db_tx
         .insert_state_update_data(block_number, &state_update)
         .context("Inserting state update")?;
-    db_txn
+    cons_db_tx
         .insert_transaction_data(block_number, &transactions_and_receipts, Some(&events))
         .context("Inserting transactions, receipts and events")?;
 
     Ok(())
+}
+
+/// Read a committed block from the database.
+fn read_committed_block(
+    cons_db_tx: &Transaction<'_>,
+    height: BlockNumber,
+) -> anyhow::Result<Option<L2Block>> {
+    let block_id = BlockId::Number(height);
+
+    let Some(header) = cons_db_tx.block_header(block_id)? else {
+        return Ok(None);
+    };
+
+    let transaction_data = cons_db_tx
+        .transaction_data_for_block(block_id)?
+        .expect("block exists");
+    let (transactions_and_receipts, events) = transaction_data
+        .into_iter()
+        .map(|(tx, receipt, events)| ((tx, receipt), events))
+        .unzip();
+
+    let state_update = cons_db_tx
+        .state_update(block_id)?
+        .map(|su| StateUpdateData {
+            contract_updates: su.contract_updates,
+            system_contract_updates: su.system_contract_updates,
+            declared_cairo_classes: su.declared_cairo_classes,
+            declared_sierra_classes: su.declared_sierra_classes,
+            migrated_compiled_classes: su.migrated_compiled_classes,
+        })
+        .expect("block exists");
+
+    let finalized_block = L2Block {
+        header,
+        state_update,
+        transactions_and_receipts,
+        events,
+    };
+
+    Ok(Some(finalized_block))
 }
 
 /// Handles an incoming proposal part received from the P2P network. Returns
@@ -754,8 +867,7 @@ fn handle_incoming_proposal_part(
     proposal_part: ProposalPart,
     mut validator_cache: ValidatorCache,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
-    db_tx: &Transaction<'_>,
-    storage: Storage,
+    main_readonly_storage: Storage,
     proposals_db: &ConsensusProposals<'_>,
     batch_execution_manager: &mut BatchExecutionManager,
     data_directory: &Path,
@@ -829,7 +941,8 @@ fn handle_incoming_proposal_part(
                 &parts,
             )?;
             assert!(updated);
-            let new_validator = validator.validate_consensus_block_info(block_info, storage)?;
+            let new_validator =
+                validator.validate_consensus_block_info(block_info, main_readonly_storage)?;
             validator_cache.insert(
                 height_and_round,
                 ValidatorStage::TransactionBatch(Box::new(new_validator)),
@@ -862,7 +975,7 @@ fn handle_incoming_proposal_part(
                 height_and_round,
                 tx_batch,
                 &mut validator,
-                db_tx,
+                &proposals_db.tx,
                 &mut deferred_executions.lock().unwrap(),
             )?;
 
@@ -940,7 +1053,7 @@ fn handle_incoming_proposal_part(
                 proposal_commitment,
                 proposer,
                 *valid_round,
-                db_tx,
+                &proposals_db.tx,
                 validator,
                 deferred_executions,
                 batch_execution_manager,
@@ -1028,7 +1141,7 @@ fn defer_or_execute_proposal_fin(
     proposal_commitment: Hash,
     proposer: &Address,
     valid_round: Option<u32>,
-    db_tx: &Transaction<'_>,
+    cons_db_tx: &Transaction<'_>,
     mut validator: Box<crate::validator::ValidatorTransactionBatchStage>,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
@@ -1039,7 +1152,7 @@ fn defer_or_execute_proposal_fin(
         pol_round: valid_round.map(Round::new).unwrap_or(Round::nil()),
     };
 
-    if should_defer_execution(height_and_round, db_tx)? {
+    if should_defer_execution(height_and_round, cons_db_tx)? {
         // The proposal cannot be finalized yet, because the previous
         // block is not committed yet. Defer its finalization.
         tracing::debug!(

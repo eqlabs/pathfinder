@@ -295,8 +295,8 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                 block = blocks.recv() => {
                     match block {
                         Ok(block) => {
-                            let block_number = block.block_number;
-                            let block_hash = block.block_hash;
+                            let block_number = block.header.number;
+                            let block_hash = block.header.hash;
 
                             tracing::trace!(%block_number, %block_hash, "Received new block");
 
@@ -306,10 +306,15 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                                 .remove(&block_number)
                                 .unwrap_or_default();
 
+                            let l2_txs_and_receipts = block
+                                .transactions_and_receipts
+                                .iter()
+                                .zip(block.events.iter());
+
                             // Send all events that might have been missed in the pending data. This should only
                             // happen if the subscription started after the transactions were already evicted
                             // from pending data but before receiving the L2 block that contains them.
-                            for (receipt, events) in &block.transaction_receipts {
+                            for ((_, receipt), events) in l2_txs_and_receipts {
                                 let tx_and_finality = (receipt.transaction_hash, TxnFinalityStatus::AcceptedOnL2);
                                 if sent_updates.contains(&tx_and_finality) {
                                     continue;
@@ -473,9 +478,10 @@ mod tests {
     use pathfinder_common::prelude::*;
     use pathfinder_common::receipt::Receipt;
     use pathfinder_common::transaction::{Transaction, TransactionVariant};
+    use pathfinder_common::L2Block;
     use pathfinder_crypto::Felt;
     use pathfinder_storage::StorageBuilder;
-    use starknet_gateway_types::reply::{Block, PendingBlock, PreConfirmedBlock};
+    use starknet_gateway_types::reply::{PendingBlock, PreConfirmedBlock};
     use tokio::sync::mpsc;
 
     use crate::context::{RpcContext, WebsocketContext};
@@ -1294,15 +1300,14 @@ mod tests {
         }
     }
 
-    fn sample_block(block_number: u64) -> Block {
-        Block {
-            block_hash: BlockHash(Felt::from_u64(100 * block_number)),
-            block_number: BlockNumber::new_or_panic(block_number),
-            transaction_receipts: vec![(
+    fn sample_block(block_number: u64) -> L2Block {
+        L2Block {
+            header: sample_header(block_number),
+            transactions_and_receipts: vec![(
+                sample_transaction(block_number),
                 sample_receipt(block_number),
-                vec![sample_event(block_number)],
             )],
-            transactions: vec![sample_transaction(block_number)],
+            events: vec![vec![sample_event(block_number)]],
             ..Default::default()
         }
     }

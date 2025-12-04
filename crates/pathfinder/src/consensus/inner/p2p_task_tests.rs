@@ -43,25 +43,29 @@ mod tests {
             let consensus_storage_dir = consensus_storage_dir.path().to_path_buf();
 
             // Initialize temp pathfinder and consensus databases
-            let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+            let main_storage =
+                StorageBuilder::in_tempdir().expect("Failed to create temp database");
             let consensus_storage =
                 StorageBuilder::in_tempdir().expect("Failed to create consensus temp database");
 
             // Initialize consensus storage tables
             {
-                let mut db_conn = consensus_storage.connection().unwrap();
-                let db_tx = db_conn.transaction().unwrap();
-                db_tx.ensure_consensus_proposals_table_exists().unwrap();
-                db_tx
+                let mut cons_db_conn = consensus_storage.connection().unwrap();
+                let cons_db_tx = cons_db_conn.transaction().unwrap();
+                cons_db_tx
+                    .ensure_consensus_proposals_table_exists()
+                    .unwrap();
+                cons_db_tx
                     .ensure_consensus_finalized_blocks_table_exists()
                     .unwrap();
-                db_tx.commit().unwrap();
+                cons_db_tx.commit().unwrap();
             }
 
             // Mock channels for p2p communication
             let (p2p_tx, p2p_rx) = mpsc::unbounded_channel();
             let (tx_to_consensus, rx_from_p2p) = mpsc::channel(100);
             let (tx_to_p2p, rx_from_consensus) = mpsc::channel(100);
+            let (_sync_requests_tx, sync_requests_rx) = mpsc::channel(1);
 
             // Create mock Client (used for receiving events in these tests)
             let keypair = Keypair::generate_ed25519();
@@ -76,17 +80,19 @@ mod tests {
                     history_depth: 10,
                 },
                 p2p_client,
-                storage.clone(),
                 p2p_rx,
                 tx_to_consensus,
                 rx_from_consensus,
+                sync_requests_rx,
+                main_storage.clone(),
                 consensus_storage.clone(),
                 &consensus_storage_dir,
+                false,
                 None,
             );
 
             Self {
-                storage,
+                storage: main_storage,
                 consensus_storage,
                 p2p_tx,
                 rx_from_p2p,
@@ -240,8 +246,7 @@ mod tests {
         expect_transaction_batch: bool,
     ) {
         let mut db_conn = consensus_storage.connection().unwrap();
-        let db_tx = db_conn.transaction().unwrap();
-        let proposals_db = ConsensusProposals::new(&db_tx);
+        let proposals_db = db_conn.transaction().map(ConsensusProposals::new).unwrap();
         // seems like foreign_parts queries by validator_address to get
         // proposals from foreign validators (proposals where proposer !=
         // validator)
@@ -326,10 +331,12 @@ mod tests {
         validator_address: &ContractAddress,
         expected_count: usize,
     ) {
-        let mut db_conn = consensus_storage.connection().unwrap();
-        let db_tx = db_conn.transaction().unwrap();
-        let proposals = ConsensusProposals::new(&db_tx);
-        let parts = proposals
+        let mut cons_db_conn = consensus_storage.connection().unwrap();
+        let proposals_db = cons_db_conn
+            .transaction()
+            .map(ConsensusProposals::new)
+            .unwrap();
+        let parts = proposals_db
             .foreign_parts(height, round, validator_address)
             .unwrap()
             .unwrap_or_default();
@@ -467,9 +474,8 @@ mod tests {
         #[cfg(debug_assertions)]
         {
             let mut db_conn = env.consensus_storage.connection().unwrap();
-            let db_tx = db_conn.transaction().unwrap();
-            let proposals = ConsensusProposals::new(&db_tx);
-            let parts_after_proposal_fin = proposals
+            let proposals_db = db_conn.transaction().map(ConsensusProposals::new).unwrap();
+            let parts_after_proposal_fin = proposals_db
                 .foreign_parts(2, 1, &validator_address)
                 .unwrap()
                 .unwrap_or_default();

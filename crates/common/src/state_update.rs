@@ -406,6 +406,10 @@ impl StateUpdateData {
         len += self.declared_cairo_classes.len() + self.declared_sierra_classes.len();
         len.try_into().expect("ptr size is 64bits")
     }
+
+    pub fn as_ref(&self) -> StateUpdateRef<'_> {
+        StateUpdateRef::from(self)
+    }
 }
 
 impl From<StateUpdate> for StateUpdateData {

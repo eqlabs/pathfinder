@@ -1,10 +1,8 @@
 #![allow(dead_code, unused)]
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
-use catch_up::BlockData;
 use error::SyncError;
 use futures::{pin_mut, Stream, StreamExt};
 use p2p::sync::client::peer_agnostic::traits::{
@@ -25,14 +23,12 @@ use pathfinder_storage::Transaction;
 use primitive_types::H160;
 use starknet_gateway_client::{Client as GatewayClient, GatewayApi};
 use stream::ProcessStage;
-use tokio::sync::mpsc;
 use tokio::sync::watch::{self, Receiver};
 use tokio_stream::wrappers::WatchStream;
 use util::error::AnyhowExt;
 
 use crate::state::RESET_DELAY_ON_FAILURE;
 
-pub mod catch_up;
 mod checkpoint;
 mod class_definitions;
 mod error;
@@ -74,6 +70,7 @@ where
 {
     pub async fn run(self) -> anyhow::Result<()> {
         let (next, parent_hash) = self.checkpoint_sync().await?;
+
         self.track_sync(next, parent_hash).await
     }
 
