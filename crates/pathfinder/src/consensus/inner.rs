@@ -4,6 +4,7 @@ mod conv;
 mod dto;
 mod fetch_proposers;
 mod fetch_validators;
+mod gossip_retry;
 mod integration_testing;
 mod p2p_task;
 mod persist_proposals;
