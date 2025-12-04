@@ -16,8 +16,8 @@ use p2p::sync::client::peer_agnostic::traits::{
 };
 use p2p::PeerData;
 use pathfinder_block_hashes::BlockHashDb;
+use pathfinder_common::block_hash;
 use pathfinder_common::prelude::*;
-use pathfinder_common::{block_hash, ConsensusInfo};
 use pathfinder_ethereum::EthereumStateUpdate;
 use pathfinder_storage::Transaction;
 use primitive_types::H160;
