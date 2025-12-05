@@ -15,11 +15,11 @@ mod tests {
     use p2p::libp2p::PeerId;
     use p2p_proto::consensus::ProposalPart;
     use pathfinder_common::prelude::*;
-    use pathfinder_common::{ChainId, ContractAddress, ProposalCommitment};
+    use pathfinder_common::{ChainId, ConsensusInfo, ContractAddress, ProposalCommitment};
     use pathfinder_consensus::ConsensusCommand;
     use pathfinder_crypto::Felt;
     use pathfinder_storage::StorageBuilder;
-    use tokio::sync::mpsc;
+    use tokio::sync::{mpsc, watch};
 
     use crate::consensus::inner::persist_proposals::ConsensusProposals;
     use crate::consensus::inner::test_helpers::{create_test_proposal, create_transaction_batch};
@@ -30,15 +30,21 @@ mod tests {
     struct TestEnvironment {
         _main_storage: pathfinder_storage::Storage,
         consensus_storage: pathfinder_storage::Storage,
-        _p2p_client_receiver: mpsc::UnboundedReceiver<p2p::core::Command<p2p::consensus::Command>>,
+        p2p_client_receiver: mpsc::UnboundedReceiver<p2p::core::Command<p2p::consensus::Command>>,
         p2p_tx: mpsc::UnboundedSender<Event>,
         rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
-        _tx_to_p2p: mpsc::Sender<crate::consensus::inner::P2PTaskEvent>, /* Keep alive to prevent receiver from being dropped */
-        _sync_request_tx: mpsc::Sender<crate::SyncRequestToConsensus>,   /* Same, keep alive */
         handle: Arc<Mutex<Option<tokio::task::JoinHandle<anyhow::Result<()>>>>>,
+
+        // Keep these alive to prevent receiver from being dropped
+        _tx_to_p2p: mpsc::Sender<crate::consensus::inner::P2PTaskEvent>,
+        _sync_request_tx: mpsc::Sender<crate::SyncRequestToConsensus>,
+        _info_watch_rx: watch::Receiver<crate::consensus::ConsensusInfo>,
+        // -------------
     }
 
     impl TestEnvironment {
+        const HISTORY_DEPTH: u64 = 10;
+
         fn new(chain_id: ChainId, validator_address: ContractAddress) -> Self {
             // Create temp directory for consensus storage
             let consensus_storage_dir =
@@ -69,6 +75,7 @@ mod tests {
             let (tx_to_consensus, rx_from_p2p) = mpsc::channel(100);
             let (tx_to_p2p, rx_from_consensus) = mpsc::channel(100);
             let (sync_requests_tx, sync_requests_rx) = mpsc::channel(1);
+            let (info_watch_tx, info_watch_rx) = watch::channel(ConsensusInfo::default());
 
             // Create mock Client (used for receiving events in these tests)
             let keypair = Keypair::generate_ed25519();
@@ -80,13 +87,14 @@ mod tests {
                 chain_id,
                 P2PTaskConfig {
                     my_validator_address: validator_address,
-                    history_depth: 10,
+                    history_depth: Self::HISTORY_DEPTH,
                 },
                 p2p_client,
                 p2p_rx,
                 tx_to_consensus,
                 rx_from_consensus,
                 sync_requests_rx,
+                info_watch_tx,
                 main_storage.clone(),
                 consensus_storage.clone(),
                 &consensus_storage_dir,
@@ -97,20 +105,21 @@ mod tests {
             Self {
                 _main_storage: main_storage,
                 consensus_storage,
-                _p2p_client_receiver: client_receiver,
+                p2p_client_receiver: client_receiver,
                 p2p_tx,
                 rx_from_p2p,
+                handle: Arc::new(Mutex::new(Some(handle))),
                 _tx_to_p2p: tx_to_p2p,
                 _sync_request_tx: sync_requests_tx,
-                handle: Arc::new(Mutex::new(Some(handle))),
+                _info_watch_rx: info_watch_rx,
             }
         }
 
-        fn create_committed_parent_block(&self, parent_height: u64) {
+        fn insert_block(&self, height: u64) {
             let mut db_conn = self.consensus_storage.connection().unwrap();
             let db_tx = db_conn.transaction().unwrap();
-            let parent_header = BlockHeader::builder()
-                .number(BlockNumber::new_or_panic(parent_height))
+            let header = BlockHeader::builder()
+                .number(BlockNumber::new_or_panic(height))
                 .timestamp(BlockTimestamp::new_or_panic(1000))
                 .calculated_state_commitment(
                     StorageCommitment(Felt::ZERO),
@@ -118,7 +127,7 @@ mod tests {
                 )
                 .sequencer_address(SequencerAddress::ZERO)
                 .finalize_with_hash(BlockHash(Felt::ZERO));
-            db_tx.insert_block_header(&parent_header).unwrap();
+            db_tx.insert_block_header(&header).unwrap();
             db_tx.commit().unwrap();
         }
 
@@ -177,6 +186,41 @@ mod tests {
                 }
                 Err(mpsc::error::TryRecvError::Disconnected) => {
                     // Channel closed
+                    return None;
+                }
+            }
+        }
+        None
+    }
+
+    /// Helper: Wait for a [ConsensusCommand::ChangePeerScore] event from
+    /// consensus.
+    async fn wait_for_change_peer_score(
+        p2p_client_rx: &mut mpsc::UnboundedReceiver<p2p::core::Command<p2p::consensus::Command>>,
+        timeout_duration: Duration,
+    ) -> Option<(PeerId, f64)> {
+        let start = std::time::Instant::now();
+        while start.elapsed() < timeout_duration {
+            // First try non-blocking recv
+            match p2p_client_rx.try_recv() {
+                Ok(p2p::core::Command::Application(p2p::consensus::Command::ChangePeerScore {
+                    peer_id,
+                    delta,
+                })) => {
+                    return Some((peer_id, delta));
+                }
+                Ok(_) => {
+                    // Other event, continue waiting
+                    continue;
+                }
+                Err(mpsc::error::TryRecvError::Empty) => {
+                    // No event yet, wait a bit
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    continue;
+                }
+                Err(mpsc::error::TryRecvError::Disconnected) => {
+                    // Channel closed
+                    eprintln!("channel closed");
                     return None;
                 }
             }
@@ -408,7 +452,7 @@ mod tests {
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
         let mut env = TestEnvironment::new(chain_id, validator_address);
-        env.create_committed_parent_block(1);
+        env.insert_block(1);
         env.wait_for_task_initialization().await;
 
         let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
@@ -421,7 +465,7 @@ mod tests {
         // Using a dummy commitment...
         let proposal_commitment = ProposalCommitment(Felt::ZERO);
 
-        // We can use a random peer ID since we're not testing peer scoring.
+        // Peer ID isn't relevant since we're not testing peer scoring.
         let source = PeerId::random();
 
         // Step 1: Send ProposalInit
@@ -560,7 +604,7 @@ mod tests {
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
         let mut env = TestEnvironment::new(chain_id, validator_address);
-        env.create_committed_parent_block(1);
+        env.insert_block(1);
         env.wait_for_task_initialization().await;
 
         let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
@@ -573,7 +617,7 @@ mod tests {
         // Using a dummy commitment...
         let proposal_commitment = ProposalCommitment(Felt::ZERO);
 
-        // We can use a random peer ID since we're not testing peer scoring.
+        // Peer ID isn't relevant since we're not testing peer scoring.
         let source = PeerId::random();
 
         // Step 1: Send ProposalInit
@@ -707,7 +751,7 @@ mod tests {
             transactions_batch1.clone(),
         );
 
-        // We can use a random peer ID since we're not testing peer scoring.
+        // Peer ID isn't relevant since we're not testing peer scoring.
         let source = PeerId::random();
 
         // Step 1: Send ProposalInit
@@ -762,7 +806,7 @@ mod tests {
         verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
 
         // Step 5: Now we commit the parent block
-        env.create_committed_parent_block(1);
+        env.insert_block(1);
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Step 6: Send another TransactionBatch
@@ -853,7 +897,7 @@ mod tests {
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
         let mut env = TestEnvironment::new(chain_id, validator_address);
-        env.create_committed_parent_block(1);
+        env.insert_block(1);
         env.wait_for_task_initialization().await;
 
         let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
@@ -873,7 +917,7 @@ mod tests {
         // Using a dummy commitment...
         let proposal_commitment = ProposalCommitment(Felt::ZERO);
 
-        // We can use a random peer ID since we're not testing peer scoring.
+        // Peer ID isn't relevant since we're not testing peer scoring.
         let source = PeerId::random();
 
         // Step 1: Send ProposalInit
@@ -1011,7 +1055,7 @@ mod tests {
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
         let mut env = TestEnvironment::new(chain_id, validator_address);
-        env.create_committed_parent_block(1);
+        env.insert_block(1);
         env.wait_for_task_initialization().await;
 
         let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
@@ -1030,7 +1074,7 @@ mod tests {
         // Using a dummy commitment...
         let proposal_commitment = ProposalCommitment(Felt::ZERO);
 
-        // We can use a random peer ID since we're not testing peer scoring.
+        // Peer ID isn't relevant since we're not testing peer scoring.
         let source = PeerId::random();
 
         // Step 1: Send ProposalInit
@@ -1174,7 +1218,7 @@ mod tests {
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
         let mut env = TestEnvironment::new(chain_id, validator_address);
-        env.create_committed_parent_block(1);
+        env.insert_block(1);
         env.wait_for_task_initialization().await;
 
         let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
@@ -1183,7 +1227,7 @@ mod tests {
         let (proposal_init, block_info) =
             create_test_proposal(chain_id, 2, 1, proposer_address, empty_transactions.clone());
 
-        // We can use a random peer ID since we're not testing peer scoring.
+        // Peer ID isn't relevant since we're not testing peer scoring.
         let source = PeerId::random();
 
         env.p2p_tx
@@ -1256,7 +1300,7 @@ mod tests {
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
         let mut env = TestEnvironment::new(chain_id, validator_address);
-        env.create_committed_parent_block(1);
+        env.insert_block(1);
         env.wait_for_task_initialization().await;
 
         let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
@@ -1266,7 +1310,7 @@ mod tests {
             create_test_proposal(chain_id, 2, 1, proposer_address, transactions.clone());
 
         let proposal_commitment = ProposalCommitment(Felt::ZERO);
-        // We can use a random peer ID since we're not testing peer scoring.
+        // Peer ID isn't relevant since we're not testing peer scoring.
         let source = PeerId::random();
 
         env.p2p_tx
@@ -1371,7 +1415,7 @@ mod tests {
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
         let mut env = TestEnvironment::new(chain_id, validator_address);
-        env.create_committed_parent_block(1);
+        env.insert_block(1);
         env.wait_for_task_initialization().await;
 
         let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
@@ -1381,7 +1425,7 @@ mod tests {
             create_test_proposal(chain_id, 2, 1, proposer_address, transactions.clone());
 
         let proposal_commitment = ProposalCommitment(Felt::ZERO);
-        // We can use a random peer ID since we're not testing peer scoring.
+        // Peer ID isn't relevant since we're not testing peer scoring.
         let source = PeerId::random();
 
         env.p2p_tx
@@ -1495,7 +1539,7 @@ mod tests {
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
         let mut env = TestEnvironment::new(chain_id, validator_address);
-        env.create_committed_parent_block(1);
+        env.insert_block(1);
         env.wait_for_task_initialization().await;
 
         let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
@@ -1509,7 +1553,7 @@ mod tests {
 
         // Using a dummy commitment...
         let proposal_commitment = ProposalCommitment(Felt::ZERO);
-        // We can use a random peer ID since we're not testing peer scoring.
+        // Peer ID isn't relevant since we're not testing peer scoring.
         let source = PeerId::random();
 
         // Step 1: Send ProposalInit
@@ -1586,5 +1630,55 @@ mod tests {
             3,
             false, // expect_transaction_batch (empty proposal)
         );
+    }
+
+    /// Make sure that receiving an outdated P2P message results in a command
+    /// that punishes the peer that sent the outdated message.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn recv_outdated_event_changes_peer_score() {
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+        let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
+        let mut env = TestEnvironment::new(chain_id, validator_address);
+        // Latest height (the only in this case) must be higher than the proposal height
+        // + history.
+        env.insert_block(TestEnvironment::HISTORY_DEPTH + 4);
+        let proposal_height_and_round = HeightAndRound::new(2, 1);
+
+        env.wait_for_task_initialization().await;
+
+        let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
+
+        // We'll use an empty proposal, the content isn't important.
+        let (proposal_init, _) = create_test_proposal(
+            chain_id,
+            proposal_height_and_round.height(),
+            proposal_height_and_round.round(),
+            proposer_address,
+            vec![],
+        );
+
+        let outdated_event_source = PeerId::random();
+
+        // Send ProposalInit
+        env.p2p_tx
+            .send(Event {
+                source: outdated_event_source,
+                kind: EventKind::Proposal(
+                    proposal_height_and_round,
+                    ProposalPart::Init(proposal_init),
+                ),
+            })
+            .expect("Failed to send ProposalInit");
+        env.verify_task_alive().await;
+
+        // As soon as we receive an outdated command, the P2P client should receive the
+        // command to penalize the peer.
+        let (peer_id, delta) =
+            wait_for_change_peer_score(&mut env.p2p_client_receiver, Duration::from_secs(2))
+                .await
+                .expect("Expected change peer score command after outdated ProposalInit");
+
+        assert_eq!(peer_id, outdated_event_source);
+        assert_eq!(delta, p2p::consensus::penalty::OUTDATED_MESSAGE);
     }
 }
