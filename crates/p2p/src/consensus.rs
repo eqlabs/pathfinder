@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use libp2p::gossipsub::PublishError;
+use libp2p::PeerId;
 use p2p_proto::consensus::{ProposalPart, Vote};
 use pathfinder_common::ContractAddress;
 use smallvec::SmallVec;
@@ -12,11 +13,13 @@ use tokio::sync::mpsc::Sender;
 mod behaviour;
 mod client;
 mod height_and_round;
+mod peer_score;
 mod stream;
 
 pub use behaviour::Behaviour;
 pub use client::Client;
 pub use height_and_round::HeightAndRound;
+pub use peer_score::OUTDATED_MESSAGE_PENALTY;
 
 /// The topic for proposal messages in the consensus network.
 pub const TOPIC_PROPOSALS: &str = "consensus_proposals";
@@ -40,35 +43,48 @@ pub enum Command {
         vote: Vote,
         done_tx: Sender<Result<(), PublishError>>,
     },
+    /// A peer performed an action worthy of a score change.
+    ChangePeerScore {
+        /// The target peer ID.
+        peer_id: PeerId,
+        /// The score delta to apply (can be positive or negative).
+        delta: f64,
+    },
     /// Test command to create a proposal stream.
     #[cfg(test)]
     TestProposalStream(HeightAndRound, Vec<ProposalPart>, bool),
 }
 
 /// Events emitted by the consensus behaviour.
+#[derive(Debug, Clone)]
+pub struct Event {
+    pub source: PeerId,
+    pub kind: EventKind,
+}
+
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq)]
-pub enum Event {
+pub enum EventKind {
     /// A proposal (part) for a new block.
     Proposal(HeightAndRound, ProposalPart),
     /// A vote for a proposal.
     Vote(Vote),
 }
 
-impl Event {
+impl EventKind {
     /// Returns the height associated with the event.
     pub fn height(&self) -> u64 {
         match self {
-            Event::Proposal(hnr, _) => hnr.height(),
-            Event::Vote(vote) => vote.block_number,
+            EventKind::Proposal(hnr, _) => hnr.height(),
+            EventKind::Vote(vote) => vote.block_number,
         }
     }
 
     /// Returns a static string representing the type of event.
     pub fn type_name(&self) -> &'static str {
         match self {
-            Event::Proposal(_, _) => "Proposal",
-            Event::Vote(_) => "Vote",
+            EventKind::Proposal(_, _) => "Proposal",
+            EventKind::Vote(_) => "Vote",
         }
     }
 }
@@ -77,14 +93,17 @@ impl Event {
 #[derive(Default, Debug)]
 pub struct State {
     /// The active streams of the consensus P2P network.
-    active_streams: HashMap<HeightAndRound, StreamState<ProposalPart>>,
     // TODO: Implement cleanup of inactive streams
+    active_streams: HashMap<HeightAndRound, StreamState<ProposalPart>>,
+    /// Application scores for connected peers.
+    peer_app_scores: HashMap<PeerId, f64>,
 }
 
 impl State {
     pub fn new() -> Self {
         Self {
             active_streams: HashMap::new(),
+            peer_app_scores: HashMap::new(),
         }
     }
 }
@@ -140,6 +159,7 @@ pub fn create_outgoing_proposal_message(
 pub fn handle_incoming_proposal_message(
     state: &mut State,
     message: StreamMessage<ProposalPart>,
+    propagation_source: PeerId,
 ) -> Vec<Event> {
     let stream_id = message.stream_id;
 
@@ -176,14 +196,22 @@ pub fn handle_incoming_proposal_message(
         // Process this message (it's in order)
         let mut events = Vec::new();
         if let StreamMessageBody::Content(content) = message.message {
-            events.push(Event::Proposal(stream_id, content));
+            let event = Event {
+                source: propagation_source,
+                kind: EventKind::Proposal(stream_id, content),
+            };
+            events.push(event);
             state.next_message_id += 1;
         }
 
         // Process any buffered messages that are now in order
         while let Some(next_message) = state.received_messages.remove(&state.next_message_id) {
             if let StreamMessageBody::Content(content) = next_message.message {
-                events.push(Event::Proposal(stream_id, content));
+                let event = Event {
+                    source: propagation_source,
+                    kind: EventKind::Proposal(stream_id, content.clone()),
+                };
+                events.push(event);
                 state.next_message_id += 1;
             }
         }
@@ -216,7 +244,7 @@ mod tests {
     use tokio::sync::mpsc;
 
     use super::*;
-    use crate::consensus::{Command, Event};
+    use crate::consensus::{Command, EventKind};
     use crate::core::{self, Config};
     use crate::libp2p::Multiaddr;
     use crate::{consensus, main_loop, new_consensus};
@@ -288,7 +316,7 @@ mod tests {
         };
 
         // Handle the message
-        let events = handle_incoming_proposal_message(&mut state, message);
+        let events = handle_incoming_proposal_message(&mut state, message, PeerId::random());
 
         // Verify state was updated
         let stream_state = state.active_streams.get(&height_and_round).unwrap();
@@ -303,7 +331,10 @@ mod tests {
 
         // Verify events
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0], Event::Proposal(height_and_round, proposal));
+        assert_eq!(
+            events[0].kind,
+            EventKind::Proposal(height_and_round, proposal)
+        );
     }
 
     /// Tests sending proposal streams between two nodes with message shuffling.
@@ -371,8 +402,10 @@ mod tests {
         let mut completed_proposals = HashSet::new();
 
         while completed_proposals.len() < proposals.len() {
-            if let Some(Event::Proposal(height_and_round, received_proposal)) =
-                node2_events.recv().await
+            if let Some(Event {
+                kind: EventKind::Proposal(height_and_round, received_proposal),
+                ..
+            }) = node2_events.recv().await
             {
                 // Get or create the vector for this height/round
                 let proposal_parts = received_proposals
@@ -492,7 +525,11 @@ mod tests {
         let mut expected_votes = votes.clone();
 
         while !expected_votes.is_empty() {
-            if let Some(Event::Vote(received_vote)) = node2_events.recv().await {
+            if let Some(Event {
+                kind: EventKind::Vote(received_vote),
+                ..
+            }) = node2_events.recv().await
+            {
                 received_votes.push(received_vote.clone());
 
                 // Find and remove the matching expected vote

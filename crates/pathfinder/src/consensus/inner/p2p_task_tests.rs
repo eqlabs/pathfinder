@@ -10,8 +10,9 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
-    use p2p::consensus::{Client, Event, HeightAndRound};
+    use p2p::consensus::{Client, Event, EventKind, HeightAndRound};
     use p2p::libp2p::identity::Keypair;
+    use p2p::libp2p::PeerId;
     use p2p_proto::consensus::ProposalPart;
     use pathfinder_common::prelude::*;
     use pathfinder_common::{ChainId, ContractAddress, ProposalCommitment};
@@ -29,6 +30,7 @@ mod tests {
     struct TestEnvironment {
         _main_storage: pathfinder_storage::Storage,
         consensus_storage: pathfinder_storage::Storage,
+        _p2p_client_receiver: mpsc::UnboundedReceiver<p2p::core::Command<p2p::consensus::Command>>,
         p2p_tx: mpsc::UnboundedSender<Event>,
         rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
         _tx_to_p2p: mpsc::Sender<crate::consensus::inner::P2PTaskEvent>, /* Keep alive to prevent receiver from being dropped */
@@ -70,7 +72,7 @@ mod tests {
 
             // Create mock Client (used for receiving events in these tests)
             let keypair = Keypair::generate_ed25519();
-            let (client_sender, _client_receiver) = mpsc::unbounded_channel();
+            let (client_sender, client_receiver) = mpsc::unbounded_channel();
             let peer_id = keypair.public().to_peer_id();
             let p2p_client = Client::from((peer_id, client_sender));
 
@@ -95,6 +97,7 @@ mod tests {
             Self {
                 _main_storage: main_storage,
                 consensus_storage,
+                _p2p_client_receiver: client_receiver,
                 p2p_tx,
                 rx_from_p2p,
                 _tx_to_p2p: tx_to_p2p,
@@ -418,30 +421,36 @@ mod tests {
         // Using a dummy commitment...
         let proposal_commitment = ProposalCommitment(Felt::ZERO);
 
+        // We can use a random peer ID since we're not testing peer scoring.
+        let source = PeerId::random();
+
         // Step 1: Send ProposalInit
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::Init(proposal_init),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(height_and_round, ProposalPart::Init(proposal_init)),
+            })
             .expect("Failed to send ProposalInit");
         env.verify_task_alive().await;
 
         // Step 2: Send BlockInfo
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::BlockInfo(block_info),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(height_and_round, ProposalPart::BlockInfo(block_info)),
+            })
             .expect("Failed to send BlockInfo");
         env.verify_task_alive().await;
 
         // Step 3: Send TransactionBatch (execution should start)
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::TransactionBatch(transactions),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::TransactionBatch(transactions),
+                ),
+            })
             .expect("Failed to send TransactionBatch");
         env.verify_task_alive().await;
 
@@ -450,22 +459,28 @@ mod tests {
 
         // Step 4: Send ProposalCommitment
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                create_proposal_commitment_part(2, proposal_commitment),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    create_proposal_commitment_part(2, proposal_commitment),
+                ),
+            })
             .expect("Failed to send ProposalCommitment");
         env.verify_task_alive().await;
 
         // Step 5: Send ProposalFin BEFORE TransactionsFin
         // This should be DEFERRED because TransactionsFin hasn't been processed
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
-                    proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
-                }),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
+                        proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
+                    }),
+                ),
+            })
             .expect("Failed to send ProposalFin");
         env.verify_task_alive().await;
 
@@ -493,12 +508,15 @@ mod tests {
         // Step 6: Send TransactionsFin
         // This should trigger finalization of the deferred ProposalFin
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::TransactionsFin(p2p_proto::consensus::TransactionsFin {
-                    executed_transaction_count: 5,
-                }),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::TransactionsFin(p2p_proto::consensus::TransactionsFin {
+                        executed_transaction_count: 5,
+                    }),
+                ),
+            })
             .expect("Failed to send TransactionsFin");
         env.verify_task_alive().await;
 
@@ -555,30 +573,36 @@ mod tests {
         // Using a dummy commitment...
         let proposal_commitment = ProposalCommitment(Felt::ZERO);
 
+        // We can use a random peer ID since we're not testing peer scoring.
+        let source = PeerId::random();
+
         // Step 1: Send ProposalInit
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::Init(proposal_init),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(height_and_round, ProposalPart::Init(proposal_init)),
+            })
             .expect("Failed to send ProposalInit");
         env.verify_task_alive().await;
 
         // Step 2: Send BlockInfo
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::BlockInfo(block_info),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(height_and_round, ProposalPart::BlockInfo(block_info)),
+            })
             .expect("Failed to send BlockInfo");
         env.verify_task_alive().await;
 
         // Step 3: Send TransactionBatch
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::TransactionBatch(transactions),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::TransactionBatch(transactions),
+                ),
+            })
             .expect("Failed to send TransactionBatch");
         env.verify_task_alive().await;
 
@@ -588,12 +612,15 @@ mod tests {
 
         // Step 4: Send TransactionsFin
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::TransactionsFin(p2p_proto::consensus::TransactionsFin {
-                    executed_transaction_count: 5,
-                }),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::TransactionsFin(p2p_proto::consensus::TransactionsFin {
+                        executed_transaction_count: 5,
+                    }),
+                ),
+            })
             .expect("Failed to send TransactionsFin");
         env.verify_task_alive().await;
 
@@ -603,21 +630,27 @@ mod tests {
 
         // Step 5: Send ProposalCommitment
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                create_proposal_commitment_part(2, proposal_commitment),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    create_proposal_commitment_part(2, proposal_commitment),
+                ),
+            })
             .expect("Failed to send ProposalCommitment");
         env.verify_task_alive().await;
 
         // Step 6: Send ProposalFin
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
-                    proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
-                }),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
+                        proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
+                    }),
+                ),
+            })
             .expect("Failed to send ProposalFin");
         tokio::time::sleep(Duration::from_millis(500)).await;
 
@@ -674,31 +707,37 @@ mod tests {
             transactions_batch1.clone(),
         );
 
+        // We can use a random peer ID since we're not testing peer scoring.
+        let source = PeerId::random();
+
         // Step 1: Send ProposalInit
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::Init(proposal_init),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(height_and_round, ProposalPart::Init(proposal_init)),
+            })
             .expect("Failed to send ProposalInit");
         env.verify_task_alive().await;
 
         // Step 2: Send BlockInfo
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::BlockInfo(block_info),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(height_and_round, ProposalPart::BlockInfo(block_info)),
+            })
             .expect("Failed to send BlockInfo");
         env.verify_task_alive().await;
 
         // Step 3: Send first TransactionBatch (should be deferred - parent not
         // committed)
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::TransactionBatch(transactions_batch1),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::TransactionBatch(transactions_batch1),
+                ),
+            })
             .expect("Failed to send first TransactionBatch");
         env.verify_task_alive().await;
 
@@ -707,12 +746,15 @@ mod tests {
 
         // Step 4: Send TransactionsFin (should be deferred - execution not started)
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::TransactionsFin(p2p_proto::consensus::TransactionsFin {
-                    executed_transaction_count: 5,
-                }),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::TransactionsFin(p2p_proto::consensus::TransactionsFin {
+                        executed_transaction_count: 5,
+                    }),
+                ),
+            })
             .expect("Failed to send TransactionsFin");
         env.verify_task_alive().await;
 
@@ -727,10 +769,13 @@ mod tests {
         // This should trigger execution of deferred batches + process deferred
         // TransactionsFin
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::TransactionBatch(transactions_batch2),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::TransactionBatch(transactions_batch2),
+                ),
+            })
             .expect("Failed to send second TransactionBatch");
         env.verify_task_alive().await;
 
@@ -745,22 +790,28 @@ mod tests {
 
         // Step 7: Send ProposalCommitment
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                create_proposal_commitment_part(2, proposal_commitment),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    create_proposal_commitment_part(2, proposal_commitment),
+                ),
+            })
             .expect("Failed to send ProposalCommitment");
         env.verify_task_alive().await;
 
         // Step 8: Send ProposalFin
         // This should trigger finalization since TransactionsFin was processed
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
-                    proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
-                }),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
+                        proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
+                    }),
+                ),
+            })
             .expect("Failed to send ProposalFin");
         env.verify_task_alive().await;
 
@@ -822,77 +873,98 @@ mod tests {
         // Using a dummy commitment...
         let proposal_commitment = ProposalCommitment(Felt::ZERO);
 
+        // We can use a random peer ID since we're not testing peer scoring.
+        let source = PeerId::random();
+
         // Step 1: Send ProposalInit
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::Init(proposal_init),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(height_and_round, ProposalPart::Init(proposal_init)),
+            })
             .expect("Failed to send ProposalInit");
         env.verify_task_alive().await;
 
         // Step 2: Send BlockInfo
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::BlockInfo(block_info),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(height_and_round, ProposalPart::BlockInfo(block_info)),
+            })
             .expect("Failed to send BlockInfo");
         env.verify_task_alive().await;
 
         // Step 3: Send multiple TransactionBatches
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::TransactionBatch(transactions_batch1),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::TransactionBatch(transactions_batch1),
+                ),
+            })
             .expect("Failed to send TransactionBatch1");
         env.verify_task_alive().await;
 
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::TransactionBatch(transactions_batch2),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::TransactionBatch(transactions_batch2),
+                ),
+            })
             .expect("Failed to send TransactionBatch2");
         env.verify_task_alive().await;
 
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::TransactionBatch(transactions_batch3),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::TransactionBatch(transactions_batch3),
+                ),
+            })
             .expect("Failed to send TransactionBatch3");
         env.verify_task_alive().await;
 
         // Step 4: Send TransactionsFin (total count = 7)
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::TransactionsFin(p2p_proto::consensus::TransactionsFin {
-                    executed_transaction_count: 7,
-                }),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::TransactionsFin(p2p_proto::consensus::TransactionsFin {
+                        executed_transaction_count: 7,
+                    }),
+                ),
+            })
             .expect("Failed to send TransactionsFin");
         env.verify_task_alive().await;
 
         // Step 5: Send ProposalCommitment
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                create_proposal_commitment_part(2, proposal_commitment),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    create_proposal_commitment_part(2, proposal_commitment),
+                ),
+            })
             .expect("Failed to send ProposalCommitment");
         env.verify_task_alive().await;
 
         // Step 6: Send ProposalFin
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
-                    proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
-                }),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
+                        proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
+                    }),
+                ),
+            })
             .expect("Failed to send ProposalFin");
         tokio::time::sleep(Duration::from_millis(500)).await;
 
@@ -958,71 +1030,89 @@ mod tests {
         // Using a dummy commitment...
         let proposal_commitment = ProposalCommitment(Felt::ZERO);
 
+        // We can use a random peer ID since we're not testing peer scoring.
+        let source = PeerId::random();
+
         // Step 1: Send ProposalInit
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::Init(proposal_init),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(height_and_round, ProposalPart::Init(proposal_init)),
+            })
             .expect("Failed to send ProposalInit");
         env.verify_task_alive().await;
 
         // Step 2: Send BlockInfo
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::BlockInfo(block_info),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(height_and_round, ProposalPart::BlockInfo(block_info)),
+            })
             .expect("Failed to send BlockInfo");
         env.verify_task_alive().await;
 
         // Step 3: Send TransactionBatch 1 (5 transactions)
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::TransactionBatch(transactions_batch1),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::TransactionBatch(transactions_batch1),
+                ),
+            })
             .expect("Failed to send TransactionBatch1");
         env.verify_task_alive().await;
 
         // Step 4: Send TransactionBatch 2 (5 more transactions, total = 10)
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::TransactionBatch(transactions_batch2),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::TransactionBatch(transactions_batch2),
+                ),
+            })
             .expect("Failed to send TransactionBatch2");
         env.verify_task_alive().await;
 
         // Step 5: Send TransactionsFin with count=7 (should trigger rollback from 10 to
         // 7)
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::TransactionsFin(p2p_proto::consensus::TransactionsFin {
-                    executed_transaction_count: 7,
-                }),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::TransactionsFin(p2p_proto::consensus::TransactionsFin {
+                        executed_transaction_count: 7,
+                    }),
+                ),
+            })
             .expect("Failed to send TransactionsFin");
         env.verify_task_alive().await;
 
         // Step 6: Send ProposalCommitment
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                create_proposal_commitment_part(2, proposal_commitment),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    create_proposal_commitment_part(2, proposal_commitment),
+                ),
+            })
             .expect("Failed to send ProposalCommitment");
         env.verify_task_alive().await;
 
         // Step 7: Send ProposalFin
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
-                    proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
-                }),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
+                        proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
+                    }),
+                ),
+            })
             .expect("Failed to send ProposalFin");
         tokio::time::sleep(Duration::from_millis(500)).await;
 
@@ -1093,39 +1183,48 @@ mod tests {
         let (proposal_init, block_info) =
             create_test_proposal(chain_id, 2, 1, proposer_address, empty_transactions.clone());
 
+        // We can use a random peer ID since we're not testing peer scoring.
+        let source = PeerId::random();
+
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::Init(proposal_init),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(height_and_round, ProposalPart::Init(proposal_init)),
+            })
             .expect("Failed to send ProposalInit");
         env.verify_task_alive().await;
 
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::BlockInfo(block_info),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(height_and_round, ProposalPart::BlockInfo(block_info)),
+            })
             .expect("Failed to send BlockInfo");
         env.verify_task_alive().await;
 
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::TransactionBatch(empty_transactions),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::TransactionBatch(empty_transactions),
+                ),
+            })
             .expect("Failed to send empty TransactionBatch");
         env.verify_task_alive().await;
 
         verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
 
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::TransactionsFin(p2p_proto::consensus::TransactionsFin {
-                    executed_transaction_count: 0,
-                }),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::TransactionsFin(p2p_proto::consensus::TransactionsFin {
+                        executed_transaction_count: 0,
+                    }),
+                ),
+            })
             .expect("Failed to send TransactionsFin");
         env.verify_task_alive().await;
 
@@ -1167,60 +1266,74 @@ mod tests {
             create_test_proposal(chain_id, 2, 1, proposer_address, transactions.clone());
 
         let proposal_commitment = ProposalCommitment(Felt::ZERO);
+        // We can use a random peer ID since we're not testing peer scoring.
+        let source = PeerId::random();
 
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::Init(proposal_init),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(height_and_round, ProposalPart::Init(proposal_init)),
+            })
             .expect("Failed to send ProposalInit");
         env.verify_task_alive().await;
 
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::BlockInfo(block_info),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(height_and_round, ProposalPart::BlockInfo(block_info)),
+            })
             .expect("Failed to send BlockInfo");
         env.verify_task_alive().await;
 
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::TransactionBatch(transactions),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::TransactionBatch(transactions),
+                ),
+            })
             .expect("Failed to send TransactionBatch");
         env.verify_task_alive().await;
 
         verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
 
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::TransactionsFin(p2p_proto::consensus::TransactionsFin {
-                    executed_transaction_count: 10,
-                }),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::TransactionsFin(p2p_proto::consensus::TransactionsFin {
+                        executed_transaction_count: 10,
+                    }),
+                ),
+            })
             .expect("Failed to send TransactionsFin");
         env.verify_task_alive().await;
 
         verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
 
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                create_proposal_commitment_part(2, proposal_commitment),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    create_proposal_commitment_part(2, proposal_commitment),
+                ),
+            })
             .expect("Failed to send ProposalCommitment");
         env.verify_task_alive().await;
 
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
-                    proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
-                }),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
+                        proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
+                    }),
+                ),
+            })
             .expect("Failed to send ProposalFin");
         tokio::time::sleep(Duration::from_millis(500)).await;
 
@@ -1268,30 +1381,35 @@ mod tests {
             create_test_proposal(chain_id, 2, 1, proposer_address, transactions.clone());
 
         let proposal_commitment = ProposalCommitment(Felt::ZERO);
+        // We can use a random peer ID since we're not testing peer scoring.
+        let source = PeerId::random();
 
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::Init(proposal_init),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(height_and_round, ProposalPart::Init(proposal_init)),
+            })
             .expect("Failed to send ProposalInit");
         env.verify_task_alive().await;
 
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::BlockInfo(block_info),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(height_and_round, ProposalPart::BlockInfo(block_info)),
+            })
             .expect("Failed to send BlockInfo");
         env.verify_task_alive().await;
 
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::TransactionsFin(p2p_proto::consensus::TransactionsFin {
-                    executed_transaction_count: 5,
-                }),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::TransactionsFin(p2p_proto::consensus::TransactionsFin {
+                        executed_transaction_count: 5,
+                    }),
+                ),
+            })
             .expect("Failed to send TransactionsFin");
         env.verify_task_alive().await;
 
@@ -1300,10 +1418,13 @@ mod tests {
         // Step 4: Send TransactionBatch
         // This should trigger execution start and process the deferred TransactionsFin
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::TransactionBatch(transactions),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::TransactionBatch(transactions),
+                ),
+            })
             .expect("Failed to send TransactionBatch");
         env.verify_task_alive().await;
 
@@ -1315,20 +1436,26 @@ mod tests {
         verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
 
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                create_proposal_commitment_part(2, proposal_commitment),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    create_proposal_commitment_part(2, proposal_commitment),
+                ),
+            })
             .expect("Failed to send ProposalCommitment");
         env.verify_task_alive().await;
 
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
-                    proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
-                }),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
+                        proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
+                    }),
+                ),
+            })
             .expect("Failed to send ProposalFin");
         tokio::time::sleep(Duration::from_millis(500)).await;
 
@@ -1382,22 +1509,24 @@ mod tests {
 
         // Using a dummy commitment...
         let proposal_commitment = ProposalCommitment(Felt::ZERO);
+        // We can use a random peer ID since we're not testing peer scoring.
+        let source = PeerId::random();
 
         // Step 1: Send ProposalInit
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::Init(proposal_init),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(height_and_round, ProposalPart::Init(proposal_init)),
+            })
             .expect("Failed to send ProposalInit");
         env.verify_task_alive().await;
 
         // Step 2: Send BlockInfo
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::BlockInfo(block_info),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(height_and_round, ProposalPart::BlockInfo(block_info)),
+            })
             .expect("Failed to send BlockInfo");
         env.verify_task_alive().await;
 
@@ -1409,10 +1538,13 @@ mod tests {
         // Note: No TransactionBatch or TransactionsFin - this is the key difference
         // from normal proposals. Execution never starts.
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                create_proposal_commitment_part(2, proposal_commitment),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    create_proposal_commitment_part(2, proposal_commitment),
+                ),
+            })
             .expect("Failed to send ProposalCommitment");
         env.verify_task_alive().await;
 
@@ -1424,12 +1556,15 @@ mod tests {
         // proceed immediately without deferral. This is different from first test
         // where execution started but TransactionsFin wasn't processed yet.
         env.p2p_tx
-            .send(Event::Proposal(
-                height_and_round,
-                ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
-                    proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
-                }),
-            ))
+            .send(Event {
+                source,
+                kind: EventKind::Proposal(
+                    height_and_round,
+                    ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
+                        proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
+                    }),
+                ),
+            })
             .expect("Failed to send ProposalFin");
         env.verify_task_alive().await;
 
