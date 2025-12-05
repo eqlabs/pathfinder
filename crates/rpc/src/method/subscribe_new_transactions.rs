@@ -222,19 +222,19 @@ impl RpcSubscriptionFlow for SubscribeNewTransactions {
                             return Ok(());
                         }
                         Ok(block) => {
-                            tracing::trace!(block_number=%block.block_number, "New block header");
+                            tracing::trace!(block_number=%block.header.number, "New block header");
 
                             // We won't be needing to keep track of updates for this block anymore,
                             // so we remove it from the map.
                             let sent_updates = sent_updates_per_block
-                                .remove(&block.block_number)
+                                .remove(&block.header.number)
                                 .unwrap_or_default();
 
                             // Send all transactions that might have been missed in the pending data. This
                             // should only happen if the subscription started after the transactions were
                             // already evicted from pending data but before receiving the L2 block that
                             // contains them.
-                            for tx in &block.transactions {
+                            for (tx, _) in &block.transactions_and_receipts {
                                 let sender_address = tx.variant.sender_address();
                                 if !params.matches(&sender_address, TxnFinalityStatusWithoutL1Accepted::AcceptedOnL2) {
                                     continue;
@@ -249,7 +249,7 @@ impl RpcSubscriptionFlow for SubscribeNewTransactions {
                                         tx.clone(),
                                         TxnFinalityStatusWithoutL1Accepted::AcceptedOnL2
                                     ),
-                                    block_number: block.block_number,
+                                    block_number: block.header.number,
                                     subscription_name: SUBSCRIPTION_NAME,
                                 };
                                 if msg_tx.send(msg).await.is_err() {
@@ -438,6 +438,7 @@ mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
     use pathfinder_common::transaction::{DeclareTransactionV0V1, Transaction, TransactionVariant};
+    use pathfinder_common::L2Block;
     use pathfinder_crypto::Felt;
     use pathfinder_storage::StorageBuilder;
     use starknet_gateway_types::reply::PreConfirmedBlock;
@@ -1405,31 +1406,25 @@ mod tests {
     fn sample_block(
         block_number: BlockNumber,
         txs: Vec<(ContractAddress, TransactionHash)>,
-    ) -> starknet_gateway_types::reply::Block {
-        starknet_gateway_types::reply::Block {
-            block_hash: BlockHash(Felt::from_u64(block_number.get())),
-            block_number,
-            parent_block_hash: BlockHash::ZERO,
-            transactions: txs
+    ) -> L2Block {
+        L2Block {
+            header: sample_header(block_number.get()),
+            transactions_and_receipts: txs
                 .iter()
-                .map(|(sender_address, hash)| Transaction {
-                    variant: TransactionVariant::DeclareV0(DeclareTransactionV0V1 {
-                        sender_address: *sender_address,
-                        ..Default::default()
-                    }),
-                    hash: *hash,
-                })
-                .collect(),
-            transaction_receipts: txs
-                .iter()
-                .map(|(_sender_address, hash)| {
-                    (
-                        pathfinder_common::receipt::Receipt {
-                            transaction_hash: *hash,
+                .map(|(sender_address, hash)| {
+                    let tx = Transaction {
+                        variant: TransactionVariant::DeclareV0(DeclareTransactionV0V1 {
+                            sender_address: *sender_address,
                             ..Default::default()
-                        },
-                        vec![],
-                    )
+                        }),
+                        hash: *hash,
+                    };
+                    let receipt = pathfinder_common::receipt::Receipt {
+                        transaction_hash: *hash,
+                        ..Default::default()
+                    };
+
+                    (tx, receipt)
                 })
                 .collect(),
             ..Default::default()

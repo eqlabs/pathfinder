@@ -27,11 +27,12 @@ mod tests {
     /// Helper struct to setup and manage the test environment (databases,
     /// channels, mock client)
     struct TestEnvironment {
-        storage: pathfinder_storage::Storage,
+        _main_storage: pathfinder_storage::Storage,
         consensus_storage: pathfinder_storage::Storage,
         p2p_tx: mpsc::UnboundedSender<Event>,
         rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
         _tx_to_p2p: mpsc::Sender<crate::consensus::inner::P2PTaskEvent>, /* Keep alive to prevent receiver from being dropped */
+        _sync_request_tx: mpsc::Sender<crate::SyncRequestToConsensus>,   /* Same, keep alive */
         handle: Arc<Mutex<Option<tokio::task::JoinHandle<anyhow::Result<()>>>>>,
     }
 
@@ -43,25 +44,29 @@ mod tests {
             let consensus_storage_dir = consensus_storage_dir.path().to_path_buf();
 
             // Initialize temp pathfinder and consensus databases
-            let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+            let main_storage =
+                StorageBuilder::in_tempdir().expect("Failed to create temp database");
             let consensus_storage =
                 StorageBuilder::in_tempdir().expect("Failed to create consensus temp database");
 
             // Initialize consensus storage tables
             {
-                let mut db_conn = consensus_storage.connection().unwrap();
-                let db_tx = db_conn.transaction().unwrap();
-                db_tx.ensure_consensus_proposals_table_exists().unwrap();
-                db_tx
+                let mut cons_db_conn = consensus_storage.connection().unwrap();
+                let cons_db_tx = cons_db_conn.transaction().unwrap();
+                cons_db_tx
+                    .ensure_consensus_proposals_table_exists()
+                    .unwrap();
+                cons_db_tx
                     .ensure_consensus_finalized_blocks_table_exists()
                     .unwrap();
-                db_tx.commit().unwrap();
+                cons_db_tx.commit().unwrap();
             }
 
             // Mock channels for p2p communication
             let (p2p_tx, p2p_rx) = mpsc::unbounded_channel();
             let (tx_to_consensus, rx_from_p2p) = mpsc::channel(100);
             let (tx_to_p2p, rx_from_consensus) = mpsc::channel(100);
+            let (sync_requests_tx, sync_requests_rx) = mpsc::channel(1);
 
             // Create mock Client (used for receiving events in these tests)
             let keypair = Keypair::generate_ed25519();
@@ -76,27 +81,30 @@ mod tests {
                     history_depth: 10,
                 },
                 p2p_client,
-                storage.clone(),
                 p2p_rx,
                 tx_to_consensus,
                 rx_from_consensus,
+                sync_requests_rx,
+                main_storage.clone(),
                 consensus_storage.clone(),
                 &consensus_storage_dir,
+                false,
                 None,
             );
 
             Self {
-                storage,
+                _main_storage: main_storage,
                 consensus_storage,
                 p2p_tx,
                 rx_from_p2p,
                 _tx_to_p2p: tx_to_p2p,
+                _sync_request_tx: sync_requests_tx,
                 handle: Arc::new(Mutex::new(Some(handle))),
             }
         }
 
         fn create_committed_parent_block(&self, parent_height: u64) {
-            let mut db_conn = self.storage.connection().unwrap();
+            let mut db_conn = self.consensus_storage.connection().unwrap();
             let db_tx = db_conn.transaction().unwrap();
             let parent_header = BlockHeader::builder()
                 .number(BlockNumber::new_or_panic(parent_height))
@@ -240,8 +248,7 @@ mod tests {
         expect_transaction_batch: bool,
     ) {
         let mut db_conn = consensus_storage.connection().unwrap();
-        let db_tx = db_conn.transaction().unwrap();
-        let proposals_db = ConsensusProposals::new(&db_tx);
+        let proposals_db = db_conn.transaction().map(ConsensusProposals::new).unwrap();
         // seems like foreign_parts queries by validator_address to get
         // proposals from foreign validators (proposals where proposer !=
         // validator)
@@ -326,10 +333,12 @@ mod tests {
         validator_address: &ContractAddress,
         expected_count: usize,
     ) {
-        let mut db_conn = consensus_storage.connection().unwrap();
-        let db_tx = db_conn.transaction().unwrap();
-        let proposals = ConsensusProposals::new(&db_tx);
-        let parts = proposals
+        let mut cons_db_conn = consensus_storage.connection().unwrap();
+        let proposals_db = cons_db_conn
+            .transaction()
+            .map(ConsensusProposals::new)
+            .unwrap();
+        let parts = proposals_db
             .foreign_parts(height, round, validator_address)
             .unwrap()
             .unwrap_or_default();
@@ -467,9 +476,8 @@ mod tests {
         #[cfg(debug_assertions)]
         {
             let mut db_conn = env.consensus_storage.connection().unwrap();
-            let db_tx = db_conn.transaction().unwrap();
-            let proposals = ConsensusProposals::new(&db_tx);
-            let parts_after_proposal_fin = proposals
+            let proposals_db = db_conn.transaction().map(ConsensusProposals::new).unwrap();
+            let parts_after_proposal_fin = proposals_db
                 .foreign_parts(2, 1, &validator_address)
                 .unwrap()
                 .unwrap_or_default();

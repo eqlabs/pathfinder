@@ -1,22 +1,28 @@
 use anyhow::Context;
 use p2p_proto::consensus::ProposalPart;
-use pathfinder_common::ContractAddress;
+use pathfinder_common::{ContractAddress, L2Block};
 use pathfinder_storage::Transaction;
 
 use crate::consensus::inner::conv::{IntoModel, TryIntoDto};
 use crate::consensus::inner::dto;
-use crate::validator::FinalizedBlock;
 
 /// A wrapper around a consensus database transaction that provides
 /// methods for persisting and retrieving proposal parts and finalized blocks.
 pub struct ConsensusProposals<'tx> {
-    tx: &'tx Transaction<'tx>,
+    pub tx: Transaction<'tx>,
 }
 
 impl<'tx> ConsensusProposals<'tx> {
     /// Create a new `ConsensusProposals` wrapper around a transaction.
-    pub fn new(tx: &'tx Transaction<'tx>) -> Self {
+    pub fn new(tx: Transaction<'tx>) -> Self {
         Self { tx }
+    }
+
+    /// Commit the underlying transaction.
+    pub fn commit(self) -> anyhow::Result<()> {
+        self.tx
+            .commit()
+            .context("Committing consensus proposals transaction")
     }
 
     /// Persist proposal parts for a given height, round, and proposer.
@@ -108,7 +114,7 @@ impl<'tx> ConsensusProposals<'tx> {
         &self,
         height: u64,
         round: u32,
-        block: FinalizedBlock,
+        block: L2Block,
     ) -> anyhow::Result<bool> {
         let serde_block = dto::FinalizedBlock::try_into_dto(block)?;
         let finalized_block = dto::PersistentFinalizedBlock::V0(serde_block);
@@ -121,11 +127,7 @@ impl<'tx> ConsensusProposals<'tx> {
     }
 
     /// Read a finalized block for a given height and round.
-    pub fn read_finalized_block(
-        &self,
-        height: u64,
-        round: u32,
-    ) -> anyhow::Result<Option<FinalizedBlock>> {
+    pub fn read_finalized_block(&self, height: u64, round: u32) -> anyhow::Result<Option<L2Block>> {
         if let Some(buf) = self.tx.read_consensus_finalized_block(height, round)? {
             let block = Self::decode_finalized_block(&buf[..])?;
             Ok(Some(block))
@@ -149,7 +151,7 @@ impl<'tx> ConsensusProposals<'tx> {
         Ok(parts)
     }
 
-    fn decode_finalized_block(buf: &[u8]) -> anyhow::Result<FinalizedBlock> {
+    fn decode_finalized_block(buf: &[u8]) -> anyhow::Result<L2Block> {
         let persistent_block: dto::PersistentFinalizedBlock =
             bincode::serde::decode_from_slice(buf, bincode::config::standard())
                 .context("Deserializing finalized block")?
@@ -213,13 +215,13 @@ mod tests {
         ]
     }
 
-    fn create_test_finalized_block(height: u64) -> FinalizedBlock {
+    fn create_test_finalized_block(height: u64) -> L2Block {
         use pathfinder_common::{BlockHeader, BlockNumber};
 
         let mut header: BlockHeader = Faker.fake();
         header.number = BlockNumber::new_or_panic(height);
 
-        FinalizedBlock {
+        L2Block {
             header,
             state_update: Faker.fake(),
             transactions_and_receipts: vec![],
@@ -233,7 +235,7 @@ mod tests {
     fn test_persist_and_retrieve_own_parts() {
         let (_storage, mut conn) = setup_test_db();
         let tx = conn.transaction().unwrap();
-        let proposals_db = ConsensusProposals::new(&tx);
+        let proposals_db = ConsensusProposals::new(tx);
 
         let height = 100u64;
         let round = 1u32;
@@ -256,11 +258,11 @@ mod tests {
         );
 
         // Commit transaction to verify persistence
-        tx.commit().unwrap();
+        proposals_db.commit().unwrap();
 
         // Verify persistence across transactions
         let tx2 = conn.transaction().unwrap();
-        let proposals_db2 = ConsensusProposals::new(&tx2);
+        let proposals_db2 = ConsensusProposals::new(tx2);
         let retrieved = proposals_db2.own_parts(height, round, &proposer).unwrap();
         assert!(
             retrieved.is_some(),
@@ -275,7 +277,7 @@ mod tests {
     fn test_update_with_different_data() {
         let (_storage, mut conn) = setup_test_db();
         let tx = conn.transaction().unwrap();
-        let proposals_db = ConsensusProposals::new(&tx);
+        let proposals_db = ConsensusProposals::new(tx);
 
         let height = 100u64;
         let round = 1u32;
@@ -287,7 +289,7 @@ mod tests {
             .persist_parts(height, round, &proposer, &initial_parts)
             .unwrap();
         assert!(!updated, "Should return false for new entry");
-        tx.commit().unwrap();
+        proposals_db.commit().unwrap();
 
         // Update with different parts (different proposer address in parts)
         let different_proposer =
@@ -295,16 +297,16 @@ mod tests {
         let different_parts = create_test_proposal_parts(height, round, different_proposer);
 
         let tx2 = conn.transaction().unwrap();
-        let proposals_db2 = ConsensusProposals::new(&tx2);
+        let proposals_db2 = ConsensusProposals::new(tx2);
         let updated = proposals_db2
             .persist_parts(height, round, &proposer, &different_parts)
             .unwrap();
         assert!(updated, "Should return true for updated entry");
-        tx2.commit().unwrap();
+        proposals_db2.commit().unwrap();
 
         // Verify the update actually changed the data
         let tx3 = conn.transaction().unwrap();
-        let proposals_db3 = ConsensusProposals::new(&tx3);
+        let proposals_db3 = ConsensusProposals::new(tx3);
         let retrieved = proposals_db3.own_parts(height, round, &proposer).unwrap();
         assert!(retrieved.is_some());
         let retrieved_parts = retrieved.unwrap();
@@ -324,7 +326,7 @@ mod tests {
     fn test_foreign_parts() {
         let (_storage, mut conn) = setup_test_db();
         let tx = conn.transaction().unwrap();
-        let proposals_db = ConsensusProposals::new(&tx);
+        let proposals_db = ConsensusProposals::new(tx);
 
         let height = 100u64;
         let round = 1u32;
@@ -338,11 +340,11 @@ mod tests {
             .unwrap();
 
         // Commit to verify persistence
-        tx.commit().unwrap();
+        proposals_db.commit().unwrap();
 
         // Retrieve as foreign parts (validator != proposer) in new transaction
         let tx2 = conn.transaction().unwrap();
-        let proposals_db2 = ConsensusProposals::new(&tx2);
+        let proposals_db2 = ConsensusProposals::new(tx2);
         let foreign = proposals_db2
             .foreign_parts(height, round, &validator)
             .unwrap();
@@ -366,7 +368,7 @@ mod tests {
     fn test_foreign_parts_proposer_equals_validator() {
         let (_storage, mut conn) = setup_test_db();
         let tx = conn.transaction().unwrap();
-        let proposals_db = ConsensusProposals::new(&tx);
+        let proposals_db = ConsensusProposals::new(tx);
 
         let height = 100u64;
         let round = 1u32;
@@ -377,12 +379,12 @@ mod tests {
         proposals_db
             .persist_parts(height, round, &proposer, &parts)
             .unwrap();
-        tx.commit().unwrap();
+        proposals_db.commit().unwrap();
 
         // Query foreign_parts with proposer == validator
         // Should return None (since it's not "foreign" - it's our own)
         let tx2 = conn.transaction().unwrap();
-        let proposals_db2 = ConsensusProposals::new(&tx2);
+        let proposals_db2 = ConsensusProposals::new(tx2);
         let foreign = proposals_db2
             .foreign_parts(height, round, &proposer)
             .unwrap();
@@ -403,7 +405,7 @@ mod tests {
     fn test_last_parts() {
         let (_storage, mut conn) = setup_test_db();
         let tx = conn.transaction().unwrap();
-        let proposals_db = ConsensusProposals::new(&tx);
+        let proposals_db = ConsensusProposals::new(tx);
 
         let height = 100u64;
         let validator = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
@@ -414,10 +416,10 @@ mod tests {
         proposals_db
             .persist_parts(height, 1, &proposer, &parts1)
             .unwrap();
-        tx.commit().unwrap();
+        proposals_db.commit().unwrap();
 
         let tx2 = conn.transaction().unwrap();
-        let proposals_db2 = ConsensusProposals::new(&tx2);
+        let proposals_db2 = ConsensusProposals::new(tx2);
         let last = proposals_db2.last_parts(height, &validator).unwrap();
         assert!(
             last.is_some(),
@@ -438,10 +440,10 @@ mod tests {
         proposals_db2
             .persist_parts(height, 3, &proposer3, &parts3)
             .unwrap();
-        tx2.commit().unwrap();
+        proposals_db2.commit().unwrap();
 
         let tx3 = conn.transaction().unwrap();
-        let proposals_db3 = ConsensusProposals::new(&tx3);
+        let proposals_db3 = ConsensusProposals::new(tx3);
         let last = proposals_db3.last_parts(height, &validator).unwrap();
         assert!(last.is_some(), "Should retrieve last parts");
         let (round, retrieved_parts) = last.unwrap();
@@ -458,7 +460,7 @@ mod tests {
     fn test_last_parts_no_rounds() {
         let (_storage, mut conn) = setup_test_db();
         let tx = conn.transaction().unwrap();
-        let proposals_db = ConsensusProposals::new(&tx);
+        let proposals_db = ConsensusProposals::new(tx);
 
         let height = 100u64;
         let validator = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
@@ -474,7 +476,7 @@ mod tests {
     fn test_remove_parts() {
         let (_storage, mut conn) = setup_test_db();
         let tx = conn.transaction().unwrap();
-        let proposals_db = ConsensusProposals::new(&tx);
+        let proposals_db = ConsensusProposals::new(tx);
 
         let height = 100u64;
         let round = 1u32;
@@ -485,21 +487,21 @@ mod tests {
         proposals_db
             .persist_parts(height, round, &proposer, &parts)
             .unwrap();
-        tx.commit().unwrap();
+        proposals_db.commit().unwrap();
 
         // Verify they exist in new transaction
         let tx2 = conn.transaction().unwrap();
-        let proposals_db2 = ConsensusProposals::new(&tx2);
+        let proposals_db2 = ConsensusProposals::new(tx2);
         let retrieved = proposals_db2.own_parts(height, round, &proposer).unwrap();
         assert!(retrieved.is_some());
 
         // Remove specific round
         proposals_db2.remove_parts(height, Some(round)).unwrap();
-        tx2.commit().unwrap();
+        proposals_db2.commit().unwrap();
 
         // Verify they're gone in new transaction
         let tx3 = conn.transaction().unwrap();
-        let proposals_db3 = ConsensusProposals::new(&tx3);
+        let proposals_db3 = ConsensusProposals::new(tx3);
         let retrieved = proposals_db3.own_parts(height, round, &proposer).unwrap();
         assert!(retrieved.is_none(), "Parts should be removed");
     }
@@ -510,7 +512,7 @@ mod tests {
     fn test_remove_all_parts_for_height() {
         let (_storage, mut conn) = setup_test_db();
         let tx = conn.transaction().unwrap();
-        let proposals_db = ConsensusProposals::new(&tx);
+        let proposals_db = ConsensusProposals::new(tx);
 
         let height = 100u64;
         let proposer1 = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
@@ -533,17 +535,17 @@ mod tests {
                 &create_test_proposal_parts(height, 2, proposer2),
             )
             .unwrap();
-        tx.commit().unwrap();
+        proposals_db.commit().unwrap();
 
         // Remove all rounds for height in new transaction
         let tx2 = conn.transaction().unwrap();
-        let proposals_db2 = ConsensusProposals::new(&tx2);
+        let proposals_db2 = ConsensusProposals::new(tx2);
         proposals_db2.remove_parts(height, None).unwrap();
-        tx2.commit().unwrap();
+        proposals_db2.commit().unwrap();
 
         // Verify all are gone in new transaction
         let tx3 = conn.transaction().unwrap();
-        let proposals_db3 = ConsensusProposals::new(&tx3);
+        let proposals_db3 = ConsensusProposals::new(tx3);
         let validator = ContractAddress::new_or_panic(Felt::from_hex_str("0x999").unwrap());
         assert!(proposals_db3
             .foreign_parts(height, 1, &validator)
@@ -560,7 +562,7 @@ mod tests {
     fn test_persist_and_read_finalized_block() {
         let (_storage, mut conn) = setup_test_db();
         let tx = conn.transaction().unwrap();
-        let proposals_db = ConsensusProposals::new(&tx);
+        let proposals_db = ConsensusProposals::new(tx);
 
         let height = 100u64;
         let round = 1u32;
@@ -571,11 +573,11 @@ mod tests {
             .persist_finalized_block(height, round, block.clone())
             .unwrap();
         assert!(!updated, "Should return false for new entry");
-        tx.commit().unwrap();
+        proposals_db.commit().unwrap();
 
         // Read it back in new transaction
         let tx2 = conn.transaction().unwrap();
-        let proposals_db2 = ConsensusProposals::new(&tx2);
+        let proposals_db2 = ConsensusProposals::new(tx2);
         let retrieved = proposals_db2.read_finalized_block(height, round).unwrap();
         assert!(retrieved.is_some(), "Should retrieve persisted block");
         let retrieved_block = retrieved.unwrap();
@@ -593,7 +595,7 @@ mod tests {
     fn test_finalized_blocks_isolation_and_removal() {
         let (_storage, mut conn) = setup_test_db();
         let tx = conn.transaction().unwrap();
-        let proposals_db = ConsensusProposals::new(&tx);
+        let proposals_db = ConsensusProposals::new(tx);
 
         let height = 100u64;
         let block1 = create_test_finalized_block(height);
@@ -606,11 +608,11 @@ mod tests {
         proposals_db
             .persist_finalized_block(height, 2, block2)
             .unwrap();
-        tx.commit().unwrap();
+        proposals_db.commit().unwrap();
 
         // Verify isolation: both should exist independently
         let tx2 = conn.transaction().unwrap();
-        let proposals_db2 = ConsensusProposals::new(&tx2);
+        let proposals_db2 = ConsensusProposals::new(tx2);
         let retrieved1 = proposals_db2.read_finalized_block(height, 1).unwrap();
         let retrieved2 = proposals_db2.read_finalized_block(height, 2).unwrap();
 
@@ -622,11 +624,11 @@ mod tests {
 
         // Remove all blocks for height (should remove all rounds)
         proposals_db2.remove_finalized_blocks(height).unwrap();
-        tx2.commit().unwrap();
+        proposals_db2.commit().unwrap();
 
         // Verify all rounds are gone
         let tx3 = conn.transaction().unwrap();
-        let proposals_db3 = ConsensusProposals::new(&tx3);
+        let proposals_db3 = ConsensusProposals::new(tx3);
         assert!(
             proposals_db3
                 .read_finalized_block(height, 1)
@@ -649,7 +651,7 @@ mod tests {
     fn test_multiple_proposers_same_height_round() {
         let (_storage, mut conn) = setup_test_db();
         let tx = conn.transaction().unwrap();
-        let proposals_db = ConsensusProposals::new(&tx);
+        let proposals_db = ConsensusProposals::new(tx);
 
         let height = 100u64;
         let round = 1u32;
@@ -668,11 +670,11 @@ mod tests {
         proposals_db
             .persist_parts(height, round, &proposer2, &parts2)
             .unwrap();
-        tx.commit().unwrap();
+        proposals_db.commit().unwrap();
 
         // Verify both can coexist
         let tx2 = conn.transaction().unwrap();
-        let proposals_db2 = ConsensusProposals::new(&tx2);
+        let proposals_db2 = ConsensusProposals::new(tx2);
 
         // Retrieve proposer1's parts
         let retrieved1 = proposals_db2.own_parts(height, round, &proposer1).unwrap();
@@ -699,7 +701,7 @@ mod tests {
     fn test_multiple_heights_and_rounds() {
         let (_storage, mut conn) = setup_test_db();
         let tx = conn.transaction().unwrap();
-        let proposals_db = ConsensusProposals::new(&tx);
+        let proposals_db = ConsensusProposals::new(tx);
 
         let proposer1 = ContractAddress::new_or_panic(Felt::from_hex_str("0x111").unwrap());
         let proposer2 = ContractAddress::new_or_panic(Felt::from_hex_str("0x222").unwrap());
@@ -718,11 +720,11 @@ mod tests {
         proposals_db
             .persist_parts(101, 1, &proposer1, &parts_101_1)
             .unwrap();
-        tx.commit().unwrap();
+        proposals_db.commit().unwrap();
 
         // Verify isolation between heights in new transaction
         let tx2 = conn.transaction().unwrap();
-        let proposals_db2 = ConsensusProposals::new(&tx2);
+        let proposals_db2 = ConsensusProposals::new(tx2);
         let retrieved_100_1 = proposals_db2.foreign_parts(100, 1, &validator).unwrap();
         assert!(retrieved_100_1.is_some());
         assert_eq!(retrieved_100_1.unwrap(), parts_100_1);
@@ -735,11 +737,11 @@ mod tests {
 
         // Remove only one height
         proposals_db2.remove_parts(100, None).unwrap();
-        tx2.commit().unwrap();
+        proposals_db2.commit().unwrap();
 
         // Verify height 100 is gone but 101 remains in new transaction
         let tx3 = conn.transaction().unwrap();
-        let proposals_db3 = ConsensusProposals::new(&tx3);
+        let proposals_db3 = ConsensusProposals::new(tx3);
         assert!(proposals_db3
             .foreign_parts(100, 1, &validator)
             .unwrap()
