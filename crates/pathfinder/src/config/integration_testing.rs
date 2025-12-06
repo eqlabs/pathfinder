@@ -27,6 +27,7 @@ pub enum InjectFailureTrigger {
     PrecommitRx,
     ProposalDecided,
     ProposalCommitted,
+    OutdatedVote,
 }
 
 impl InjectFailureTrigger {
@@ -44,6 +45,7 @@ impl InjectFailureTrigger {
             InjectFailureTrigger::PrecommitRx => "precommit_rx",
             InjectFailureTrigger::ProposalDecided => "proposal_decided",
             InjectFailureTrigger::ProposalCommitted => "proposal_committed",
+            InjectFailureTrigger::OutdatedVote => "outdated_vote",
         }
     }
 }
@@ -65,6 +67,7 @@ impl FromStr for InjectFailureTrigger {
             "precommit_rx" => Ok(InjectFailureTrigger::PrecommitRx),
             "proposal_decided" => Ok(InjectFailureTrigger::ProposalDecided),
             "proposal_committed" => Ok(InjectFailureTrigger::ProposalCommitted),
+            "outdated_vote" => Ok(InjectFailureTrigger::OutdatedVote),
             _ => Err(format!("Unknown inject failure event: {s}")),
         }
     }

@@ -16,8 +16,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Context;
-use p2p::consensus::{Client, Event, HeightAndRound};
+use p2p::consensus::{Client, Event, EventKind, HeightAndRound};
 use p2p::libp2p::gossipsub::PublishError;
+use p2p::libp2p::PeerId;
 use p2p_proto::common::{Address, Hash};
 use p2p_proto::consensus::{ProposalFin, ProposalInit, ProposalPart};
 use pathfinder_common::state_update::StateUpdateData;
@@ -25,6 +26,7 @@ use pathfinder_common::{
     BlockId,
     BlockNumber,
     ChainId,
+    ConsensusInfo,
     ContractAddress,
     L2Block,
     ProposalCommitment,
@@ -39,7 +41,7 @@ use pathfinder_consensus::{
     SignedVote,
 };
 use pathfinder_storage::{Storage, Transaction, TransactionBehavior};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 use super::proposal_error::{ProposalError, ProposalHandlingError};
 use super::{integration_testing, ConsensusTaskEvent, P2PTaskConfig, P2PTaskEvent};
@@ -59,6 +61,7 @@ use crate::SyncRequestToConsensus;
 // thread; carried data are used for async handling (e.g. gossiping).
 enum ComputationSuccess {
     Continue,
+    ChangePeerScore { peer_id: PeerId, delta: f64 },
     IncomingProposalCommitment(HeightAndRound, ProposalCommitmentWithOrigin),
     EventVote(p2p_proto::consensus::Vote),
     ProposalGossip(HeightAndRound, Vec<ProposalPart>),
@@ -77,6 +80,7 @@ pub fn spawn(
     tx_to_consensus: mpsc::Sender<ConsensusTaskEvent>,
     mut rx_from_consensus: mpsc::Receiver<P2PTaskEvent>,
     mut rx_from_sync: mpsc::Receiver<SyncRequestToConsensus>,
+    info_watch_tx: watch::Sender<ConsensusInfo>,
     main_storage: Storage,
     consensus_storage: Storage,
     data_directory: &Path,
@@ -165,13 +169,19 @@ pub fn spawn(
                         // for H, so the other 2 nodes will not make any progress at H. And since
                         // we're not keeping any historical engines (ie. including for H), we will
                         // not help the other 2 nodes in the voting process.
-                        if is_outdated_p2p_event(&proposals_db.tx, &event, config.history_depth)? {
-                            // TODO consider punishing the sender if the event is too old
-                            return Ok(ComputationSuccess::Continue);
+                        if is_outdated_p2p_event(
+                            &proposals_db.tx,
+                            &event.kind,
+                            config.history_depth,
+                        )? {
+                            return Ok(ComputationSuccess::ChangePeerScore {
+                                peer_id: event.source,
+                                delta: p2p::consensus::penalty::OUTDATED_MESSAGE,
+                            });
                         }
 
-                        match event {
-                            Event::Proposal(height_and_round, proposal_part) => {
+                        match event.kind {
+                            EventKind::Proposal(height_and_round, proposal_part) => {
                                 let vcache = validator_cache.clone();
                                 let dex = deferred_executions.clone();
                                 let result = handle_incoming_proposal_part(
@@ -235,7 +245,7 @@ pub fn spawn(
                                 }
                             }
 
-                            Event::Vote(vote) => {
+                            EventKind::Vote(vote) => {
                                 // Does nothing in production builds.
                                 integration_testing::debug_fail_on_vote(
                                     &vote,
@@ -415,6 +425,19 @@ pub fn spawn(
                             ))
                         }
                         NetworkMessage::Vote(SignedVote { vote, signature: _ }) => {
+                            // Never happens in production builds.
+                            let vote = if integration_testing::send_outdated_vote(
+                                vote.height,
+                                inject_failure,
+                            ) {
+                                pathfinder_consensus::Vote {
+                                    height: 0, // This should make the vote outdated.
+                                    ..vote
+                                }
+                            } else {
+                                vote
+                            };
+
                             tracing::info!("🖧  ✋ {validator_address} Gossiping vote {vote:?} ...");
                             Ok(ComputationSuccess::GossipVote(consensus_vote_to_p2p_vote(
                                 vote,
@@ -517,6 +540,27 @@ pub fn spawn(
                                 height_and_round.height()
                             );
 
+                            info_watch_tx.send_if_modified(|info| {
+                                let do_update = match info.highest_decision {
+                                    None => true,
+                                    Some((highest_decided_height, highest_decided_value)) => {
+                                        let new_height = height_and_round.height()
+                                            > highest_decided_height.get();
+                                        let new_value = value.0 != highest_decided_value;
+                                        new_height || new_value
+                                    }
+                                };
+                                if do_update {
+                                    let height =
+                                        BlockNumber::new_or_panic(height_and_round.height());
+                                    *info = ConsensusInfo {
+                                        highest_decision: Some((height, value.0)),
+                                        ..*info
+                                    };
+                                }
+                                do_update
+                            });
+
                             anyhow::Ok(())
                         }?;
 
@@ -548,6 +592,13 @@ pub fn spawn(
 
             match success {
                 ComputationSuccess::Continue => (),
+                ComputationSuccess::ChangePeerScore { peer_id, delta } => {
+                    p2p_client.change_peer_score(peer_id, delta);
+
+                    info_watch_tx.send_modify(|info| {
+                        info.peer_score_change_counter += 1;
+                    })
+                }
                 ComputationSuccess::IncomingProposalCommitment(height_and_round, commitment) => {
                     // Does nothing in production builds.
                     integration_testing::debug_fail_on_entire_proposal_persisted(
@@ -751,7 +802,7 @@ fn execute_deferred_for_next_height(
 /// otherwise return `false`.
 fn is_outdated_p2p_event(
     db_tx: &Transaction<'_>,
-    event: &Event,
+    event: &EventKind,
     history_depth: u64,
 ) -> anyhow::Result<bool> {
     // Ignore messages that refer to already committed blocks.

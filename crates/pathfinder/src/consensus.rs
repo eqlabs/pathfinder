@@ -24,7 +24,7 @@ pub struct ConsensusTaskHandles {
 /// Various channels used to communicate with the consensus engine.
 pub struct ConsensusChannels {
     /// Watcher for the latest [ConsensusInfo].
-    pub consensus_info_watch: watch::Receiver<Option<ConsensusInfo>>,
+    pub consensus_info_watch: watch::Receiver<ConsensusInfo>,
     /// Channel for the sync task to send requests to consensus.
     pub sync_to_consensus_tx: mpsc::Sender<SyncRequestToConsensus>,
 }
