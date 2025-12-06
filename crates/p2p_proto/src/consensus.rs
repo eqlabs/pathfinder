@@ -347,6 +347,62 @@ impl ProposalPart {
     pub fn is_proposal_fin(&self) -> bool {
         matches!(self, Self::Fin(_))
     }
+
+    pub fn variant_name(&self) -> &'static str {
+        match self {
+            Self::Init(_) => "Init",
+            Self::Fin(_) => "Fin",
+            Self::BlockInfo(_) => "BlockInfo",
+            Self::TransactionBatch(_) => "TransactionBatch",
+            Self::TransactionsFin(_) => "TransactionsFin",
+            Self::ProposalCommitment(_) => "ProposalCommitment",
+        }
+    }
+}
+
+impl TryFrom<ProposalPart> for TransactionsFin {
+    type Error = std::io::Error;
+
+    fn try_from(value: ProposalPart) -> Result<Self, Self::Error> {
+        if let ProposalPart::TransactionsFin(fin) = value {
+            Ok(fin)
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "ProposalPart is not a TransactionsFin variant",
+            ))
+        }
+    }
+}
+
+impl TryFrom<ProposalPart> for ProposalCommitment {
+    type Error = std::io::Error;
+
+    fn try_from(value: ProposalPart) -> Result<Self, Self::Error> {
+        if let ProposalPart::ProposalCommitment(commitment) = value {
+            Ok(commitment)
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "ProposalPart is not a ProposalCommitment variant",
+            ))
+        }
+    }
+}
+
+impl TryFrom<ProposalPart> for ProposalFin {
+    type Error = std::io::Error;
+
+    fn try_from(value: ProposalPart) -> Result<Self, Self::Error> {
+        if let ProposalPart::Fin(fin) = value {
+            Ok(fin)
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "ProposalPart is not a Fin variant",
+            ))
+        }
+    }
 }
 
 impl ToProtobuf<consensus_proto::consensus_transaction::Txn> for TransactionVariant {

@@ -935,6 +935,24 @@ pub enum ValidatorStage<E> {
     Finalize(Box<ValidatorFinalizeStage>),
 }
 
+impl<E> From<ValidatorBlockInfoStage> for ValidatorStage<E> {
+    fn from(stage: ValidatorBlockInfoStage) -> Self {
+        ValidatorStage::BlockInfo(stage)
+    }
+}
+
+impl<E> From<ValidatorTransactionBatchStage<E>> for ValidatorStage<E> {
+    fn from(stage: ValidatorTransactionBatchStage<E>) -> Self {
+        ValidatorStage::TransactionBatch(Box::new(stage))
+    }
+}
+
+impl<E> From<ValidatorFinalizeStage> for ValidatorStage<E> {
+    fn from(stage: ValidatorFinalizeStage) -> Self {
+        ValidatorStage::Finalize(Box::new(stage))
+    }
+}
+
 impl<E> ValidatorStage<E> {
     pub fn try_into_block_info_stage(self) -> anyhow::Result<ValidatorBlockInfoStage> {
         match self {
