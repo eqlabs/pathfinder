@@ -7,6 +7,7 @@ mod fetch_validators;
 mod integration_testing;
 mod p2p_task;
 mod persist_proposals;
+mod proposal_error;
 
 #[cfg(all(test, feature = "p2p"))]
 mod p2p_task_tests;

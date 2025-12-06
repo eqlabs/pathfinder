@@ -41,6 +41,7 @@ use pathfinder_consensus::{
 use pathfinder_storage::{Storage, Transaction, TransactionBehavior};
 use tokio::sync::mpsc;
 
+use super::proposal_error::{ProposalError, ProposalHandlingError};
 use super::{integration_testing, ConsensusTaskEvent, P2PTaskConfig, P2PTaskEvent};
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::consensus::inner::batch_execution::{
@@ -208,14 +209,28 @@ pub fn spawn(
                                         Ok(ComputationSuccess::Continue)
                                     }
                                     Err(error) => {
-                                        tracing::warn!(
-                                            "Error handling incoming proposal part for \
-                                             {height_and_round}: {error:#?}"
-                                        );
-                                        anyhow::bail!(
-                                            "Error handling incoming proposal part for \
-                                             {height_and_round}: {error:#?}"
-                                        );
+                                        // Log and skip on recoverable errors, don't bail out!
+                                        if error.is_recoverable() {
+                                            tracing::warn!(
+                                                validator = %validator_address,
+                                                height_and_round = %height_and_round,
+                                                error = %error.error_message(),
+                                                "Invalid proposal part from peer - skipping, continuing operation"
+                                            );
+                                            Ok(ComputationSuccess::Continue)
+                                        } else {
+                                            tracing::error!(
+                                                validator = %validator_address,
+                                                height_and_round = %height_and_round,
+                                                error = %error.error_message(),
+                                                error_chain = %format!("{:#}", error),
+                                                "Fatal error handling proposal part"
+                                            );
+                                            anyhow::bail!(
+                                                "Fatal error handling incoming proposal part for \
+                                                 {height_and_round}: {error:#?}"
+                                            );
+                                        }
                                     }
                                 }
                             }
@@ -436,8 +451,9 @@ pub fn spawn(
                                 // Incoming proposal has been executed and needs to be finalized
                                 // now.
                                 None => {
-                                    let validator_stage =
-                                        validator_cache.remove(&height_and_round)?;
+                                    let validator_stage = validator_cache
+                                        .remove(&height_and_round)
+                                        .map_err(anyhow::Error::from)?;
                                     let validator = validator_stage.try_into_finalize_stage()?;
                                     let main_readonly_storage = main_readonly_storage.clone();
                                     let block = validator.finalize(
@@ -632,11 +648,13 @@ impl ValidatorCache {
         cache.insert(hnr, stage);
     }
 
-    fn remove(&mut self, hnr: &HeightAndRound) -> anyhow::Result<ValidatorStage> {
+    fn remove(&mut self, hnr: &HeightAndRound) -> Result<ValidatorStage, ProposalHandlingError> {
         let mut cache = self.0.lock().unwrap();
-        cache
-            .remove(hnr)
-            .context(format!("No ValidatorStage for height and round {hnr}"))
+        cache.remove(hnr).ok_or_else(|| {
+            ProposalHandlingError::Recoverable(ProposalError::ValidatorStageNotFound {
+                height_and_round: hnr.to_string(),
+            })
+        })
     }
 }
 
@@ -662,7 +680,7 @@ fn execute_deferred_for_next_height(
     if let Some((hnr, deferred)) = deferred.into_iter().next_back() {
         tracing::debug!("🖧  ⚙️ executing deferred proposal for height and round {hnr}");
 
-        let validator_stage = validator_cache.remove(&hnr)?;
+        let validator_stage = validator_cache.remove(&hnr).map_err(anyhow::Error::from)?;
         let mut validator = validator_stage.try_into_transaction_batch_stage()?;
 
         // Execute deferred transactions first.
@@ -821,7 +839,9 @@ fn read_committed_block(
 
     let transaction_data = cons_db_tx
         .transaction_data_for_block(block_id)?
-        .expect("block exists");
+        .ok_or_else(|| {
+            anyhow::anyhow!("Block {height} exists (header found) but transaction data is missing")
+        })?;
     let (transactions_and_receipts, events) = transaction_data
         .into_iter()
         .map(|(tx, receipt, events)| ((tx, receipt), events))
@@ -836,7 +856,9 @@ fn read_committed_block(
             declared_sierra_classes: su.declared_sierra_classes,
             migrated_compiled_classes: su.migrated_compiled_classes,
         })
-        .expect("block exists");
+        .ok_or_else(|| {
+            anyhow::anyhow!("Block {height} exists (header found) but state update is missing",)
+        })?;
 
     let finalized_block = L2Block {
         header,
@@ -872,13 +894,14 @@ fn handle_incoming_proposal_part(
     batch_execution_manager: &mut BatchExecutionManager,
     data_directory: &Path,
     inject_failure_config: Option<InjectFailureConfig>,
-) -> anyhow::Result<Option<ProposalCommitmentWithOrigin>> {
+) -> Result<Option<ProposalCommitmentWithOrigin>, ProposalHandlingError> {
     let mut parts = proposals_db
         .foreign_parts(
             height_and_round.height(),
             height_and_round.round(),
             &validator_address,
-        )?
+        )
+        .map_err(ProposalHandlingError::Fatal)?
         .unwrap_or_default();
 
     // Does nothing in production builds.
@@ -892,57 +915,81 @@ fn handle_incoming_proposal_part(
     match proposal_part {
         ProposalPart::Init(ref prop_init) => {
             if !parts.is_empty() {
-                anyhow::bail!(
-                    "Unexpected proposal Init for height and round {} at position {}",
-                    height_and_round,
-                    parts.len()
-                );
+                return Err(ProposalHandlingError::Recoverable(
+                    ProposalError::UnexpectedProposalPart {
+                        message: format!(
+                            "Unexpected proposal Init for height and round {} at position {}",
+                            height_and_round,
+                            parts.len()
+                        ),
+                    },
+                ));
             }
 
             let proposal_init = prop_init.clone();
             parts.push(proposal_part);
             let proposer_address = ContractAddress(proposal_init.proposer.0);
-            let updated = proposals_db.persist_parts(
-                height_and_round.height(),
-                height_and_round.round(),
-                &proposer_address,
-                &parts,
-            )?;
+            let updated = proposals_db
+                .persist_parts(
+                    height_and_round.height(),
+                    height_and_round.round(),
+                    &proposer_address,
+                    &parts,
+                )
+                .map_err(ProposalHandlingError::Fatal)?;
             assert!(!updated);
-            let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init)?;
+            let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init)
+                .map_err(ProposalHandlingError::Fatal)?;
             validator_cache.insert(height_and_round, ValidatorStage::BlockInfo(validator));
             Ok(None)
         }
         ProposalPart::BlockInfo(ref block_info) => {
             if parts.len() != 1 {
-                anyhow::bail!(
-                    "Unexpected proposal BlockInfo for height and round {} at position {}",
-                    height_and_round,
-                    parts.len()
-                );
+                return Err(ProposalHandlingError::Recoverable(
+                    ProposalError::UnexpectedProposalPart {
+                        message: format!(
+                            "Unexpected proposal BlockInfo for height and round {} at position {}",
+                            height_and_round,
+                            parts.len()
+                        ),
+                    },
+                ));
             }
 
             let validator_stage = validator_cache.remove(&height_and_round)?;
-            let validator = validator_stage.try_into_block_info_stage()?;
+
+            let validator = validator_stage
+                .try_into_block_info_stage()
+                .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
 
             let block_info = block_info.clone();
             parts.push(proposal_part);
             let ProposalPart::Init(ProposalInit { proposer, .. }) =
-                parts.first().expect("Proposal Init")
+                parts.first().ok_or_else(|| {
+                    ProposalHandlingError::Fatal(anyhow::anyhow!(
+                        "Proposal parts list is empty when processing BlockInfo for \
+                         {height_and_round} - logic error"
+                    ))
+                })?
             else {
-                unreachable!("Proposal Init is inserted first");
+                return Err(ProposalHandlingError::Fatal(anyhow::anyhow!(
+                    "First proposal part is not Init for {height_and_round}"
+                )));
             };
 
             let proposer_address = ContractAddress(proposer.0);
-            let updated = proposals_db.persist_parts(
-                height_and_round.height(),
-                height_and_round.round(),
-                &proposer_address,
-                &parts,
-            )?;
+            let updated = proposals_db
+                .persist_parts(
+                    height_and_round.height(),
+                    height_and_round.round(),
+                    &proposer_address,
+                    &parts,
+                )
+                .map_err(ProposalHandlingError::Fatal)?;
             assert!(updated);
-            let new_validator =
-                validator.validate_consensus_block_info(block_info, main_readonly_storage)?;
+            let new_validator = validator
+                .validate_consensus_block_info(block_info, main_readonly_storage)
+                .map_err(ProposalHandlingError::Fatal)?;
             validator_cache.insert(
                 height_and_round,
                 ValidatorStage::TransactionBatch(Box::new(new_validator)),
@@ -952,11 +999,16 @@ fn handle_incoming_proposal_part(
         ProposalPart::TransactionBatch(ref tx_batch) => {
             // TODO check if there is a length limit for the batch at network level
             if parts.len() < 2 {
-                anyhow::bail!(
-                    "Unexpected proposal TransactionBatch for height and round {} at position {}",
-                    height_and_round,
-                    parts.len()
-                );
+                return Err(ProposalHandlingError::Recoverable(
+                    ProposalError::UnexpectedProposalPart {
+                        message: format!(
+                            "Unexpected proposal TransactionBatch for height and round {} at \
+                             position {}",
+                            height_and_round,
+                            parts.len()
+                        ),
+                    },
+                ));
             }
 
             tracing::debug!(
@@ -964,20 +1016,25 @@ fn handle_incoming_proposal_part(
             );
 
             let validator_stage = validator_cache.remove(&height_and_round)?;
-            let mut validator = validator_stage.try_into_transaction_batch_stage()?;
+
+            let mut validator = validator_stage
+                .try_into_transaction_batch_stage()
+                .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
 
             let tx_batch = tx_batch.clone();
             parts.push(proposal_part);
 
             // Use BatchExecutionManager to handle optimistic execution with checkpoints and
             // deferral
-            batch_execution_manager.process_batch_with_deferral(
-                height_and_round,
-                tx_batch,
-                &mut validator,
-                &proposals_db.tx,
-                &mut deferred_executions.lock().unwrap(),
-            )?;
+            batch_execution_manager
+                .process_batch_with_deferral(
+                    height_and_round,
+                    tx_batch,
+                    &mut validator,
+                    &proposals_db.tx,
+                    &mut deferred_executions.lock().unwrap(),
+                )
+                .map_err(ProposalHandlingError::Fatal)?;
 
             validator_cache.insert(
                 height_and_round,
@@ -991,21 +1048,28 @@ fn handle_incoming_proposal_part(
             };
 
             let proposer_address = ContractAddress(proposer.0);
-            let updated = proposals_db.persist_parts(
-                height_and_round.height(),
-                height_and_round.round(),
-                &proposer_address,
-                &parts,
-            )?;
+            let updated = proposals_db
+                .persist_parts(
+                    height_and_round.height(),
+                    height_and_round.round(),
+                    &proposer_address,
+                    &parts,
+                )
+                .map_err(ProposalHandlingError::Fatal)?;
             assert!(updated);
 
             Ok(None)
         }
         ProposalPart::ProposalCommitment(proposal_commitment) => {
             let validator_stage = validator_cache.remove(&height_and_round)?;
-            let mut validator = validator_stage.try_into_transaction_batch_stage()?;
 
-            validator.record_proposal_commitment(proposal_commitment)?;
+            let mut validator = validator_stage
+                .try_into_transaction_batch_stage()
+                .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
+
+            validator
+                .record_proposal_commitment(proposal_commitment)
+                .map_err(ProposalHandlingError::Fatal)?;
             validator_cache.insert(
                 height_and_round,
                 ValidatorStage::TransactionBatch(validator),
@@ -1020,13 +1084,16 @@ fn handle_incoming_proposal_part(
             );
 
             let validator_stage = validator_cache.remove(&height_and_round)?;
-            let validator = validator_stage.try_into_transaction_batch_stage()?;
+
+            let validator = validator_stage
+                .try_into_transaction_batch_stage()
+                .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
 
             if !validator.has_proposal_commitment() {
-                anyhow::bail!(
+                return Err(ProposalHandlingError::Fatal(anyhow::anyhow!(
                     "Transaction batch missing proposal commitment for height and round \
                      {height_and_round}"
-                );
+                )));
             }
 
             parts.push(proposal_part);
@@ -1040,12 +1107,14 @@ fn handle_incoming_proposal_part(
             };
 
             let proposer_address = ContractAddress(proposer.0);
-            let updated = proposals_db.persist_parts(
-                height_and_round.height(),
-                height_and_round.round(),
-                &proposer_address,
-                &parts,
-            )?;
+            let updated = proposals_db
+                .persist_parts(
+                    height_and_round.height(),
+                    height_and_round.round(),
+                    &proposer_address,
+                    &parts,
+                )
+                .map_err(ProposalHandlingError::Fatal)?;
             assert!(updated);
 
             let (validator, proposal_commitment) = defer_or_execute_proposal_fin(
@@ -1057,7 +1126,8 @@ fn handle_incoming_proposal_part(
                 validator,
                 deferred_executions,
                 batch_execution_manager,
-            )?;
+            )
+            .map_err(ProposalHandlingError::Fatal)?;
 
             validator_cache.insert(height_and_round, validator);
             Ok(proposal_commitment)
@@ -1067,7 +1137,9 @@ fn handle_incoming_proposal_part(
                 "🖧  ⚙️ handling TransactionsFin for height and round {height_and_round}..."
             );
 
-            let validator_stage = validator_cache.remove(&height_and_round)?;
+            let validator_stage = validator_cache
+                .remove(&height_and_round)
+                .map_err(anyhow::Error::from)?;
             let mut validator = validator_stage.try_into_transaction_batch_stage()?;
 
             // Check if execution has started

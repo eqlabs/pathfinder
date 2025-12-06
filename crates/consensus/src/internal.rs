@@ -22,6 +22,7 @@ use tokio::time::Instant;
 use wal::*;
 
 use crate::config::TimeoutValues;
+use crate::error::ConsensusError;
 use crate::wal::{WalEntry, WalSink};
 use crate::{
     ConsensusCommand,
@@ -124,13 +125,16 @@ impl<
 
             let input = convert_wal_entry_to_input(entry);
             if let Err(e) = self.process_input(input) {
-                tracing::error!(
+                tracing::warn!(
                     validator = %self.state.address(),
                     entry_index = i,
                     error = %e,
-                    "Failed to process WAL entry during recovery"
+                    "Failed to process WAL entry during recovery - skipping corrupted entry"
                 );
-                self.output_queue.push_back(ConsensusEvent::Error(e.into()));
+                self.output_queue
+                    .push_back(ConsensusEvent::Error(ConsensusError::wal_recovery(
+                        e.into(),
+                    )));
             }
         }
 
@@ -171,7 +175,8 @@ impl<
                 "Timeout elapsed"
             );
             if let Err(e) = self.process_input(input) {
-                self.output_queue.push_back(ConsensusEvent::Error(e.into()));
+                self.output_queue
+                    .push_back(ConsensusEvent::Error(ConsensusError::malachite(e)));
             }
         }
 
@@ -230,7 +235,8 @@ impl<
             };
 
             if let Err(e) = self.process_input(input) {
-                self.output_queue.push_back(ConsensusEvent::Error(e.into()));
+                self.output_queue
+                    .push_back(ConsensusEvent::Error(ConsensusError::malachite(e)));
             }
         }
 

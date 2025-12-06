@@ -169,10 +169,12 @@ use serde::{Deserialize, Serialize};
 
 // Re-export consensus types needed by the public API
 pub use crate::config::{Config, TimeoutValues};
+pub use crate::error::ConsensusError;
 use crate::internal::{InternalConsensus, InternalParams};
 use crate::wal::{delete_wal_file, FileWalSink, NoopWal, WalSink};
 
 mod config;
+mod error;
 mod internal;
 mod wal;
 
@@ -1208,7 +1210,7 @@ pub enum ConsensusEvent<V, A> {
     ///
     /// The application should handle this error appropriately, possibly by
     /// logging it or taking corrective action.
-    Error(anyhow::Error),
+    Error(ConsensusError),
 }
 
 impl<V: Debug, A: Debug> std::fmt::Debug for ConsensusEvent<V, A> {

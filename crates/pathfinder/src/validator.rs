@@ -816,30 +816,49 @@ pub enum ValidatorStage {
     Finalize(Box<ValidatorFinalizeStage>),
 }
 
+/// Error indicating that a validator stage conversion failed because the stage
+/// type was incorrect.
+#[derive(Debug, thiserror::Error)]
+#[error("Expected {expected} stage, got {actual}")]
+pub struct WrongValidatorStageError {
+    pub expected: &'static str,
+    pub actual: &'static str,
+}
+
 impl ValidatorStage {
-    pub fn try_into_block_info_stage(self) -> anyhow::Result<ValidatorBlockInfoStage> {
+    pub fn try_into_block_info_stage(
+        self,
+    ) -> Result<ValidatorBlockInfoStage, WrongValidatorStageError> {
         match self {
             ValidatorStage::BlockInfo(stage) => Ok(stage),
-            _ => anyhow::bail!("Expected block info stage, got {}", self.variant_name()),
+            _ => Err(WrongValidatorStageError {
+                expected: "block info",
+                actual: self.variant_name(),
+            }),
         }
     }
 
     pub fn try_into_transaction_batch_stage(
         self,
-    ) -> anyhow::Result<Box<ValidatorTransactionBatchStage>> {
+    ) -> Result<Box<ValidatorTransactionBatchStage>, WrongValidatorStageError> {
         match self {
             ValidatorStage::TransactionBatch(stage) => Ok(stage),
-            _ => anyhow::bail!(
-                "Expected transaction batch stage, got {}",
-                self.variant_name()
-            ),
+            _ => Err(WrongValidatorStageError {
+                expected: "transaction batch",
+                actual: self.variant_name(),
+            }),
         }
     }
 
-    pub fn try_into_finalize_stage(self) -> anyhow::Result<Box<ValidatorFinalizeStage>> {
+    pub fn try_into_finalize_stage(
+        self,
+    ) -> Result<Box<ValidatorFinalizeStage>, WrongValidatorStageError> {
         match self {
             ValidatorStage::Finalize(stage) => Ok(stage),
-            _ => anyhow::bail!("Expected finalize stage, got {}", self.variant_name()),
+            _ => Err(WrongValidatorStageError {
+                expected: "finalize",
+                actual: self.variant_name(),
+            }),
         }
     }
 
