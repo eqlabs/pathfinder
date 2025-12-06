@@ -13,11 +13,9 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use anyhow::Context;
 use p2p::consensus::{Client, Event, HeightAndRound};
-use p2p::libp2p::gossipsub::PublishError;
 use p2p_proto::common::{Address, Hash};
 use p2p_proto::consensus::{ProposalFin, ProposalInit, ProposalPart};
 use pathfinder_common::state_update::StateUpdateData;
@@ -41,8 +39,10 @@ use pathfinder_consensus::{
 use pathfinder_storage::{Storage, Transaction, TransactionBehavior};
 use tokio::sync::mpsc;
 
+use super::gossip_retry::{GossipHandler, GossipRetryConfig};
+use super::persist_proposals::ConsensusProposals;
 use super::proposal_error::{ProposalError, ProposalHandlingError};
-use super::{integration_testing, ConsensusTaskEvent, P2PTaskConfig, P2PTaskEvent};
+use super::{integration_testing, ConsensusTaskEvent, ConsensusValue, P2PTaskConfig, P2PTaskEvent};
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::consensus::inner::batch_execution::{
     should_defer_execution,
@@ -50,8 +50,6 @@ use crate::consensus::inner::batch_execution::{
     DeferredExecution,
     ProposalCommitmentWithOrigin,
 };
-use crate::consensus::inner::persist_proposals::ConsensusProposals;
-use crate::consensus::inner::ConsensusValue;
 use crate::validator::{ValidatorBlockInfoStage, ValidatorStage};
 use crate::SyncRequestToConsensus;
 
@@ -107,6 +105,7 @@ pub fn spawn(
         let mut cons_db_conn = consensus_storage
             .connection()
             .context("Creating consensus database connection")?;
+        let gossip_handler = GossipHandler::new(validator_address, GossipRetryConfig::default());
         loop {
             let p2p_task_event = tokio::select! {
                 p2p_event = p2p_event_rx.recv() => {
@@ -571,61 +570,15 @@ pub fn spawn(
                         .expect("Receiver not to be dropped");
                 }
                 ComputationSuccess::ProposalGossip(height_and_round, proposal_parts) => {
-                    loop {
-                        tracing::info!(
-                            "🖧  🚀 {validator_address} Gossiping proposal for {height_and_round} \
-                             ..."
-                        );
-                        match p2p_client
-                            .gossip_proposal(height_and_round, proposal_parts.clone())
-                            .await
-                        {
-                            Ok(()) => {
-                                tracing::info!(
-                                    "🖧  🚀 {validator_address} Gossiping proposal for \
-                                     {height_and_round} DONE"
-                                );
-                                break;
-                            }
-                            Err(PublishError::InsufficientPeers) => {
-                                tracing::warn!(
-                                    "Insufficient peers to gossip proposal for \
-                                     {height_and_round}, retrying..."
-                                );
-                                tokio::time::sleep(Duration::from_secs(5)).await;
-                            }
-                            Err(error) => {
-                                tracing::error!(
-                                    "Error gossiping proposal for {height_and_round}: {error}"
-                                );
-                                // TODO implement proper error handling policy
-                                Err(error)?;
-                            }
-                        }
-                    }
+                    tracing::info!(
+                        "🖧  🚀 {validator_address} Gossiping proposal for {height_and_round} ..."
+                    );
+                    gossip_handler
+                        .gossip_proposal(&p2p_client, height_and_round, proposal_parts)
+                        .await?;
                 }
                 ComputationSuccess::GossipVote(vote) => {
-                    loop {
-                        match p2p_client.gossip_vote(vote.clone()).await {
-                            Ok(()) => {
-                                tracing::info!(
-                                    "🖧  ✋ {validator_address} Gossiping vote {vote:?} SUCCESS"
-                                );
-                                break;
-                            }
-                            Err(PublishError::InsufficientPeers) => {
-                                tracing::warn!(
-                                    "Insufficient peers to gossip {vote:?}, retrying..."
-                                );
-                                tokio::time::sleep(Duration::from_secs(5)).await;
-                            }
-                            Err(error) => {
-                                tracing::error!("Error gossiping {vote:?}: {error}");
-                                // TODO implement proper error handling policy
-                                Err(error)?;
-                            }
-                        }
-                    }
+                    gossip_handler.gossip_vote(&p2p_client, vote).await?;
                 }
                 ComputationSuccess::ConfirmedProposalCommitment(hnr, commitment) => {
                     send_proposal_to_consensus(&tx_to_consensus, hnr, commitment).await;
