@@ -294,14 +294,14 @@ impl Default for ProposalCommitmentWithOrigin {
 /// be deferred because the previous block is not committed yet.
 pub fn should_defer_execution(
     height_and_round: HeightAndRound,
-    cons_db_tx: &DbTransaction<'_>,
+    main_db_tx: &DbTransaction<'_>,
 ) -> anyhow::Result<bool> {
     let parent_block = height_and_round.height().checked_sub(1);
     let defer = if let Some(parent_block) = parent_block {
         let parent_block =
             BlockNumber::new(parent_block).context("Block number is larger than i64::MAX")?;
         let parent_block = BlockId::Number(parent_block);
-        let parent_committed = cons_db_tx.block_exists(parent_block)?;
+        let parent_committed = main_db_tx.block_exists(parent_block)?;
         !parent_committed
     } else {
         false

@@ -1195,12 +1195,18 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                     )?;
 
                     let valid_round = valid_round_from_parts(&parts, &height_and_round)?;
+                    let mut main_db_conn = main_readonly_storage
+                        .connection()
+                        .map_err(ProposalHandlingError::Fatal)?;
+                    let main_db_tx = main_db_conn
+                        .transaction()
+                        .map_err(ProposalHandlingError::Fatal)?;
                     let (validator, proposal_commitment) = defer_or_execute_proposal_fin::<E, T>(
                         height_and_round,
                         proposal_commitment,
                         proposer_address,
                         valid_round,
-                        &proposals_db.tx,
+                        &main_db_tx,
                         validator,
                         deferred_executions,
                         batch_execution_manager,
@@ -1366,7 +1372,7 @@ fn defer_or_execute_proposal_fin<E: BlockExecutorExt, T: TransactionExt>(
     proposal_commitment: Hash,
     proposer_address: ContractAddress,
     valid_round: Option<u32>,
-    cons_db_tx: &Transaction<'_>,
+    main_db_tx: &Transaction<'_>,
     mut validator: Box<crate::validator::ValidatorTransactionBatchStage<E>>,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
@@ -1377,7 +1383,7 @@ fn defer_or_execute_proposal_fin<E: BlockExecutorExt, T: TransactionExt>(
         pol_round: valid_round.map(Round::new).unwrap_or(Round::nil()),
     };
 
-    if should_defer_execution(height_and_round, cons_db_tx)? {
+    if should_defer_execution(height_and_round, main_db_tx)? {
         // The proposal cannot be finalized yet, because the previous
         // block is not committed yet. Defer its finalization.
         tracing::debug!(
