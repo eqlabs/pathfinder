@@ -22,7 +22,14 @@ use tokio::time::timeout;
 
 use crate::consensus::inner::persist_proposals::ConsensusProposals;
 use crate::consensus::inner::test_helpers::{create_test_proposal, create_transaction_batch};
-use crate::consensus::inner::{p2p_task, ConsensusTaskEvent, ConsensusValue, P2PTaskConfig};
+use crate::consensus::inner::{
+    p2p_task,
+    ConsensusTaskEvent,
+    ConsensusValue,
+    P2PTaskConfig,
+    P2PTaskEvent,
+};
+use crate::SyncRequestToConsensus;
 
 /// Helper struct to setup and manage the test environment (databases,
 /// channels, mock client)
@@ -33,7 +40,9 @@ struct TestEnvironment {
     consensus_storage: pathfinder_storage::Storage,
     p2p_tx: mpsc::UnboundedSender<Event>,
     rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
-    tx_to_p2p: mpsc::Sender<crate::consensus::inner::P2PTaskEvent>,
+    tx_to_p2p: mpsc::Sender<P2PTaskEvent>,
+    // So that receiver is not dropped
+    _tx_sync_to_consensus: mpsc::Sender<SyncRequestToConsensus>,
     handle: Arc<Mutex<Option<tokio::task::JoinHandle<anyhow::Result<()>>>>>,
 }
 
@@ -63,7 +72,7 @@ impl TestEnvironment {
         let (p2p_tx, p2p_rx) = mpsc::unbounded_channel();
         let (tx_to_consensus, rx_from_p2p) = mpsc::channel(100);
         let (tx_to_p2p, rx_from_consensus) = mpsc::channel(100);
-        let (_tx_from_sync, rx_from_sync) = mpsc::channel(1);
+        let (tx_sync_to_consensus, rx_from_sync) = mpsc::channel(1);
 
         // Create mock Client (used for receiving events in these tests)
         let keypair = Keypair::generate_ed25519();
@@ -95,6 +104,7 @@ impl TestEnvironment {
             p2p_tx,
             rx_from_p2p,
             tx_to_p2p,
+            _tx_sync_to_consensus: tx_sync_to_consensus,
             handle: Arc::new(Mutex::new(Some(handle))),
         }
     }
@@ -1157,7 +1167,7 @@ async fn test_transactions_fin_rollback() {
 async fn test_empty_batch_is_rejected() {
     let chain_id = ChainId::SEPOLIA_TESTNET;
     let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
-    let env = TestEnvironment::new(chain_id, validator_address);
+    let mut env = TestEnvironment::new(chain_id, validator_address);
     env.create_committed_parent_block(1);
     env.wait_for_task_initialization().await;
 
@@ -1190,14 +1200,9 @@ async fn test_empty_batch_is_rejected() {
         ))
         .expect("Failed to send empty TransactionBatch");
 
-    // TODO Invalid proposals are a recoverable error, so the task should not exit.
-    // It should only log the fact, clean any cashes of the invalid proposal and
-    // alter the score of the peer. See: https://github.com/eqlabs/pathfinder/issues/2975.
-    let task_result = env.wait_for_task_exit().await.expect("Timed out");
-    assert!(
-        task_result.is_err(),
-        "Expected task to exit with error on empty TransactionBatch"
-    );
+    verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
+    // Empty batch is a recoverable error, so the task should remain alive.
+    env.verify_task_alive().await;
 }
 
 /// TransactionsFin indicates more transactions than executed.
