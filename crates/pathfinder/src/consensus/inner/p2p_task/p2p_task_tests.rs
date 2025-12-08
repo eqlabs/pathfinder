@@ -183,7 +183,7 @@ impl TestEnvironment {
         }
     }
 
-    async fn wait_for_task_exit(&self) -> Result<anyhow::Result<()>, Elapsed> {
+    async fn _wait_for_task_exit(&self) -> Result<anyhow::Result<()>, Elapsed> {
         let wait_for_exit_fut = async {
             loop {
                 let handle_opt = {
