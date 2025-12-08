@@ -1115,18 +1115,16 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                     );
                     Ok(None)
                 }
-                _ => {
-                    return Err(ProposalHandlingError::Recoverable(
-                        ProposalError::UnexpectedProposalPart {
-                            message: format!(
-                                "Unexpected proposal ProposalCommitment for height and round {} \
-                                 at position {}",
-                                height_and_round,
-                                parts.len()
-                            ),
-                        },
-                    ));
-                }
+                _ => Err(ProposalHandlingError::Recoverable(
+                    ProposalError::UnexpectedProposalPart {
+                        message: format!(
+                            "Unexpected proposal ProposalCommitment for height and round {} at \
+                             position {}",
+                            height_and_round,
+                            parts.len()
+                        ),
+                    },
+                )),
             }
         }
         ProposalPart::Fin(ProposalFin {
@@ -1214,18 +1212,16 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                     validator_cache.insert(height_and_round, validator);
                     Ok(proposal_commitment)
                 }
-                _ => {
-                    return Err(ProposalHandlingError::Recoverable(
-                        ProposalError::UnexpectedProposalPart {
-                            message: format!(
-                                "Unexpected proposal ProposalFin for height and round {} at \
-                                 position {}",
-                                height_and_round,
-                                parts.len()
-                            ),
-                        },
-                    ));
-                }
+                _ => Err(ProposalHandlingError::Recoverable(
+                    ProposalError::UnexpectedProposalPart {
+                        message: format!(
+                            "Unexpected proposal ProposalFin for height and round {} at position \
+                             {}",
+                            height_and_round,
+                            parts.len()
+                        ),
+                    },
+                )),
             }
         }
         ProposalPart::TransactionsFin(ref transactions_fin) => {
