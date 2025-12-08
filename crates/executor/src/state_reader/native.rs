@@ -59,14 +59,17 @@ impl NativeClassCache {
         match locked.cache_get(&class_hash) {
             Some(CacheItem::CompiledClass(cached_class)) => {
                 tracing::trace!(%class_hash, "Native class cache hit");
+                metrics::increment_counter!("native_class_cache_hit_total");
                 Some(cached_class.clone())
             }
             Some(CacheItem::CompilationPending) => {
                 tracing::trace!(%class_hash, "Native class cache miss (pending)");
+                metrics::increment_counter!("native_class_cache_miss_compilation_pending_total");
                 None
             }
             None => {
                 tracing::trace!(%class_hash, "Native class cache miss (compiling)");
+                metrics::increment_counter!("native_class_cache_miss_total");
                 locked.cache_set(class_hash, CacheItem::CompilationPending);
                 let _ = self.compiler_tx.send(CompilerInput {
                     class_hash,
@@ -74,6 +77,9 @@ impl NativeClassCache {
                     class_definition,
                     casm_definition,
                 });
+                let native_class_compilation_queued_total_gauge =
+                    metrics::gauge!("native_class_compilation_queued_total");
+                native_class_compilation_queued_total_gauge.increment(1.0);
                 None
             }
         }
@@ -85,6 +91,9 @@ fn compiler_thread(
     rx: std::sync::mpsc::Receiver<CompilerInput>,
     cancellation_token: CancellationToken,
 ) {
+    let native_class_compilation_queued_total_gauge =
+        metrics::gauge!("native_class_compilation_queued_total");
+
     loop {
         if cancellation_token.is_cancelled() {
             return;
@@ -93,6 +102,8 @@ fn compiler_thread(
         let Ok(input) = rx.recv() else {
             return;
         };
+
+        native_class_compilation_queued_total_gauge.decrement(1.0);
 
         let class_hash = input.class_hash;
 
@@ -103,7 +114,13 @@ fn compiler_thread(
         let started_at = std::time::Instant::now();
         match sierra_class_as_native(input) {
             Ok(compiled_class) => {
-                tracing::debug!(elapsed=?started_at.elapsed(), "Compilation finished");
+                let elapsed = started_at.elapsed();
+                tracing::debug!(?elapsed, "Compilation finished");
+                metrics::histogram!(
+                    "native_class_compilation_duration_seconds",
+                    elapsed.as_secs_f64()
+                );
+                metrics::increment_counter!("native_class_compiled_total");
                 cache
                     .lock()
                     .unwrap()
@@ -111,6 +128,7 @@ fn compiler_thread(
             }
             Err(error) => {
                 tracing::error!(elapsed=?started_at.elapsed(), %error, "Error compiling native class");
+                metrics::increment_counter!("native_class_compilation_errors_total");
             }
         }
     }
