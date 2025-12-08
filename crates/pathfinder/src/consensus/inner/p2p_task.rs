@@ -37,6 +37,7 @@ use pathfinder_consensus::{
     SignedVote,
 };
 use pathfinder_executor::{BlockExecutor, BlockExecutorExt};
+use pathfinder_storage::consensus::ConsensusStorage;
 use pathfinder_storage::{Storage, Transaction, TransactionBehavior};
 use tokio::sync::mpsc;
 
@@ -87,7 +88,7 @@ pub fn spawn(
     mut rx_from_consensus: mpsc::Receiver<P2PTaskEvent>,
     mut rx_from_sync: mpsc::Receiver<SyncRequestToConsensus>,
     main_storage: Storage,
-    consensus_storage: Storage,
+    consensus_storage: ConsensusStorage,
     data_directory: &Path,
     verify_tree_hashes: bool,
     // Does nothing in production builds. Used for integration testing only.
@@ -156,6 +157,7 @@ pub fn spawn(
                 let mut main_db_tx = main_db_conn
                     .transaction_with_behavior(TransactionBehavior::Immediate)
                     .context("Create main database transaction")?;
+                // Chris: FIXME is this storage used correctly?
                 let mut proposals_db = cons_db_conn
                     .transaction_with_behavior(TransactionBehavior::Immediate)
                     .map(ConsensusProposals::new)
@@ -175,6 +177,7 @@ pub fn spawn(
                         // for H, so the other 2 nodes will not make any progress at H. And since
                         // we're not keeping any historical engines (ie. including for H), we will
                         // not help the other 2 nodes in the voting process.
+                        // Chris: FIXME is this correct storage here?
                         if is_outdated_p2p_event(&proposals_db.tx, &event, config.history_depth)? {
                             // TODO consider punishing the sender if the event is too old
                             return Ok(ComputationSuccess::Continue);
@@ -266,6 +269,7 @@ pub fn spawn(
 
                         match request {
                             SyncRequestToConsensus::GetFinalizedBlock { number, reply } => {
+                                // Chris: FIXME is this correct storage here?
                                 let resp =
                                     read_committed_block(&proposals_db.tx, number)?.map(Arc::new);
                                 reply
