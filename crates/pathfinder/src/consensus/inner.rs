@@ -13,16 +13,14 @@ mod proposal_error;
 #[cfg(test)]
 mod test_helpers;
 
-use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
-use anyhow::Context;
 use p2p::consensus::{Event, HeightAndRound};
 use p2p_proto::consensus::ProposalPart;
 use pathfinder_common::{ChainId, ConsensusInfo, ContractAddress, L2Block, ProposalCommitment};
 use pathfinder_consensus::{ConsensusCommand, ConsensusEvent, NetworkMessage};
-use pathfinder_storage::pruning::BlockchainHistoryMode;
-use pathfinder_storage::{JournalMode, Storage, TriePruneMode};
+use pathfinder_storage::consensus::open_consensus_storage;
+use pathfinder_storage::Storage;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, watch};
 
@@ -93,28 +91,6 @@ pub fn start(
             sync_to_consensus_tx,
         }),
     }
-}
-
-fn open_consensus_storage(data_directory: &Path) -> anyhow::Result<Storage> {
-    let storage_manager =
-        pathfinder_storage::StorageBuilder::file(data_directory.join("consensus.sqlite")) // TODO: https://github.com/eqlabs/pathfinder/issues/3047
-            .journal_mode(JournalMode::WAL)
-            .trie_prune_mode(Some(TriePruneMode::Archive))
-            .blockchain_history_mode(Some(BlockchainHistoryMode::Archive))
-            .migrate()?;
-    let available_parallelism = std::thread::available_parallelism()?;
-    let consensus_storage = storage_manager
-        .create_pool(NonZeroU32::new(5 + available_parallelism.get() as u32).unwrap())?;
-    let mut db_conn = consensus_storage
-        .connection()
-        .context("Creating database connection")?;
-    let db_tx = db_conn
-        .transaction()
-        .context("Creating database transaction")?;
-    db_tx.ensure_consensus_proposals_table_exists()?;
-    db_tx.ensure_consensus_finalized_blocks_table_exists()?;
-    db_tx.commit()?;
-    Ok(consensus_storage)
 }
 
 /// Events handled by the consensus task.

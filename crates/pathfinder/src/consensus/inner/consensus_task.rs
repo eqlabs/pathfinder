@@ -45,6 +45,7 @@ use pathfinder_consensus::{
     ValidatorSet,
     ValidatorSetProvider,
 };
+use pathfinder_storage::consensus::ConsensusStorage;
 use pathfinder_storage::{Storage, TransactionBehavior};
 use tokio::sync::mpsc;
 
@@ -63,7 +64,7 @@ pub fn spawn(
     tx_to_p2p: mpsc::Sender<P2PTaskEvent>,
     mut rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
     main_storage: Storage,
-    consensus_storage: Storage,
+    consensus_storage: ConsensusStorage,
     data_directory: &Path,
     // Does nothing in production builds. Used for integration testing only.
     inject_failure: Option<InjectFailureConfig>,
@@ -71,14 +72,17 @@ pub fn spawn(
     let data_directory = data_directory.to_path_buf();
 
     util::task::spawn(async move {
+        // Chris: FIXME is this correct storage here?
         let highest_finalized = highest_finalized(&consensus_storage)
             .context("Failed to read highest finalized block at startup")?;
         // Get the validator address and validator set provider
         let validator_address = config.my_validator_address;
+        // Chris: FIXME is this correct storage here?
         let validator_set_provider =
             L2ValidatorSetProvider::new(consensus_storage.clone(), chain_id, config.clone());
 
         // Get the proposer selector
+        // Chris: FIXME is this correct storage here?
         let proposer_selector =
             L2ProposerSelector::new(consensus_storage.clone(), chain_id, config.clone());
 

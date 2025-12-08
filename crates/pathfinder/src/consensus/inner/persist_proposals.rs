@@ -1,7 +1,7 @@
 use anyhow::Context;
 use p2p_proto::consensus::ProposalPart;
 use pathfinder_common::{ContractAddress, L2Block};
-use pathfinder_storage::Transaction;
+use pathfinder_storage::consensus::ConsensusTransaction;
 
 use crate::consensus::inner::conv::{IntoModel, TryIntoDto};
 use crate::consensus::inner::dto;
@@ -9,12 +9,12 @@ use crate::consensus::inner::dto;
 /// A wrapper around a consensus database transaction that provides
 /// methods for persisting and retrieving proposal parts and finalized blocks.
 pub struct ConsensusProposals<'tx> {
-    pub tx: Transaction<'tx>,
+    pub tx: ConsensusTransaction<'tx>,
 }
 
 impl<'tx> ConsensusProposals<'tx> {
     /// Create a new `ConsensusProposals` wrapper around a transaction.
-    pub fn new(tx: Transaction<'tx>) -> Self {
+    pub fn new(tx: ConsensusTransaction<'tx>) -> Self {
         Self { tx }
     }
 
@@ -168,18 +168,19 @@ mod tests {
     use p2p_proto::consensus::{BlockInfo, ProposalCommitment, ProposalInit};
     use pathfinder_common::prelude::*;
     use pathfinder_crypto::Felt;
-    use pathfinder_storage::StorageBuilder;
+    use pathfinder_storage::consensus::{ConsensusConnection, ConsensusStorage};
 
     use super::*;
 
-    fn setup_test_db() -> (pathfinder_storage::Storage, pathfinder_storage::Connection) {
-        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
-        let mut conn = storage.connection().unwrap();
+    fn setup_test_db() -> (ConsensusStorage, ConsensusConnection) {
+        let consensus_storage =
+            ConsensusStorage::in_tempdir().expect("Failed to create temp database");
+        let mut conn = consensus_storage.connection().unwrap();
         let tx = conn.transaction().unwrap();
         tx.ensure_consensus_proposals_table_exists().unwrap();
         tx.ensure_consensus_finalized_blocks_table_exists().unwrap();
         tx.commit().unwrap();
-        (storage, conn)
+        (consensus_storage, conn)
     }
 
     fn create_test_proposal_parts(
