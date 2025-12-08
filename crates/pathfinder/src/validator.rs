@@ -88,7 +88,7 @@ impl ValidatorBlockInfoStage {
     pub fn validate_consensus_block_info<E>(
         self,
         block_info: BlockInfo,
-        storage: Storage,
+        main_storage: Storage,
     ) -> anyhow::Result<ValidatorTransactionBatchStage<E>> {
         let _span = tracing::debug_span!(
             "Validator::validate_block_info",
@@ -155,7 +155,7 @@ impl ValidatorBlockInfoStage {
             cumulative_state_updates: Vec::new(),
             batch_sizes: Vec::new(),
             batch_p2p_transactions: Vec::new(),
-            consensus_storage: storage,
+            main_storage,
         })
     }
 
@@ -285,8 +285,7 @@ pub struct ValidatorTransactionBatchStage<E> {
     /// Original p2p transactions per batch (for partial execution)
     batch_p2p_transactions: Vec<Vec<p2p_proto::consensus::Transaction>>,
     /// Storage for creating new connections
-    // TODO is this correct? Shouldn't it be main_storage?
-    consensus_storage: Storage,
+    main_storage: Storage,
 }
 
 impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
@@ -295,7 +294,7 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
     pub fn new(
         chain_id: ChainId,
         block_info: pathfinder_executor::types::BlockInfo,
-        consensus_storage: Storage,
+        main_storage: Storage,
     ) -> anyhow::Result<Self> {
         Ok(ValidatorTransactionBatchStage {
             chain_id,
@@ -308,7 +307,7 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
             cumulative_state_updates: Vec::new(),
             batch_sizes: Vec::new(),
             batch_p2p_transactions: Vec::new(),
-            consensus_storage,
+            main_storage,
         })
     }
 
@@ -346,7 +345,7 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
             self.block_info,
             ETH_FEE_TOKEN_ADDRESS,
             STRK_FEE_TOKEN_ADDRESS,
-            self.consensus_storage
+            self.main_storage
                 .connection()
                 .context("Creating database connection for executor reconstruction")?,
             Arc::new(state_update),
@@ -404,7 +403,7 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
                 self.block_info,
                 ETH_FEE_TOKEN_ADDRESS,
                 STRK_FEE_TOKEN_ADDRESS,
-                self.consensus_storage
+                self.main_storage
                     .connection()
                     .context("Creating database connection")?,
             )?);
@@ -1585,7 +1584,7 @@ mod tests {
     /// an empty state diff.
     #[test]
     fn test_empty_proposal_finalization() {
-        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let main_storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
 
         // Create a proposal init for height 0
@@ -1613,7 +1612,7 @@ mod tests {
             .expect("Failed to create ValidatorBlockInfoStage");
 
         let validator_transaction_batch = validator_block_info
-            .validate_consensus_block_info::<BlockExecutor>(block_info, storage.clone())
+            .validate_consensus_block_info::<BlockExecutor>(block_info, main_storage.clone())
             .expect("Failed to validate block info");
 
         // Verify the validator is in the expected empty state
