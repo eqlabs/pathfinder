@@ -31,33 +31,33 @@ pub fn register() {
     METRICS.iter().for_each(|&name| {
         // For all methods
         Request::<'_, Method>::METHODS.iter().for_each(|&method| {
-            metrics::register_counter!(name, "method" => method);
+            let _ = metrics::counter!(name, "method" => method);
         });
 
         // For methods that support block tags in metrics
         methods_with_tags.clone().for_each(|method| {
             TAGS.iter().for_each(|&tag| {
-                metrics::register_counter!(name, "method" => method, "tag" => tag);
+                let _ = metrics::counter!(name, "method" => method, "tag" => tag);
             })
         })
     });
 
     // Request latency for all methods
     Request::<'_, Method>::METHODS.iter().for_each(|&method| {
-        metrics::register_histogram!(METRIC_REQUESTS_LATENCY, "method" => method);
+        let _ = metrics::histogram!(METRIC_REQUESTS_LATENCY, "method" => method);
     });
 
     // Failed requests for specific failure reasons
     REASONS.iter().for_each(|&reason| {
         // For all methods
         Request::<'_, Method>::METHODS.iter().for_each(|&method| {
-            metrics::register_counter!(METRIC_FAILED_REQUESTS, "method" => method, "reason" => reason);
+            let _ = metrics::counter!(METRIC_FAILED_REQUESTS, "method" => method, "reason" => reason);
         });
 
         // For methods that support block tags in metrics
         methods_with_tags.clone().for_each(|method| {
             TAGS.iter().for_each(|&tag| {
-                metrics::register_counter!(METRIC_FAILED_REQUESTS, "method" => method, "tag" => tag, "reason" => reason);
+                let _ = metrics::counter!(METRIC_FAILED_REQUESTS, "method" => method, "tag" => tag, "reason" => reason);
             })
         })
     });
@@ -138,10 +138,10 @@ pub async fn with_metrics<T>(
     fn increment(counter_name: &'static str, meta: RequestMetadata) {
         let method = meta.method;
         let tag = meta.tag;
-        metrics::increment_counter!(counter_name, "method" => method);
+        metrics::counter!(counter_name, "method" => method).increment(1);
 
         if let ("get_block" | "get_state_update", Some(tag)) = (method, tag.as_str()) {
-            metrics::increment_counter!(counter_name, "method" => method, "tag" => tag);
+            metrics::counter!(counter_name, "method" => method, "tag" => tag).increment(1);
         }
     }
 
@@ -150,10 +150,11 @@ pub async fn with_metrics<T>(
     fn increment_failed(meta: RequestMetadata, reason: &'static str) {
         let method = meta.method;
         let tag = meta.tag;
-        metrics::increment_counter!(METRIC_FAILED_REQUESTS, "method" => method, "reason" => reason);
+        metrics::counter!(METRIC_FAILED_REQUESTS, "method" => method, "reason" => reason)
+            .increment(1);
 
         if let ("get_block" | "get_state_update", Some(tag)) = (method, tag.as_str()) {
-            metrics::increment_counter!(METRIC_FAILED_REQUESTS, "method" => method, "tag" => tag, "reason" => reason);
+            metrics::counter!(METRIC_FAILED_REQUESTS, "method" => method, "tag" => tag, "reason" => reason).increment(1);
         }
     }
 
@@ -163,7 +164,8 @@ pub async fn with_metrics<T>(
     let result = f.await;
     let elapsed = started.elapsed();
 
-    metrics::histogram!(METRIC_REQUESTS_LATENCY, elapsed, "method" => meta.method);
+    metrics::histogram!(METRIC_REQUESTS_LATENCY, "method" => meta.method)
+        .record(elapsed.as_secs_f64());
 
     result.inspect_err(|e| {
         increment(METRIC_FAILED_REQUESTS, meta);

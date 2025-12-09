@@ -477,7 +477,8 @@ impl Transaction<'_> {
                 for idx in indices.iter() {
                     delete_stmt.execute(params![idx]).context("Deleting node")?;
                 }
-                metrics::counter!(METRIC_TRIE_NODES_REMOVED, indices.len() as u64, "table" => table);
+                metrics::counter!(METRIC_TRIE_NODES_REMOVED, "table" => table)
+                    .increment(indices.len() as u64);
             }
 
             // Delete the removal markers.
@@ -575,7 +576,7 @@ impl Transaction<'_> {
 
             indices.insert(idx, storage_idx.into());
 
-            metrics::increment_counter!(METRIC_TRIE_NODES_ADDED, "table" => table);
+            metrics::counter!(METRIC_TRIE_NODES_ADDED, "table" => table).increment(1);
         }
 
         Ok(RootIndexUpdate::Updated(

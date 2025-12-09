@@ -747,11 +747,11 @@ async fn consumer(
                 Syncing::Status(status) => {
                     status.current = NumberedBlock::from((block_hash, block_number));
 
-                    metrics::gauge!("current_block", block_number.get() as f64);
+                    metrics::gauge!("current_block").set(block_number.get() as f64);
 
                     if status.highest.number <= block_number {
                         status.highest = status.current;
-                        metrics::gauge!("highest_block", block_number.get() as f64);
+                        metrics::gauge!("highest_block").set(block_number.get() as f64);
                     }
                 }
             }
@@ -827,14 +827,13 @@ async fn consumer(
                         + timings.signature_download)
                         .as_secs_f64();
 
-                    metrics::gauge!("block_download", download_time);
-                    metrics::gauge!("block_processing", update_t.as_secs_f64());
-                    metrics::histogram!("block_processing_duration_seconds", update_t);
-                    metrics::gauge!("block_latency", latency as f64);
-                    metrics::gauge!(
-                        "block_time",
-                        (block_timestamp.get() - latest_timestamp.get()) as f64
-                    );
+                    metrics::gauge!("block_download").set(download_time);
+                    metrics::gauge!("block_processing").set(update_t.as_secs_f64());
+                    metrics::histogram!("block_processing_duration_seconds")
+                        .record(update_t.as_secs_f64());
+                    metrics::gauge!("block_latency").set(latency as f64);
+                    metrics::gauge!("block_time")
+                        .set((block_timestamp.get() - latest_timestamp.get()) as f64);
                     latest_timestamp = block_timestamp;
                     next_number += 1;
 
@@ -1189,8 +1188,8 @@ async fn update_sync_status_latest(
                     highest: latest,
                 });
 
-                metrics::gauge!("current_block", starting.number.get() as f64);
-                metrics::gauge!("highest_block", latest.number.get() as f64);
+                metrics::gauge!("current_block").set(starting.number.get() as f64);
+                metrics::gauge!("highest_block").set(latest.number.get() as f64);
 
                 tracing::debug!(
                     status=%sync_status,
@@ -1201,7 +1200,7 @@ async fn update_sync_status_latest(
                 if status.highest.hash != latest.hash {
                     status.highest = latest;
 
-                    metrics::gauge!("highest_block", latest.number.get() as f64);
+                    metrics::gauge!("highest_block").set(latest.number.get() as f64);
 
                     tracing::debug!(
                         %status,
