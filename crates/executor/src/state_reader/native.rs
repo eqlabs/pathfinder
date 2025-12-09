@@ -31,14 +31,16 @@ pub struct NativeClassCache {
 }
 
 impl NativeClassCache {
-    pub fn spawn(cache_size: NonZeroUsize) -> Self {
+    pub fn spawn(cache_size: NonZeroUsize, optimization_level: u8) -> Self {
         let (tx, rx) = std::sync::mpsc::channel();
 
         let cache = Arc::new(Mutex::new(SizedCache::with_size(cache_size.get())));
 
         util::task::spawn_std({
             let cache = Arc::clone(&cache);
-            move |cancellation_token| compiler_thread(cache, rx, cancellation_token)
+            move |cancellation_token| {
+                compiler_thread(cache, rx, cancellation_token, optimization_level.into())
+            }
         });
 
         NativeClassCache {
@@ -91,6 +93,7 @@ fn compiler_thread(
     cache: Arc<Cache>,
     rx: std::sync::mpsc::Receiver<CompilerInput>,
     cancellation_token: CancellationToken,
+    optimization_level: cairo_native::OptLevel,
 ) {
     loop {
         if cancellation_token.is_cancelled() {
@@ -108,7 +111,7 @@ fn compiler_thread(
 
         tracing::debug!("Compiling native class");
         let started_at = std::time::Instant::now();
-        match sierra_class_as_native(input) {
+        match sierra_class_as_native(input, optimization_level) {
             Ok(compiled_class) => {
                 let elapsed = started_at.elapsed();
                 tracing::debug!(?elapsed, "Compilation finished");
@@ -130,7 +133,10 @@ fn compiler_thread(
     }
 }
 
-fn sierra_class_as_native(input: CompilerInput) -> Result<NativeCompiledClassV1, StateError> {
+fn sierra_class_as_native(
+    input: CompilerInput,
+    optimization_level: cairo_native::OptLevel,
+) -> Result<NativeCompiledClassV1, StateError> {
     let mut sierra_definition: serde_json::Value = serde_json::from_slice(&input.class_definition)
         .map_err(|e| StateError::ProgramError(ProgramError::Parse(e)))?;
     let sierra_abi_str = sierra_definition
@@ -166,7 +172,7 @@ fn sierra_class_as_native(input: CompilerInput) -> Result<NativeCompiledClassV1,
             &sierra_program,
             &sierra_class.entry_points_by_type,
             version_id,
-            cairo_native::OptLevel::Default,
+            optimization_level,
             // `stats` - Passing a [cairo_native::statistics::Statistics] object enables collecting
             // compilation statistics.
             Some(&mut stats),
