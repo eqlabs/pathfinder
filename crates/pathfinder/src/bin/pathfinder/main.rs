@@ -242,6 +242,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         versioned_constants_map: config.versioned_constants_map.clone(),
         native_execution: config.native_execution.is_enabled(),
         native_class_cache_size: config.native_execution.class_cache_size(),
+        native_compiler_optimization_level: config.native_execution.optimization_level(),
         submission_tracker_time_limit: config.submission_tracker_time_limit,
         submission_tracker_size_limit: config.submission_tracker_size_limit,
         block_trace_cache_size: config.rpc_block_trace_cache_size,

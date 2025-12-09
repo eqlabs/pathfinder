@@ -30,7 +30,7 @@ pub struct NativeClassCache;
 
 #[cfg(not(feature = "cairo-native"))]
 impl NativeClassCache {
-    pub fn spawn(_cache_size: std::num::NonZeroUsize) -> Self {
+    pub fn spawn(_cache_size: std::num::NonZeroUsize, _compiler_optimization_level: u8) -> Self {
         Self {}
     }
 }
