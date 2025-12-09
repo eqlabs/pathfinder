@@ -87,7 +87,7 @@ libp2p-identity = "0.2.2"
 libp2p-plaintext = "0.43.0"
 libp2p-swarm-test = "0.5.0"
 metrics = "0.24.3"
-metrics-exporter-prometheus = "0.18.1"
+metrics-exporter-prometheus = { version = "0.18.1", default-features = false }
 mime = "0.3"
 mockall = "0.11.4"
 num-bigint = "0.4.4"
