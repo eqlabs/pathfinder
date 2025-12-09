@@ -76,6 +76,9 @@ enum ComputationSuccess {
     EventVote(p2p_proto::consensus::Vote),
     ProposalGossip(HeightAndRound, Vec<ProposalPart>),
     GossipVote(p2p_proto::consensus::Vote),
+    /// Indicates that a proposal was decided upon and has been successfully
+    /// finalized, which means that it now needs to be stored in the main DB in
+    /// the sync task.
     ConfirmedProposalCommitment(HeightAndRound, ProposalCommitmentWithOrigin),
 }
 
@@ -190,7 +193,17 @@ pub fn spawn(
                         // for H, so the other 2 nodes will not make any progress at H. And since
                         // we're not keeping any historical engines (ie. including for H), we will
                         // not help the other 2 nodes in the voting process.
-                        // Chris: FIXME is this correct storage here?
+                        //
+                        // Chris: FIXME is this correct storage here? Answer: this is tricky,
+                        // depending on whethere history_depth is close to zero:
+                        // - if history_depth is zero or maybe 1, the highest block can still not be
+                        //   in the main DB but reside in the consensus DB waiting for the sync task
+                        //   to pick it up. In this case we need to read from consensus DB as well.
+                        // - if history_depth is large enough, then the highest block is always in
+                        //   the main DB, so reading from main DB is sufficient.
+                        // Chris: FIXME is this fn needed at all? Check what happens if we remove
+                        // it. Is there another way to check if the consensus engine for some old
+                        // height is still not purged in the consensus_task?
                         if is_outdated_p2p_event(
                             &proposals_db.tx,
                             &event.kind,
@@ -201,6 +214,7 @@ pub fn spawn(
                                 delta: peer_score::penalty::OUTDATED_MESSAGE,
                             });
                         }
+                        */
 
                         match event.kind {
                             EventKind::Proposal(height_and_round, proposal_part) => {
@@ -288,7 +302,9 @@ pub fn spawn(
 
                         match request {
                             SyncRequestToConsensus::GetFinalizedBlock { number, reply } => {
-                                // Chris: FIXME is this correct storage here?
+                                // let x = proposals_db
+                                //     .read_finalized_block(height, round)
+
                                 let resp =
                                     read_committed_block(&proposals_db.tx, number)?.map(Arc::new);
                                 reply
@@ -405,11 +421,9 @@ pub fn spawn(
                                 );
 
                                 // The engine chose us for this round as proposer and requested that
-                                // we gossip a proposal from a
-                                // previous round.
-                                // For now we just choose the proposal from the previous round, and
-                                // the rest are kept for debugging
-                                // purposes.
+                                // we gossip a proposal from a previous round. For now we just
+                                // choose the proposal from the previous round, and the rest are
+                                // kept for debugging purposes.
                                 let Some((round, mut proposal_parts)) =
                                     proposals_db.last_parts(proposal.height, &validator_address)?
                                 else {
@@ -470,6 +484,9 @@ pub fn spawn(
                             )))
                         }
                     },
+                    // Consensus has reached a positive decision on this proposal so the proposal's
+                    // execution needs to be finalized and the resulting block has to be committed
+                    // to the main database.
                     P2PTaskEvent::CommitBlock(height_and_round, value) => {
                         {
                             // TODO: We do not have to commit these blocks to the main database
@@ -491,12 +508,12 @@ pub fn spawn(
                             );
                             let stopwatch = std::time::Instant::now();
 
-                            let finalized_block = match proposals_db.read_finalized_block(
+                            let state_diff_commitment = match proposals_db.read_finalized_block(
                                 height_and_round.height(),
                                 height_and_round.round(),
                             )? {
                                 // Our own proposal is already executed and finalized.
-                                Some(block) => block,
+                                Some(block) => block.header.state_diff_commitment,
                                 // Incoming proposal has been executed and needs to be finalized
                                 // now.
                                 None => {
@@ -505,6 +522,22 @@ pub fn spawn(
                                         .map_err(anyhow::Error::from)?;
                                     let validator = validator_stage.try_into_finalize_stage()?;
                                     let main_readonly_storage = main_readonly_storage.clone();
+                                    // finalize() will now update the tries in main storage and then
+                                    // compute the resulting block hash.
+                                    //
+                                    // There is no risk at this point of polluting the state tries
+                                    // in the main storage with new trie nodes that do not belong to
+                                    // any meaningful (ie. decided-upon) block. In other words, this
+                                    // is safe for the consistency of state tries in the main DB,
+                                    // because consensus has already positively decided upon this
+                                    // proposal, and in consequence the new block resulting from
+                                    // this proposal's execution. This block will soon be committed
+                                    // in the sync task.
+                                    //
+                                    // The only issue that remains for the future is adding support
+                                    // for forks, which could mean for the now-finalized and
+                                    // soon-to-be-committed block that it may not end up in the
+                                    // canonical chain.
                                     let block = validator.finalize(
                                         &main_db_tx,
                                         main_readonly_storage,
@@ -516,14 +549,60 @@ pub fn spawn(
                                     main_db_tx = main_db_conn
                                         .transaction_with_behavior(TransactionBehavior::Immediate)
                                         .context("Create database transaction")?;
-                                    block
+                                    // The state tries in the main storage have been updated but the
+                                    // block itself has not been committed to the main DB yet.
+                                    //
+                                    // Chris: FIXME add a failure injection point here for
+                                    // integration testing
+                                    //
+                                    // Chris: FIXME actually store the finalized block in the
+                                    // consensus DB so that the sync task can retrieve it at the
+                                    // time it sees fit
+                                    //
+                                    // !!! call perisist_finalized_block() here
+                                    //
+                                    // TODO cleanup this comment
+                                    let state_diff_commitment = block.header.state_diff_commitment;
+                                    proposals_db
+                                        .persist_finalized_block(
+                                            height_and_round.height(),
+                                            height_and_round.round(),
+                                            block,
+                                        )
+                                        .context("Persisting finalized block")?;
+                                    proposals_db
+                                        .commit()
+                                        .context("Committing consensus database transaction")?;
+                                    proposals_db = cons_db_conn
+                                        .transaction_with_behavior(TransactionBehavior::Immediate)
+                                        .map(ConsensusProposals::new)
+                                        .context("Create consensus database transaction")?;
+
+                                    state_diff_commitment
                                 }
                             };
 
-                            assert_eq!(value.0 .0, finalized_block.header.state_diff_commitment.0);
+                            assert_eq!(value.0 .0, state_diff_commitment.0);
 
-                            // Necessary for proper fake proposal creation at next heights.
-                            commit_finalized_block(&proposals_db.tx, finalized_block)?;
+                            // At this point the block is finalized, and should be committed to the
+                            // main DB. The mechanism of committing it
+                            // to the main DB is as follows:
+                            // 1. The sync task is the one actually committing blocks to the main
+                            //    DB, so at some point it will reach the height of this finalized
+                            //    block and will send a SyncRequestToConsensus::GetFinalizedBlock to
+                            //    this task.
+                            // 2. This task commits the finalized block to the consensus database,
+                            //    as a temporary persistent cache, so that the sync task can
+                            //    retrieve it when necessary.
+                            // 3. Because the finalized block is now safely stored in the consensus
+                            //    database, and waiting to be picked up by the sync task, we can now
+                            //    remove all proposals and parts for this height from   the
+                            //    consensus database, as they are no longer needed.
+
+                            // This call can be removed if perisist_finalized_block() is called in
+                            // the block above.
+                            /*
+                            commit_finalized_block(&proposals_db.tx, state_diff_commitment)?;
                             proposals_db
                                 .commit()
                                 .context("Committing consensus database transaction")?;
@@ -531,8 +610,11 @@ pub fn spawn(
                                 .transaction_with_behavior(TransactionBehavior::Immediate)
                                 .map(ConsensusProposals::new)
                                 .context("Create consensus database transaction")?;
-
+                            */
                             // Does nothing in production builds.
+                            //
+                            // Chris: FIXME proposal is not committed here anymore so this needs
+                            // fixing, otherwise this integration test case is useless
                             integration_testing::debug_fail_on_proposal_committed(
                                 height_and_round.height(),
                                 inject_failure,
@@ -540,15 +622,20 @@ pub fn spawn(
                             );
 
                             tracing::info!(
-                                "🖧  💾 {validator_address} Finalized and committed block at \
-                                 {height_and_round} to the database in {} ms",
+                                "🖧  💾 {validator_address} Finalized and prepared block for \
+                                 committing to the database at {height_and_round} in {} ms",
                                 stopwatch.elapsed().as_millis()
                             );
 
-                            proposals_db.remove_finalized_blocks(height_and_round.height())?;
+                            // Remove all finalized blocks for previous rounds at this height
+                            // because they will not be committed to the main DB.
+                            proposals_db.remove_uncommitted_finalized_blocks(
+                                height_and_round.height(),
+                                height_and_round.round(),
+                            )?;
                             tracing::debug!(
-                                "🖧  🗑️ {validator_address} removed my finalized blocks for height \
-                                 {}",
+                                "🖧  🗑️ {validator_address} removed my uncommitted finalized \
+                                 blocks for height {}",
                                 height_and_round.height()
                             );
 
@@ -560,6 +647,7 @@ pub fn spawn(
                                 height_and_round.height()
                             );
 
+                            // Remove cached proposal parts for this height
                             proposals_db.remove_parts(height_and_round.height(), None)?;
                             tracing::debug!(
                                 "🖧  🗑️ {validator_address} removed my proposal parts for height {}",
@@ -605,6 +693,8 @@ pub fn spawn(
                         // sure.
                         let success = match exec_success {
                             Some((hnr, commitment)) => {
+                                // Chris: FIXME this trace is not true - the finalized block has not
+                                // been committed yet
                                 ComputationSuccess::ConfirmedProposalCommitment(hnr, commitment)
                             }
                             None => ComputationSuccess::Continue,
@@ -839,7 +929,9 @@ async fn send_proposal_to_consensus(
         .expect("Receiver not to be dropped");
 }
 
-/// Commit the given finalized block to the database.
+/*
+/// Chris: FIXME this fn should actually be called: "Store the finalized block
+/// in consensus DB until the sync task picks it up"
 fn commit_finalized_block(
     cons_db_tx: &Transaction<'_>,
     finalized_block: L2Block,
@@ -865,7 +957,8 @@ fn commit_finalized_block(
     Ok(())
 }
 
-/// Read a committed block from the database.
+/// Chris: FIXME this fn should actually be called: "Read the finalized block
+/// from consensus DB where it was stored until the sync task picks it up"
 fn read_committed_block(
     cons_db_tx: &Transaction<'_>,
     height: BlockNumber,
@@ -908,6 +1001,7 @@ fn read_committed_block(
 
     Ok(Some(finalized_block))
 }
+*/
 
 /// Handles an incoming proposal part received from the P2P network. Returns
 /// `Ok(Some((proposal_commitment, proposer_address)))` if the proposal is

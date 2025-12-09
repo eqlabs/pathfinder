@@ -337,6 +337,9 @@ pub fn spawn(
                         // consensus engine is already started for this new height carried in those
                         // messages.
                         ConsensusCommand::Proposal(_) | ConsensusCommand::Vote(_) => {
+                            // Chris: FIXME is this workaround still needed with catch-up sync
+                            // implemented?
+                            //
                             // TODO catch up with the current height of the consensus network using
                             // sync, for the time being just observe the height in the rebroadcasted
                             // votes or in the proposals.
