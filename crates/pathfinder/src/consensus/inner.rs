@@ -78,7 +78,6 @@ pub fn start(
         tx_to_p2p,
         rx_from_p2p,
         main_storage,
-        consensus_storage,
         data_directory,
         inject_failure_config,
     );
