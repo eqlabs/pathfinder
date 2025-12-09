@@ -73,8 +73,8 @@ pub fn spawn(
 
     util::task::spawn(async move {
         // Chris: FIXME is this correct storage here?
-        let highest_finalized = highest_finalized(&consensus_storage)
-            .context("Failed to read highest finalized block at startup")?;
+        let highest_committed = highest_committed(&main_storage)
+            .context("Failed to read highest committed block at startup")?;
         // Get the validator address and validator set provider
         let validator_address = config.my_validator_address;
         // Chris: FIXME is this correct storage here?
@@ -95,17 +95,17 @@ pub fn spawn(
                 // the staking contract is implemented. Related issue: https://github.com/eqlabs/pathfinder/issues/2936
                 Arc::new(validator_set_provider.clone()),
                 proposer_selector,
-                highest_finalized,
+                highest_committed,
             )?;
 
         // Compute the next height to work on using all available information:
         // - max_active_height: highest incomplete/active height being tracked
         // - last_decided_height: highest decided height (even if not actively tracked)
-        // - highest_finalized + 1: next height after what's been committed to DB
+        // - highest_committed + 1: next height after what's been committed to main DB
         let mut next_height = [
             consensus.max_active_height().unwrap_or(0),
             consensus.last_decided_height().unwrap_or(0),
-            highest_finalized.map(|h| h + 1).unwrap_or(0),
+            highest_committed.map(|h| h + 1).unwrap_or(0),
         ]
         .into_iter()
         .max()
@@ -389,20 +389,22 @@ pub fn spawn(
     })
 }
 
-fn highest_finalized(storage: &Storage) -> anyhow::Result<Option<u64>> {
-    let mut db_conn = storage
+/// Reads the highest committed block number from main storage.
+fn highest_committed(main_storage: &Storage) -> anyhow::Result<Option<u64>> {
+    let mut db_conn = main_storage
         .connection()
-        .context("Failed to create database connection for reading highest finalized block")?;
+        .context("Failed to create database connection for reading highest committed block")?;
     let db_txn = db_conn
         .transaction()
-        .context("Failed to create database transaction for reading highest finalized block")?;
-    let highest_finalized = db_txn
+        .context("Failed to create database transaction for reading highest committed block")?;
+    let highest_committed = db_txn
         .block_number(BlockId::Latest)
         .context("Failed to query latest block number")?
         .map(|x| x.get());
-    Ok(highest_finalized)
+    Ok(highest_committed)
 }
 
+/// Starts consensus for the given height if not already active.
 fn start_height(
     consensus: &mut Consensus<ConsensusValue, ContractAddress, L2ProposerSelector>,
     height: u64,
