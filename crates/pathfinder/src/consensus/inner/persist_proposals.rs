@@ -136,9 +136,20 @@ impl<'tx> ConsensusProposals<'tx> {
         }
     }
 
-    /// Remove all finalized blocks for a given height.
-    pub fn remove_finalized_blocks(&self, height: u64) -> anyhow::Result<()> {
-        self.tx.remove_consensus_finalized_blocks(height)
+    /// Remove all finalized blocks for the given height **except** the one from
+    /// `commit_round`.
+    pub fn remove_uncommitted_finalized_blocks(
+        &self,
+        height: u64,
+        commit_round: u32,
+    ) -> anyhow::Result<()> {
+        self.tx
+            .remove_uncommitted_consensus_finalized_blocks(height, commit_round)
+    }
+
+    /// Remove a finalized block for the given height and round.
+    pub fn remove_finalized_block(&self, height: u64, round: u32) -> anyhow::Result<()> {
+        self.tx.remove_consensus_finalized_block(height, round)
     }
 
     fn decode_proposal_parts(buf: &[u8]) -> anyhow::Result<Vec<ProposalPart>> {

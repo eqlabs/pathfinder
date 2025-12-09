@@ -62,15 +62,15 @@ impl ConsensusConnection {
     pub fn transaction_with_behavior(
         &mut self,
         behavior: TransactionBehavior,
-    ) -> anyhow::Result<Transaction<'_>> {
+    ) -> anyhow::Result<ConsensusTransaction<'_>> {
         let tx = self.0.connection.transaction_with_behavior(behavior)?;
-        Ok(Transaction {
+        Ok(ConsensusTransaction(Transaction {
             transaction: tx,
             event_filter_cache: self.0.event_filter_cache.clone(),
             running_event_filter: self.0.running_event_filter.clone(),
             trie_prune_mode: self.0.trie_prune_mode,
             blockchain_history_mode: self.0.blockchain_history_mode,
-        })
+        }))
     }
 }
 
@@ -347,19 +347,42 @@ impl ConsensusTransaction<'_> {
             .map_err(|e| e.into())
     }
 
-    /// Always all rounds
-    pub fn remove_consensus_finalized_blocks(&self, height: u64) -> anyhow::Result<()> {
+    /// Remove all finalized blocks for the given height **except** the one from
+    /// `commit_round`.
+    pub fn remove_uncommitted_consensus_finalized_blocks(
+        &self,
+        height: u64,
+        commit_round: u32,
+    ) -> anyhow::Result<()> {
         self.0
             .inner()
             .execute(
                 r"
                 DELETE FROM consensus_finalized_blocks
-                WHERE height = :height",
+                WHERE height = :height AND round <> :commit_round",
                 named_params! {
                     ":height": &height,
+                    ":commit_round": &commit_round,
                 },
             )
-            .context("Deleting consensus finalized blocks")?;
+            .context("Deleting consensus finalized blocks which will not be committed to the DB")?;
+        Ok(())
+    }
+
+    /// Remove a finalized block for the given height and round.
+    pub fn remove_consensus_finalized_block(&self, height: u64, round: u32) -> anyhow::Result<()> {
+        self.0
+            .inner()
+            .execute(
+                r"
+                DELETE FROM consensus_finalized_blocks
+                WHERE height = :height AND round = :round",
+                named_params! {
+                    ":height": &height,
+                    ":round": &round,
+                },
+            )
+            .context("Deleting consensus finalized block")?;
         Ok(())
     }
 }
