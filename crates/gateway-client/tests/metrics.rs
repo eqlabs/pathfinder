@@ -34,13 +34,13 @@ where
     F: Fn(Client, BlockId) -> Fut,
     Fut: Future<Output = T>,
 {
-    use pathfinder_common::test_utils::metrics::{FakeRecorder, ScopedRecorderGuard};
+    use pathfinder_common::test_utils::metrics::{FakeRecorder};
 
     let recorder = FakeRecorder::new_for(&["get_block"]);
     let handle = recorder.handle();
 
     // Automatically deregister the recorder
-    let _guard = ScopedRecorderGuard::new(recorder);
+    let _guard = metrics::set_default_local_recorder(&recorder);
 
     let responses = [
         // Any valid fixture

@@ -102,13 +102,6 @@ pub async fn estimate_message_fee(
             }
         };
 
-        // the error isn't in spec for earlier API versions
-        if (rpc_version >= RpcVersion::V10)
-            && !db_tx.contract_exists(input.message.to_address, header.number.into())?
-        {
-            return Err(EstimateMessageFeeError::ContractNotFound);
-        }
-
         let state = ExecutionState::simulation(
             context.chain_id,
             header,
@@ -205,7 +198,6 @@ impl crate::dto::SerializeForVersion for Output {
 pub enum EstimateMessageFeeError {
     Internal(anyhow::Error),
     BlockNotFound,
-    ContractNotFound,
     ContractError {
         revert_error: String,
         revert_error_stack: pathfinder_executor::ErrorStack,
@@ -249,7 +241,6 @@ impl From<EstimateMessageFeeError> for ApplicationError {
     fn from(value: EstimateMessageFeeError) -> Self {
         match value {
             EstimateMessageFeeError::BlockNotFound => ApplicationError::BlockNotFound,
-            EstimateMessageFeeError::ContractNotFound => ApplicationError::ContractNotFound,
             EstimateMessageFeeError::ContractError {
                 revert_error,
                 revert_error_stack,
@@ -429,7 +420,7 @@ mod tests {
         let err = super::estimate_message_fee(rpc, input, RpcVersion::V10)
             .await
             .unwrap_err();
-        assert_matches!(err, EstimateMessageFeeError::ContractNotFound);
+        assert_matches!(err, EstimateMessageFeeError::BlockNotFound);
     }
 
     #[rstest::rstest]
