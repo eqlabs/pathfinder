@@ -25,6 +25,10 @@ use crate::{proto, ToProtobuf, TryFromProtobuf};
 )]
 pub struct Hash(pub Felt);
 
+impl Hash {
+    pub const ZERO: Self = Self(Felt::ZERO);
+}
+
 impl std::fmt::Display for Hash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
@@ -81,8 +85,9 @@ pub struct BlockId {
     pub hash: Hash,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Dummy)]
 pub enum L1DataAvailabilityMode {
+    #[default]
     Calldata,
     Blob,
 }

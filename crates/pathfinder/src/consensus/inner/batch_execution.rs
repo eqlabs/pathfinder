@@ -10,9 +10,10 @@ use anyhow::Context;
 use p2p::consensus::HeightAndRound;
 use p2p_proto::consensus as proto_consensus;
 use pathfinder_common::{BlockId, BlockNumber};
+use pathfinder_executor::BlockExecutorExt;
 use pathfinder_storage::Transaction as DbTransaction;
 
-use crate::validator::ValidatorTransactionBatchStage;
+use crate::validator::{TransactionExt, ValidatorTransactionBatchStage};
 
 /// Manages batch execution with rollback support for TransactionsFin
 #[derive(Debug, Clone)]
@@ -68,16 +69,16 @@ impl BatchExecutionManager {
     /// Process a transaction batch with deferral support
     ///
     /// This is the main method that should be used by the P2P task
-    pub fn process_batch_with_deferral(
+    pub fn process_batch_with_deferral<E: BlockExecutorExt, T: TransactionExt>(
         &mut self,
         height_and_round: HeightAndRound,
         transactions: Vec<proto_consensus::Transaction>,
-        validator: &mut ValidatorTransactionBatchStage,
-        cons_db_tx: &DbTransaction<'_>,
+        validator: &mut ValidatorTransactionBatchStage<E>,
+        consensus_db_tx: &DbTransaction<'_>,
         deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
     ) -> anyhow::Result<()> {
         // Check if execution should be deferred
-        if should_defer_execution(height_and_round, cons_db_tx)? {
+        if should_defer_execution(height_and_round, consensus_db_tx)? {
             tracing::debug!(
                 "🖧  ⚙️ transaction batch execution for height and round {height_and_round} is \
                  deferred"
@@ -95,7 +96,7 @@ impl BatchExecutionManager {
         // Execute any previously deferred transactions first
         let deferred = deferred_executions.remove(&height_and_round);
         let deferred_txns_len = deferred.as_ref().map_or(0, |d| d.transactions.len());
-        let deferred_transactions_fin = deferred.as_ref().and_then(|d| d.transactions_fin.clone());
+        let deferred_transactions_fin = deferred.as_ref().and_then(|d| d.transactions_fin);
 
         let mut all_transactions = transactions;
         if let Some(DeferredExecution {
@@ -108,7 +109,7 @@ impl BatchExecutionManager {
 
         // Execute the batch
         validator
-            .execute_batch(all_transactions)
+            .execute_batch::<T>(all_transactions)
             .context("Failed to execute transaction batch")?;
 
         // Mark that execution has started for this height/round
@@ -131,7 +132,7 @@ impl BatchExecutionManager {
                 "Processing deferred TransactionsFin for {height_and_round} after batch execution \
                  started"
             );
-            self.process_transactions_fin(height_and_round, transactions_fin, validator)?;
+            self.process_transactions_fin::<E, T>(height_and_round, transactions_fin, validator)?;
         }
 
         Ok(())
@@ -143,11 +144,11 @@ impl BatchExecutionManager {
     /// know execution should proceed immediately (e.g., when executing
     /// previously deferred transactions after the parent block is
     /// committed).
-    pub fn execute_batch(
+    pub fn execute_batch<E: BlockExecutorExt, T: TransactionExt>(
         &mut self,
         height_and_round: HeightAndRound,
         transactions: Vec<proto_consensus::Transaction>,
-        validator: &mut ValidatorTransactionBatchStage,
+        validator: &mut ValidatorTransactionBatchStage<E>,
     ) -> anyhow::Result<()> {
         // Mark that execution has started for this height/round, even if batch is
         // empty. This is necessary because TransactionsFin may arrive later and
@@ -164,7 +165,7 @@ impl BatchExecutionManager {
 
         // Execute the batch
         validator
-            .execute_batch(transactions)
+            .execute_batch::<T>(transactions)
             .context("Failed to execute transaction batch")?;
 
         tracing::debug!(
@@ -180,11 +181,11 @@ impl BatchExecutionManager {
     /// execution has already started (at least one batch executed). If
     /// transactions are deferred, deferral should be handled by the caller
     /// before calling this function.
-    pub fn process_transactions_fin(
+    pub fn process_transactions_fin<E: BlockExecutorExt, T: TransactionExt>(
         &mut self,
         height_and_round: HeightAndRound,
         transactions_fin: proto_consensus::TransactionsFin,
-        validator: &mut ValidatorTransactionBatchStage,
+        validator: &mut ValidatorTransactionBatchStage<E>,
     ) -> anyhow::Result<()> {
         // Verify that execution has started (at least one batch was executed, not
         // deferred)
@@ -218,7 +219,7 @@ impl BatchExecutionManager {
                 .checked_sub(1)
                 .context("Cannot rollback to 0 transactions")?;
             validator
-                .rollback_to_transaction(target_index)
+                .rollback_to_transaction::<T>(target_index)
                 .context("Failed to rollback to target transaction count")?;
         } else if target_transaction_count > current_transaction_count {
             // This shouldn't happen with proper message ordering and no protocol errors.
@@ -293,14 +294,14 @@ impl Default for ProposalCommitmentWithOrigin {
 /// be deferred because the previous block is not committed yet.
 pub fn should_defer_execution(
     height_and_round: HeightAndRound,
-    cons_db_tx: &DbTransaction<'_>,
+    main_db_tx: &DbTransaction<'_>,
 ) -> anyhow::Result<bool> {
     let parent_block = height_and_round.height().checked_sub(1);
     let defer = if let Some(parent_block) = parent_block {
         let parent_block =
             BlockNumber::new(parent_block).context("Block number is larger than i64::MAX")?;
         let parent_block = BlockId::Number(parent_block);
-        let parent_committed = cons_db_tx.block_exists(parent_block)?;
+        let parent_committed = main_db_tx.block_exists(parent_block)?;
         !parent_committed
     } else {
         false
@@ -311,8 +312,10 @@ pub fn should_defer_execution(
 #[cfg(test)]
 mod tests {
     use pathfinder_crypto::Felt;
+    use pathfinder_executor::BlockExecutor;
 
     use super::*;
+    use crate::validator::ProdTransactionMapper;
 
     /// Helper function to create a committed parent block in storage
     fn create_committed_parent_block(
@@ -407,7 +410,7 @@ mod tests {
         };
 
         let mut validator_stage =
-            ValidatorTransactionBatchStage::new(chain_id, block_info, storage)
+            ValidatorTransactionBatchStage::<BlockExecutor>::new(chain_id, block_info, storage)
                 .expect("Failed to create validator stage");
 
         let mut batch_execution_manager = BatchExecutionManager::new();
@@ -426,7 +429,11 @@ mod tests {
         // Execute a batch to start execution
         let transactions = create_transaction_batch(0, 5, chain_id);
         batch_execution_manager
-            .execute_batch(height_and_round, transactions, &mut validator_stage)
+            .execute_batch::<BlockExecutor, ProdTransactionMapper>(
+                height_and_round,
+                transactions,
+                &mut validator_stage,
+            )
             .expect("Failed to execute batch");
 
         // Verify execution has started
@@ -453,7 +460,11 @@ mod tests {
             executed_transaction_count: 5,
         };
         batch_execution_manager
-            .process_transactions_fin(height_and_round, transactions_fin, &mut validator_stage)
+            .process_transactions_fin::<BlockExecutor, ProdTransactionMapper>(
+                height_and_round,
+                transactions_fin,
+                &mut validator_stage,
+            )
             .expect("Failed to process TransactionsFin");
 
         // Verify TransactionsFin is now marked as processed
@@ -525,9 +536,12 @@ mod tests {
             starknet_version: StarknetVersion::new(0, 14, 0, 0),
         };
 
-        let mut validator_stage =
-            ValidatorTransactionBatchStage::new(chain_id, block_info, storage.clone())
-                .expect("Failed to create validator stage");
+        let mut validator_stage = ValidatorTransactionBatchStage::<BlockExecutor>::new(
+            chain_id,
+            block_info,
+            storage.clone(),
+        )
+        .expect("Failed to create validator stage");
 
         let mut batch_execution_manager = BatchExecutionManager::new();
         let height_and_round = HeightAndRound::new(2, 1);
@@ -555,7 +569,7 @@ mod tests {
 
         // Simulate the fix: create deferred entry and store TransactionsFin
         let deferred = deferred_executions.entry(height_and_round).or_default();
-        deferred.transactions_fin = Some(transactions_fin.clone());
+        deferred.transactions_fin = Some(transactions_fin);
 
         // Verify TransactionsFin was stored
         assert!(
@@ -571,7 +585,7 @@ mod tests {
         let mut db_conn = storage.connection().unwrap();
         let db_tx = db_conn.transaction().unwrap();
         batch_execution_manager
-            .process_batch_with_deferral(
+            .process_batch_with_deferral::<BlockExecutor, ProdTransactionMapper>(
                 height_and_round,
                 transactions,
                 &mut validator_stage,
@@ -618,9 +632,12 @@ mod tests {
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let block_info = create_test_block_info(1);
 
-        let mut validator_stage =
-            ValidatorTransactionBatchStage::new(chain_id, block_info, storage.clone())
-                .expect("Failed to create validator stage");
+        let mut validator_stage = ValidatorTransactionBatchStage::<BlockExecutor>::new(
+            chain_id,
+            block_info,
+            storage.clone(),
+        )
+        .expect("Failed to create validator stage");
 
         let mut batch_execution_manager = BatchExecutionManager::new();
         let height_and_round = HeightAndRound::new(2, 1);
@@ -634,7 +651,7 @@ mod tests {
             let transactions = create_transaction_batch(0, 3, chain_id);
 
             batch_execution_manager
-                .process_batch_with_deferral(
+                .process_batch_with_deferral::<BlockExecutor, ProdTransactionMapper>(
                     height_and_round,
                     transactions,
                     &mut validator_stage,
@@ -673,7 +690,7 @@ mod tests {
             let transactions = create_transaction_batch(3, 2, chain_id);
 
             batch_execution_manager
-                .process_batch_with_deferral(
+                .process_batch_with_deferral::<BlockExecutor, ProdTransactionMapper>(
                     height_and_round,
                     transactions,
                     &mut validator_stage,
@@ -700,7 +717,7 @@ mod tests {
 
         // Test 3: Multiple batches with immediate execution (parent already committed)
         let height_and_round_2 = HeightAndRound::new(3, 1);
-        let mut validator_stage_2 = ValidatorTransactionBatchStage::new(
+        let mut validator_stage_2 = ValidatorTransactionBatchStage::<BlockExecutor>::new(
             chain_id,
             create_test_block_info(2),
             storage.clone(),
@@ -717,7 +734,7 @@ mod tests {
             for i in 0..3 {
                 let transactions = create_transaction_batch(i * 2, 2, chain_id);
                 batch_execution_manager
-                    .process_batch_with_deferral(
+                    .process_batch_with_deferral::<BlockExecutor, ProdTransactionMapper>(
                         height_and_round_2,
                         transactions,
                         &mut validator_stage_2,
@@ -753,9 +770,12 @@ mod tests {
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let block_info = create_test_block_info(1);
 
-        let mut validator_stage =
-            ValidatorTransactionBatchStage::new(chain_id, block_info, storage.clone())
-                .expect("Failed to create validator stage");
+        let mut validator_stage = ValidatorTransactionBatchStage::<BlockExecutor>::new(
+            chain_id,
+            block_info,
+            storage.clone(),
+        )
+        .expect("Failed to create validator stage");
 
         let mut batch_execution_manager = BatchExecutionManager::new();
         let height_and_round = HeightAndRound::new(2, 1);
@@ -766,13 +786,25 @@ mod tests {
         let batch3 = create_transaction_batch(10, 4, chain_id);
 
         batch_execution_manager
-            .execute_batch(height_and_round, batch1, &mut validator_stage)
+            .execute_batch::<BlockExecutor, ProdTransactionMapper>(
+                height_and_round,
+                batch1,
+                &mut validator_stage,
+            )
             .expect("Failed to execute batch 1");
         batch_execution_manager
-            .execute_batch(height_and_round, batch2, &mut validator_stage)
+            .execute_batch::<BlockExecutor, ProdTransactionMapper>(
+                height_and_round,
+                batch2,
+                &mut validator_stage,
+            )
             .expect("Failed to execute batch 2");
         batch_execution_manager
-            .execute_batch(height_and_round, batch3, &mut validator_stage)
+            .execute_batch::<BlockExecutor, ProdTransactionMapper>(
+                height_and_round,
+                batch3,
+                &mut validator_stage,
+            )
             .expect("Failed to execute batch 3");
 
         assert_eq!(
@@ -788,7 +820,11 @@ mod tests {
             };
 
             batch_execution_manager
-                .process_transactions_fin(height_and_round, transactions_fin, &mut validator_stage)
+                .process_transactions_fin::<BlockExecutor, ProdTransactionMapper>(
+                    height_and_round,
+                    transactions_fin,
+                    &mut validator_stage,
+                )
                 .expect("Failed to process TransactionsFin");
 
             assert!(
@@ -805,9 +841,12 @@ mod tests {
         // Test 2: Rollback case - TransactionsFin indicates fewer transactions
         // Re-execute batches to get back to 14 transactions
         let storage_2 = StorageBuilder::in_tempdir().expect("Failed to create temp database");
-        let mut validator_stage_2 =
-            ValidatorTransactionBatchStage::new(chain_id, create_test_block_info(1), storage_2)
-                .expect("Failed to create validator stage");
+        let mut validator_stage_2 = ValidatorTransactionBatchStage::<BlockExecutor>::new(
+            chain_id,
+            create_test_block_info(1),
+            storage_2,
+        )
+        .expect("Failed to create validator stage");
 
         let batch1_2 = create_transaction_batch(0, 3, chain_id);
         let batch2_2 = create_transaction_batch(3, 7, chain_id);
@@ -815,13 +854,25 @@ mod tests {
 
         let height_and_round_2 = HeightAndRound::new(3, 1);
         batch_execution_manager
-            .execute_batch(height_and_round_2, batch1_2, &mut validator_stage_2)
+            .execute_batch::<BlockExecutor, ProdTransactionMapper>(
+                height_and_round_2,
+                batch1_2,
+                &mut validator_stage_2,
+            )
             .expect("Failed to execute batch 1");
         batch_execution_manager
-            .execute_batch(height_and_round_2, batch2_2, &mut validator_stage_2)
+            .execute_batch::<BlockExecutor, ProdTransactionMapper>(
+                height_and_round_2,
+                batch2_2,
+                &mut validator_stage_2,
+            )
             .expect("Failed to execute batch 2");
         batch_execution_manager
-            .execute_batch(height_and_round_2, batch3_2, &mut validator_stage_2)
+            .execute_batch::<BlockExecutor, ProdTransactionMapper>(
+                height_and_round_2,
+                batch3_2,
+                &mut validator_stage_2,
+            )
             .expect("Failed to execute batch 3");
 
         let transactions_fin_rollback = TransactionsFin {
@@ -829,7 +880,7 @@ mod tests {
         };
 
         batch_execution_manager
-            .process_transactions_fin(
+            .process_transactions_fin::<BlockExecutor, ProdTransactionMapper>(
                 height_and_round_2,
                 transactions_fin_rollback,
                 &mut validator_stage_2,
@@ -860,7 +911,7 @@ mod tests {
         let block_info = create_test_block_info(1);
 
         let mut validator_stage =
-            ValidatorTransactionBatchStage::new(chain_id, block_info, storage)
+            ValidatorTransactionBatchStage::<BlockExecutor>::new(chain_id, block_info, storage)
                 .expect("Failed to create validator stage");
 
         let mut batch_execution_manager = BatchExecutionManager::new();
@@ -868,7 +919,11 @@ mod tests {
 
         // Empty batch still marks execution as started
         batch_execution_manager
-            .execute_batch(height_and_round, vec![], &mut validator_stage)
+            .execute_batch::<BlockExecutor, ProdTransactionMapper>(
+                height_and_round,
+                vec![],
+                &mut validator_stage,
+            )
             .expect("Failed to execute empty batch");
 
         assert!(
@@ -887,7 +942,11 @@ mod tests {
         };
 
         batch_execution_manager
-            .process_transactions_fin(height_and_round, transactions_fin, &mut validator_stage)
+            .process_transactions_fin::<BlockExecutor, ProdTransactionMapper>(
+                height_and_round,
+                transactions_fin,
+                &mut validator_stage,
+            )
             .expect("Failed to process TransactionsFin after empty batch");
 
         assert!(

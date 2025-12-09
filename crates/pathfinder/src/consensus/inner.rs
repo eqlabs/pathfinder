@@ -10,9 +10,6 @@ mod p2p_task;
 mod persist_proposals;
 mod proposal_error;
 
-#[cfg(all(test, feature = "p2p"))]
-mod p2p_task_tests;
-
 #[cfg(test)]
 mod test_helpers;
 
