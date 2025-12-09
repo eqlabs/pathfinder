@@ -228,6 +228,7 @@ fn update_compiler_metrics(stats: &cairo_native::statistics::Statistics) {
             .record(linking_time_ms as f64 / 1000.0)
     });
     stats.object_size_bytes.map(|object_size_bytes| {
-        metrics::gauge!("native_class_compilation_object_size_bytes").set(object_size_bytes as f64)
+        metrics::histogram!("native_class_compilation_object_size_bytes")
+            .record(object_size_bytes as f64)
     });
 }
