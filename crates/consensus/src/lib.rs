@@ -402,6 +402,7 @@ impl<
     ///
     /// - `config`: The consensus configuration
     /// - `validator_sets`: A provider for validator sets at different heights
+    /// - `highest_committed`: The highest committed block in main storage
     ///
     /// ## Example
     ///
@@ -412,13 +413,13 @@ impl<
     pub fn recover<VS: ValidatorSetProvider<A> + 'static>(
         config: Config<A>,
         validator_sets: Arc<VS>,
-        highest_finalized: Option<u64>,
+        highest_committed: Option<u64>,
     ) -> anyhow::Result<DefaultConsensus<V, A>> {
         Self::recover_inner(
             Self::new(config.clone()),
             config,
             validator_sets,
-            highest_finalized,
+            highest_committed,
         )
     }
 
@@ -448,13 +449,13 @@ impl<
         config: Config<A>,
         validator_sets: Arc<VS>,
         proposer_selector: PS,
-        highest_finalized: Option<u64>,
+        highest_committed: Option<u64>,
     ) -> anyhow::Result<Consensus<V, A, PS>> {
         Self::recover_inner(
             Self::with_proposer_selector(config.clone(), proposer_selector),
             config,
             validator_sets,
-            highest_finalized,
+            highest_committed,
         )
     }
 
@@ -465,7 +466,7 @@ impl<
         mut consensus: Consensus<V, A, PS>,
         config: Config<A>,
         validator_sets: Arc<VS>,
-        highest_finalized: Option<u64>,
+        highest_committed: Option<u64>,
     ) -> anyhow::Result<Consensus<V, A, PS>> {
         use crate::wal::recovery;
 
@@ -479,7 +480,7 @@ impl<
         // This also returns finalized heights and the highest Decision height found
         // (even in finalized heights).
         let (incomplete_heights, finalized_heights, highest_decision) =
-            match recovery::recover_incomplete_heights(&config.wal_dir, highest_finalized) {
+            match recovery::recover_incomplete_heights(&config.wal_dir, highest_committed) {
                 Ok((incomplete, finalized, decision_height)) => {
                     tracing::info!(
                         validator = ?config.address,
