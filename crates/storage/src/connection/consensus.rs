@@ -347,6 +347,29 @@ impl ConsensusTransaction<'_> {
             .map_err(|e| e.into())
     }
 
+    /// Read the finalized block for the given height with the highest round. In
+    /// practice this should be the only round left in the DB for that height.
+    pub fn read_consensus_finalized_block_for_last_round(
+        &self,
+        height: u64,
+    ) -> anyhow::Result<Option<Vec<u8>>> {
+        self.0
+            .inner()
+            .query_row(
+                r"SELECT block
+            FROM consensus_finalized_blocks
+            WHERE height = :height
+            ORDER BY round DESC
+            LIMIT 1",
+                named_params! {
+                    ":height": &height,
+                },
+                |row| row.get_blob(0).map(|x| x.to_vec()),
+            )
+            .optional()
+            .map_err(|e| e.into())
+    }
+
     /// Remove all finalized blocks for the given height **except** the one from
     /// `commit_round`.
     pub fn remove_uncommitted_consensus_finalized_blocks(
@@ -383,6 +406,22 @@ impl ConsensusTransaction<'_> {
                 },
             )
             .context("Deleting consensus finalized block")?;
+        Ok(())
+    }
+
+    /// Always all rounds
+    pub fn remove_consensus_finalized_blocks(&self, height: u64) -> anyhow::Result<()> {
+        self.0
+            .inner()
+            .execute(
+                r"
+                DELETE FROM consensus_finalized_blocks
+                WHERE height = :height",
+                named_params! {
+                    ":height": &height,
+                },
+            )
+            .context("Deleting consensus finalized blocks")?;
         Ok(())
     }
 }

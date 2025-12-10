@@ -351,6 +351,7 @@ pub fn spawn(
                                         "🧠 ⏩  {validator_address} catching up current height \
                                          {next_height} -> {cmd_height}",
                                     );
+                                    // Chris: FIXME I meant this part in particular
                                     next_height = cmd_height;
                                 } else {
                                     last_nil_vote_height = Some(last_nil);
