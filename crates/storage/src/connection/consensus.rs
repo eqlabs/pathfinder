@@ -12,13 +12,27 @@ use crate::prelude::*;
 use crate::pruning::BlockchainHistoryMode;
 use crate::{Connection, JournalMode, Storage, StorageBuilder, TriePruneMode};
 
+/// The inner storage is not pub on purpose because we want to disallow
+/// utilization of non-consensus specific database APIs.
 #[derive(Clone)]
 pub struct ConsensusStorage(Storage);
 
+/// The inner connection is not pub on purpose because we want to disallow
+/// creation of non-consensus specific database connections.
 pub struct ConsensusConnection(Connection);
 
+/// The inner transaction is not pub on purpose because we want to disallow
+/// creation of non-consensus specific database transactions.
 pub struct ConsensusTransaction<'inner>(Transaction<'inner>);
 
+/// To avoid API bloat and code duplication, we reuse the normal storage
+/// internally, which means the consensus storage also undergoes the same
+/// migrations, which results in creating tables that are main storage specific
+/// and are not utilized at all. The same applies to the running event filter,
+/// trie prune mode and blockchain history mode, which all remain unused in this
+/// database. This is acceptable for now, since consensus-specific tables will
+/// be at some point merged into the main storage and consensus storage will
+/// be removed altogether.
 pub fn open_consensus_storage(data_directory: &Path) -> anyhow::Result<ConsensusStorage> {
     let storage_manager = StorageBuilder::file(data_directory.join("consensus.sqlite")) // TODO: https://github.com/eqlabs/pathfinder/issues/3047
         .journal_mode(JournalMode::WAL)
