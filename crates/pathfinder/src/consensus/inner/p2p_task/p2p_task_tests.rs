@@ -8,7 +8,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use p2p::consensus::{Client, Event, EventKind, HeightAndRound};
+use p2p::consensus::{peer_score, Client, Event, EventKind, HeightAndRound};
 use p2p::libp2p::identity::Keypair;
 use p2p::libp2p::PeerId;
 use p2p_proto::consensus::ProposalPart;
@@ -1704,5 +1704,5 @@ async fn recv_outdated_event_changes_peer_score() {
             .expect("Expected change peer score command after outdated ProposalInit");
 
     assert_eq!(peer_id, outdated_event_source);
-    assert_eq!(delta, p2p::consensus::penalty::OUTDATED_MESSAGE);
+    assert_eq!(delta, peer_score::penalty::OUTDATED_MESSAGE);
 }

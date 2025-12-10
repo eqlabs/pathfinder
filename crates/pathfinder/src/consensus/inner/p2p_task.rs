@@ -15,7 +15,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
-use p2p::consensus::{Client, Event, EventKind, HeightAndRound};
+use p2p::consensus::{peer_score, Client, Event, EventKind, HeightAndRound};
 use p2p::libp2p::PeerId;
 use p2p_proto::common::{Address, Hash};
 use p2p_proto::consensus::{ProposalFin, ProposalInit, ProposalPart};
@@ -110,6 +110,11 @@ pub fn spawn(
     // event channel size exceeding the limit, to avoid spamming the logs.
     let mut channel_size_warning_emitted = false;
 
+    // Decay application peer scores at regular intervals. The first tick completing
+    // immediately is okay since we likely won't have any peers with modified
+    // scores this early anyway.
+    let mut peer_score_decay_timer = tokio::time::interval(peer_score::DECAY_PERIOD);
+
     let data_directory = data_directory.to_path_buf();
 
     util::task::spawn(async move {
@@ -123,6 +128,10 @@ pub fn spawn(
         let gossip_handler = GossipHandler::new(validator_address, GossipRetryConfig::default());
         loop {
             let p2p_task_event = tokio::select! {
+                _ = peer_score_decay_timer.tick() => {
+                    p2p_client.decay_peer_scores();
+                    continue;
+                }
                 p2p_event = p2p_event_rx.recv() => {
                     // Unbounded channel size monitoring.
                     let channel_size = p2p_event_rx.len();
@@ -186,7 +195,7 @@ pub fn spawn(
                         )? {
                             return Ok(ComputationSuccess::ChangePeerScore {
                                 peer_id: event.source,
-                                delta: p2p::consensus::penalty::OUTDATED_MESSAGE,
+                                delta: peer_score::penalty::OUTDATED_MESSAGE,
                             });
                         }
 

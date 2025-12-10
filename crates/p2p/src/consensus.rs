@@ -13,13 +13,12 @@ use tokio::sync::mpsc::Sender;
 mod behaviour;
 mod client;
 mod height_and_round;
-mod peer_score;
+pub mod peer_score;
 mod stream;
 
 pub use behaviour::Behaviour;
 pub use client::Client;
 pub use height_and_round::HeightAndRound;
-pub use peer_score::penalty;
 
 /// The topic for proposal messages in the consensus network.
 pub const TOPIC_PROPOSALS: &str = "consensus_proposals";
@@ -43,6 +42,8 @@ pub enum Command {
         vote: Vote,
         done_tx: Sender<Result<(), PublishError>>,
     },
+    /// Apply decay to all peer scores.
+    PeerScoreDecay,
     /// A peer performed an action worthy of a score change.
     ChangePeerScore {
         /// The target peer ID.

@@ -1,7 +1,15 @@
+use std::time::Duration;
+
 use libp2p::gossipsub;
 
 /// Initial value of the application-specific portion of the peer score.
 pub const INITIAL_APPLICATION_SCORE: f64 = 0.0;
+
+/// Decay period for peer scoring.
+pub const DECAY_PERIOD: Duration = Duration::from_secs(60);
+
+/// Decay factor for peer scoring.
+pub const DECAY_FACTOR: f64 = 0.8;
 
 /// Application-specific weight for peer scoring.  
 ///

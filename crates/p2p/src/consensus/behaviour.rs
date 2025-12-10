@@ -84,6 +84,20 @@ impl ApplicationBehaviour for Behaviour {
                     .await
                     .expect("Receiver not to be dropped");
             }
+            ConsensusCommand::PeerScoreDecay => {
+                let connected_peers: Vec<_> =
+                    self.gossipsub.all_peers().map(|(id, _)| *id).collect();
+
+                // Use the opportunity to remove scores for disconnected peers.
+                state.peer_app_scores.retain(|peer_id, score| {
+                    if connected_peers.contains(peer_id) {
+                        *score *= peer_score::DECAY_FACTOR;
+                        true
+                    } else {
+                        false
+                    }
+                });
+            }
             ConsensusCommand::ChangePeerScore { peer_id, delta } => {
                 let current_score = state
                     .peer_app_scores

@@ -53,6 +53,13 @@ impl Client {
         rx.recv().await.expect("Sender not to be dropped")
     }
 
+    /// Apply decay to all peer scores.
+    pub fn decay_peer_scores(&self) {
+        self.sender
+            .send(core::Command::Application(Command::PeerScoreDecay))
+            .expect("Command receiver not to be dropped");
+    }
+
     /// Change the application-specific score for the given peer (if it is
     /// connected to us).
     ///
