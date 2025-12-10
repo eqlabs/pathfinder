@@ -95,7 +95,8 @@ impl ApplicationBehaviour for Behaviour {
                     .set_application_score(&peer_id, *current_score);
                 if !done {
                     // Peer scoring _should_ be active for consensus P2P, so the only reason we
-                    // would fail to set the score is if the peer disconnected or its score expired
+                    // would fail to set the score is if the peer disconnected or its score
+                    // expired.
                     // Either way, we can remove its score from our local state at this point.
                     state.peer_app_scores.remove(&peer_id);
                     tracing::debug!(

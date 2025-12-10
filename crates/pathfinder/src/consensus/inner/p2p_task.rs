@@ -613,7 +613,7 @@ pub fn spawn(
 
                     info_watch_tx.send_modify(|info| {
                         info.peer_score_change_counter += 1;
-                    })
+                    });
                 }
                 ComputationSuccess::IncomingProposalCommitment(height_and_round, commitment) => {
                     // Does nothing in production builds.
