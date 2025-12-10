@@ -64,7 +64,7 @@ impl Client {
     /// connected to us).
     ///
     /// The `delta` parameter should most likely be one of the constants defined
-    /// in the [penalty](crate::consensus::penalty) module.
+    /// in the [penalty](crate::consensus::peer_score::penalty) module.
     pub fn change_peer_score(&self, peer_id: PeerId, delta: f64) {
         self.sender
             .send(core::Command::Application(Command::ChangePeerScore {

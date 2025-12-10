@@ -51,7 +51,7 @@ pub enum Command {
         /// The score delta to apply (can be positive or negative).
         ///
         /// This should most likely be one of the constants defined in
-        /// the [penalty] module.
+        /// the [peer_score::penalty] module.
         delta: f64,
     },
     /// Test command to create a proposal stream.

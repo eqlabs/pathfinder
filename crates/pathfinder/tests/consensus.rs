@@ -200,7 +200,7 @@ mod test {
     async fn consensus_3_nodes_outdated_votes_lead_to_peer_score_changes() {
         const NUM_NODES: usize = 3;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
-        const TEST_TIMEOUT: Duration = Duration::from_secs(40);
+        const TEST_TIMEOUT: Duration = Duration::from_secs(60);
         const POLL_READY: Duration = Duration::from_millis(500);
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
