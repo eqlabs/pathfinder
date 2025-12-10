@@ -52,4 +52,17 @@ impl Client {
 
         rx.recv().await.expect("Sender not to be dropped")
     }
+
+    /// Change the application-specific score for the given peer (if it is
+    /// connected to us). The `delta` parameter should most likely be one of
+    /// the constants defined in the
+    /// [peer score](crate::consensus::peer_score) module.
+    pub fn change_peer_score(&self, peer_id: PeerId, delta: f64) {
+        self.sender
+            .send(core::Command::Application(Command::ChangePeerScore {
+                peer_id,
+                delta,
+            }))
+            .expect("Command receiver not to be dropped");
+    }
 }
