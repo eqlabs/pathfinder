@@ -24,6 +24,7 @@ use pathfinder_common::{
     BlockId,
     BlockNumber,
     ChainId,
+    ConsensusInfo,
     ContractAddress,
     L2Block,
     ProposalCommitment,
@@ -39,7 +40,7 @@ use pathfinder_consensus::{
 };
 use pathfinder_executor::{BlockExecutor, BlockExecutorExt};
 use pathfinder_storage::{Storage, Transaction, TransactionBehavior};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 use super::gossip_retry::{GossipHandler, GossipRetryConfig};
 use super::persist_proposals::ConsensusProposals;
@@ -88,6 +89,7 @@ pub fn spawn(
     tx_to_consensus: mpsc::Sender<ConsensusTaskEvent>,
     mut rx_from_consensus: mpsc::Receiver<P2PTaskEvent>,
     mut rx_from_sync: mpsc::Receiver<SyncRequestToConsensus>,
+    info_watch_tx: watch::Sender<ConsensusInfo>,
     main_storage: Storage,
     consensus_storage: Storage,
     data_directory: &Path,
@@ -184,7 +186,7 @@ pub fn spawn(
                         )? {
                             return Ok(ComputationSuccess::ChangePeerScore {
                                 peer_id: event.source,
-                                delta: p2p::consensus::OUTDATED_MESSAGE_PENALTY,
+                                delta: p2p::consensus::penalty::OUTDATED_MESSAGE,
                             });
                         }
 
@@ -436,6 +438,19 @@ pub fn spawn(
                             ))
                         }
                         NetworkMessage::Vote(SignedVote { vote, signature: _ }) => {
+                            // Never happens in production builds.
+                            let vote = if integration_testing::send_outdated_vote(
+                                vote.height,
+                                inject_failure,
+                            ) {
+                                pathfinder_consensus::Vote {
+                                    height: 0, // This should make the vote outdated.
+                                    ..vote
+                                }
+                            } else {
+                                vote
+                            };
+
                             tracing::info!("🖧  ✋ {validator_address} Gossiping vote {vote:?} ...");
                             Ok(ComputationSuccess::GossipVote(consensus_vote_to_p2p_vote(
                                 vote,
@@ -538,6 +553,27 @@ pub fn spawn(
                                 height_and_round.height()
                             );
 
+                            info_watch_tx.send_if_modified(|info| {
+                                let do_update = match info.highest_decision {
+                                    None => true,
+                                    Some((highest_decided_height, highest_decided_value)) => {
+                                        let new_height = height_and_round.height()
+                                            > highest_decided_height.get();
+                                        let new_value = value.0 != highest_decided_value;
+                                        new_height || new_value
+                                    }
+                                };
+                                if do_update {
+                                    let height =
+                                        BlockNumber::new_or_panic(height_and_round.height());
+                                    *info = ConsensusInfo {
+                                        highest_decision: Some((height, value.0)),
+                                        ..*info
+                                    };
+                                }
+                                do_update
+                            });
+
                             anyhow::Ok(())
                         }?;
 
@@ -574,6 +610,10 @@ pub fn spawn(
                 ComputationSuccess::Continue => (),
                 ComputationSuccess::ChangePeerScore { peer_id, delta } => {
                     p2p_client.change_peer_score(peer_id, delta);
+
+                    info_watch_tx.send_modify(|info| {
+                        info.peer_score_change_counter += 1;
+                    })
                 }
                 ComputationSuccess::IncomingProposalCommitment(height_and_round, commitment) => {
                     // Does nothing in production builds.

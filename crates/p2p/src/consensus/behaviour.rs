@@ -88,7 +88,7 @@ impl ApplicationBehaviour for Behaviour {
                 let current_score = state
                     .peer_app_scores
                     .entry(peer_id)
-                    .or_insert(peer_score::INTIAL_APPLICATION_SCORE);
+                    .or_insert(peer_score::INITIAL_APPLICATION_SCORE);
                 *current_score += delta;
                 let done = self
                     .gossipsub

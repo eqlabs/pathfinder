@@ -19,7 +19,7 @@ mod stream;
 pub use behaviour::Behaviour;
 pub use client::Client;
 pub use height_and_round::HeightAndRound;
-pub use peer_score::OUTDATED_MESSAGE_PENALTY;
+pub use peer_score::penalty;
 
 /// The topic for proposal messages in the consensus network.
 pub const TOPIC_PROPOSALS: &str = "consensus_proposals";
@@ -48,6 +48,9 @@ pub enum Command {
         /// The target peer ID.
         peer_id: PeerId,
         /// The score delta to apply (can be positive or negative).
+        ///
+        /// This should most likely be one of the constants defined in
+        /// the [penalty] module.
         delta: f64,
     },
     /// Test command to create a proposal stream.

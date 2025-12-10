@@ -28,7 +28,6 @@ use pathfinder_common::{
     BlockId,
     BlockNumber,
     ChainId,
-    ConsensusInfo,
     ContractAddress,
     L2Block,
     ProposalCommitment,
@@ -47,7 +46,7 @@ use pathfinder_consensus::{
     ValidatorSetProvider,
 };
 use pathfinder_storage::{Storage, TransactionBehavior};
-use tokio::sync::{mpsc, watch};
+use tokio::sync::mpsc;
 
 use super::fetch_proposers::L2ProposerSelector;
 use super::fetch_validators::L2ValidatorSetProvider;
@@ -63,7 +62,6 @@ pub fn spawn(
     wal_directory: PathBuf,
     tx_to_p2p: mpsc::Sender<P2PTaskEvent>,
     mut rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
-    info_watch_tx: watch::Sender<Option<ConsensusInfo>>,
     main_storage: Storage,
     consensus_storage: Storage,
     data_directory: &Path,
@@ -278,30 +276,6 @@ pub fn spawn(
                                 .send(P2PTaskEvent::CommitBlock(height_and_round, value.clone()))
                                 .await
                                 .expect("Commit block receiver not to be dropped");
-
-                            info_watch_tx.send_if_modified(|info| {
-                                let do_update = match info {
-                                    Some(info) => {
-                                        height > info.highest_decided_height.get()
-                                            || value.0 != info.highest_decided_value
-                                    }
-                                    None => true,
-                                };
-                                if do_update {
-                                    if let Some(height) = BlockNumber::new(height) {
-                                        *info = Some(ConsensusInfo {
-                                            highest_decided_height: height,
-                                            highest_decided_value: value.0,
-                                        });
-                                    } else {
-                                        tracing::error!(
-                                            "Height {height} is out of range for BlockNumber"
-                                        );
-                                        *info = None;
-                                    }
-                                }
-                                do_update
-                            });
 
                             if height == next_height {
                                 next_height = next_height

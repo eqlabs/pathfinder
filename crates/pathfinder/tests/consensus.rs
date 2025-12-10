@@ -27,7 +27,7 @@ mod test {
     use rstest::rstest;
 
     use crate::common::pathfinder_instance::{respawn_on_fail, PathfinderInstance};
-    use crate::common::rpc_client::{wait_for_block_exists, wait_for_height};
+    use crate::common::rpc_client::{get_consensus_info, wait_for_block_exists, wait_for_height};
     use crate::common::utils;
 
     // TODO Test cases that should be supported by the integration tests:
@@ -190,5 +190,98 @@ mod test {
             TEST_TIMEOUT,
         )
         .await
+    }
+
+    /// A slightly different failure scenario from [consensus_3_nodes]. We are
+    /// not causing the process to exit but instead forcing nodes to send
+    /// outdated votes which leads to them being punished by their peers
+    /// (via peer score penalties).
+    #[tokio::test]
+    async fn outdated_votes_lead_to_peer_score_changes() {
+        const NUM_NODES: usize = 3;
+        const READY_TIMEOUT: Duration = Duration::from_secs(20);
+        const TEST_TIMEOUT: Duration = Duration::from_secs(40);
+        const POLL_READY: Duration = Duration::from_millis(500);
+        const POLL_HEIGHT: Duration = Duration::from_secs(1);
+
+        const LAST_VALID_HEIGHT: u64 = 6;
+
+        let (configs, stopwatch) = utils::setup(NUM_NODES).unwrap();
+
+        let inject_failure = InjectFailureConfig {
+            // Starting from this height..
+            height: LAST_VALID_HEIGHT + 1,
+            // ..send outdated votes.
+            trigger: InjectFailureTrigger::OutdatedVote,
+        };
+        // Do this for all three nodes, one of them will be picked to send a proposal
+        // at LAST_VALID_HEIGHT + 1 and the other two will be the sabotaging nodes.
+        let mut configs = configs
+            .into_iter()
+            .map(|cfg| cfg.with_inject_failure(Some(inject_failure)));
+
+        let alice = PathfinderInstance::spawn(configs.next().unwrap()).unwrap();
+        alice
+            .wait_for_ready(POLL_READY, READY_TIMEOUT)
+            .await
+            .unwrap();
+
+        let boot_port = alice.consensus_p2p_port();
+        let mut configs = configs.map(|cfg| cfg.with_boot_port(boot_port));
+
+        let bob = PathfinderInstance::spawn(configs.next().unwrap()).unwrap();
+        let charlie = PathfinderInstance::spawn(configs.next().unwrap()).unwrap();
+
+        let (bob_rdy, charlie_rdy) = tokio::join!(
+            bob.wait_for_ready(POLL_READY, READY_TIMEOUT),
+            charlie.wait_for_ready(POLL_READY, READY_TIMEOUT)
+        );
+
+        bob_rdy.unwrap();
+        charlie_rdy.unwrap();
+
+        utils::log_elapsed(stopwatch);
+
+        // Wait until all three nodes reach `LAST_VALID_HEIGHT`..
+        let alice_client = wait_for_height(&alice, LAST_VALID_HEIGHT, POLL_HEIGHT);
+        let bob_client = wait_for_height(&bob, LAST_VALID_HEIGHT, POLL_HEIGHT);
+        let charlie_client = wait_for_height(&charlie, LAST_VALID_HEIGHT, POLL_HEIGHT);
+
+        utils::wait_for_test_end(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT)
+            .await
+            .unwrap();
+
+        // ..then wait a bit more for the next height, which should never become decided
+        // upon because one of the nodes is sabotaging the consensus network (sending
+        // outdated votes) and getting punished by the other two nodes.
+        let alice_client = wait_for_height(&alice, LAST_VALID_HEIGHT + 1, POLL_HEIGHT);
+        let bob_client = wait_for_height(&bob, LAST_VALID_HEIGHT + 1, POLL_HEIGHT);
+        let charlie_client = wait_for_height(&charlie, LAST_VALID_HEIGHT + 1, POLL_HEIGHT);
+
+        let err = utils::wait_for_test_end(
+            vec![alice_client, bob_client, charlie_client],
+            POLL_HEIGHT * 10,
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("Test timed out"));
+
+        let alice_peer_score_changes = get_peer_score_changes(&alice).await.unwrap();
+        let bob_peer_score_changes = get_peer_score_changes(&bob).await.unwrap();
+        let charlie_peer_score_changes = get_peer_score_changes(&charlie).await.unwrap();
+
+        assert!(
+            alice_peer_score_changes > 0
+                || bob_peer_score_changes > 0
+                || charlie_peer_score_changes > 0,
+            "At least one node should have changed peer scores after punishing the sabotaging node"
+        );
+    }
+
+    async fn get_peer_score_changes(instance: &PathfinderInstance) -> anyhow::Result<u64> {
+        let rpc_port = instance.rpc_port_watch().1.borrow().1;
+        let reply = get_consensus_info(instance.name(), rpc_port).await?;
+        let peer_score_changes = reply.result.peer_score_change_counter.unwrap_or_default();
+        Ok(peer_score_changes)
     }
 }

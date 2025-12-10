@@ -54,9 +54,10 @@ impl Client {
     }
 
     /// Change the application-specific score for the given peer (if it is
-    /// connected to us). The `delta` parameter should most likely be one of
-    /// the constants defined in the
-    /// [peer score](crate::consensus::peer_score) module.
+    /// connected to us).
+    ///
+    /// The `delta` parameter should most likely be one of the constants defined
+    /// in the [penalty](crate::consensus::penalty) module.
     pub fn change_peer_score(&self, peer_id: PeerId, delta: f64) {
         self.sender
             .send(core::Command::Application(Command::ChangePeerScore {

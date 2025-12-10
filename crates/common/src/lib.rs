@@ -674,10 +674,12 @@ pub fn calculate_class_commitment_leaf_hash(
     )
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy)]
 pub struct ConsensusInfo {
-    pub highest_decided_height: BlockNumber,
-    pub highest_decided_value: ProposalCommitment,
+    /// Highest decided height and value.
+    pub highest_decision: Option<(BlockNumber, ProposalCommitment)>,
+    /// Track the number of times peer scores were changed.
+    pub peer_score_change_counter: u64,
 }
 
 #[cfg(test)]
