@@ -22,7 +22,7 @@ use crate::state::block_hash::{
 };
 use crate::state::sync::class::{download_class, DownloadedClass};
 use crate::state::sync::SyncEvent;
-use crate::SyncRequestToConsensus;
+use crate::SyncMessageToConsensus;
 
 #[derive(Default, Debug, Clone, Copy)]
 pub struct Timings {
@@ -349,7 +349,7 @@ where
 ///   - interacts with consensus via [SyncRequestToConsensus]
 pub async fn consensus_sync<GatewayClient>(
     tx_event: mpsc::Sender<SyncEvent>,
-    sync_to_consensus_tx: mpsc::Sender<SyncRequestToConsensus>,
+    sync_to_consensus_tx: mpsc::Sender<SyncMessageToConsensus>,
     context: L2SyncContext<GatewayClient>,
     mut head: Option<(BlockNumber, BlockHash, StateCommitment)>,
     mut blocks: BlockChain,
@@ -380,7 +380,7 @@ where
         // Check if the Consensus engine has already committed this block
         // to avoid redundant downloads.
         let (tx, rx) = tokio::sync::oneshot::channel();
-        let request = SyncRequestToConsensus::GetFinalizedBlock {
+        let request = SyncMessageToConsensus::GetFinalizedBlock {
             number: next,
             reply: tx,
         };

@@ -18,15 +18,7 @@ use anyhow::Context;
 use p2p::consensus::{Client, Event, HeightAndRound};
 use p2p_proto::common::{Address, Hash};
 use p2p_proto::consensus::{ProposalFin, ProposalInit, ProposalPart};
-use pathfinder_common::state_update::StateUpdateData;
-use pathfinder_common::{
-    BlockId,
-    BlockNumber,
-    ChainId,
-    ContractAddress,
-    L2Block,
-    ProposalCommitment,
-};
+use pathfinder_common::{BlockId, ChainId, ContractAddress, ProposalCommitment};
 use pathfinder_consensus::{
     ConsensusCommand,
     NetworkMessage,
@@ -58,7 +50,7 @@ use crate::validator::{
     ValidatorBlockInfoStage,
     ValidatorStage,
 };
-use crate::SyncRequestToConsensus;
+use crate::SyncMessageToConsensus;
 
 #[cfg(test)]
 mod handler_proptest;
@@ -90,7 +82,7 @@ pub fn spawn(
     mut p2p_event_rx: mpsc::UnboundedReceiver<Event>,
     tx_to_consensus: mpsc::Sender<ConsensusTaskEvent>,
     mut rx_from_consensus: mpsc::Receiver<P2PTaskEvent>,
-    mut rx_from_sync: mpsc::Receiver<SyncRequestToConsensus>,
+    mut rx_from_sync: mpsc::Receiver<SyncMessageToConsensus>,
     main_storage: Storage,
     consensus_storage: ConsensusStorage,
     data_directory: &Path,
@@ -161,7 +153,6 @@ pub fn spawn(
                 let mut main_db_tx = main_db_conn
                     .transaction_with_behavior(TransactionBehavior::Immediate)
                     .context("Create main database transaction")?;
-                // Chris: FIXME is this storage used correctly?
                 let mut proposals_db = cons_db_conn
                     .transaction_with_behavior(TransactionBehavior::Immediate)
                     .map(ConsensusProposals::new)
@@ -182,16 +173,22 @@ pub fn spawn(
                         // we're not keeping any historical engines (ie. including for H), we will
                         // not help the other 2 nodes in the voting process.
                         //
-                        // Chris: FIXME is this correct storage here? Answer: this is tricky,
+                        // Chris: FIXME
+                        // 1. Is this correct storage here? Answer: this is tricky,
                         // depending on whethere history_depth is close to zero:
                         // - if history_depth is zero or maybe 1, the highest block can still not be
                         //   in the main DB but reside in the consensus DB waiting for the sync task
                         //   to pick it up. In this case we need to read from consensus DB as well.
                         // - if history_depth is large enough, then the highest block is always in
                         //   the main DB, so reading from main DB is sufficient.
-                        // Chris: FIXME is this fn needed at all? Check what happens if we remove
+                        // 2. Is this fn needed at all? Check what happens if we remove
                         // it. Is there another way to check if the consensus engine for some old
                         // height is still not purged in the consensus_task?
+                        // 3. What happens when an arbitrary old event is received,
+                        // especially for heights that have already been pruned from the consensus
+                        // module? Maybe the consensus task handles such cases just fine by itself?
+                        // !!! However it does make sense to avoid processing such events at all
+                        // here...
                         /*
                         if is_outdated_p2p_event(&proposals_db.tx, &event, config.history_depth)? {
                             // TODO consider punishing the sender if the event is too old
@@ -284,7 +281,8 @@ pub fn spawn(
                         tracing::info!("🖧  📥 {validator_address} processing request from sync");
 
                         match request {
-                            SyncRequestToConsensus::GetFinalizedBlock { number, reply } => {
+                            // Sync asks for finalized block at given height.
+                            SyncMessageToConsensus::GetFinalizedBlock { number, reply } => {
                                 // In practice the last round means the only round left in the
                                 // consensus DB for that height, because lower rounds were already
                                 // removed when the proposal was decided upon in that last round.
@@ -295,15 +293,58 @@ pub fn spawn(
                                 reply
                                     .send(resp)
                                     .map_err(|_| anyhow::anyhow!("Reply channel closed"))?;
-                                // We can only remove this finalized block after
-                                // the sync task has committed it to the main
-                                // DB.
-                                //
-                                // Chris: FIXME which will happen upon receiving
-                                // a special notification from the consumer task
-                                // I guess
+
+                                Ok(ComputationSuccess::Continue)
                             }
-                            SyncRequestToConsensus::ValidateBlock { block, reply, .. } => {
+                            // Sync confirms that the finalized block at given height has been
+                            // committed to storage.
+                            SyncMessageToConsensus::ConfirmFinalizedBlockCommitted { number } => {
+                                // In practice there is only one finalized block in the consensus DB
+                                // left, it comes from the last round, where the decision has been
+                                // reached.
+                                proposals_db.remove_finalized_blocks(number.get())?;
+                                tracing::debug!(
+                                    "🖧  🗑️ {validator_address} removed finalized block for last \
+                                     round at height {} after commit confirmation",
+                                    number.get()
+                                );
+
+                                // Chris: FIXME but the current block at H is not committed to the
+                                // main DB yet, it is going to be
+                                // committed when the sync task requests it, so we
+                                // cannot execute any deferred stuff for H+1 yet
+                                //
+                                // This needs to be tied to another confirmation message after
+                                // GetFinalizedBlock that is sent from the sync task after the block
+                                // has indeed been committed to the
+                                // main DB. Maybe we could utilize
+                                // notifications used for the RPC subscriptions? (probably not the
+                                // best idea, but just brainstorming
+                                // here)
+                                let exec_success = execute_deferred_for_next_height::<
+                                    BlockExecutor,
+                                    ProdTransactionMapper,
+                                >(
+                                    number.get(),
+                                    validator_cache.clone(),
+                                    deferred_executions.clone(),
+                                    &mut batch_execution_manager,
+                                )?;
+                                // If we finalized the proposal, we can now inform the consensus
+                                // engine about it. Otherwise the rest of the transaction batches
+                                // could be still be coming from the network, definitely the
+                                // proposal fin is still missing for sure.
+                                let success = match exec_success {
+                                    Some((hnr, commitment)) => {
+                                        ComputationSuccess::PreviouslyDeferredProposalIsFinalized(
+                                            hnr, commitment,
+                                        )
+                                    }
+                                    None => ComputationSuccess::Continue,
+                                };
+                                Ok(success)
+                            }
+                            SyncMessageToConsensus::ValidateBlock { block, reply, .. } => {
                                 use pathfinder_common::StateCommitment;
                                 use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 
@@ -339,11 +380,10 @@ pub fn spawn(
                                 reply
                                     .send(resp)
                                     .map_err(|_| anyhow::anyhow!("Reply channel closed"))?;
+
+                                Ok(ComputationSuccess::Continue)
                             }
                         }
-
-                        // No further action needed after serving the sync request.
-                        Ok(ComputationSuccess::Continue)
                     }
 
                     P2PTaskEvent::CacheProposal(
@@ -547,19 +587,8 @@ pub fn spawn(
                                     main_db_tx = main_db_conn
                                         .transaction_with_behavior(TransactionBehavior::Immediate)
                                         .context("Create database transaction")?;
-                                    // The state tries in the main storage have been updated but the
-                                    // block itself has not been committed to the main DB yet.
-                                    //
-                                    // Chris: FIXME add a failure injection point here for
-                                    // integration testing
-                                    //
-                                    // Chris: FIXME actually store the finalized block in the
-                                    // consensus DB so that the sync task can retrieve it at the
-                                    // time it sees fit
-                                    //
-                                    // !!! call perisist_finalized_block() here
-                                    //
-                                    // TODO cleanup this comment
+                                    // TODO(consensus integration tests) add a failure injection
+                                    // point here
                                     let state_diff_commitment = block.header.state_diff_commitment;
                                     proposals_db
                                         .persist_finalized_block(
@@ -582,10 +611,8 @@ pub fn spawn(
 
                             assert_eq!(value.0 .0, state_diff_commitment.0);
 
-                            // Does nothing in production builds.
-                            //
-                            // This is a pretty good injection point because technically the block
-                            // is "half-way committed"
+                            // TODO(consensus integration tests) add a failure injection
+                            // point here
                             integration_testing::debug_fail_on_proposal_committed(
                                 height_and_round.height(),
                                 inject_failure,
@@ -629,39 +656,7 @@ pub fn spawn(
                             anyhow::Ok(())
                         }?;
 
-                        // Chris: FIXME but the current block at H is not committed to the main DB
-                        // yet, it is going to be committed when the sync task requests it, so we
-                        // cannot execute any deferred stuff for H+1 yet
-                        //
-                        // This needs to be tied to another confirmation message after
-                        // GetFinalizedBlock that is sent from the sync task after the block has
-                        // indeed been committed to the main DB. Maybe we could utilize
-                        // notifications used for the RPC subscriptions? (probably not the best
-                        // idea, but just brainstorming here)
-                        let exec_success = execute_deferred_for_next_height::<
-                            BlockExecutor,
-                            ProdTransactionMapper,
-                        >(
-                            height_and_round,
-                            validator_cache.clone(),
-                            deferred_executions.clone(),
-                            &mut batch_execution_manager,
-                        )?;
-                        // Chris:FIXME update this comment or remove it altogether
-                        //
-                        // If we finalized the proposal, we can now inform the consensus engine
-                        // about it. Otherwise the rest of the transaction batches could be still be
-                        // coming from the network, definitely the proposal fin is still missing for
-                        // sure.
-                        let success = match exec_success {
-                            Some((hnr, commitment)) => {
-                                ComputationSuccess::PreviouslyDeferredProposalIsFinalized(
-                                    hnr, commitment,
-                                )
-                            }
-                            None => ComputationSuccess::Continue,
-                        };
-                        Ok(success)
+                        Ok(ComputationSuccess::Continue)
                     }
                 }?;
 
@@ -743,7 +738,7 @@ impl<E> ValidatorCache<E> {
 }
 
 fn execute_deferred_for_next_height<E: BlockExecutorExt, T: TransactionExt>(
-    height_and_round: HeightAndRound,
+    height: u64,
     mut validator_cache: ValidatorCache<E>,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
@@ -752,7 +747,7 @@ fn execute_deferred_for_next_height<E: BlockExecutorExt, T: TransactionExt>(
     // for the next height, if any. Sort by (height, round) in ascending order.
     let deferred = {
         let mut dex = deferred_executions.lock().unwrap();
-        dex.extract_if(|hnr, _| hnr.height() == height_and_round.height() + 1)
+        dex.extract_if(|hnr, _| hnr.height() == height + 1)
             .collect::<BTreeMap<_, _>>()
     };
 

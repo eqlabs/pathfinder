@@ -27,7 +27,7 @@ use tokio::sync::{mpsc, watch};
 use super::{ConsensusChannels, ConsensusTaskHandles};
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
-use crate::SyncRequestToConsensus;
+use crate::SyncMessageToConsensus;
 
 #[allow(clippy::too_many_arguments)]
 pub fn start(
@@ -48,7 +48,7 @@ pub fn start(
     // TODO determine sufficient buffer size. 1 is not enough.
     let (tx_to_p2p, rx_from_consensus) = mpsc::channel::<P2PTaskEvent>(10);
     // Requests sent to consensus by the sync task.
-    let (sync_to_consensus_tx, sync_to_consensus_rx) = mpsc::channel::<SyncRequestToConsensus>(10);
+    let (sync_to_consensus_tx, sync_to_consensus_rx) = mpsc::channel::<SyncMessageToConsensus>(10);
 
     let consensus_storage =
         open_consensus_storage(data_directory).expect("Consensus storage cannot be opened");
@@ -109,7 +109,7 @@ enum P2PTaskEvent {
     /// main loop).
     P2PEvent(Event),
     /// A request coming from the sync task.
-    SyncRequest(SyncRequestToConsensus),
+    SyncRequest(SyncMessageToConsensus),
     /// The consensus engine requested that we produce a proposal, so we
     /// create it, feed it back to the consensus engine, and we must
     /// cache it for gossiping when the engine requests so.

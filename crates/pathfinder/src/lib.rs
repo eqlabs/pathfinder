@@ -8,10 +8,15 @@ pub mod state;
 pub mod sync;
 pub mod validator;
 
-pub enum SyncRequestToConsensus {
+pub enum SyncMessageToConsensus {
+    /// Ask consensus for the finalized block with given number.
     GetFinalizedBlock {
         number: pathfinder_common::BlockNumber,
         reply: FinalizedBlockReply,
+    },
+    /// Notify consensus that a finalized block has been committed to storage.
+    ConfirmFinalizedBlockCommitted {
+        number: pathfinder_common::BlockNumber,
     },
     ValidateBlock {
         // TODO: Stubbed for now, as an example. When used by P2P sync it should contain the block

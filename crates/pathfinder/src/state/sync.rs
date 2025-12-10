@@ -33,7 +33,7 @@ use tokio::sync::watch::Sender as WatchSender;
 
 use crate::state::l1::L1SyncContext;
 use crate::state::l2::{BlockChain, L2SyncContext};
-use crate::SyncRequestToConsensus;
+use crate::SyncMessageToConsensus;
 
 /// Delay before restarting L1 or L2 tasks if they fail. This delay helps
 /// prevent DoS if these tasks are crashing.
@@ -98,7 +98,7 @@ pub struct SyncContext<G, E> {
     pub l1_poll_interval: Duration,
     pub pending_data: WatchSender<PendingData>,
     pub submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker,
-    pub sync_to_consensus_tx: mpsc::Sender<SyncRequestToConsensus>,
+    pub sync_to_consensus_tx: mpsc::Sender<SyncMessageToConsensus>,
     pub block_validation_mode: l2::BlockValidationMode,
     pub notifications: Notifications,
     pub block_cache_size: usize,
@@ -177,7 +177,7 @@ where
         l1_poll_interval: _,
         pending_data,
         submitted_tx_tracker,
-        sync_to_consensus_tx: _,
+        sync_to_consensus_tx,
         block_validation_mode: _,
         notifications,
         block_cache_size,
@@ -263,6 +263,7 @@ where
         pending_data,
         verify_tree_hashes: context.verify_tree_hashes,
         notifications,
+        sync_to_consensus_tx,
     };
     let mut consumer_handle =
         util::task::spawn(consumer(event_receiver, consumer_context, tx_current));
@@ -444,7 +445,7 @@ where
     L1Sync: FnMut(mpsc::Sender<SyncEvent>, L1SyncContext<Ethereum>) -> F1,
     L2Sync: FnOnce(
             mpsc::Sender<SyncEvent>,
-            mpsc::Sender<SyncRequestToConsensus>,
+            mpsc::Sender<SyncMessageToConsensus>,
             L2SyncContext<SequencerClient>,
             Option<(BlockNumber, BlockHash, StateCommitment)>,
             BlockChain,
@@ -539,6 +540,7 @@ where
         pending_data,
         verify_tree_hashes: context.verify_tree_hashes,
         notifications,
+        sync_to_consensus_tx: sync_to_consensus_tx.clone(),
     };
     let mut consumer_handle =
         util::task::spawn(consumer(event_receiver, consumer_context, tx_current));
@@ -689,6 +691,7 @@ struct ConsumerContext {
     pub pending_data: WatchSender<PendingData>,
     pub verify_tree_hashes: bool,
     pub notifications: Notifications,
+    pub sync_to_consensus_tx: mpsc::Sender<SyncMessageToConsensus>,
 }
 
 async fn consumer(
@@ -703,6 +706,7 @@ async fn consumer(
         pending_data,
         verify_tree_hashes,
         mut notifications,
+        sync_to_consensus_tx,
     } = context;
 
     let mut last_block_start = std::time::Instant::now();
@@ -757,7 +761,7 @@ async fn consumer(
             }
         }
 
-        tokio::task::block_in_place(|| {
+        let maybe_committed_l2_block_number = tokio::task::block_in_place(|| {
             let tx = db_conn
                 .transaction_with_behavior(TransactionBehavior::Immediate)
                 .context("Create database transaction")?;
@@ -782,7 +786,7 @@ async fn consumer(
                     tracing::trace!("Updating L2 state to block {}", block.block_number);
                     if block.block_number < next_number {
                         tracing::debug!(block_number=%block.block_number, "Ignoring duplicate block");
-                        return anyhow::Ok(());
+                        return anyhow::Ok(None);
                     }
 
                     let block_number = block.block_number;
@@ -873,9 +877,12 @@ async fn consumer(
                             "Ignoring duplicate finalized block {}",
                             l2_block.header.number
                         );
-                        return anyhow::Ok(());
+                        return anyhow::Ok(None);
                     }
 
+                    // TODO `l2_update` always performs trie updates, but in case of a decided upon
+                    // proposal which ends up as a finalized block the tries are already updated so
+                    // we could optimize `l2_update` to skip trie updates in this case.
                     l2_update(
                         &tx,
                         l2_block.as_ref(),
@@ -999,6 +1006,16 @@ async fn consumer(
             }
             let commit_result = tx.commit().context("Committing database transaction");
 
+            // Consensus may have deferred execution for the next block until this one is
+            // committed, so we must now send notification to consensus to unblock any
+            // deferred execution.
+            let maybe_committed_l2_block_number =
+                if let Some(Notification::L2Block(l2_block)) = notification.as_ref() {
+                    Some(l2_block.header.number)
+                } else {
+                    None
+                };
+
             // Now that the changes have been committed to storage we can send out the
             // notification. It is important that this is only ever done _after_
             // the commit otherwise clients could potentially see inconsistent
@@ -1007,8 +1024,19 @@ async fn consumer(
                 send_notification(notification, &mut notifications);
             }
 
-            commit_result
+            // TODO return the value of the committed l2 block
+            commit_result.map(|_| maybe_committed_l2_block_number)
         })?;
+
+        if let Some(committed_l2_block_number) = maybe_committed_l2_block_number {
+            // Notify consensus that a new L2 block has been committed.
+            sync_to_consensus_tx
+                .send(SyncMessageToConsensus::ConfirmFinalizedBlockCommitted {
+                    number: committed_l2_block_number,
+                })
+                .await
+                .context("Sending L2 block committed message to consensus")?;
+        }
     }
 
     Ok(())
@@ -1984,6 +2012,7 @@ mod tests {
         drop(event_tx);
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
@@ -1991,6 +2020,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             notifications: Default::default(),
+            sync_to_consensus_tx,
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -2038,6 +2068,7 @@ mod tests {
         drop(event_tx);
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
@@ -2045,6 +2076,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             notifications: Default::default(),
+            sync_to_consensus_tx,
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -2106,6 +2138,7 @@ mod tests {
         drop(event_tx);
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
@@ -2113,6 +2146,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             notifications: Default::default(),
+            sync_to_consensus_tx,
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -2159,6 +2193,7 @@ mod tests {
         drop(event_tx);
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
@@ -2166,6 +2201,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             notifications: Default::default(),
+            sync_to_consensus_tx,
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -2201,6 +2237,7 @@ mod tests {
         drop(event_tx);
         // UUT
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
@@ -2208,6 +2245,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             notifications: Default::default(),
+            sync_to_consensus_tx,
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -2247,6 +2285,7 @@ mod tests {
         drop(event_tx);
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
@@ -2254,6 +2293,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             notifications: Default::default(),
+            sync_to_consensus_tx,
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -2298,6 +2338,7 @@ mod tests {
         drop(event_tx);
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
@@ -2305,6 +2346,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             notifications: Default::default(),
+            sync_to_consensus_tx,
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -2508,6 +2550,7 @@ mod tests {
             let notifications = pathfinder_rpc::Notifications::default();
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
@@ -2517,6 +2560,7 @@ mod tests {
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications,
+                sync_to_consensus_tx,
             };
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -2567,6 +2611,7 @@ mod tests {
             drop(event_tx);
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
@@ -2576,6 +2621,7 @@ mod tests {
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications: Default::default(),
+                sync_to_consensus_tx,
             };
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -2668,6 +2714,7 @@ mod tests {
             let notifications = pathfinder_rpc::Notifications::default();
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
@@ -2677,6 +2724,7 @@ mod tests {
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications,
+                sync_to_consensus_tx,
             };
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -2694,6 +2742,7 @@ mod tests {
             let notifications = pathfinder_rpc::Notifications::default();
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
@@ -2703,6 +2752,7 @@ mod tests {
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications,
+                sync_to_consensus_tx,
             };
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -2725,6 +2775,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             let notifications = pathfinder_rpc::Notifications::default();
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
             let context = ConsumerContext {
                 storage,
                 state: Arc::new(SyncState::default()),
@@ -2734,6 +2785,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications,
+                sync_to_consensus_tx,
             };
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -2772,6 +2824,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             let notifications = pathfinder_rpc::Notifications::default();
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
@@ -2781,6 +2834,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications,
+                sync_to_consensus_tx,
             };
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -2801,6 +2855,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             let notifications = pathfinder_rpc::Notifications::default();
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
             let context = ConsumerContext {
                 storage,
                 state: Arc::new(SyncState::default()),
@@ -2810,6 +2865,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications,
+                sync_to_consensus_tx,
             };
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -2858,6 +2914,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             drop(event_tx);
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
@@ -2867,6 +2924,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications: Default::default(),
+                sync_to_consensus_tx,
             };
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -2978,6 +3036,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             drop(event_tx);
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
@@ -2987,6 +3046,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications: Default::default(),
+                sync_to_consensus_tx,
             };
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -3066,6 +3126,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             drop(event_tx);
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
@@ -3075,6 +3136,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications: Default::default(),
+                sync_to_consensus_tx,
             };
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -3102,6 +3164,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             drop(event_tx);
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
@@ -3111,6 +3174,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications: Default::default(),
+                sync_to_consensus_tx,
             };
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -3178,6 +3242,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             drop(event_tx);
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
             let context = ConsumerContext {
                 storage,
                 state: Arc::new(SyncState::default()),
@@ -3187,6 +3252,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications: Default::default(),
+                sync_to_consensus_tx,
             };
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
