@@ -11,7 +11,7 @@ use p2p::consensus::HeightAndRound;
 use p2p_proto::consensus as proto_consensus;
 use pathfinder_common::{BlockId, BlockNumber};
 use pathfinder_executor::BlockExecutorExt;
-use pathfinder_storage::Transaction as DbTransaction;
+use pathfinder_storage::Transaction;
 
 use crate::validator::{TransactionExt, ValidatorTransactionBatchStage};
 
@@ -74,11 +74,11 @@ impl BatchExecutionManager {
         height_and_round: HeightAndRound,
         transactions: Vec<proto_consensus::Transaction>,
         validator: &mut ValidatorTransactionBatchStage<E>,
-        consensus_db_tx: &DbTransaction<'_>,
+        main_db_tx: &Transaction<'_>,
         deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
     ) -> anyhow::Result<()> {
         // Check if execution should be deferred
-        if should_defer_execution(height_and_round, consensus_db_tx)? {
+        if should_defer_execution(height_and_round, main_db_tx)? {
             tracing::debug!(
                 "🖧  ⚙️ transaction batch execution for height and round {height_and_round} is \
                  deferred"
@@ -294,7 +294,7 @@ impl Default for ProposalCommitmentWithOrigin {
 /// be deferred because the previous block is not committed yet.
 pub fn should_defer_execution(
     height_and_round: HeightAndRound,
-    main_db_tx: &DbTransaction<'_>,
+    main_db_tx: &Transaction<'_>,
 ) -> anyhow::Result<bool> {
     let parent_block = height_and_round.height().checked_sub(1);
     let defer = if let Some(parent_block) = parent_block {

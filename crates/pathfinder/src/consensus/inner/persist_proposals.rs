@@ -9,7 +9,7 @@ use crate::consensus::inner::dto;
 /// A wrapper around a consensus database transaction that provides
 /// methods for persisting and retrieving proposal parts and finalized blocks.
 pub struct ConsensusProposals<'tx> {
-    pub tx: ConsensusTransaction<'tx>,
+    tx: ConsensusTransaction<'tx>,
 }
 
 impl<'tx> ConsensusProposals<'tx> {
@@ -136,6 +136,24 @@ impl<'tx> ConsensusProposals<'tx> {
         }
     }
 
+    /// Read a finalized block for a given height and highest round available.
+    /// In practice this should be the only round left in the DB for that
+    /// height.
+    pub fn read_finalized_block_for_last_round(
+        &self,
+        height: u64,
+    ) -> anyhow::Result<Option<L2Block>> {
+        if let Some(buf) = self
+            .tx
+            .read_consensus_finalized_block_for_last_round(height)?
+        {
+            let block = Self::decode_finalized_block(&buf[..])?;
+            Ok(Some(block))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Remove all finalized blocks for the given height **except** the one from
     /// `commit_round`.
     pub fn remove_uncommitted_finalized_blocks(
@@ -147,9 +165,9 @@ impl<'tx> ConsensusProposals<'tx> {
             .remove_uncommitted_consensus_finalized_blocks(height, commit_round)
     }
 
-    /// Remove a finalized block for the given height and round.
-    pub fn remove_finalized_block(&self, height: u64, round: u32) -> anyhow::Result<()> {
-        self.tx.remove_consensus_finalized_block(height, round)
+    /// Remove all finalized blocks for a given height.
+    pub fn remove_finalized_blocks(&self, height: u64) -> anyhow::Result<()> {
+        self.tx.remove_consensus_finalized_blocks(height)
     }
 
     fn decode_proposal_parts(buf: &[u8]) -> anyhow::Result<Vec<ProposalPart>> {
