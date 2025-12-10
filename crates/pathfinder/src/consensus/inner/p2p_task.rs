@@ -336,19 +336,8 @@ pub fn spawn(
                                      round at height {} after commit confirmation",
                                     number.get()
                                 );
-
-                                // Chris: FIXME but the current block at H is not committed to the
-                                // main DB yet, it is going to be
-                                // committed when the sync task requests it, so we
-                                // cannot execute any deferred stuff for H+1 yet
-                                //
-                                // This needs to be tied to another confirmation message after
-                                // GetFinalizedBlock that is sent from the sync task after the block
-                                // has indeed been committed to the
-                                // main DB. Maybe we could utilize
-                                // notifications used for the RPC subscriptions? (probably not the
-                                // best idea, but just brainstorming
-                                // here)
+                                // We can finally execute any deferred proposals for the next
+                                // height.
                                 let exec_success = execute_deferred_for_next_height::<
                                     BlockExecutor,
                                     ProdTransactionMapper,
@@ -947,80 +936,6 @@ async fn send_proposal_to_consensus(
         .await
         .expect("Receiver not to be dropped");
 }
-
-/*
-/// Chris: FIXME this fn should actually be called: "Store the finalized block
-/// in consensus DB until the sync task picks it up"
-fn commit_finalized_block(
-    cons_db_tx: &Transaction<'_>,
-    finalized_block: L2Block,
-) -> anyhow::Result<()> {
-    let L2Block {
-        header,
-        state_update,
-        transactions_and_receipts,
-        events,
-    } = finalized_block;
-
-    let block_number = header.number;
-    cons_db_tx
-        .insert_block_header(&header)
-        .context("Inserting block header")?;
-    cons_db_tx
-        .insert_state_update_data(block_number, &state_update)
-        .context("Inserting state update")?;
-    cons_db_tx
-        .insert_transaction_data(block_number, &transactions_and_receipts, Some(&events))
-        .context("Inserting transactions, receipts and events")?;
-
-    Ok(())
-}
-
-/// Chris: FIXME this fn should actually be called: "Read the finalized block
-/// from consensus DB where it was stored until the sync task picks it up"
-fn read_committed_block(
-    cons_db_tx: &Transaction<'_>,
-    height: BlockNumber,
-) -> anyhow::Result<Option<L2Block>> {
-    let block_id = BlockId::Number(height);
-
-    let Some(header) = cons_db_tx.block_header(block_id)? else {
-        return Ok(None);
-    };
-
-    let transaction_data = cons_db_tx
-        .transaction_data_for_block(block_id)?
-        .ok_or_else(|| {
-            anyhow::anyhow!("Block {height} exists (header found) but transaction data is missing")
-        })?;
-    let (transactions_and_receipts, events) = transaction_data
-        .into_iter()
-        .map(|(tx, receipt, events)| ((tx, receipt), events))
-        .unzip();
-
-    let state_update = cons_db_tx
-        .state_update(block_id)?
-        .map(|su| StateUpdateData {
-            contract_updates: su.contract_updates,
-            system_contract_updates: su.system_contract_updates,
-            declared_cairo_classes: su.declared_cairo_classes,
-            declared_sierra_classes: su.declared_sierra_classes,
-            migrated_compiled_classes: su.migrated_compiled_classes,
-        })
-        .ok_or_else(|| {
-            anyhow::anyhow!("Block {height} exists (header found) but state update is missing",)
-        })?;
-
-    let finalized_block = L2Block {
-        header,
-        state_update,
-        transactions_and_receipts,
-        events,
-    };
-
-    Ok(Some(finalized_block))
-}
-*/
 
 /// Handles an incoming proposal part received from the P2P network. Returns
 /// `Ok(Some((proposal_commitment, proposer_address)))` if the proposal is
