@@ -62,7 +62,7 @@ use crate::SyncMessageToConsensus;
 
 #[cfg(test)]
 mod handler_proptest;
-#[cfg(test_DISABLED_UNTIL_TESTS_FIXED)]
+#[cfg(test)]
 mod p2p_task_tests;
 
 // Successful result of handling an incoming message in a dedicated

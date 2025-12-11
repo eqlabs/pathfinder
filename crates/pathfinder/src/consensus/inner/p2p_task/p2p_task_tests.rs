@@ -5,6 +5,7 @@
 //! of order), rollback scenarios, and database persistence. They test the
 //! complete path from receiving P2P events to sending consensus commands.
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -16,46 +17,48 @@ use pathfinder_common::prelude::*;
 use pathfinder_common::{ChainId, ConsensusInfo, ContractAddress, L2Block, ProposalCommitment};
 use pathfinder_consensus::ConsensusCommand;
 use pathfinder_crypto::Felt;
-use pathfinder_storage::StorageBuilder;
+use pathfinder_storage::consensus::ConsensusStorage;
+use pathfinder_storage::{Storage, StorageBuilder};
 use tokio::sync::{mpsc, watch};
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
 
 use crate::consensus::inner::persist_proposals::ConsensusProposals;
 use crate::consensus::inner::test_helpers::{create_test_proposal, create_transaction_batch};
-use crate::consensus::inner::{p2p_task, ConsensusTaskEvent, ConsensusValue, P2PTaskConfig};
+use crate::consensus::inner::{
+    p2p_task,
+    ConsensusTaskEvent,
+    ConsensusValue,
+    P2PTaskConfig,
+    P2PTaskEvent,
+};
+use crate::SyncMessageToConsensus;
 
 /// Helper struct to setup and manage the test environment (databases,
 /// channels, mock client)
 struct TestEnvironment {
-    main_storage: pathfinder_storage::Storage,
-    // Chris: FIXME wrap consensus storage in a newtype to avoid confusion and force the compiler
-    // to help us not mix them up
-    consensus_storage: pathfinder_storage::Storage,
+    main_storage: Storage,
+    consensus_storage: ConsensusStorage,
     p2p_client_receiver: mpsc::UnboundedReceiver<p2p::core::Command<p2p::consensus::Command>>,
     p2p_tx: mpsc::UnboundedSender<Event>,
-    tx_to_p2p: mpsc::Sender<crate::consensus::inner::P2PTaskEvent>,
+    tx_to_p2p: mpsc::Sender<P2PTaskEvent>,
     rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
+    // So that receiver is not dropped
+    _tx_sync_to_consensus: mpsc::Sender<SyncMessageToConsensus>,
     handle: Arc<Mutex<Option<tokio::task::JoinHandle<anyhow::Result<()>>>>>,
 
     // Keep these alive to prevent receiver from being dropped
-    _sync_request_tx: mpsc::Sender<crate::SyncRequestToConsensus>,
     _info_watch_rx: watch::Receiver<crate::consensus::ConsensusInfo>,
-    // -------------
 }
 
 impl TestEnvironment {
     const HISTORY_DEPTH: u64 = 10;
 
     fn new(chain_id: ChainId, validator_address: ContractAddress) -> Self {
-        // Create temp directory for consensus storage
-        let consensus_storage_dir = tempfile::tempdir().expect("Failed to create temp directory");
-        let consensus_storage_dir = consensus_storage_dir.path().to_path_buf();
-
         // Initialize temp pathfinder and consensus databases
         let main_storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let consensus_storage =
-            StorageBuilder::in_tempdir().expect("Failed to create consensus temp database");
+            ConsensusStorage::in_tempdir().expect("Failed to create consensus temp database");
 
         // Initialize consensus storage tables
         {
@@ -72,7 +75,7 @@ impl TestEnvironment {
         let (p2p_tx, p2p_rx) = mpsc::unbounded_channel();
         let (tx_to_consensus, rx_from_p2p) = mpsc::channel(100);
         let (tx_to_p2p, rx_from_consensus) = mpsc::channel(100);
-        let (sync_requests_tx, sync_requests_rx) = mpsc::channel(1);
+        let (_tx_sync_to_consensus, rx_from_sync) = mpsc::channel(1);
         let (info_watch_tx, info_watch_rx) = watch::channel(ConsensusInfo::default());
 
         // Create mock Client (used for receiving events in these tests)
@@ -91,11 +94,12 @@ impl TestEnvironment {
             p2p_rx,
             tx_to_consensus,
             rx_from_consensus,
-            sync_requests_rx,
+            rx_from_sync,
             info_watch_tx,
             main_storage.clone(),
             consensus_storage.clone(),
-            &consensus_storage_dir,
+            // Only used for failure injection, which does not happen in these tests
+            &PathBuf::default(),
             true,
             None,
         );
@@ -107,8 +111,8 @@ impl TestEnvironment {
             p2p_tx,
             tx_to_p2p,
             rx_from_p2p,
+            _tx_sync_to_consensus,
             handle: Arc::new(Mutex::new(Some(handle))),
-            _sync_request_tx: sync_requests_tx,
             _info_watch_rx: info_watch_rx,
         }
     }
@@ -117,8 +121,6 @@ impl TestEnvironment {
         let block_id_felt = Felt::from(height);
         let mut db_conn = self.main_storage.connection().unwrap();
         let db_tx = db_conn.transaction().unwrap();
-        let mut cons_db_conn = self.consensus_storage.connection().unwrap();
-        let cons_db_tx = cons_db_conn.transaction().unwrap();
 
         let parent_header = BlockHeader::builder()
             .number(BlockNumber::new_or_panic(height))
@@ -132,8 +134,6 @@ impl TestEnvironment {
 
         db_tx.insert_block_header(&parent_header).unwrap();
         db_tx.commit().unwrap();
-        cons_db_tx.insert_block_header(&parent_header).unwrap();
-        cons_db_tx.commit().unwrap();
     }
 
     fn create_uncommitted_finalized_block(&self, height: u64, round: u32) {
@@ -159,7 +159,7 @@ impl TestEnvironment {
         proposals_db
             .persist_finalized_block(height, round, block)
             .unwrap();
-        proposals_db.tx.commit().unwrap();
+        proposals_db.commit().unwrap();
     }
 
     async fn wait_for_task_initialization(&self) {
@@ -341,7 +341,7 @@ fn verify_proposal_event(
 ///
 /// Also verifies the total count matches `expected_count`.
 fn verify_proposal_parts_persisted(
-    consensus_storage: &pathfinder_storage::Storage,
+    consensus_storage: &ConsensusStorage,
     height: u64,
     round: u32,
     validator_address: &ContractAddress, // Query with validator address (receiver)
@@ -444,7 +444,7 @@ fn verify_proposal_parts_persisted(
 
 /// Helper: Verify transaction count from persisted proposal parts
 fn verify_transaction_count(
-    consensus_storage: &pathfinder_storage::Storage,
+    consensus_storage: &ConsensusStorage,
     height: u64,
     round: u32,
     validator_address: &ContractAddress,
