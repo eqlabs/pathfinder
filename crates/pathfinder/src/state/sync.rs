@@ -2012,7 +2012,7 @@ mod tests {
         drop(event_tx);
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
+        let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(100);
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
@@ -2068,7 +2068,7 @@ mod tests {
         drop(event_tx);
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
+        let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(100);
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
@@ -2138,7 +2138,7 @@ mod tests {
         drop(event_tx);
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
+        let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(100);
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
@@ -2193,7 +2193,7 @@ mod tests {
         drop(event_tx);
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
+        let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(100);
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
@@ -2237,7 +2237,7 @@ mod tests {
         drop(event_tx);
         // UUT
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
+        let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(100);
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
@@ -2285,7 +2285,7 @@ mod tests {
         drop(event_tx);
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
+        let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(100);
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
@@ -2338,7 +2338,7 @@ mod tests {
         drop(event_tx);
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
+        let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(100);
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
@@ -2550,7 +2550,7 @@ mod tests {
             let notifications = pathfinder_rpc::Notifications::default();
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(100);
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
@@ -2611,7 +2611,7 @@ mod tests {
             drop(event_tx);
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(100);
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
@@ -2714,7 +2714,7 @@ mod tests {
             let notifications = pathfinder_rpc::Notifications::default();
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(100);
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
@@ -2742,7 +2742,7 @@ mod tests {
             let notifications = pathfinder_rpc::Notifications::default();
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(100);
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
@@ -2775,7 +2775,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             let notifications = pathfinder_rpc::Notifications::default();
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(100);
             let context = ConsumerContext {
                 storage,
                 state: Arc::new(SyncState::default()),
@@ -2824,7 +2824,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             let notifications = pathfinder_rpc::Notifications::default();
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(100);
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
@@ -2855,7 +2855,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             let notifications = pathfinder_rpc::Notifications::default();
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(100);
             let context = ConsumerContext {
                 storage,
                 state: Arc::new(SyncState::default()),
@@ -2914,7 +2914,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             drop(event_tx);
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(100);
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
@@ -3036,7 +3036,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             drop(event_tx);
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(100);
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
@@ -3126,7 +3126,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             drop(event_tx);
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(100);
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
@@ -3164,7 +3164,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             drop(event_tx);
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(100);
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
@@ -3242,7 +3242,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             drop(event_tx);
 
             let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(1);
+            let (sync_to_consensus_tx, _rx) = tokio::sync::mpsc::channel(100);
             let context = ConsumerContext {
                 storage,
                 state: Arc::new(SyncState::default()),
