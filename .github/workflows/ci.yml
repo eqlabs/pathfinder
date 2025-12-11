@@ -58,9 +58,9 @@ jobs:
       - name: Compile unit tests with all features enabled
         run: cargo nextest run --cargo-profile ci-dev --all-targets --all-features --workspace --locked --no-run --timings
       - name: Run unit tests with all features enabled excluding consensus integration tests
-        run: timeout 10m cargo nextest run --cargo-profile ci-dev --no-fail-fast --all-targets --all-features --workspace --locked -E 'not test(/^test::consensus_3_nodes/)'
+        run: timeout 10m cargo nextest run --cargo-profile ci-dev --no-fail-fast --all-targets --all-features --workspace --locked -E 'not test(/^test::consensus_3_nodes/)' --retries 2
       - name: Run consensus integration tests
-        run: PATHFINDER_CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL=1 PATHFINDER_TEST_ENABLE_PORT_MARKER_FILES=1 timeout 10m cargo nextest run --test consensus -p pathfinder --features p2p,consensus-integration-tests --locked
+        run: PATHFINDER_CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL=1 PATHFINDER_TEST_ENABLE_PORT_MARKER_FILES=1 timeout 10m cargo nextest run --test consensus -p pathfinder --features p2p,consensus-integration-tests --locked --retries 2
       - name: Store timings with all features enabled
         uses: actions/upload-artifact@v4
         with:

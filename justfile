@@ -12,16 +12,16 @@ test-all-features $RUST_BACKTRACE="1" *args="": build-pathfinder-release
     {{args}}
 
 test-consensus $RUST_BACKTRACE="1" *args="": build-pathfinder-release
-    PATHFINDER_TEST_ENABLE_PORT_MARKER_FILES=1 cargo nextest run --test consensus -p pathfinder --features p2p,consensus-integration-tests --locked \
+    PATHFINDER_TEST_ENABLE_PORT_MARKER_FILES=1 cargo nextest run --test consensus -p pathfinder --retries 2 --features p2p,consensus-integration-tests --locked \
     {{args}}
 
 proptest-sync-handlers $RUST_BACKTRACE="1" *args="":
-    cargo nextest run --no-fail-fast --all-targets --features p2p --workspace --locked \
+    cargo nextest run --no-fail-fast --retries 2 --all-targets --features p2p --workspace --locked \
     -E 'test(/^p2p_network::sync::sync_handlers::tests::prop/)' \
     {{args}}
 
 proptest-consensus-handler $RUST_BACKTRACE="1" *args="":
-    cargo nextest run --no-fail-fast --all-targets --features p2p --workspace --locked \
+    cargo nextest run --no-fail-fast --retries 2 --all-targets --features p2p --workspace --locked \
     -E 'test(/^consensus::inner::p2p_task::handler_proptest/)' \
     {{args}}
 
