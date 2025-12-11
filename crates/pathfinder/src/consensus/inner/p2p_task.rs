@@ -19,14 +19,12 @@ use p2p::consensus::{peer_score, Client, Event, EventKind, HeightAndRound};
 use p2p::libp2p::PeerId;
 use p2p_proto::common::{Address, Hash};
 use p2p_proto::consensus::{ProposalFin, ProposalInit, ProposalPart};
-use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::{
     BlockId,
     BlockNumber,
     ChainId,
     ConsensusInfo,
     ContractAddress,
-    L2Block,
     ProposalCommitment,
 };
 use pathfinder_consensus::{
@@ -187,9 +185,9 @@ pub fn spawn(
                         tracing::info!("🖧  💌 {validator_address} incoming p2p event: {event:?}");
 
                         // Even though rebroadcast certificates are not implemented yet, it still
-                        // does make sense to keep `history_depth` nonzero. This is due to race
-                        // conditions that occur between the current height, which is being
-                        // committed and the next height which is being proposed. For example: we
+                        // does make sense to keep `history_depth` larger than 0. This is due to
+                        // race conditions that occur between the current height, which is being
+                        // committed and the next height which is being  proposed. For example: we
                         // may have 3 nodes, from which ours has already committed H, while the
                         // other 2 have not. If we fall over and respawn, the other nodes will still
                         // be voting for H, while we are at H+1 and we are actively discarding votes
@@ -197,27 +195,10 @@ pub fn spawn(
                         // we're not keeping any historical engines (ie. including for H), we will
                         // not help the other 2 nodes in the voting process.
                         //
-                        // Chris: FIXME
-                        // 1. Is this correct storage here? Answer: this is tricky,
-                        // depending on whethere history_depth is close to zero:
-                        // - if history_depth is zero or maybe 1, the highest block can still not be
-                        //   in the main DB but reside in the consensus DB waiting for the sync task
-                        //   to pick it up. In this case we need to read from consensus DB as well.
-                        // - if history_depth is large enough, then the highest block is always in
-                        //   the main DB, so reading from main DB is sufficient.
-                        // 2. Is this fn needed at all? Check what happens if we remove
-                        // it. Is there another way to check if the consensus engine for some old
-                        // height is still not purged in the consensus_task?
-                        // 3. What happens when an arbitrary old event is received,
-                        // especially for heights that have already been pruned from the consensus
-                        // module? Maybe the consensus task handles such cases just fine by itself?
-                        // !!! However it does make sense to avoid processing such events at all
-                        // here...
-                        if is_outdated_p2p_event(
-                            &proposals_db.tx,
-                            &event.kind,
-                            config.history_depth,
-                        )? {
+                        // This call may yield unreliable results if history_depth is too small and
+                        // the currently decided upon and finalized block has not been committed by
+                        // the sync task yet, becasue we're only checking the main DB here.
+                        if is_outdated_p2p_event(&main_db_tx, &event.kind, config.history_depth)? {
                             return Ok(ComputationSuccess::ChangePeerScore {
                                 peer_id: event.source,
                                 delta: peer_score::penalty::OUTDATED_MESSAGE,
@@ -1169,8 +1150,8 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                         .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
                     let validator = validator
                         .verify_proposal_commitment(proposal_commitment)
-                        // Chris: FIXME this is actually a bug: verification can result in both
-                        // fatal (storage related) and recoverable (all other) errors
+                        // TODO(consensus) verification can result in both fatal (storage related)
+                        // and recoverable (all other) errors
                         .map_err(ProposalHandlingError::Fatal)?;
                     let validator = ValidatorStage::Finalize(Box::new(validator));
                     validator_cache.insert(height_and_round, validator);
@@ -1210,8 +1191,8 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
 
                     validator
                         .record_proposal_commitment(proposal_commitment)
-                        // Chris: FIXME this is actually a bug: recording can result in both fatal
-                        // (storage related) and recoverable (all other) errors
+                        // TODO(consensus) verification can result in both fatal (storage related)
+                        // and recoverable (all other) errors
                         .map_err(ProposalHandlingError::Fatal)?;
                     validator_cache.insert(
                         height_and_round,
@@ -1315,8 +1296,8 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                         deferred_executions,
                         batch_execution_manager,
                     )
-                    // Chris: FIXME this is actually a bug: execution can result in both fatal
-                    // (storage related) and recoverable (all other) errors
+                    // TODO(consensus) verification can result in both fatal (storage related)
+                    // and recoverable (all other) errors
                     .map_err(ProposalHandlingError::Fatal)?;
 
                     validator_cache.insert(height_and_round, validator);
