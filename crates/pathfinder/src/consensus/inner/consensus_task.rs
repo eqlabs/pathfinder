@@ -108,12 +108,6 @@ pub fn spawn(
 
         tracing::trace!(%next_height, "consensus task started with");
 
-        // A validator that joins the consensus network and is lagging behind will vote
-        // Nil for its current height, because the consensus network is already at a
-        // higher height. This is a workaround for the missing sync/catch-up mechanism.
-        // Related issue: https://github.com/eqlabs/pathfinder/issues/2934
-        let mut last_nil_vote_height = None;
-
         start_height(
             &mut consensus,
             next_height,
@@ -227,21 +221,9 @@ pub fn spawn(
                             // TODO Sometimes the engine requests gossiping votes for heights that
                             // are a few steps behind the current height and have already been
                             // decided upon. This is due to the fact that `history_depth` in config
-                            // is > 0 and we're not supporting round certificates yet. Setting
-                            // history depth to a low value (or 0) should mitigate this issue for
-                            // now.
+                            // is > 0 and we're not supporting round certificates yet. Once round
+                            // certificates are supported this check can be removed.
                             if msg.height() >= next_height {
-                                // Record the highest height at which we voted Nil as it may be an
-                                // indication that we're lagging behind the consensus network.
-                                if let NetworkMessage::Vote(SignedVote { vote, .. }) = &msg {
-                                    if vote.is_nil() {
-                                        last_nil_vote_height = Some(
-                                            vote.height
-                                                .max(last_nil_vote_height.unwrap_or_default()),
-                                        );
-                                    }
-                                }
-
                                 tx_to_p2p
                                     .send(P2PTaskEvent::GossipRequest(msg))
                                     .await
@@ -253,7 +235,7 @@ pub fn spawn(
                                 );
                             }
                         }
-                        // Consensus has been reached for the given height and value.
+                        // Consensus has been reached for the given height and value.s
                         ConsensusEvent::Decision {
                             height,
                             round,
@@ -345,27 +327,6 @@ pub fn spawn(
                         // consensus engine is already started for this new height carried in those
                         // messages.
                         ConsensusCommand::Proposal(_) | ConsensusCommand::Vote(_) => {
-                            // Chris: FIXME is this workaround still needed with catch-up sync
-                            // implemented?
-                            //
-                            // TODO catch up with the current height of the consensus network using
-                            // sync, for the time being just observe the height in the rebroadcasted
-                            // votes or in the proposals.
-                            let last_nil = last_nil_vote_height.take();
-
-                            if let Some(last_nil) = last_nil {
-                                if cmd_height > next_height && cmd_height > last_nil {
-                                    tracing::info!(
-                                        "🧠 ⏩  {validator_address} catching up current height \
-                                         {next_height} -> {cmd_height}",
-                                    );
-                                    // Chris: FIXME I meant this part in particular
-                                    next_height = cmd_height;
-                                } else {
-                                    last_nil_vote_height = Some(last_nil);
-                                }
-                            }
-
                             // Make sure we don't start older heights that have already been decided
                             // upon, or are still in progress due to race conditions, or are too old
                             // to fit in history depth anyway.
