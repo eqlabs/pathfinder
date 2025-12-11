@@ -106,6 +106,8 @@ pub fn spawn(
         .max()
         .unwrap_or(0);
 
+        tracing::trace!(%next_height, "consensus task started with");
+
         // A validator that joins the consensus network and is lagging behind will vote
         // Nil for its current height, because the consensus network is already at a
         // higher height. This is a workaround for the missing sync/catch-up mechanism.
@@ -276,10 +278,16 @@ pub fn spawn(
                                 .await
                                 .expect("Commit block receiver not to be dropped");
 
-                            if height == next_height {
-                                next_height = next_height
-                                    .checked_add(1)
-                                    .expect("Height never reaches i64::MAX");
+                            let old_next_height = next_height;
+                            // Either move to the next height, or catch up if the decided height
+                            // is ahead of our current next_height.
+                            next_height = next_height
+                                .max(height)
+                                .checked_add(1)
+                                .expect("Height never reaches i64::MAX");
+                            if old_next_height != next_height {
+                                tracing::trace!(%next_height, from_height=%old_next_height, "changing height to moving to");
+
                                 start_height(
                                     &mut consensus,
                                     next_height,
@@ -358,12 +366,15 @@ pub fn spawn(
                                 }
                             }
 
+                            // Make sure we don't start older heights that have already been decided
+                            // upon, or are still in progress due to race conditions, or are too old
+                            // to fit in history depth anyway.
                             let is_decided = consensus
                                 .last_decided_height()
                                 .is_some_and(|last_decided| cmd_height <= last_decided);
                             if is_decided {
                                 tracing::debug!(
-                                    "🧠 🤷  Not starting old height {cmd_height} at {next_height}"
+                                    lower_height=%cmd_height, %next_height, "🧠 🤷  Skipping start consensus for"
                                 );
                             } else {
                                 start_height(
@@ -410,7 +421,10 @@ fn start_height(
     validator_set: ValidatorSet<ContractAddress>,
 ) {
     if !consensus.is_height_active(height) {
+        tracing::trace!(%height, "🧠 🚀  Starting consensus for");
         consensus.handle_command(ConsensusCommand::StartHeight(height, validator_set));
+    } else {
+        tracing::trace!(%height, "🧠 🤷  Consensus already active for");
     }
 }
 

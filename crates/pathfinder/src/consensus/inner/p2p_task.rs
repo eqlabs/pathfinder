@@ -683,6 +683,12 @@ pub fn spawn(
                                 height_and_round.height()
                             );
 
+                            // TODO maybe we should remove this watch altogether with its respective
+                            // RPC method, because it's not reproting a decision anymore but rather
+                            // being in the process of committing a decided upon block which is
+                            // slightly different. And the consensus tests should rely on what
+                            // actually ends up in the main DB, otherwise the entire process of:
+                            // finalizing, deciding, committing is not properly tested.
                             info_watch_tx.send_if_modified(|info| {
                                 let do_update = match info.highest_decision {
                                     None => true,
