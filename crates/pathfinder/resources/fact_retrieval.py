@@ -120,7 +120,7 @@ class MemoryPagesFetcher:
 
     def _get_memory_pages_hashes_from_fact(self, fact_hash: bytes):
         """
-        An auxiliary function for retrieveing the memory pages' hashes of a fact.
+        An auxiliary function for retrieving the memory pages' hashes of a fact.
         """
         if fact_hash not in self.fact_memory_pages_map:
             raise Exception(
