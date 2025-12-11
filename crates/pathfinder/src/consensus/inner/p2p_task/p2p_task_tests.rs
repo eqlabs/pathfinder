@@ -5,6 +5,7 @@
 //! of order), rollback scenarios, and database persistence. They test the
 //! complete path from receiving P2P events to sending consensus commands.
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -15,7 +16,8 @@ use pathfinder_common::prelude::*;
 use pathfinder_common::{ChainId, ContractAddress, L2Block, ProposalCommitment};
 use pathfinder_consensus::ConsensusCommand;
 use pathfinder_crypto::Felt;
-use pathfinder_storage::StorageBuilder;
+use pathfinder_storage::consensus::ConsensusStorage;
+use pathfinder_storage::{Storage, StorageBuilder};
 use tokio::sync::mpsc;
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
@@ -29,33 +31,27 @@ use crate::consensus::inner::{
     P2PTaskConfig,
     P2PTaskEvent,
 };
-use crate::SyncRequestToConsensus;
+use crate::SyncMessageToConsensus;
 
 /// Helper struct to setup and manage the test environment (databases,
 /// channels, mock client)
 struct TestEnvironment {
-    main_storage: pathfinder_storage::Storage,
-    // Chris: FIXME wrap consensus storage in a newtype to avoid confusion and force the compiler
-    // to help us not mix them up
-    consensus_storage: pathfinder_storage::Storage,
+    main_storage: Storage,
+    consensus_storage: ConsensusStorage,
     p2p_tx: mpsc::UnboundedSender<Event>,
     rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
     tx_to_p2p: mpsc::Sender<P2PTaskEvent>,
     // So that receiver is not dropped
-    _tx_sync_to_consensus: mpsc::Sender<SyncRequestToConsensus>,
+    _tx_sync_to_consensus: mpsc::Sender<SyncMessageToConsensus>,
     handle: Arc<Mutex<Option<tokio::task::JoinHandle<anyhow::Result<()>>>>>,
 }
 
 impl TestEnvironment {
     fn new(chain_id: ChainId, validator_address: ContractAddress) -> Self {
-        // Create temp directory for consensus storage
-        let consensus_storage_dir = tempfile::tempdir().expect("Failed to create temp directory");
-        let consensus_storage_dir = consensus_storage_dir.path().to_path_buf();
-
         // Initialize temp pathfinder and consensus databases
         let main_storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let consensus_storage =
-            StorageBuilder::in_tempdir().expect("Failed to create consensus temp database");
+            ConsensusStorage::in_tempdir().expect("Failed to create consensus temp database");
 
         // Initialize consensus storage tables
         {
@@ -93,7 +89,8 @@ impl TestEnvironment {
             rx_from_sync,
             main_storage.clone(),
             consensus_storage.clone(),
-            &consensus_storage_dir,
+            // Only used for failure injection, which does not happen in these tests
+            &PathBuf::default(),
             true,
             None,
         );
@@ -149,7 +146,7 @@ impl TestEnvironment {
         proposals_db
             .persist_finalized_block(height, round, block)
             .unwrap();
-        proposals_db.tx.commit().unwrap();
+        proposals_db.commit().unwrap();
     }
 
     async fn wait_for_task_initialization(&self) {
@@ -296,7 +293,7 @@ fn verify_proposal_event(
 ///
 /// Also verifies the total count matches `expected_count`.
 fn verify_proposal_parts_persisted(
-    consensus_storage: &pathfinder_storage::Storage,
+    consensus_storage: &ConsensusStorage,
     height: u64,
     round: u32,
     validator_address: &ContractAddress, // Query with validator address (receiver)
@@ -400,7 +397,7 @@ fn verify_proposal_parts_persisted(
 
 /// Helper: Verify transaction count from persisted proposal parts
 fn verify_transaction_count(
-    consensus_storage: &pathfinder_storage::Storage,
+    consensus_storage: &ConsensusStorage,
     height: u64,
     round: u32,
     validator_address: &ContractAddress,
