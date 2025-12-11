@@ -142,7 +142,7 @@ mod test {
     // 2. Change the test so that Dan actually catches up to the current
     // consensus height, whatever it is, this will require some custom FGW
     //
-    // 3. IMPORTANT: assert that there are is leftover data for lower heights when
+    // 3. IMPORTANT: assert that there is no leftover data for lower heights when
     //    Dan finally catches up
     #[tokio::test]
     async fn consensus_3_nodes_fourth_node_joins_late_can_catch_up() -> anyhow::Result<()> {
