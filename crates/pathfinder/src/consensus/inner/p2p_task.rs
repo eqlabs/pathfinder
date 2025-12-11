@@ -77,10 +77,10 @@ enum ComputationSuccess {
     EventVote(p2p_proto::consensus::Vote),
     ProposalGossip(HeightAndRound, Vec<ProposalPart>),
     GossipVote(p2p_proto::consensus::Vote),
-    /// When a proposal was decided upon and has been successfully finalized for
-    /// some height H, there may be another proposal at the H+1  whose execution
-    /// was deferred until this block is committed. This variant indicated that
-    /// the deferred proposal at H+1 has been finalized.
+    /// When a proposal has been decided upon and has been successfully
+    /// finalized for some height H, there may be another proposal at H+1  whose
+    /// execution was deferred until this block at H is committed. This variant
+    /// indicates that the deferred proposal at H+1 has been finalized.
     PreviouslyDeferredProposalIsFinalized(HeightAndRound, ProposalCommitmentWithOrigin),
 }
 

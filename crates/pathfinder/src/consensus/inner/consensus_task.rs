@@ -233,7 +233,7 @@ pub fn spawn(
                                 );
                             }
                         }
-                        // Consensus has been reached for the given height and value.s
+                        // Consensus has been reached for the given height and value.
                         ConsensusEvent::Decision {
                             height,
                             round,
