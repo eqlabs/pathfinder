@@ -21,7 +21,7 @@ pub enum ProposalError {
     /// TransactionBatch).
     #[error("Wrong validator stage: {message}")]
     WrongValidatorStage { message: String },
-    // Chris: FIXME add more error variants:
+    // TODO(consensus) add more error variants:
     // - Recoverable: Execution failed due to proposal content
     // - Fatal: Execution failed due to storage/DB error
 }
