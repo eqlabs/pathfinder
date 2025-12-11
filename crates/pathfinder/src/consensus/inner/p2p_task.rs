@@ -308,38 +308,30 @@ pub fn spawn(
                             // Sync confirms that the finalized block at given height has been
                             // committed to storage.
                             SyncMessageToConsensus::ConfirmFinalizedBlockCommitted { number } => {
-                                // In practice there is only one finalized block in the consensus DB
-                                // left, it comes from the last round, where the decision has been
-                                // reached.
-                                proposals_db.remove_finalized_blocks(number.get())?;
-                                tracing::debug!(
-                                    "🖧  🗑️ {validator_address} removed finalized block for last \
-                                     round at height {} after commit confirmation",
-                                    number.get()
-                                );
-                                // We can finally execute any deferred proposals for the next
-                                // height.
-                                let exec_success = execute_deferred_for_next_height::<
-                                    BlockExecutor,
-                                    ProdTransactionMapper,
-                                >(
-                                    number.get(),
-                                    validator_cache.clone(),
+                                // There are 2 scenarios here:
+                                // 1. The normal scenario where consensus is used by sync to get the
+                                //    tip because the FGw is naturally lagging behind sync as it's
+                                //    just duplicating whatever consensus provides. In such case the
+                                //    following call will actually remove the finalized block for
+                                //    the last round at the height and run any deferred executions
+                                //    for the next height.
+                                // 2. An abnormal scenario where the FGw is ahead of consensus and
+                                //    somehow magically produces valid blocks. In this case the call
+                                //    has no effect. Why do we take this absurd scenario into
+                                //    account? Because consistency of our storage is more important
+                                //    than whatever irrational scenarios that reality can surprise
+                                //    us with. In this case consistency means not piling up useless
+                                //    data in the consensus db that we then don't ever purge. See
+                                //    how P2PTaskEvent::CommitBlock is handled for more details.
+                                let success = on_finalized_block_committed(
+                                    validator_address,
+                                    &validator_cache,
                                     deferred_executions.clone(),
                                     &mut batch_execution_manager,
+                                    &proposals_db,
+                                    number,
+                                    info_watch_tx.clone(),
                                 )?;
-                                // If we finalized the proposal, we can now inform the consensus
-                                // engine about it. Otherwise the rest of the transaction batches
-                                // could be still be coming from the network, definitely the
-                                // proposal fin is still missing for sure.
-                                let success = match exec_success {
-                                    Some((hnr, commitment)) => {
-                                        ComputationSuccess::PreviouslyDeferredProposalIsFinalized(
-                                            hnr, commitment,
-                                        )
-                                    }
-                                    None => ComputationSuccess::Continue,
-                                };
                                 Ok(success)
                             }
                             SyncMessageToConsensus::ValidateBlock { block, reply, .. } => {
@@ -518,181 +510,172 @@ pub fn spawn(
                     // execution needs to be finalized and the resulting block has to be committed
                     // to the main database.
                     P2PTaskEvent::CommitBlock(height_and_round, value) => {
-                        {
-                            // TODO: We do not have to commit these blocks to the main database
-                            // anymore because they are being stored by the sync task (if enabled).
-                            // Once we are ready to get rid of fake proposals, consider storing
-                            // recently decided-upon blocks in memory (instead of a database) and
-                            // swapping out the notion of "committed" for something like "decided".
-                            //
-                            // NOTE: The main database still gets the state updates via consensus,
-                            // which is the only reason why we still need the main database here at
-                            // all. I could get it to work with only the consensus database in all
-                            // scenarios except for when the node is chosen as a proposer and needs
-                            // to cache the proposal for later.
-                            //
-                            // Chris (remove after asking sistemd)
-                            let mut validator_cache = validator_cache.clone();
-                            tracing::info!(
-                                "🖧  💾 {validator_address} Finalizing and committing block at \
-                                 {height_and_round} to the database ...",
-                            );
-                            let stopwatch = std::time::Instant::now();
+                        // TODO: We do not have to commit these blocks to the main database
+                        // anymore because they are being stored by the sync task (if enabled).
+                        // Once we are ready to get rid of fake proposals, consider storing
+                        // recently decided-upon blocks in memory (instead of a database) and
+                        // swapping out the notion of "committed" for something like "decided".
+                        //
+                        // NOTE: The main database still gets the state updates via consensus,
+                        // which is the only reason why we still need the main database here at
+                        // all. I could get it to work with only the consensus database in all
+                        // scenarios except for when the node is chosen as a proposer and needs
+                        // to cache the proposal for later.
+                        //
+                        // TODO(consensus) consult sistemd about the above comments and align them
+                        // accordingly.
+                        let mut validator_cache = validator_cache.clone();
+                        tracing::info!(
+                            "🖧  💾 {validator_address} Finalizing and committing block at \
+                             {height_and_round} to the database ...",
+                        );
+                        let stopwatch = std::time::Instant::now();
 
-                            let state_diff_commitment = match proposals_db.read_finalized_block(
-                                height_and_round.height(),
-                                height_and_round.round(),
-                            )? {
-                                // Our own proposal is already executed and finalized.
-                                Some(block) => block.header.state_diff_commitment,
-                                // Incoming proposal has been executed and needs to be finalized
-                                // now.
-                                None => {
-                                    let validator_stage = validator_cache
-                                        .remove(&height_and_round)
-                                        .map_err(anyhow::Error::from)?;
-                                    let validator = validator_stage.try_into_finalize_stage()?;
-                                    let main_readonly_storage = main_readonly_storage.clone();
-                                    // finalize() will now update the tries in main storage and then
-                                    // compute the resulting block hash.
-                                    //
-                                    // # Risk of pollution of state tries in the main storage DB
-                                    //
-                                    // This proposal and the resulting block has been decided upon
-                                    // by the consensus network, so updating the state tries in the
-                                    // main storage will not yield any trie nodes that do not belong
-                                    // to the canonical chain.
-                                    //
-                                    // # Temporary inconsistency for the RPC users
-                                    //
-                                    // The only temporary inconsistency that arises is that the
-                                    // block is not yet committed to the main DB, while the trie
-                                    // updates already are, which could impact some RPC requests for
-                                    // the current height.
-                                    //
-                                    // TODO check if we allow for such requests and if it really
-                                    // could be a problem for the users.
-                                    //
-                                    // # Risk of inconsistency of state tries in the main storage DB
-                                    //
-                                    // Calling finalize() at this point is only possible due to the
-                                    // fact that the proposal has already been successfully
-                                    // executed, which means that the previous block must have been
-                                    // committed to the main DB. Otherwise entire execution of the
-                                    // proposal at the current height would have been deferred until
-                                    // H-1 is committed to main DB.
-                                    //
-                                    // # Remaining issues for the future - forks
-                                    //
-                                    // The now-finalized and soon-to-be-committed block may not end
-                                    // up in the canonical chain after a fork, which means it will
-                                    // have to be pruned in some manner.
-                                    let block = validator.finalize(
-                                        &main_db_tx,
-                                        main_readonly_storage,
-                                        verify_tree_hashes,
-                                    )?;
-                                    main_db_tx
-                                        .commit()
-                                        .context("Committing main database transaction")?;
-                                    main_db_tx = main_db_conn
-                                        .transaction_with_behavior(TransactionBehavior::Immediate)
-                                        .context("Create database transaction")?;
-                                    // TODO(consensus integration tests) add a failure injection
-                                    // point here
-                                    let state_diff_commitment = block.header.state_diff_commitment;
-                                    proposals_db
-                                        .persist_finalized_block(
-                                            height_and_round.height(),
-                                            height_and_round.round(),
-                                            block,
-                                        )
-                                        .context("Persisting finalized block")?;
-                                    proposals_db
-                                        .commit()
-                                        .context("Committing consensus database transaction")?;
-                                    proposals_db = cons_db_conn
-                                        .transaction_with_behavior(TransactionBehavior::Immediate)
-                                        .map(ConsensusProposals::new)
-                                        .context("Create consensus database transaction")?;
+                        let state_diff_commitment = match proposals_db.read_finalized_block(
+                            height_and_round.height(),
+                            height_and_round.round(),
+                        )? {
+                            // Our own proposal is already executed and finalized.
+                            Some(block) => block.header.state_diff_commitment,
+                            // Incoming proposal has been executed and needs to be finalized
+                            // now.
+                            None => {
+                                let validator_stage = validator_cache
+                                    .remove(&height_and_round)
+                                    .map_err(anyhow::Error::from)?;
+                                let validator = validator_stage.try_into_finalize_stage()?;
+                                let main_readonly_storage = main_readonly_storage.clone();
+                                // finalize() will now update the tries in main storage and then
+                                // compute the resulting block hash.
+                                //
+                                // # Risk of pollution of state tries in the main storage DB
+                                //
+                                // This proposal and the resulting block has been decided upon
+                                // by the consensus network, so updating the state tries in the
+                                // main storage will not yield any trie nodes that do not belong
+                                // to the canonical chain.
+                                //
+                                // # Temporary inconsistency for the RPC users
+                                //
+                                // The only temporary inconsistency that arises is that the
+                                // block is not yet committed to the main DB, while the trie
+                                // updates already are, which could impact some RPC requests for
+                                // the current height.
+                                //
+                                // TODO check if we allow for such requests and if it really
+                                // could be a problem for the users.
+                                //
+                                // # Risk of inconsistency of state tries in the main storage DB
+                                //
+                                // Calling finalize() at this point is only possible due to the
+                                // fact that the proposal has already been successfully
+                                // executed, which means that the previous block must have been
+                                // committed to the main DB. Otherwise entire execution of the
+                                // proposal at the current height would have been deferred until
+                                // H-1 is committed to main DB.
+                                //
+                                // # Remaining issues for the future - forks
+                                //
+                                // The now-finalized and soon-to-be-committed block may not end
+                                // up in the canonical chain after a fork, which means it will
+                                // have to be pruned in some manner.
+                                let block = validator.finalize(
+                                    &main_db_tx,
+                                    main_readonly_storage,
+                                    verify_tree_hashes,
+                                )?;
+                                main_db_tx
+                                    .commit()
+                                    .context("Committing main database transaction")?;
+                                main_db_tx = main_db_conn
+                                    .transaction_with_behavior(TransactionBehavior::Immediate)
+                                    .context("Create database transaction")?;
+                                // TODO(consensus integration tests) add a failure injection
+                                // point here
+                                let state_diff_commitment = block.header.state_diff_commitment;
+                                proposals_db
+                                    .persist_finalized_block(
+                                        height_and_round.height(),
+                                        height_and_round.round(),
+                                        block,
+                                    )
+                                    .context("Persisting finalized block")?;
+                                proposals_db
+                                    .commit()
+                                    .context("Committing consensus database transaction")?;
+                                proposals_db = cons_db_conn
+                                    .transaction_with_behavior(TransactionBehavior::Immediate)
+                                    .map(ConsensusProposals::new)
+                                    .context("Create consensus database transaction")?;
 
-                                    state_diff_commitment
-                                }
-                            };
+                                state_diff_commitment
+                            }
+                        };
 
-                            assert_eq!(value.0 .0, state_diff_commitment.0);
+                        assert_eq!(value.0 .0, state_diff_commitment.0);
 
-                            // TODO(consensus integration tests) add a failure injection
-                            // point here
-                            integration_testing::debug_fail_on_proposal_committed(
-                                height_and_round.height(),
-                                inject_failure,
-                                &data_directory,
-                            );
+                        integration_testing::debug_fail_on_proposal_committed(
+                            height_and_round.height(),
+                            inject_failure,
+                            &data_directory,
+                        );
 
-                            tracing::info!(
-                                "🖧  💾 {validator_address} Finalized and prepared block for \
-                                 committing to the database at {height_and_round} in {} ms",
-                                stopwatch.elapsed().as_millis()
-                            );
+                        tracing::info!(
+                            "🖧  💾 {validator_address} Finalized and prepared block for \
+                             committing to the database at {height_and_round} in {} ms",
+                            stopwatch.elapsed().as_millis()
+                        );
 
-                            // Remove all finalized blocks for previous rounds at this height
-                            // because they will not be committed to the main DB. Do not remove the
-                            // block that will be committed by the sync task.
-                            proposals_db.remove_uncommitted_finalized_blocks(
-                                height_and_round.height(),
-                                height_and_round.round(),
+                        // Remove all finalized blocks for previous rounds at this height
+                        // because they will not be committed to the main DB. Do not remove the
+                        // block that will be committed by the sync task until it is confirmed
+                        // that it was committed.
+                        proposals_db.remove_uncommitted_finalized_blocks(
+                            height_and_round.height(),
+                            height_and_round.round(),
+                        )?;
+                        tracing::debug!(
+                            "🖧  🗑️ {validator_address} removed my uncommitted finalized blocks \
+                             for height {}",
+                            height_and_round.height()
+                        );
+
+                        // Clean up batch execution state for this height
+                        batch_execution_manager.cleanup(&height_and_round);
+                        tracing::debug!(
+                            "🖧  🗑️ {validator_address} cleaned up batch execution state for \
+                             height {}",
+                            height_and_round.height()
+                        );
+
+                        // Remove cached proposal parts for this height
+                        proposals_db.remove_parts(height_and_round.height(), None)?;
+                        tracing::debug!(
+                            "🖧  🗑️ {validator_address} removed my proposal parts for height {}",
+                            height_and_round.height()
+                        );
+
+                        // Consistency of our storage is more important than any irrational
+                        // scenarios that in theory cannot occur. In the abnormal case that
+                        // the FGw is actually ahead of consensus, we can check if the finalized
+                        // block has already been committed to the main DB without waiting for a
+                        // commit confirmation which had already arrived in the past and will result
+                        // in finalized blocks for last rounds piling up without ever being removed.
+                        let block_number = BlockNumber::new(height_and_round.height())
+                            .context("height exceeds i64::MAX")?;
+                        let is_already_committed =
+                            main_db_tx.block_exists(BlockId::Number(block_number))?;
+                        if is_already_committed {
+                            on_finalized_block_committed(
+                                validator_address,
+                                &validator_cache,
+                                deferred_executions.clone(),
+                                &mut batch_execution_manager,
+                                &proposals_db,
+                                block_number,
+                                info_watch_tx.clone(),
                             )?;
-                            tracing::debug!(
-                                "🖧  🗑️ {validator_address} removed my uncommitted finalized \
-                                 blocks for height {}",
-                                height_and_round.height()
-                            );
-
-                            // Clean up batch execution state for this height
-                            batch_execution_manager.cleanup(&height_and_round);
-                            tracing::debug!(
-                                "🖧  🗑️ {validator_address} cleaned up batch execution state for \
-                                 height {}",
-                                height_and_round.height()
-                            );
-
-                            // Remove cached proposal parts for this height
-                            proposals_db.remove_parts(height_and_round.height(), None)?;
-                            tracing::debug!(
-                                "🖧  🗑️ {validator_address} removed my proposal parts for height {}",
-                                height_and_round.height()
-                            );
-
-                            // TODO maybe we should remove this watch altogether with its respective
-                            // RPC method, because it's not reproting a decision anymore but rather
-                            // being in the process of committing a decided upon block which is
-                            // slightly different. And the consensus tests should rely on what
-                            // actually ends up in the main DB, otherwise the entire process of:
-                            // finalizing, deciding, committing is not properly tested.
-                            info_watch_tx.send_if_modified(|info| {
-                                let do_update = match info.highest_decision {
-                                    None => true,
-                                    Some((highest_decided_height, highest_decided_value)) => {
-                                        let new_height = height_and_round.height()
-                                            > highest_decided_height.get();
-                                        let new_value = value.0 != highest_decided_value;
-                                        new_height || new_value
-                                    }
-                                };
-                                if do_update {
-                                    let height =
-                                        BlockNumber::new_or_panic(height_and_round.height());
-                                    *info = ConsensusInfo {
-                                        highest_decision: Some((height, value.0)),
-                                        ..*info
-                                    };
-                                }
-                                do_update
-                            });
-
-                            anyhow::Ok(())
-                        }?;
+                        }
 
                         Ok(ComputationSuccess::Continue)
                     }
@@ -752,6 +735,67 @@ pub fn spawn(
             }
         }
     })
+}
+
+/// Handle commit confirmation for a finalized block at given height.
+fn on_finalized_block_committed(
+    validator_address: ContractAddress,
+    validator_cache: &ValidatorCache<BlockExecutor>,
+    deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
+    batch_execution_manager: &mut BatchExecutionManager,
+    proposals_db: &ConsensusProposals<'_>,
+    number: pathfinder_common::BlockNumber,
+    info_watch_tx: watch::Sender<ConsensusInfo>,
+) -> Result<ComputationSuccess, anyhow::Error> {
+    proposals_db.remove_finalized_blocks(number.get())?;
+
+    // TODO maybe we should remove this watch altogether with its respective
+    // RPC method, because it's not reproting a decision anymore but rather
+    // being in the process of committing a decided upon block which is
+    // slightly different. And the consensus tests should rely on what
+    // actually ends up in the main DB, otherwise the entire process of:
+    // finalizing, deciding, committing is not properly tested.
+    info_watch_tx.send_if_modified(|info| {
+        /* FIXME
+        let do_update = match info.highest_decision {
+            None => true,
+            Some((highest_decided_height, highest_decided_value)) => {
+                let new_height = height_and_round.height() > highest_decided_height.get();
+                let new_value = value.0 != highest_decided_value;
+                new_height || new_value
+            }
+        };
+        if do_update {
+            let height = BlockNumber::new_or_panic(height_and_round.height());
+            *info = ConsensusInfo {
+                highest_decision: Some((height, value.0)),
+                ..*info
+            };
+        }
+        do_update
+        */
+        false
+    });
+
+    tracing::debug!(
+        "🖧  🗑️ {validator_address} removed finalized block for last round at height {} after \
+         commit confirmation",
+        number.get()
+    );
+    let exec_success = execute_deferred_for_next_height::<BlockExecutor, ProdTransactionMapper>(
+        number.get(),
+        validator_cache.clone(),
+        deferred_executions.clone(),
+        batch_execution_manager,
+    )?;
+
+    let success = match exec_success {
+        Some((hnr, commitment)) => {
+            ComputationSuccess::PreviouslyDeferredProposalIsFinalized(hnr, commitment)
+        }
+        None => ComputationSuccess::Continue,
+    };
+    Ok(success)
 }
 
 struct ValidatorCache<E>(Arc<Mutex<HashMap<HeightAndRound, ValidatorStage<E>>>>);
