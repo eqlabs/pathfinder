@@ -175,7 +175,7 @@ pub fn spawn(
                         //
                         // This call may yield unreliable results if history_depth is too small and
                         // the currently decided upon and finalized block has not been committed by
-                        // the sync task yet, becasue we're only checking the main DB here.
+                        // the sync task yet, because we're only checking the main DB here.
                         if is_outdated_p2p_event(&main_db_tx, &event, config.history_depth)? {
                             // TODO consider punishing the sender if the event is too old
                             return Ok(ComputationSuccess::Continue);
