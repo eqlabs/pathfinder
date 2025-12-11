@@ -39,10 +39,8 @@ use pathfinder_consensus::{
     Consensus,
     ConsensusCommand,
     ConsensusEvent,
-    NetworkMessage,
     Proposal,
     Round,
-    SignedVote,
     ValidatorSet,
     ValidatorSetProvider,
 };
