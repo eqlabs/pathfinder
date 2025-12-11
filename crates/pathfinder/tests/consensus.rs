@@ -133,6 +133,12 @@ mod test {
         utils::wait_for_test_end(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT).await
     }
 
+    // Chris: FIXME Apparently the test waits until H=20 and H=13 for Dan, but in
+    // fact consensus in all nodes reaches H=33 before the test finishes on my
+    // machine
+    //
+    // Chris: FIXME change the test so that Dan actually catches up to the current
+    // consensus height, whatever it is, this will require some custom FGW
     #[tokio::test]
     async fn consensus_3_nodes_fourth_node_joins_late_can_catch_up() -> anyhow::Result<()> {
         const NUM_NODES: usize = 4;
