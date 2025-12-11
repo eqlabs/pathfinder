@@ -43,8 +43,7 @@ struct TestEnvironment {
     p2p_tx: mpsc::UnboundedSender<Event>,
     tx_to_p2p: mpsc::Sender<P2PTaskEvent>,
     rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
-    // So that receiver is not dropped
-    _tx_sync_to_consensus: mpsc::Sender<SyncMessageToConsensus>,
+    tx_sync_to_consensus: mpsc::Sender<SyncMessageToConsensus>,
     handle: Arc<Mutex<Option<tokio::task::JoinHandle<anyhow::Result<()>>>>>,
 
     // Keep these alive to prevent receiver from being dropped
@@ -75,7 +74,7 @@ impl TestEnvironment {
         let (p2p_tx, p2p_rx) = mpsc::unbounded_channel();
         let (tx_to_consensus, rx_from_p2p) = mpsc::channel(100);
         let (tx_to_p2p, rx_from_consensus) = mpsc::channel(100);
-        let (_tx_sync_to_consensus, rx_from_sync) = mpsc::channel(1);
+        let (tx_sync_to_consensus, rx_from_sync) = mpsc::channel(1);
         let (info_watch_tx, info_watch_rx) = watch::channel(ConsensusInfo::default());
 
         // Create mock Client (used for receiving events in these tests)
@@ -111,7 +110,7 @@ impl TestEnvironment {
             p2p_tx,
             tx_to_p2p,
             rx_from_p2p,
-            _tx_sync_to_consensus,
+            tx_sync_to_consensus,
             handle: Arc::new(Mutex::new(Some(handle))),
             _info_watch_rx: info_watch_rx,
         }
@@ -636,6 +635,17 @@ async fn test_proposal_fin_deferred_until_parent_block_committed() {
         ))
         .await
         .expect("Failed to send CommitBlock");
+    env.verify_task_alive().await;
+
+    // Step 8: At some point sync sends SyncMessageToConsensus::GetFinalizedBlock
+    // for H=1, and then confirms committing the block with
+    // SyncMessageToConsensus::ConfirmFinalizedBlockCommitted
+    env.tx_sync_to_consensus
+        .send(SyncMessageToConsensus::ConfirmFinalizedBlockCommitted {
+            number: BlockNumber::new_or_panic(1),
+        })
+        .await
+        .expect("Failed to send ConfirmFinalizedBlockCommitted");
     env.verify_task_alive().await;
 
     // Verify: Proposal event should be sent now
