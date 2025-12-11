@@ -41,8 +41,7 @@ struct TestEnvironment {
     p2p_tx: mpsc::UnboundedSender<Event>,
     rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
     tx_to_p2p: mpsc::Sender<P2PTaskEvent>,
-    // So that receiver is not dropped
-    _tx_sync_to_consensus: mpsc::Sender<SyncMessageToConsensus>,
+    tx_sync_to_consensus: mpsc::Sender<SyncMessageToConsensus>,
     handle: Arc<Mutex<Option<tokio::task::JoinHandle<anyhow::Result<()>>>>>,
 }
 
@@ -101,7 +100,7 @@ impl TestEnvironment {
             p2p_tx,
             rx_from_p2p,
             tx_to_p2p,
-            _tx_sync_to_consensus: tx_sync_to_consensus,
+            tx_sync_to_consensus,
             handle: Arc::new(Mutex::new(Some(handle))),
         }
     }
@@ -577,6 +576,17 @@ async fn test_proposal_fin_deferred_until_parent_block_committed() {
         ))
         .await
         .expect("Failed to send CommitBlock");
+    env.verify_task_alive().await;
+
+    // Step 8: At some point sync sends SyncMessageToConsensus::GetFinalizedBlock
+    // for H=1, and then confirms committing the block with
+    // SyncMessageToConsensus::ConfirmFinalizedBlockCommitted
+    env.tx_sync_to_consensus
+        .send(SyncMessageToConsensus::ConfirmFinalizedBlockCommitted {
+            number: BlockNumber::new_or_panic(1),
+        })
+        .await
+        .expect("Failed to send ConfirmFinalizedBlockCommitted");
     env.verify_task_alive().await;
 
     // Verify: Proposal event should be sent now
