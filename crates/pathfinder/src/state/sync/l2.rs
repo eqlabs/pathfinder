@@ -346,7 +346,7 @@ where
 /// Same as [sync] with the key differences being:
 ///   - has no bulk sync phase (PoC for consensus sync, keeping it as simple as
 ///     possible)
-///   - interacts with consensus via [SyncRequestToConsensus]
+///   - interacts with consensus via [SyncMessageToConsensus]
 pub async fn consensus_sync<GatewayClient>(
     tx_event: mpsc::Sender<SyncEvent>,
     sync_to_consensus_tx: mpsc::Sender<SyncMessageToConsensus>,
