@@ -28,6 +28,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use clap::{Args, Parser};
+use pathfinder_common::integration_testing::debug_create_port_marker_file;
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::ContractClassUpdate;
 use pathfinder_common::{BlockId, Chain};
@@ -46,6 +47,7 @@ use starknet_gateway_types::reply::state_update::{
     StorageDiff,
 };
 use starknet_gateway_types::reply::{GasPrices, Status};
+use tracing::Instrument;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
 use warp::Filter;
@@ -55,6 +57,11 @@ use warp::Filter;
 struct Cli {
     #[arg(long_help = "Database path")]
     pub database_path: PathBuf,
+    #[arg(
+        long_help = "Port to listen on, 0 means random OS assigned value",
+        default_value = "8080"
+    )]
+    pub port: u16,
     #[command(flatten)]
     pub reorg: ReorgCli,
 }
@@ -92,8 +99,7 @@ struct ReorgConfig {
 }
 
 async fn serve(cli: Cli) -> anyhow::Result<()> {
-    let database_path = std::env::args().nth(1).unwrap();
-    let storage = pathfinder_storage::StorageBuilder::file(database_path.into())
+    let storage = pathfinder_storage::StorageBuilder::file(cli.database_path.clone())
         .migrate()?
         .create_pool(NonZeroU32::new(10).unwrap())
         .unwrap();
@@ -347,7 +353,13 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
         )
         .with(warp::filters::trace::request());
 
-    warp::serve(handler).run(([127, 0, 0, 1], 8080)).await;
+    let (socket_addr, server_fut) = warp::serve(handler).bind_ephemeral(([127, 0, 0, 1], cli.port));
+    let span = tracing::info_span!("Server::run", ?socket_addr);
+    tracing::info!(parent: &span, "listening on http://{}", socket_addr);
+
+    debug_create_port_marker_file("feeder-gateway", socket_addr.port(), &cli.database_path);
+
+    server_fut.instrument(span).await;
 
     Ok(())
 }
