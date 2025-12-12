@@ -174,8 +174,8 @@ impl ConsensusTransaction<'_> {
             .inner()
             .query_row(
                 r"SELECT parts
-            FROM consensus_proposals
-            WHERE height = :height AND round = :round AND proposer = :proposer",
+                FROM consensus_proposals
+                WHERE height = :height AND round = :round AND proposer = :proposer",
                 named_params! {
                     ":height": &height,
                     ":round": &round,
@@ -197,8 +197,8 @@ impl ConsensusTransaction<'_> {
             .inner()
             .query_row(
                 r"SELECT parts
-            FROM consensus_proposals
-            WHERE height = :height AND round = :round AND proposer <> :proposer",
+                FROM consensus_proposals
+                WHERE height = :height AND round = :round AND proposer <> :proposer",
                 named_params! {
                     ":height": &height,
                     ":round": &round,
@@ -349,8 +349,8 @@ impl ConsensusTransaction<'_> {
             .inner()
             .query_row(
                 r"SELECT block
-            FROM consensus_finalized_blocks
-            WHERE height = :height AND round = :round",
+                FROM consensus_finalized_blocks
+                WHERE height = :height AND round = :round",
                 named_params! {
                     ":height": &height,
                     ":round": &round,
@@ -371,10 +371,10 @@ impl ConsensusTransaction<'_> {
             .inner()
             .query_row(
                 r"SELECT block
-            FROM consensus_finalized_blocks
-            WHERE height = :height
-            ORDER BY round DESC
-            LIMIT 1",
+                FROM consensus_finalized_blocks
+                WHERE height = :height
+                ORDER BY round DESC
+                LIMIT 1",
                 named_params! {
                     ":height": &height,
                 },
