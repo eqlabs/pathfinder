@@ -52,6 +52,11 @@ async fn async_main() -> anyhow::Result<Storage> {
         std::env::set_var("RUST_LOG", "pathfinder=info,error");
     }
 
+    // Configure rustls crypto provider.
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .expect("rustls crypto provider setup should not fail");
+
     let config = config::Config::parse();
 
     setup_tracing(
@@ -237,6 +242,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         versioned_constants_map: config.versioned_constants_map.clone(),
         native_execution: config.native_execution.is_enabled(),
         native_class_cache_size: config.native_execution.class_cache_size(),
+        native_compiler_optimization_level: config.native_execution.optimization_level(),
         submission_tracker_time_limit: config.submission_tracker_time_limit,
         submission_tracker_size_limit: config.submission_tracker_size_limit,
         block_trace_cache_size: config.rpc_block_trace_cache_size,
@@ -730,10 +736,12 @@ async fn spawn_monitoring(
         .install_recorder()
         .context("Creating Prometheus recorder")?;
 
-    metrics::gauge!("pathfinder_build_info", 1.0, "version" => pathfinder_version::VERSION);
+    metrics::gauge!("pathfinder_build_info", "version" => pathfinder_version::VERSION).set(1.0);
 
     match SystemTime::now().duration_since(UNIX_EPOCH) {
-        Ok(duration) => metrics::gauge!("process_start_time_seconds", duration.as_secs() as f64),
+        Ok(duration) => {
+            metrics::gauge!("process_start_time_seconds").set(duration.as_secs() as f64)
+        }
         Err(err) => tracing::error!("Failed to read system time: {:?}", err),
     }
 

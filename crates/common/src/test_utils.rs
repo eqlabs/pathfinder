@@ -31,41 +31,11 @@ pub mod metrics {
         Key,
         KeyName,
         Label,
+        Metadata,
         Recorder,
         SharedString,
         Unit,
     };
-
-    /// # Purpose
-    ///
-    /// Unset the global recorder when this guard is dropped, so you don't have
-    /// to remember to call `metrics::clear_recorder()` manually at the end
-    /// of a test.
-    ///
-    /// # Warning
-    ///
-    /// Does __not__ provide any safety wrt. threading/reentrancy/etc.
-    ///
-    /// # Rationale
-    ///
-    /// The [`metrics`] crate relies on the recorder being a [singleton](https://docs.rs/metrics/latest/metrics/#installing-recorders).
-    pub struct ScopedRecorderGuard;
-
-    impl ScopedRecorderGuard {
-        pub fn new<R>(recorder: R) -> Self
-        where
-            R: Recorder + 'static,
-        {
-            metrics::set_boxed_recorder(Box::new(recorder)).unwrap();
-            Self
-        }
-    }
-
-    impl Drop for ScopedRecorderGuard {
-        fn drop(&mut self) {
-            unsafe { metrics::clear_recorder() }
-        }
-    }
 
     /// Mocks a [recorder](`metrics::Recorder`) only for specified
     /// [labels](`metrics::Label`) treating the rest of registered metrics
@@ -95,7 +65,7 @@ pub mod metrics {
         /// # Warning
         ///
         /// Returns `Counter::noop()` in other cases.
-        fn register_counter(&self, key: &Key) -> Counter {
+        fn register_counter(&self, key: &Key, _metadata: &Metadata<'_>) -> Counter {
             if self.is_key_used(key) {
                 // Check if the counter is already registered
                 let read_guard = self.0.counters.read().unwrap();
@@ -117,10 +87,10 @@ pub mod metrics {
             }
         }
 
-        fn register_gauge(&self, _: &Key) -> Gauge {
+        fn register_gauge(&self, _: &Key, _metadata: &Metadata<'_>) -> Gauge {
             unimplemented!()
         }
-        fn register_histogram(&self, _: &Key) -> Histogram {
+        fn register_histogram(&self, _: &Key, _metadata: &Metadata<'_>) -> Histogram {
             // Ignored in tests for now
             Histogram::noop()
         }
@@ -155,12 +125,11 @@ pub mod metrics {
 
     impl FakeRecorderHandle {
         /// Panics in any of the following cases
-        /// - `counter_name` was not registered via
-        ///   [`metrics::register_counter`]
+        /// - `counter_name` was not registered via [`metrics::counter`]
         /// - `method_name` does not match any [value](https://docs.rs/metrics/latest/metrics/struct.Label.html#method.value)
         ///   for the `method` [label](https://docs.rs/metrics/latest/metrics/struct.Label.html#)
         ///   [key](https://docs.rs/metrics/latest/metrics/struct.Label.html#method.key)
-        ///   registered via [`metrics::register_counter`]
+        ///   registered via [`metrics::counter`]
         pub fn get_counter_value(
             &self,
             counter_name: &'static str,
@@ -178,10 +147,9 @@ pub mod metrics {
         }
 
         /// Panics in any of the following cases
-        /// - `counter_name` was not registered via
-        ///   [`metrics::register_counter`]
+        /// - `counter_name` was not registered via [`metrics::counter`]
         /// - `labels` don't match the [label](https://docs.rs/metrics/latest/metrics/struct.Label.html#)-s
-        ///   registered via [`metrics::register_counter`]
+        ///   registered via [`metrics::counter`]
         pub fn get_counter_value_by_label<const N: usize>(
             &self,
             counter_name: &'static str,

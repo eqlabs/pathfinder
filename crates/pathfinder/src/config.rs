@@ -633,6 +633,15 @@ struct NativeExecutionCli {
         env = "PATHFINDER_RPC_NATIVE_EXECUTION_CLASS_CACHE_SIZE"
     )]
     class_cache_size: NonZeroUsize,
+
+    #[arg(
+        long = "rpc.native-execution-compiler-optimization-level",
+        long_help = "Optimization level for the Cairo native compiler. Valid values are 0(none), 1 (less), 2 (default), and 3 (aggressive).",
+        action = clap::ArgAction::Set,
+        default_value = "2",
+        env = "PATHFINDER_RPC_NATIVE_EXECUTION_COMPILER_OPTIMIZATION_LEVEL"
+    )]
+    optimization_level: u8,
 }
 
 #[cfg(feature = "p2p")]
@@ -914,6 +923,7 @@ pub struct DebugConfig {
 pub struct NativeExecutionConfig {
     enabled: bool,
     class_cache_size: NonZeroUsize,
+    optimization_level: u8,
 }
 
 #[cfg(not(feature = "cairo-native"))]
@@ -1019,6 +1029,10 @@ impl NativeExecutionConfig {
     pub fn class_cache_size(&self) -> NonZeroUsize {
         NonZeroUsize::new(1).unwrap()
     }
+
+    pub fn optimization_level(&self) -> u8 {
+        0
+    }
 }
 
 #[cfg(feature = "cairo-native")]
@@ -1027,6 +1041,7 @@ impl NativeExecutionConfig {
         Self {
             enabled: args.is_native_execution_enabled,
             class_cache_size: args.class_cache_size,
+            optimization_level: args.optimization_level,
         }
     }
 
@@ -1036,6 +1051,10 @@ impl NativeExecutionConfig {
 
     pub fn class_cache_size(&self) -> NonZeroUsize {
         self.class_cache_size
+    }
+
+    pub fn optimization_level(&self) -> u8 {
+        self.optimization_level
     }
 }
 

@@ -202,6 +202,30 @@ You cannot switch between archive and pruned mode mid-run. To switch from archiv
 
 :::
 
+### Native Execution
+
+:::warning
+
+Native execution (using [Cairo Native](https://github.com/lambdaclass/cairo_native)) is still an experimental feature that is beneficial for a few specific use-cases only.
+
+:::
+
+To improve Cairo execution performance, Pathfinder supports "native execution". Cairo Native works by compiling Cairo classes into platform-specific binaries. These binaries are then used to execute entry points directly, avoiding the overhead of running the Cairo VM interpreter. You can enable native execution by the following option:
+
+```bash
+--rpc.native-execution true
+```
+
+#### Limitations
+
+- Only Sierra 1.7+ classes can be compiled. This practically makes native execution only available for classes that have been compiled with a recent version of the Cairo compiler.
+- Compilation is performed on-demand. That is, the first execution attempt of a compatible class adds the class to the compiler queue. Since compilation might take up to a minute Pathfinder falls back to using the Cairo VM until compilation finishes to avoid delaying JSON-RPC responses. Compilation is performed on a single thread.
+- Compiled native classes are transient. We keep the compiler artifacts in temporary files (under `/tmp`). The classes are _not_ persisted into Pathfinder's database. Restarting the node clears this cache and all classes will need to be re-compiled.
+- The size of the native compiler class cache is configurable using `--rpc.native-execution-class-cache-size=<N>`. The default setting is 512, meaning that at most 512 native classes are kept in the cache.
+- Each compiled class takes up some disk space. The actual disk space required depends on the size of the Cairo class. For estimation you can use a few megabytes per class.
+- The optimization level used by the Cairo Native compiler can be set by the `--rpc.native-execution-compiler-optimization-level` CLI option. Valid values are 0 (no optimization), 1 (less optimization), 2 (default optimization), and 3 (aggressive optimization).
+
+
 ## Environment Variables
 
 Pathfinder can also be configured via environment variables, which take second place in configuration precedence.

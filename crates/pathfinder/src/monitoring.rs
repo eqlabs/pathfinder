@@ -229,17 +229,15 @@ mod tests {
 
     #[tokio::test]
     async fn metrics() {
-        use pathfinder_common::test_utils::metrics::ScopedRecorderGuard;
-
         let recorder = PrometheusBuilder::new().build_recorder();
         let handle = recorder.handle();
         // Automatically deregister the recorder
-        let _guard = ScopedRecorderGuard::new(recorder);
+        let _guard = metrics::set_default_local_recorder(&recorder);
 
         // We don't care about the recorder being a singleton as the counter name here
         // does not interfere with any other "real" counter registered in
         // pathfinder or other tests
-        let counter = metrics::register_counter!("x");
+        let counter = metrics::counter!("x");
         counter.increment(123);
 
         let readiness = Arc::new(AtomicBool::new(false));

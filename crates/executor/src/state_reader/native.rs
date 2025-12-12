@@ -31,14 +31,16 @@ pub struct NativeClassCache {
 }
 
 impl NativeClassCache {
-    pub fn spawn(cache_size: NonZeroUsize) -> Self {
+    pub fn spawn(cache_size: NonZeroUsize, optimization_level: u8) -> Self {
         let (tx, rx) = std::sync::mpsc::channel();
 
         let cache = Arc::new(Mutex::new(SizedCache::with_size(cache_size.get())));
 
         util::task::spawn_std({
             let cache = Arc::clone(&cache);
-            move |cancellation_token| compiler_thread(cache, rx, cancellation_token)
+            move |cancellation_token| {
+                compiler_thread(cache, rx, cancellation_token, optimization_level.into())
+            }
         });
 
         NativeClassCache {
@@ -59,14 +61,17 @@ impl NativeClassCache {
         match locked.cache_get(&class_hash) {
             Some(CacheItem::CompiledClass(cached_class)) => {
                 tracing::trace!(%class_hash, "Native class cache hit");
+                metrics::counter!("native_class_cache_hit_total").increment(1);
                 Some(cached_class.clone())
             }
             Some(CacheItem::CompilationPending) => {
                 tracing::trace!(%class_hash, "Native class cache miss (pending)");
+                metrics::counter!("native_class_cache_miss_compilation_pending_total").increment(1);
                 None
             }
             None => {
                 tracing::trace!(%class_hash, "Native class cache miss (compiling)");
+                metrics::counter!("native_class_cache_miss_total").increment(1);
                 locked.cache_set(class_hash, CacheItem::CompilationPending);
                 let _ = self.compiler_tx.send(CompilerInput {
                     class_hash,
@@ -74,16 +79,21 @@ impl NativeClassCache {
                     class_definition,
                     casm_definition,
                 });
+                metrics::gauge!(NATIVE_CLASS_COMPILATION_QUEUED_TOTAL_METRIC_NAME).increment(1.0);
                 None
             }
         }
     }
 }
 
+const NATIVE_CLASS_COMPILATION_QUEUED_TOTAL_METRIC_NAME: &str =
+    "native_class_compilation_queued_total";
+
 fn compiler_thread(
     cache: Arc<Cache>,
     rx: std::sync::mpsc::Receiver<CompilerInput>,
     cancellation_token: CancellationToken,
+    optimization_level: cairo_native::OptLevel,
 ) {
     loop {
         if cancellation_token.is_cancelled() {
@@ -101,9 +111,13 @@ fn compiler_thread(
 
         tracing::debug!("Compiling native class");
         let started_at = std::time::Instant::now();
-        match sierra_class_as_native(input) {
+        match sierra_class_as_native(input, optimization_level) {
             Ok(compiled_class) => {
-                tracing::debug!(elapsed=?started_at.elapsed(), "Compilation finished");
+                let elapsed = started_at.elapsed();
+                tracing::debug!(?elapsed, "Compilation finished");
+                metrics::histogram!("native_class_compilation_duration_seconds",)
+                    .record(elapsed.as_secs_f64());
+                metrics::counter!("native_class_compiled_total").increment(1);
                 cache
                     .lock()
                     .unwrap()
@@ -111,12 +125,18 @@ fn compiler_thread(
             }
             Err(error) => {
                 tracing::error!(elapsed=?started_at.elapsed(), %error, "Error compiling native class");
+                metrics::counter!("native_class_compilation_errors_total").increment(1);
             }
         }
+
+        metrics::gauge!(NATIVE_CLASS_COMPILATION_QUEUED_TOTAL_METRIC_NAME).decrement(1.0);
     }
 }
 
-fn sierra_class_as_native(input: CompilerInput) -> Result<NativeCompiledClassV1, StateError> {
+fn sierra_class_as_native(
+    input: CompilerInput,
+    optimization_level: cairo_native::OptLevel,
+) -> Result<NativeCompiledClassV1, StateError> {
     let mut sierra_definition: serde_json::Value = serde_json::from_slice(&input.class_definition)
         .map_err(|e| StateError::ProgramError(ProgramError::Parse(e)))?;
     let sierra_abi_str = sierra_definition
@@ -147,15 +167,18 @@ fn sierra_class_as_native(input: CompilerInput) -> Result<NativeCompiledClassV1,
     };
 
     let contract_executor = std::panic::catch_unwind(|| {
-        AotContractExecutor::new(
+        let mut stats = cairo_native::statistics::Statistics::default();
+        let executor = AotContractExecutor::new(
             &sierra_program,
             &sierra_class.entry_points_by_type,
             version_id,
-            cairo_native::OptLevel::Default,
+            optimization_level,
             // `stats` - Passing a [cairo_native::statistics::Statistics] object enables collecting
             // compilation statistics.
-            None,
-        )
+            Some(&mut stats),
+        );
+        update_compiler_metrics(&stats);
+        executor
     })
     .map_err(|e| StateError::StateReadError(format!("Error compiling native class: {e:?}")))?
     .map_err(|e| StateError::StateReadError(format!("Error compiling native class: {e}")))?;
@@ -173,4 +196,35 @@ fn sierra_class_as_native(input: CompilerInput) -> Result<NativeCompiledClassV1,
     let native_class = NativeCompiledClassV1::new(contract_executor, casm_class);
 
     Ok(native_class)
+}
+
+fn update_compiler_metrics(stats: &cairo_native::statistics::Statistics) {
+    if let Some(sierra_to_mlir_time_ms) = stats.compilation_sierra_to_mlir_time_ms {
+        metrics::histogram!("native_class_compilation_sierra_to_mlir_duration_seconds")
+            .record(sierra_to_mlir_time_ms as f64 / 1000.0)
+    }
+    if let Some(mlir_passes_time_ms) = stats.compilation_mlir_passes_time_ms {
+        metrics::histogram!("native_class_compilation_mlir_passes_duration_seconds")
+            .record(mlir_passes_time_ms as f64 / 1000.0)
+    }
+    if let Some(mlir_to_llvm_time_ms) = stats.compilation_mlir_to_llvm_time_ms {
+        metrics::histogram!("native_class_compilation_mlir_to_llvm_duration_seconds")
+            .record(mlir_to_llvm_time_ms as f64 / 1000.0)
+    }
+    if let Some(llvm_passes_time_ms) = stats.compilation_llvm_passes_time_ms {
+        metrics::histogram!("native_class_compilation_llvm_passes_duration_seconds")
+            .record(llvm_passes_time_ms as f64 / 1000.0)
+    }
+    if let Some(llvm_to_object_time_ms) = stats.compilation_llvm_to_object_time_ms {
+        metrics::histogram!("native_class_compilation_llvm_to_object_duration_seconds")
+            .record(llvm_to_object_time_ms as f64 / 1000.0)
+    }
+    if let Some(linking_time_ms) = stats.compilation_linking_time_ms {
+        metrics::histogram!("native_class_compilation_linking_duration_seconds")
+            .record(linking_time_ms as f64 / 1000.0)
+    }
+    if let Some(object_size_bytes) = stats.object_size_bytes {
+        metrics::histogram!("native_class_compilation_object_size_bytes")
+            .record(object_size_bytes as f64);
+    }
 }

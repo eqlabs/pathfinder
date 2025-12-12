@@ -86,8 +86,8 @@ libp2p = { version = "0.55.0", default-features = false }
 libp2p-identity = "0.2.2"
 libp2p-plaintext = "0.43.0"
 libp2p-swarm-test = "0.5.0"
-metrics = "0.20.1"
-metrics-exporter-prometheus = "0.11.0"
+metrics = "0.24.3"
+metrics-exporter-prometheus = { version = "0.18.1", default-features = false }
 mime = "0.3"
 mockall = "0.11.4"
 num-bigint = "0.4.4"
@@ -113,6 +113,7 @@ reqwest = { version = "0.12.23", default-features = false, features = [
 ] }
 rstest = "0.18.2"
 rusqlite = "0.37.0"
+rustls = "0.23.35"
 semver = "1.0.18"
 serde = "1.0.192"
 serde_json = "1.0.142"
