@@ -190,7 +190,9 @@ mod test {
         let charlie_client = wait_for_height(&charlie, FINAL_HEIGHT, POLL_HEIGHT);
 
         // Wait for a block that was decided before this node joined to be synced.
-        let dan_client = wait_for_block_exists(&dan, HEIGHT_TO_ADD_FOURTH_NODE - 2, POLL_HEIGHT);
+        // let dan_client = wait_for_block_exists(&dan, HEIGHT_TO_ADD_FOURTH_NODE - 2,
+        // POLL_HEIGHT);
+        let dan_client = wait_for_height(&dan, FINAL_HEIGHT, POLL_HEIGHT);
 
         utils::wait_for_test_end(
             vec![alice_client, bob_client, charlie_client, dan_client],

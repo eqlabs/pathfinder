@@ -43,6 +43,7 @@ pub struct Config {
     pub fixture_dir: PathBuf,
     pub test_dir: PathBuf,
     pub inject_failure: Option<InjectFailureConfig>,
+    pub local_feeder_gateway: bool,
 }
 
 pub type RpcPortWatch = (watch::Sender<(u32, u16)>, watch::Receiver<(u32, u16)>);
@@ -73,42 +74,51 @@ impl PathfinderInstance {
             .stderr(stderr_file)
             .env(
                 "RUST_LOG",
-                "pathfinder_lib=trace,pathfinder=trace,pathfinder_consensus=trace,p2p=off,\
+                "pathfinder_lib=trace,pathfinder=trace,pathfinder_lib=trace,\
+                 pathfinder_consensus=trace,p2p=off,\
                  informalsystems_malachitebft_core_consensus=trace",
             )
-            .args([
-                "--ethereum.url=https://ethereum-sepolia-rpc.publicnode.com",
-                "--network=sepolia-testnet",
-                format!("--data-directory={}", db_dir.display()).as_str(),
-                "--debug.pretty-log=true",
-                "--color=never",
-                "--monitor-address=127.0.0.1:0",
-                "--rpc.enable=true",
-                "--http-rpc=127.0.0.1:0",
-                "--consensus.enable=true",
-                // Currently the proposer address always points to Alice (0x1).
-                "--consensus.proposer-addresses=0x1",
-                format!(
-                    "--consensus.my-validator-address={:#x}",
-                    config.my_validator_address
-                )
-                .as_str(),
-                format!(
-                    "--consensus.validator-addresses={}",
-                    config
-                        .validator_addresses
-                        .iter()
-                        .map(|a| format!("0x{a}"))
-                        .collect::<Vec<_>>()
-                        .join(",")
-                )
-                .as_str(),
-                "--consensus.history-depth=2",
-                format!("--p2p.consensus.identity-config-file={}", id_file.display()).as_str(),
-                "--p2p.consensus.listen-on=/ip4/127.0.0.1/tcp/0",
-                "--p2p.consensus.experimental.direct-connection-timeout=1",
-                "--p2p.consensus.experimental.eviction-timeout=1",
-            ]);
+            .arg("--ethereum.url=https://ethereum-sepolia-rpc.publicnode.com");
+
+        // TODO add option to the FGW to wait for the DB to show up, FGW is spawned
+        // before Alice and then Alice can read the port from the marker file.
+        if config.local_feeder_gateway {
+            command.args(["--network=custom"]);
+        } else {
+            command.arg("--network=sepolia-testnet");
+        }
+
+        let command = command.args([
+            format!("--data-directory={}", db_dir.display()).as_str(),
+            "--debug.pretty-log=true",
+            "--color=never",
+            "--monitor-address=127.0.0.1:0",
+            "--rpc.enable=true",
+            "--http-rpc=127.0.0.1:0",
+            "--consensus.enable=true",
+            // Currently the proposer address always points to Alice (0x1).
+            "--consensus.proposer-addresses=0x1",
+            format!(
+                "--consensus.my-validator-address={:#x}",
+                config.my_validator_address
+            )
+            .as_str(),
+            format!(
+                "--consensus.validator-addresses={}",
+                config
+                    .validator_addresses
+                    .iter()
+                    .map(|a| format!("0x{a}"))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+            .as_str(),
+            "--consensus.history-depth=2",
+            format!("--p2p.consensus.identity-config-file={}", id_file.display()).as_str(),
+            "--p2p.consensus.listen-on=/ip4/127.0.0.1/tcp/0",
+            "--p2p.consensus.experimental.direct-connection-timeout=1",
+            "--p2p.consensus.experimental.eviction-timeout=1",
+        ]);
         if let Some(boot_port) = config.boot_port {
             // Peer ID from `fixtures/id_Alice.json`.
             command.arg(format!(
@@ -143,6 +153,8 @@ impl PathfinderInstance {
         // an instance is terminated and then respawned.
         let rpc_port_watch_tx2 = rpc_port_watch_tx.clone();
         _ = Box::leak(Box::new(rpc_port_watch_tx2));
+
+        // If Self == Alice spawn the feeder gateway process that'd feed on Alice's DB.
 
         Ok(Self {
             process,
@@ -438,6 +450,7 @@ impl Config {
                 pathfinder_bin: pathfinder_bin.to_path_buf(),
                 fixture_dir: fixture_dir.to_path_buf(),
                 inject_failure: None,
+                local_feeder_gateway: false,
             })
             .collect()
     }
@@ -454,6 +467,11 @@ impl Config {
 
     pub fn with_sync_enabled(mut self) -> Self {
         self.sync_enabled = true;
+        self
+    }
+
+    pub fn with_local_feeder_gateway(mut self) -> Self {
+        self.local_feeder_gateway = true;
         self
     }
 }
