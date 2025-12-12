@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use p2p::consensus::{Event, HeightAndRound};
 use p2p_proto::consensus::ProposalPart;
-use pathfinder_common::{ChainId, ContractAddress, L2Block, ProposalCommitment};
+use pathfinder_common::{ChainId, ConsensusInfo, ContractAddress, L2Block, ProposalCommitment};
 use pathfinder_consensus::{ConsensusCommand, ConsensusEvent, NetworkMessage};
 use pathfinder_storage::pruning::BlockchainHistoryMode;
 use pathfinder_storage::{JournalMode, Storage, TriePruneMode};
@@ -55,6 +55,8 @@ pub fn start(
     let consensus_storage =
         open_consensus_storage(data_directory).expect("Consensus storage cannot be opened");
 
+    let (info_watch_tx, consensus_info_watch) = watch::channel(ConsensusInfo::default());
+
     let consensus_p2p_event_processing_handle = p2p_task::spawn(
         chain_id,
         (&config).into(),
@@ -63,6 +65,7 @@ pub fn start(
         tx_to_consensus,
         rx_from_consensus,
         sync_to_consensus_rx,
+        info_watch_tx,
         main_storage.clone(),
         consensus_storage.clone(),
         data_directory,
@@ -70,15 +73,12 @@ pub fn start(
         inject_failure_config,
     );
 
-    let (info_watch_tx, consensus_info_watch) = watch::channel(None);
-
     let consensus_engine_handle = consensus_task::spawn(
         chain_id,
         config,
         wal_directory,
         tx_to_p2p,
         rx_from_p2p,
-        info_watch_tx,
         main_storage,
         consensus_storage,
         data_directory,

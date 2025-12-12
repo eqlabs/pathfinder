@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use anyhow::Context;
 use serde::Deserialize;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -33,16 +34,6 @@ async fn wait_for_height_fut(
     height: u64,
     poll_interval: Duration,
 ) {
-    #[derive(Deserialize)]
-    struct Reply {
-        result: Height,
-    }
-
-    #[derive(Deserialize)]
-    struct Height {
-        highest_decided_height: Option<u64>,
-    }
-
     loop {
         // Sleeping first actually makes sense here, because the node will likely not
         // have any decided heights immediately after the RPC server is ready.
@@ -59,26 +50,19 @@ async fn wait_for_height_fut(
                 continue;
             };
 
-        let Ok(reply) = reqwest::Client::new()
-            .post(format!(
-                "http://127.0.0.1:{rpc_port}/rpc/pathfinder/unstable"
-            ))
-            .body(r#"{"jsonrpc":"2.0","id":0,"method":"pathfinder_consensusInfo","params":[]}"#)
-            .header("Content-Type", "application/json")
-            .send()
-            .await
+        let Ok(JsonRpcReply {
+            result:
+                ConsensusInfoResult {
+                    highest_decided_height,
+                    ..
+                },
+        }) = get_consensus_info(name, rpc_port).await
         else {
             println!(
                 "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} not responding yet"
             );
             continue;
         };
-
-        let Reply {
-            result: Height {
-                highest_decided_height,
-            },
-        } = reply.json::<Reply>().await.unwrap();
 
         println!(
             "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} decided height: \
@@ -113,14 +97,40 @@ async fn wait_for_block_exists_fut(
     poll_interval: Duration,
 ) {
     #[derive(Deserialize)]
-    struct Reply {
-        result: Option<Block>,
-    }
-
-    #[derive(Deserialize)]
     struct Block {
         block_number: u64,
         block_hash: String,
+    }
+
+    async fn get_block_with_receipts(
+        rpc_port: u16,
+        block_height: u64,
+    ) -> anyhow::Result<JsonRpcReply<Option<Block>>> {
+        let reply = reqwest::Client::new()
+            .post(format!("http://127.0.0.1:{rpc_port}"))
+            .body(format!(
+                r#"{{
+                    "jsonrpc": "2.0",
+                    "id": 0,
+                    "method": "starknet_getBlockWithReceipts",
+                    "params": {{
+                        "block_id": {{
+                            "block_number": {block_height}
+                        }}
+                    }}
+                }}"#,
+            ))
+            .header("Content-Type", "application/json")
+            .send()
+            .await
+            .with_context(|| format!("Sending JSON-RPC request to get block {block_height}"))?;
+
+        let parsed = reply
+            .json::<JsonRpcReply<Option<Block>>>()
+            .await
+            .with_context(|| format!("Parsing JSON-RPC response for block {block_height}"))?;
+
+        Ok(parsed)
     }
 
     loop {
@@ -139,33 +149,14 @@ async fn wait_for_block_exists_fut(
                 continue;
             };
 
-        let Ok(reply) = reqwest::Client::new()
-            .post(format!("http://127.0.0.1:{rpc_port}"))
-            .body(format!(
-                r#"{{
-                    "jsonrpc": "2.0",
-                    "id": 0,
-                    "method": "starknet_getBlockWithReceipts",
-                    "params": {{
-                        "block_id": {{
-                            "block_number": {block_height}
-                        }}
-                    }}
-                }}"#,
-            ))
-            .header("Content-Type", "application/json")
-            .send()
-            .await
-        else {
+        let Ok(reply) = get_block_with_receipts(rpc_port, block_height).await else {
             println!(
                 "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} not responding yet"
             );
             continue;
         };
 
-        let Reply { result: block } = reply.json::<Reply>().await.unwrap();
-
-        if let Some(b) = block {
+        if let Some(b) = reply.result {
             if b.block_number == block_height {
                 println!(
                     "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} has block \
@@ -176,4 +167,33 @@ async fn wait_for_block_exists_fut(
             }
         }
     }
+}
+
+pub async fn get_consensus_info(
+    name: &'static str,
+    rpc_port: u16,
+) -> anyhow::Result<JsonRpcReply<ConsensusInfoResult>> {
+    reqwest::Client::new()
+        .post(format!(
+            "http://127.0.0.1:{rpc_port}/rpc/pathfinder/unstable"
+        ))
+        .body(r#"{"jsonrpc":"2.0","id":0,"method":"pathfinder_consensusInfo","params":[]}"#)
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .with_context(|| format!("Sending JSON-RPC request as {name}"))?
+        .json::<JsonRpcReply<ConsensusInfoResult>>()
+        .await
+        .with_context(|| format!("Parsing JSON-RPC response as {name}"))
+}
+
+#[derive(Deserialize)]
+pub struct JsonRpcReply<T> {
+    pub result: T,
+}
+
+#[derive(Deserialize)]
+pub struct ConsensusInfoResult {
+    pub highest_decided_height: Option<u64>,
+    pub peer_score_change_counter: Option<u64>,
 }

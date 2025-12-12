@@ -12,7 +12,9 @@ use crate::consensus::stream::StreamMessage;
 use crate::consensus::{
     create_outgoing_proposal_message,
     handle_incoming_proposal_message,
+    peer_score,
     Event,
+    EventKind,
     TOPIC_PROPOSALS,
     TOPIC_VOTES,
 };
@@ -82,6 +84,40 @@ impl ApplicationBehaviour for Behaviour {
                     .await
                     .expect("Receiver not to be dropped");
             }
+            ConsensusCommand::PeerScoreDecay => {
+                let connected_peers: Vec<_> =
+                    self.gossipsub.all_peers().map(|(id, _)| *id).collect();
+
+                // Use the opportunity to remove scores for disconnected peers.
+                state.peer_app_scores.retain(|peer_id, score| {
+                    if connected_peers.contains(peer_id) {
+                        *score *= peer_score::DECAY_FACTOR;
+                        true
+                    } else {
+                        false
+                    }
+                });
+            }
+            ConsensusCommand::ChangePeerScore { peer_id, delta } => {
+                let current_score = state
+                    .peer_app_scores
+                    .entry(peer_id)
+                    .or_insert(peer_score::INITIAL_APPLICATION_SCORE);
+                *current_score += delta;
+                let done = self
+                    .gossipsub
+                    .set_application_score(&peer_id, *current_score);
+                if !done {
+                    // Peer scoring _should_ be active for consensus P2P, so the only reason we
+                    // would fail to set the score is if the peer disconnected or its score
+                    // expired.
+                    // Either way, we can remove its score from our local state at this point.
+                    state.peer_app_scores.remove(&peer_id);
+                    tracing::debug!(
+                        "Failed to set peer score for {peer_id}, peer may have disconnected"
+                    );
+                }
+            }
             #[cfg(test)]
             ConsensusCommand::TestProposalStream(height_and_round, proposal_stream, shuffle) => {
                 // This command is used to test out-of-order delivery of proposal streams.
@@ -117,13 +153,14 @@ impl ApplicationBehaviour for Behaviour {
         let BehaviourEvent::Gossipsub(e) = event;
         match e {
             Message {
-                propagation_source: _,
+                propagation_source,
                 message_id,
                 message,
             } => match message.topic.as_str() {
                 TOPIC_PROPOSALS => {
                     if let Ok(stream_msg) = StreamMessage::from_protobuf_bytes(&message.data) {
-                        let events = handle_incoming_proposal_message(state, stream_msg);
+                        let events =
+                            handle_incoming_proposal_message(state, stream_msg, propagation_source);
                         for event in events {
                             let _ = event_sender.send(event);
                         }
@@ -133,7 +170,11 @@ impl ApplicationBehaviour for Behaviour {
                 }
                 TOPIC_VOTES => {
                     if let Ok(vote) = Vote::from_protobuf_bytes(&message.data) {
-                        let _ = event_sender.send(Event::Vote(vote));
+                        let event = Event {
+                            source: propagation_source,
+                            kind: EventKind::Vote(vote),
+                        };
+                        let _ = event_sender.send(event);
                     } else {
                         error!("Failed to parse vote message with id: {}", message_id);
                     }
@@ -162,6 +203,13 @@ impl Behaviour {
             gossipsub_config,
         )
         .expect("Failed to create gossipsub behaviour");
+
+        gossipsub
+            .with_peer_score(
+                peer_score::default_params(),
+                peer_score::default_thresholds(),
+            )
+            .expect("Params should be valid and not already set");
 
         let proposals_topic = IdentTopic::new(TOPIC_PROPOSALS);
         let votes_topic = IdentTopic::new(TOPIC_VOTES);
