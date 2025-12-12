@@ -39,7 +39,7 @@ where
     }
 }
 
-/// Falls back to [`SyncCodec::Prod`] unless the caller expliticly sets a
+/// Falls back to [`SyncCodec::Prod`] unless the caller explicitly sets a
 /// read/write factory.
 #[derive(Clone)]
 pub struct TestCodec<Protocol, Req, Resp, ProstReq, ProstResp, const RESPONSE_SIZE_LIMIT: usize> {

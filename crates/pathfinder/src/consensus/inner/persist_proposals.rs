@@ -1,7 +1,7 @@
 use anyhow::Context;
 use p2p_proto::consensus::ProposalPart;
 use pathfinder_common::{ContractAddress, L2Block};
-use pathfinder_storage::Transaction;
+use pathfinder_storage::consensus::ConsensusTransaction;
 
 use crate::consensus::inner::conv::{IntoModel, TryIntoDto};
 use crate::consensus::inner::dto;
@@ -9,12 +9,12 @@ use crate::consensus::inner::dto;
 /// A wrapper around a consensus database transaction that provides
 /// methods for persisting and retrieving proposal parts and finalized blocks.
 pub struct ConsensusProposals<'tx> {
-    pub tx: Transaction<'tx>,
+    tx: ConsensusTransaction<'tx>,
 }
 
 impl<'tx> ConsensusProposals<'tx> {
     /// Create a new `ConsensusProposals` wrapper around a transaction.
-    pub fn new(tx: Transaction<'tx>) -> Self {
+    pub fn new(tx: ConsensusTransaction<'tx>) -> Self {
         Self { tx }
     }
 
@@ -136,6 +136,35 @@ impl<'tx> ConsensusProposals<'tx> {
         }
     }
 
+    /// Read a finalized block for a given height and highest round available.
+    /// In practice this should be the only round left in the DB for that
+    /// height.
+    pub fn read_finalized_block_for_last_round(
+        &self,
+        height: u64,
+    ) -> anyhow::Result<Option<L2Block>> {
+        if let Some(buf) = self
+            .tx
+            .read_consensus_finalized_block_for_last_round(height)?
+        {
+            let block = Self::decode_finalized_block(&buf[..])?;
+            Ok(Some(block))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Remove all finalized blocks for the given height **except** the one from
+    /// `commit_round`.
+    pub fn remove_uncommitted_finalized_blocks(
+        &self,
+        height: u64,
+        commit_round: u32,
+    ) -> anyhow::Result<()> {
+        self.tx
+            .remove_uncommitted_consensus_finalized_blocks(height, commit_round)
+    }
+
     /// Remove all finalized blocks for a given height.
     pub fn remove_finalized_blocks(&self, height: u64) -> anyhow::Result<()> {
         self.tx.remove_consensus_finalized_blocks(height)
@@ -168,18 +197,19 @@ mod tests {
     use p2p_proto::consensus::{BlockInfo, ProposalCommitment, ProposalInit};
     use pathfinder_common::prelude::*;
     use pathfinder_crypto::Felt;
-    use pathfinder_storage::StorageBuilder;
+    use pathfinder_storage::consensus::{ConsensusConnection, ConsensusStorage};
 
     use super::*;
 
-    fn setup_test_db() -> (pathfinder_storage::Storage, pathfinder_storage::Connection) {
-        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
-        let mut conn = storage.connection().unwrap();
+    fn setup_test_db() -> (ConsensusStorage, ConsensusConnection) {
+        let consensus_storage =
+            ConsensusStorage::in_tempdir().expect("Failed to create temp database");
+        let mut conn = consensus_storage.connection().unwrap();
         let tx = conn.transaction().unwrap();
         tx.ensure_consensus_proposals_table_exists().unwrap();
         tx.ensure_consensus_finalized_blocks_table_exists().unwrap();
         tx.commit().unwrap();
-        (storage, conn)
+        (consensus_storage, conn)
     }
 
     fn create_test_proposal_parts(

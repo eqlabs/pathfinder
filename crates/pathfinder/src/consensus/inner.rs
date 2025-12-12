@@ -13,23 +13,21 @@ mod proposal_error;
 #[cfg(test)]
 mod test_helpers;
 
-use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
-use anyhow::Context;
 use p2p::consensus::{Event, HeightAndRound};
 use p2p_proto::consensus::ProposalPart;
 use pathfinder_common::{ChainId, ContractAddress, L2Block, ProposalCommitment};
 use pathfinder_consensus::{ConsensusCommand, ConsensusEvent, NetworkMessage};
-use pathfinder_storage::pruning::BlockchainHistoryMode;
-use pathfinder_storage::{JournalMode, Storage, TriePruneMode};
+use pathfinder_storage::consensus::open_consensus_storage;
+use pathfinder_storage::Storage;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, watch};
 
 use super::{ConsensusChannels, ConsensusTaskHandles};
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
-use crate::SyncRequestToConsensus;
+use crate::SyncMessageToConsensus;
 
 #[allow(clippy::too_many_arguments)]
 pub fn start(
@@ -50,7 +48,7 @@ pub fn start(
     // TODO determine sufficient buffer size. 1 is not enough.
     let (tx_to_p2p, rx_from_consensus) = mpsc::channel::<P2PTaskEvent>(10);
     // Requests sent to consensus by the sync task.
-    let (sync_to_consensus_tx, sync_to_consensus_rx) = mpsc::channel::<SyncRequestToConsensus>(10);
+    let (sync_to_consensus_tx, sync_to_consensus_rx) = mpsc::channel::<SyncMessageToConsensus>(10);
 
     let consensus_storage =
         open_consensus_storage(data_directory).expect("Consensus storage cannot be opened");
@@ -80,7 +78,6 @@ pub fn start(
         rx_from_p2p,
         info_watch_tx,
         main_storage,
-        consensus_storage,
         data_directory,
         inject_failure_config,
     );
@@ -93,28 +90,6 @@ pub fn start(
             sync_to_consensus_tx,
         }),
     }
-}
-
-fn open_consensus_storage(data_directory: &Path) -> anyhow::Result<Storage> {
-    let storage_manager =
-        pathfinder_storage::StorageBuilder::file(data_directory.join("consensus.sqlite")) // TODO: https://github.com/eqlabs/pathfinder/issues/3047
-            .journal_mode(JournalMode::WAL)
-            .trie_prune_mode(Some(TriePruneMode::Archive))
-            .blockchain_history_mode(Some(BlockchainHistoryMode::Archive))
-            .migrate()?;
-    let available_parallelism = std::thread::available_parallelism()?;
-    let consensus_storage = storage_manager
-        .create_pool(NonZeroU32::new(5 + available_parallelism.get() as u32).unwrap())?;
-    let mut db_conn = consensus_storage
-        .connection()
-        .context("Creating database connection")?;
-    let db_tx = db_conn
-        .transaction()
-        .context("Creating database transaction")?;
-    db_tx.ensure_consensus_proposals_table_exists()?;
-    db_tx.ensure_consensus_finalized_blocks_table_exists()?;
-    db_tx.commit()?;
-    Ok(consensus_storage)
 }
 
 /// Events handled by the consensus task.
@@ -134,7 +109,7 @@ enum P2PTaskEvent {
     /// main loop).
     P2PEvent(Event),
     /// A request coming from the sync task.
-    SyncRequest(SyncRequestToConsensus),
+    SyncRequest(SyncMessageToConsensus),
     /// The consensus engine requested that we produce a proposal, so we
     /// create it, feed it back to the consensus engine, and we must
     /// cache it for gossiping when the engine requests so.
