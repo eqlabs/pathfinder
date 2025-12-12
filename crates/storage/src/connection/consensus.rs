@@ -39,9 +39,8 @@ pub fn open_consensus_storage(data_directory: &Path) -> anyhow::Result<Consensus
         .trie_prune_mode(Some(TriePruneMode::Archive))
         .blockchain_history_mode(Some(BlockchainHistoryMode::Archive))
         .migrate()?;
-    let available_parallelism = std::thread::available_parallelism()?;
-    let consensus_storage = storage_manager
-        .create_pool(NonZeroU32::new(5 + available_parallelism.get() as u32).unwrap())?;
+    let consensus_storage = storage_manager.create_pool(NonZeroU32::new(5).unwrap())?;
+
     let consensus_storage = ConsensusStorage(consensus_storage);
     let mut db_conn = consensus_storage
         .connection()
