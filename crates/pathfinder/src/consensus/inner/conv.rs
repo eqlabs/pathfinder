@@ -1,5 +1,5 @@
 use p2p_proto::consensus as proto;
-use pathfinder_common::{receipt, state_update, L2Block};
+use pathfinder_common::{receipt, state_update, ConsensusFinalizedL2Block};
 use pathfinder_storage::{
     DataAvailabilityMode,
     DeclareTransactionV4,
@@ -606,15 +606,15 @@ impl TryIntoDto<p2p_proto::common::L1DataAvailabilityMode> for u8 {
     }
 }
 
-impl IntoModel<L2Block> for dto::FinalizedBlock {
-    fn into_model(self) -> L2Block {
-        let dto::FinalizedBlock {
+impl IntoModel<ConsensusFinalizedL2Block> for dto::ConsensusFinalizedBlock {
+    fn into_model(self) -> ConsensusFinalizedL2Block {
+        let dto::ConsensusFinalizedBlock {
             header,
             state_update,
             transactions_and_receipts,
             events,
         } = self;
-        L2Block {
+        ConsensusFinalizedL2Block {
             header: header.into_model(),
             state_update: state_update.into_model(),
             transactions_and_receipts: transactions_and_receipts
@@ -626,11 +626,11 @@ impl IntoModel<L2Block> for dto::FinalizedBlock {
     }
 }
 
-impl IntoModel<pathfinder_common::BlockHeader> for dto::BlockHeader {
-    fn into_model(self) -> pathfinder_common::BlockHeader {
-        let dto::BlockHeader {
-            hash,
-            parent_hash,
+impl IntoModel<pathfinder_common::ConsensusFinalizedBlockHeader>
+    for dto::ConsensusFinalizedBlockHeader
+{
+    fn into_model(self) -> pathfinder_common::ConsensusFinalizedBlockHeader {
+        let dto::ConsensusFinalizedBlockHeader {
             number,
             timestamp,
             eth_l1_gas_price,
@@ -642,7 +642,6 @@ impl IntoModel<pathfinder_common::BlockHeader> for dto::BlockHeader {
             sequencer_address,
             starknet_version,
             event_commitment,
-            state_commitment,
             transaction_commitment,
             transaction_count,
             event_count,
@@ -651,9 +650,7 @@ impl IntoModel<pathfinder_common::BlockHeader> for dto::BlockHeader {
             state_diff_length,
             l1_da_mode,
         } = self;
-        pathfinder_common::BlockHeader {
-            hash,
-            parent_hash,
+        pathfinder_common::ConsensusFinalizedBlockHeader {
             number,
             timestamp,
             eth_l1_gas_price,
@@ -665,7 +662,6 @@ impl IntoModel<pathfinder_common::BlockHeader> for dto::BlockHeader {
             sequencer_address,
             starknet_version: pathfinder_common::StarknetVersion::from_u32(starknet_version),
             event_commitment,
-            state_commitment,
             transaction_commitment,
             transaction_count: transaction_count as usize,
             event_count: event_count as usize,
@@ -854,16 +850,16 @@ impl IntoModel<receipt::ExecutionStatus> for dto::ExecutionStatus {
     }
 }
 
-impl TryIntoDto<L2Block> for dto::FinalizedBlock {
-    fn try_into_dto(b: L2Block) -> anyhow::Result<dto::FinalizedBlock> {
-        let L2Block {
+impl TryIntoDto<ConsensusFinalizedL2Block> for dto::ConsensusFinalizedBlock {
+    fn try_into_dto(b: ConsensusFinalizedL2Block) -> anyhow::Result<dto::ConsensusFinalizedBlock> {
+        let ConsensusFinalizedL2Block {
             header,
             state_update,
             transactions_and_receipts,
             events,
         } = b;
-        let res = dto::FinalizedBlock {
-            header: dto::BlockHeader::try_into_dto(header)?,
+        let res = dto::ConsensusFinalizedBlock {
+            header: dto::ConsensusFinalizedBlockHeader::try_into_dto(header)?,
             state_update: dto::StateUpdateData::try_into_dto(state_update)?,
             transactions_and_receipts: transactions_and_receipts
                 .into_iter()
@@ -879,11 +875,13 @@ impl TryIntoDto<L2Block> for dto::FinalizedBlock {
     }
 }
 
-impl TryIntoDto<pathfinder_common::BlockHeader> for dto::BlockHeader {
-    fn try_into_dto(h: pathfinder_common::BlockHeader) -> anyhow::Result<dto::BlockHeader> {
-        let pathfinder_common::BlockHeader {
-            hash,
-            parent_hash,
+impl TryIntoDto<pathfinder_common::ConsensusFinalizedBlockHeader>
+    for dto::ConsensusFinalizedBlockHeader
+{
+    fn try_into_dto(
+        h: pathfinder_common::ConsensusFinalizedBlockHeader,
+    ) -> anyhow::Result<dto::ConsensusFinalizedBlockHeader> {
+        let pathfinder_common::ConsensusFinalizedBlockHeader {
             number,
             timestamp,
             eth_l1_gas_price,
@@ -895,7 +893,6 @@ impl TryIntoDto<pathfinder_common::BlockHeader> for dto::BlockHeader {
             sequencer_address,
             starknet_version,
             event_commitment,
-            state_commitment,
             transaction_commitment,
             transaction_count,
             event_count,
@@ -904,9 +901,7 @@ impl TryIntoDto<pathfinder_common::BlockHeader> for dto::BlockHeader {
             state_diff_commitment,
             state_diff_length,
         } = h;
-        let res = dto::BlockHeader {
-            hash,
-            parent_hash,
+        let res = dto::ConsensusFinalizedBlockHeader {
             number,
             timestamp,
             eth_l1_gas_price,
@@ -918,7 +913,6 @@ impl TryIntoDto<pathfinder_common::BlockHeader> for dto::BlockHeader {
             sequencer_address,
             starknet_version: starknet_version.as_u32(),
             event_commitment,
-            state_commitment,
             transaction_commitment,
             transaction_count: transaction_count.try_into()?,
             event_count: event_count.try_into()?,

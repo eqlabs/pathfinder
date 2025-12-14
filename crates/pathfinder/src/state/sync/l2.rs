@@ -380,7 +380,7 @@ where
         // Check if the Consensus engine has already committed this block
         // to avoid redundant downloads.
         let (tx, rx) = tokio::sync::oneshot::channel();
-        let request = SyncMessageToConsensus::GetFinalizedBlock {
+        let request = SyncMessageToConsensus::GetConsensusFinalizedBlock {
             number: next,
             reply: tx,
         };
@@ -393,16 +393,28 @@ where
             .await
             .context("Receiving committed block from consensus")?;
 
-        if let Some(block) = reply {
+        if let Some(l2_block) = reply {
             tracing::debug!("Block {next} already committed in consensus, skipping download");
 
-            head = Some((next, block.header.hash, block.header.state_commitment));
-            blocks.push(next, block.header.hash, block.header.state_commitment);
+            let (state_tries_updated_tx, rx) = tokio::sync::oneshot::channel();
 
             tx_event
-                .send(SyncEvent::FinalizedConsensusBlock(block))
+                .send(SyncEvent::FinalizedConsensusBlock {
+                    l2_block,
+                    state_tries_updated_tx,
+                })
                 .await
                 .context("Event channel closed")?;
+            let (block_hash, state_commitment) = rx
+                .await
+                .context("Waiting for state tries to be updated in consumer")?
+                // TODO if the L2 update failed, the consensus sync task will exit and will be
+                // restarted - should we exit the consumer task and restart it too? Or maybe we
+                // should just ignore the error here?
+                .context("L2 update failed")?;
+
+            head = Some((next, block_hash, state_commitment));
+            blocks.push(next, block_hash, state_commitment);
 
             continue 'outer;
         }

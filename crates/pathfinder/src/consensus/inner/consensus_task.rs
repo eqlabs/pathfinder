@@ -24,14 +24,14 @@ use p2p_proto::consensus::{
     ProposalPart,
 };
 use pathfinder_common::{
-    BlockHash,
     BlockId,
     BlockNumber,
     ChainId,
+    ConsensusFinalizedL2Block,
     ContractAddress,
-    L2Block,
     ProposalCommitment,
     StarknetVersion,
+    StateDiffCommitment,
 };
 use pathfinder_consensus::{
     Config,
@@ -43,7 +43,7 @@ use pathfinder_consensus::{
     ValidatorSet,
     ValidatorSetProvider,
 };
-use pathfinder_storage::{Storage, TransactionBehavior};
+use pathfinder_storage::Storage;
 use tokio::sync::mpsc;
 
 use super::fetch_proposers::L2ProposerSelector;
@@ -398,7 +398,7 @@ pub(crate) fn create_empty_proposal(
     round: Round,
     proposer: ContractAddress,
     main_storage: Storage,
-) -> anyhow::Result<(Vec<ProposalPart>, L2Block)> {
+) -> anyhow::Result<(Vec<ProposalPart>, ConsensusFinalizedL2Block)> {
     let round = round.as_u32().context(format!(
         "Attempted to create proposal with Nil round at height {height}"
     ))?;
@@ -421,13 +421,13 @@ pub(crate) fn create_empty_proposal(
         let db_txn = db_conn
             .transaction()
             .context("Create database transaction")?;
-        // TODO it should probably be not a block hash but the state diff commitment of
-        // the parent block
-        let hash = db_txn.block_hash(parent_number.into())?.unwrap_or_default();
+        let hash = db_txn
+            .state_diff_commitment(parent_number.into())?
+            .unwrap_or_default();
         db_txn.commit()?;
         hash
     } else {
-        BlockHash::ZERO
+        StateDiffCommitment::ZERO
     };
 
     // The only version handled by consensus, so far
@@ -461,28 +461,11 @@ pub(crate) fn create_empty_proposal(
         l1_da_mode: L1DataAvailabilityMode::default(),
     };
 
-    let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())
+    let block = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())
         .context("Failed to create validator block info stage")?
         .verify_proposal_commitment(&proposal_commitment)
         .context("Failed to verify proposal commitment")?;
-    let mut db_conn = main_storage
-        .connection()
-        .context("Creating database connection")?;
-    let db_txn = db_conn
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .context("Create database transaction")?;
-    let readonly_storage = main_storage.clone();
-    let finalized_block = validator
-        .finalize(
-            &db_txn,
-            readonly_storage,
-            false, // Do not verify hashes for empty proposals
-        )
-        .context("Failed to finalize block")?;
-    db_txn
-        .commit()
-        .context("Failed to commit finalized block")?;
-    let proposal_commitment_hash = Hash(finalized_block.header.state_diff_commitment.0);
+    let proposal_commitment_hash = Hash(block.header.state_diff_commitment.0);
 
     Ok((
         vec![
@@ -492,7 +475,7 @@ pub(crate) fn create_empty_proposal(
                 proposal_commitment: proposal_commitment_hash,
             }),
         ],
-        finalized_block,
+        block,
     ))
 }
 

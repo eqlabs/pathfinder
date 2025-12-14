@@ -14,7 +14,14 @@ use p2p::libp2p::identity::Keypair;
 use p2p::libp2p::PeerId;
 use p2p_proto::consensus::ProposalPart;
 use pathfinder_common::prelude::*;
-use pathfinder_common::{ChainId, ConsensusInfo, ContractAddress, L2Block, ProposalCommitment};
+use pathfinder_common::{
+    ChainId,
+    ConsensusFinalizedBlockHeader,
+    ConsensusFinalizedL2Block,
+    ConsensusInfo,
+    ContractAddress,
+    ProposalCommitment,
+};
 use pathfinder_consensus::ConsensusCommand;
 use pathfinder_crypto::Felt;
 use pathfinder_storage::consensus::ConsensusStorage;
@@ -140,23 +147,19 @@ impl TestEnvironment {
         let mut consensus_db_conn = self.consensus_storage.connection().unwrap();
         let consensus_db_tx = consensus_db_conn.transaction().unwrap();
         let proposals_db = ConsensusProposals::new(consensus_db_tx);
-        let block = L2Block {
-            header: BlockHeader::builder()
-                .number(BlockNumber::new_or_panic(height))
-                .timestamp(BlockTimestamp::new_or_panic(1000))
-                .calculated_state_commitment(
-                    StorageCommitment(block_id_felt),
-                    ClassCommitment(block_id_felt),
-                )
-                .sequencer_address(SequencerAddress::ZERO)
-                .state_diff_commitment(StateDiffCommitment(block_id_felt))
-                .finalize_with_hash(BlockHash(block_id_felt)),
+        let block = ConsensusFinalizedL2Block {
+            header: ConsensusFinalizedBlockHeader {
+                number: BlockNumber::new_or_panic(height),
+                timestamp: BlockTimestamp::new_or_panic(1000),
+                state_diff_commitment: StateDiffCommitment(block_id_felt),
+                ..Default::default()
+            },
             state_update: Default::default(),
             transactions_and_receipts: vec![],
             events: vec![],
         };
         proposals_db
-            .persist_finalized_block(height, round, block)
+            .persist_consensus_finalized_block(height, round, block)
             .unwrap();
         proposals_db.commit().unwrap();
     }

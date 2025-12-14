@@ -117,22 +117,20 @@ pub struct SierraEntryPoint {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub enum PersistentFinalizedBlock {
-    V0(FinalizedBlock),
+pub enum PersistentConsensusFinalizedBlock {
+    V0(ConsensusFinalizedBlock),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct FinalizedBlock {
-    pub header: BlockHeader,
+pub struct ConsensusFinalizedBlock {
+    pub header: ConsensusFinalizedBlockHeader,
     pub state_update: StateUpdateData,
     pub transactions_and_receipts: Vec<(TransactionV2, Receipt)>,
     pub events: Vec<Vec<pathfinder_common::event::Event>>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct BlockHeader {
-    pub hash: pathfinder_common::BlockHash,
-    pub parent_hash: pathfinder_common::BlockHash,
+pub struct ConsensusFinalizedBlockHeader {
     pub number: pathfinder_common::BlockNumber,
     pub timestamp: pathfinder_common::BlockTimestamp,
     pub eth_l1_gas_price: pathfinder_common::GasPrice,
@@ -144,7 +142,6 @@ pub struct BlockHeader {
     pub sequencer_address: pathfinder_common::SequencerAddress,
     pub starknet_version: u32,
     pub event_commitment: pathfinder_common::EventCommitment,
-    pub state_commitment: pathfinder_common::StateCommitment,
     pub transaction_commitment: pathfinder_common::TransactionCommitment,
     pub transaction_count: u64,
     pub event_count: u64,

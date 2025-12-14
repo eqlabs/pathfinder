@@ -17,7 +17,13 @@ use std::path::{Path, PathBuf};
 
 use p2p::consensus::{Event, HeightAndRound};
 use p2p_proto::consensus::ProposalPart;
-use pathfinder_common::{ChainId, ConsensusInfo, ContractAddress, L2Block, ProposalCommitment};
+use pathfinder_common::{
+    ChainId,
+    ConsensusFinalizedL2Block,
+    ConsensusInfo,
+    ContractAddress,
+    ProposalCommitment,
+};
 use pathfinder_consensus::{ConsensusCommand, ConsensusEvent, NetworkMessage};
 use pathfinder_storage::consensus::open_consensus_storage;
 use pathfinder_storage::Storage;
@@ -113,7 +119,7 @@ enum P2PTaskEvent {
     /// The consensus engine requested that we produce a proposal, so we
     /// create it, feed it back to the consensus engine, and we must
     /// cache it for gossiping when the engine requests so.
-    CacheProposal(HeightAndRound, Vec<ProposalPart>, L2Block),
+    CacheProposal(HeightAndRound, Vec<ProposalPart>, ConsensusFinalizedL2Block),
     /// Consensus requested that we gossip a message via the P2P network.
     GossipRequest(NetworkMessage<ConsensusValue, ContractAddress>),
     /// Commit the given block and state update to the database. All proposals

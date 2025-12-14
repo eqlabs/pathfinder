@@ -11,7 +11,7 @@ use std::time::Duration;
 use anyhow::Context;
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::StateUpdateData;
-use pathfinder_common::{BlockId, Chain, L2Block};
+use pathfinder_common::{BlockId, Chain, ConsensusFinalizedL2Block, L2Block, L2BlockToCommit};
 use pathfinder_crypto::Felt;
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::starknet_state::update_starknet_state;
@@ -31,6 +31,7 @@ use starknet_gateway_types::reply::{
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::sync::watch::Sender as WatchSender;
 
+use crate::state::block_hash;
 use crate::state::l1::L1SyncContext;
 use crate::state::l2::{BlockChain, L2SyncContext};
 use crate::SyncMessageToConsensus;
@@ -56,8 +57,18 @@ pub enum SyncEvent {
         Box<StateDiffCommitment>,
         l2::Timings,
     ),
-    /// A new L2 finalized block received from consensus.
-    FinalizedConsensusBlock(Arc<L2Block>),
+    /// A new L2 finalized block received from consensus. The consumer task is
+    /// responsible for updating the state tries, computing the state
+    /// commitment, and finally, the block hash.
+    FinalizedConsensusBlock {
+        /// Consensus finalized L2 block, decided upon by conensus.
+        l2_block: Box<ConsensusFinalizedL2Block>,
+        /// A oneshot channel to notify when the state tries update is done,
+        /// returning the computed block hash and state commitment, which is
+        /// necessary for the download block logic to continue its work.
+        state_tries_updated_tx:
+            tokio::sync::oneshot::Sender<anyhow::Result<(BlockHash, StateCommitment)>>,
+    },
     /// An L2 reorg was detected, contains the reorg-tail which
     /// indicates the oldest block which is now invalid
     /// i.e. reorg-tail - 1 should be the new head.
@@ -806,9 +817,9 @@ async fn consumer(
                         *state_diff_commitment,
                         *state_update,
                     )?;
-                    l2_update(
+                    let l2_block = l2_update(
                         &tx,
-                        &l2_block,
+                        l2_block.into(),
                         *signature,
                         verify_tree_hashes,
                         storage.clone(),
@@ -873,7 +884,10 @@ async fn consumer(
 
                     Some(Notification::L2Block(Arc::new(l2_block)))
                 }
-                FinalizedConsensusBlock(l2_block) => {
+                FinalizedConsensusBlock {
+                    l2_block,
+                    state_tries_updated_tx,
+                } => {
                     if l2_block.header.number < next_number {
                         tracing::debug!(
                             "Ignoring duplicate finalized block {}",
@@ -882,18 +896,21 @@ async fn consumer(
                         return anyhow::Ok(None);
                     }
 
-                    // TODO `l2_update` always performs trie updates, but in case of a decided upon
-                    // proposal which ends up as a finalized block the tries are already updated so
-                    // we could optimize `l2_update` to skip trie updates in this case.
-                    l2_update(
+                    let l2_block = l2_update(
                         &tx,
-                        l2_block.as_ref(),
+                        (*l2_block).into(),
                         BlockCommitmentSignature::default(),
                         verify_tree_hashes,
                         storage.clone(),
                     )?;
 
-                    Some(Notification::L2Block(l2_block))
+                    state_tries_updated_tx
+                        .send(Ok((l2_block.header.hash, l2_block.header.state_commitment)))
+                        // FIXME !!!!
+                        .unwrap();
+                    // .context("Sending state tries updated notification")?;
+
+                    Some(Notification::L2Block(Arc::new(l2_block)))
                 }
                 Reorg(reorg_tail) => {
                     tracing::trace!("Reorg L2 state to block {}", reorg_tail);
@@ -1274,29 +1291,61 @@ fn l1_update(transaction: &Transaction<'_>, update: &EthereumStateUpdate) -> any
 #[allow(clippy::too_many_arguments)]
 fn l2_update(
     transaction: &Transaction<'_>,
-    block: &L2Block,
+    block: L2BlockToCommit,
     signature: BlockCommitmentSignature,
     verify_tree_hashes: bool,
     // we need this so that we can create extra read-only transactions for
     // parallel contract state updates
     storage: Storage,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<L2Block> {
     let (storage_commitment, class_commitment) = update_starknet_state(
         transaction,
-        block.state_update.as_ref(),
+        block.state_update().as_ref(),
         verify_tree_hashes,
-        block.header.number,
+        block.number(),
         storage,
     )
     .context("Updating Starknet state")?;
     let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
 
-    // Ensure that roots match.. what should we do if it doesn't? For now the whole
-    // sync process ends..
-    anyhow::ensure!(
-        state_commitment == block.header.state_commitment,
-        "State root mismatch"
-    );
+    if let Some(expected_state_commitment) = block.state_commitment() {
+        // Ensure that roots match.. what should we do if it doesn't? For now the whole
+        // sync process ends..
+        anyhow::ensure!(
+            state_commitment == expected_state_commitment,
+            "State commitment mismatch"
+        );
+    }
+
+    let block = match block {
+        L2BlockToCommit::FromConsensus(block) => {
+            let parent_hash = if let Some(parent_number) = block.header.number.parent() {
+                transaction
+                    .block_hash(BlockId::Number(parent_number))
+                    .context("Fetching parent block hash")?
+                    .context("Parent block missing - logic error in storage")?
+            } else {
+                BlockHash::ZERO
+            };
+            let ConsensusFinalizedL2Block {
+                header,
+                state_update,
+                transactions_and_receipts,
+                events,
+            } = block;
+            L2Block {
+                header: header.compute_hash(
+                    parent_hash,
+                    state_commitment,
+                    block_hash::compute_final_hash,
+                ),
+                state_update,
+                transactions_and_receipts,
+                events,
+            }
+        }
+        L2BlockToCommit::FromFgw(block) => block,
+    };
 
     // Update L2 database. These types shouldn't be options at this level,
     // but for now the unwraps are "safe" in that these should only ever be
@@ -1346,7 +1395,7 @@ fn l2_update(
         }
     }
 
-    Ok(())
+    Ok(block)
 }
 
 fn l2_block_from_fgw_reply(

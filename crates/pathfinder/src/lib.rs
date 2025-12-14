@@ -9,10 +9,13 @@ pub mod sync;
 pub mod validator;
 
 pub enum SyncMessageToConsensus {
-    /// Ask consensus for the finalized block with given number.
-    GetFinalizedBlock {
+    /// Ask consensus for the finalized block with given number. The only
+    /// difference from a committed block is that the state tries are not
+    /// updated yet, so the state commitment is not computed and hence the block
+    /// hash cannot be computed yet.
+    GetConsensusFinalizedBlock {
         number: pathfinder_common::BlockNumber,
-        reply: FinalizedBlockReply,
+        reply: ConsensusFinalizedBlockReply,
     },
     /// Notify consensus that a finalized block has been committed to storage.
     ConfirmFinalizedBlockCommitted {
@@ -28,7 +31,7 @@ pub enum SyncMessageToConsensus {
     },
 }
 
-pub type FinalizedBlockReply =
-    tokio::sync::oneshot::Sender<Option<std::sync::Arc<pathfinder_common::L2Block>>>;
+pub type ConsensusFinalizedBlockReply =
+    tokio::sync::oneshot::Sender<Option<Box<pathfinder_common::ConsensusFinalizedL2Block>>>;
 
 pub type ValidateBlockReply = tokio::sync::oneshot::Sender<validator::ValidationResult>;

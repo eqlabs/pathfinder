@@ -16,35 +16,31 @@ use pathfinder_common::state_update::{StateUpdate, StateUpdateData};
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     class_definition,
-    BlockHash,
-    BlockHeader,
     BlockNumber,
     BlockTimestamp,
     ChainId,
+    ConsensusFinalizedBlockHeader,
+    ConsensusFinalizedL2Block,
     EntryPoint,
     EventCommitment,
     GasPrice,
     L1DataAvailabilityMode,
-    L2Block,
     ProposalCommitment,
     ReceiptCommitment,
     SequencerAddress,
     StarknetVersion,
-    StateCommitment,
     StateDiffCommitment,
     TransactionCommitment,
     TransactionHash,
 };
 use pathfinder_executor::types::{to_starknet_api_transaction, BlockInfoPriceConverter};
 use pathfinder_executor::{BlockExecutorExt, ClassInfo, IntoStarkFelt};
-use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
 use pathfinder_storage::Storage;
 use rayon::prelude::*;
 use tracing::debug;
 
 use crate::state::block_hash::{
-    self,
     calculate_event_commitment,
     calculate_receipt_commitment,
     calculate_transaction_commitment,
@@ -162,7 +158,7 @@ impl ValidatorBlockInfoStage {
     pub fn verify_proposal_commitment(
         self,
         proposal_commitment: &p2p_proto::consensus::ProposalCommitment,
-    ) -> anyhow::Result<ValidatorFinalizeStage> {
+    ) -> anyhow::Result<ConsensusFinalizedL2Block> {
         if proposal_commitment.state_diff_commitment != Hash::ZERO {
             return Err(anyhow::anyhow!(
                 "Empty proposal commitment should have zero state_diff_commitment, got: {}",
@@ -233,36 +229,31 @@ impl ValidatorBlockInfoStage {
         // TODO check concatenated_counts
         // TODO check next_l2_gas_price_fri vs prev block
 
-        let expected_block_header = BlockHeader {
-            hash: BlockHash::ZERO,        // UNUSED
-            parent_hash: BlockHash::ZERO, // UNUSED
-            number: BlockNumber::new(proposal_commitment.block_number)
-                .context("ProposalCommitment block number exceeds i64::MAX")?,
-            timestamp: BlockTimestamp::new(proposal_commitment.timestamp)
-                .context("ProposalCommitment timestamp exceeds i64::MAX")?,
-            eth_l1_gas_price: GasPrice::ZERO,
-            strk_l1_gas_price: GasPrice::ZERO,
-            eth_l1_data_gas_price: GasPrice::ZERO,
-            strk_l1_data_gas_price: GasPrice::ZERO,
-            eth_l2_gas_price: GasPrice::ZERO,
-            strk_l2_gas_price: GasPrice::ZERO,
-            sequencer_address: SequencerAddress(proposal_commitment.builder.0),
-            starknet_version: StarknetVersion::from_str(&proposal_commitment.protocol_version)?,
-            event_commitment: EventCommitment::ZERO,
-            state_commitment: StateCommitment::ZERO, // UNUSED
-            transaction_commitment: TransactionCommitment::ZERO,
-            transaction_count: 0,
-            event_count: 0,
-            l1_da_mode: L1DataAvailabilityMode::Calldata,
-            receipt_commitment: ReceiptCommitment::ZERO,
-            state_diff_commitment: StateDiffCommitment::ZERO,
-            state_diff_length: 0,
-        };
-        Ok(ValidatorFinalizeStage {
-            header: expected_block_header,
+        Ok(ConsensusFinalizedL2Block {
+            header: ConsensusFinalizedBlockHeader {
+                number: BlockNumber::new(proposal_commitment.block_number)
+                    .context("ProposalCommitment block number exceeds i64::MAX")?,
+                timestamp: BlockTimestamp::new(proposal_commitment.timestamp)
+                    .context("ProposalCommitment timestamp exceeds i64::MAX")?,
+                eth_l1_gas_price: GasPrice::ZERO,
+                strk_l1_gas_price: GasPrice::ZERO,
+                eth_l1_data_gas_price: GasPrice::ZERO,
+                strk_l1_data_gas_price: GasPrice::ZERO,
+                eth_l2_gas_price: GasPrice::ZERO,
+                strk_l2_gas_price: GasPrice::ZERO,
+                sequencer_address: SequencerAddress(proposal_commitment.builder.0),
+                starknet_version: StarknetVersion::from_str(&proposal_commitment.protocol_version)?,
+                event_commitment: EventCommitment::ZERO,
+                transaction_commitment: TransactionCommitment::ZERO,
+                transaction_count: 0,
+                event_count: 0,
+                l1_da_mode: L1DataAvailabilityMode::Calldata,
+                receipt_commitment: ReceiptCommitment::ZERO,
+                state_diff_commitment: StateDiffCommitment::ZERO,
+                state_diff_length: 0,
+            },
             state_update: StateUpdateData::default(),
-            transactions: Vec::new(),
-            receipts: Vec::new(),
+            transactions_and_receipts: Vec::new(),
             events: Vec::new(),
         })
     }
@@ -272,7 +263,7 @@ impl ValidatorBlockInfoStage {
 pub struct ValidatorTransactionBatchStage<E> {
     chain_id: ChainId,
     block_info: pathfinder_executor::types::BlockInfo,
-    expected_block_header: Option<BlockHeader>,
+    expected_block_header: Option<ConsensusFinalizedBlockHeader>,
     transactions: Vec<Transaction>,
     receipts: Vec<Receipt>,
     events: Vec<Vec<Event>>,
@@ -670,9 +661,7 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
         &mut self,
         proposal_commitment: &p2p_proto::consensus::ProposalCommitment,
     ) -> anyhow::Result<()> {
-        let expected_block_header = BlockHeader {
-            hash: BlockHash::ZERO,        // UNUSED
-            parent_hash: BlockHash::ZERO, // UNUSED
+        let expected_block_header = ConsensusFinalizedBlockHeader {
             number: BlockNumber::new(proposal_commitment.block_number)
                 .context("ProposalCommitment block number exceeds i64::MAX")?,
             timestamp: BlockTimestamp::new(proposal_commitment.timestamp)
@@ -687,7 +676,6 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
             sequencer_address: SequencerAddress(proposal_commitment.builder.0),
             starknet_version: StarknetVersion::from_str(&proposal_commitment.protocol_version)?,
             event_commitment: EventCommitment(proposal_commitment.event_commitment.0),
-            state_commitment: StateCommitment::ZERO, // UNUSED
             transaction_commitment: TransactionCommitment(
                 proposal_commitment.transaction_commitment.0,
             ),
@@ -708,13 +696,13 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
     }
 
     /// Finalizes the block, producing a header with all commitments except
-    /// the state commitment and block hash, which are computed in the last
-    /// stage. Also verifies that the computed proposal commitment matches the
-    /// expected one.
+    /// the state commitment and block hash, which are computed in the sync task
+    /// just before the block is committed into main storage. Also verifies that
+    /// the computed proposal commitment matches the expected one.
     pub fn consensus_finalize(
         self,
         expected_proposal_commitment: ProposalCommitment,
-    ) -> anyhow::Result<ValidatorFinalizeStage> {
+    ) -> anyhow::Result<ConsensusFinalizedL2Block> {
         let next_stage = self.consensus_finalize0()?;
         let actual_proposal_commitment = next_stage.header.state_diff_commitment;
 
@@ -738,7 +726,7 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
     /// Finalizes the block, producing a header with all commitments except
     /// the state commitment and block hash, which are computed in the last
     /// stage.
-    pub(crate) fn consensus_finalize0(self) -> anyhow::Result<ValidatorFinalizeStage> {
+    pub(crate) fn consensus_finalize0(self) -> anyhow::Result<ConsensusFinalizedL2Block> {
         let Self {
             block_info,
             expected_block_header,
@@ -780,10 +768,7 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
             calculate_event_commitment(&events_ref_by_txn, block_info.starknet_version)?;
         let state_diff_commitment = state_update.compute_state_diff_commitment();
 
-        let header = BlockHeader {
-            // Computed in ValidatorFinalizeStage::finalize()
-            hash: BlockHash::ZERO,
-            parent_hash: BlockHash::ZERO,
+        let header = ConsensusFinalizedBlockHeader {
             number: self.block_info.number,
             timestamp: self.block_info.timestamp,
             eth_l1_gas_price: self.block_info.eth_l1_gas_price,
@@ -795,8 +780,6 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
             sequencer_address: self.block_info.sequencer_address,
             starknet_version: self.block_info.starknet_version,
             event_commitment,
-            // Computed in ValidatorFinalizeStage::finalize()
-            state_commitment: StateCommitment::ZERO,
             transaction_commitment,
             transaction_count: 0, // TODO validate concatenated_counts
             event_count: 0,       // TODO validate concatenated_counts
@@ -831,96 +814,10 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
             }
         }
 
-        Ok(ValidatorFinalizeStage {
+        Ok(ConsensusFinalizedL2Block {
             header,
             state_update,
-            transactions,
-            receipts,
-            events,
-        })
-    }
-}
-
-/// Finalizes the block by computing commitments and updating the database.
-pub struct ValidatorFinalizeStage {
-    header: BlockHeader,
-    state_update: StateUpdateData,
-    transactions: Vec<Transaction>,
-    receipts: Vec<Receipt>,
-    events: Vec<Vec<Event>>,
-}
-
-impl ValidatorFinalizeStage {
-    /// Updates the tries, computes the state commitment and block hash.
-    ///
-    /// ### Performance
-    ///
-    /// This function performs database operations and is computationally
-    /// and IO intensive.
-    // TODO make it into a trait, we don't want this heavy stuff in proptests
-    pub fn finalize(
-        self,
-        main_db_tx: &pathfinder_storage::Transaction<'_>,
-        main_readonly_storage: Storage,
-        verify_tree_hashes: bool,
-    ) -> anyhow::Result<L2Block> {
-        let Self {
-            mut header,
-            state_update,
-            transactions,
-            receipts,
-            events,
-        } = self;
-
-        let _span = tracing::debug_span!(
-            "Validator::finalize",
-            height = %header.number,
-            num_transactions = %header.transaction_count,
-        )
-        .entered();
-
-        let start = Instant::now();
-
-        if let Some(parent_number) = header.number.parent() {
-            header.parent_hash = main_db_tx
-                .block_hash(parent_number.into())?
-                .unwrap_or_default();
-        } else {
-            // Parent block hash for the genesis block is zero by definition.
-            header.parent_hash = BlockHash::ZERO;
-        }
-
-        let (storage_commitment, class_commitment) = update_starknet_state(
-            main_db_tx,
-            state_update.as_ref(),
-            verify_tree_hashes,
-            header.number,
-            main_readonly_storage.clone(),
-        )?;
-
-        debug!(
-            "Block {} tries updated in {} ms",
-            header.number,
-            start.elapsed().as_millis()
-        );
-
-        let start = Instant::now();
-        header.state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
-
-        header.hash = block_hash::compute_final_hash(&header);
-
-        debug!(
-            "Block {} state commitment and block hash computed in {} ms",
-            header.number,
-            start.elapsed().as_millis()
-        );
-
-        let transactions_and_receipts = transactions.into_iter().zip(receipts).collect::<Vec<_>>();
-
-        Ok(L2Block {
-            header,
-            state_update,
-            transactions_and_receipts,
+            transactions_and_receipts: transactions.into_iter().zip(receipts).collect::<Vec<_>>(),
             events,
         })
     }
@@ -929,7 +826,6 @@ impl ValidatorFinalizeStage {
 pub enum ValidatorStage<E> {
     BlockInfo(ValidatorBlockInfoStage),
     TransactionBatch(Box<ValidatorTransactionBatchStage<E>>),
-    Finalize(Box<ValidatorFinalizeStage>),
 }
 
 /// Error indicating that a validator stage conversion failed because the stage
@@ -966,23 +862,10 @@ impl<E> ValidatorStage<E> {
         }
     }
 
-    pub fn try_into_finalize_stage(
-        self,
-    ) -> Result<Box<ValidatorFinalizeStage>, WrongValidatorStageError> {
-        match self {
-            ValidatorStage::Finalize(stage) => Ok(stage),
-            _ => Err(WrongValidatorStageError {
-                expected: "finalize",
-                actual: self.variant_name(),
-            }),
-        }
-    }
-
     fn variant_name(&self) -> &'static str {
         match self {
             ValidatorStage::BlockInfo(_) => "BlockInfo",
             ValidatorStage::TransactionBatch(_) => "TransactionBatch",
-            ValidatorStage::Finalize(_) => "Finalize",
         }
     }
 }
