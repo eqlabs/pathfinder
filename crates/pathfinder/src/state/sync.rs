@@ -61,13 +61,12 @@ pub enum SyncEvent {
     /// responsible for updating the state tries, computing the state
     /// commitment, and finally, the block hash.
     FinalizedConsensusBlock {
-        /// Consensus finalized L2 block, decided upon by conensus.
+        /// L2 block finalized and decided upon by consensus.
         l2_block: Box<ConsensusFinalizedL2Block>,
         /// A oneshot channel to notify when the state tries update is done,
         /// returning the computed block hash and state commitment, which is
         /// necessary for the download block logic to continue its work.
-        state_tries_updated_tx:
-            tokio::sync::oneshot::Sender<anyhow::Result<(BlockHash, StateCommitment)>>,
+        state_tries_updated_tx: tokio::sync::oneshot::Sender<(BlockHash, StateCommitment)>,
     },
     /// An L2 reorg was detected, contains the reorg-tail which
     /// indicates the oldest block which is now invalid
@@ -905,10 +904,11 @@ async fn consumer(
                     )?;
 
                     state_tries_updated_tx
-                        .send(Ok((l2_block.header.hash, l2_block.header.state_commitment)))
-                        // FIXME !!!!
-                        .unwrap();
-                    // .context("Sending state tries updated notification")?;
+                        .send((l2_block.header.hash, l2_block.header.state_commitment))
+                        .expect(
+                            "Receiver was dropped, which means that the consumer task exited and \
+                             all sync related tasks, including this one, will be restarted.",
+                        );
 
                     Some(Notification::L2Block(Arc::new(l2_block)))
                 }

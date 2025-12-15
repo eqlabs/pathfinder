@@ -407,11 +407,7 @@ where
                 .context("Event channel closed")?;
             let (block_hash, state_commitment) = rx
                 .await
-                .context("Waiting for state tries to be updated in consumer")?
-                // TODO if the L2 update failed, the consensus sync task will exit and will be
-                // restarted - should we exit the consumer task and restart it too? Or maybe we
-                // should just ignore the error here?
-                .context("L2 update failed")?;
+                .context("Waiting for state tries to be updated in consumer")?;
 
             head = Some((next, block_hash, state_commitment));
             blocks.push(next, block_hash, state_commitment);
