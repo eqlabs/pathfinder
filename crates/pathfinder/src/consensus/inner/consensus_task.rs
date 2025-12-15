@@ -422,7 +422,7 @@ pub(crate) fn create_empty_proposal(
             .transaction()
             .context("Create database transaction")?;
         let hash = db_txn
-            .state_diff_commitment(parent_number.into())?
+            .state_diff_commitment(parent_number)?
             .unwrap_or_default();
         db_txn.commit()?;
         hash
