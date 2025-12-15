@@ -533,7 +533,6 @@ pub fn spawn(
                         );
                         let stopwatch = std::time::Instant::now();
 
-                        // FIXME sometimes a race condition occurs here and the block is not found
                         let block = proposals_db
                             .read_consensus_finalized_block(
                                 height_and_round.height(),

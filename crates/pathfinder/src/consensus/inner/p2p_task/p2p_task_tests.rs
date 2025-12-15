@@ -59,6 +59,8 @@ struct TestEnvironment {
 
 impl TestEnvironment {
     const HISTORY_DEPTH: u64 = 10;
+    const TX_TO_CONSENSUS_CHANNEL_SIZE: usize = 100;
+    const TX_TO_P2P_CHANNEL_SIZE: usize = 100;
 
     fn new(chain_id: ChainId, validator_address: ContractAddress) -> Self {
         // Initialize temp pathfinder and consensus databases
@@ -79,8 +81,8 @@ impl TestEnvironment {
 
         // Mock channels for p2p communication
         let (p2p_tx, p2p_rx) = mpsc::unbounded_channel();
-        let (tx_to_consensus, rx_from_p2p) = mpsc::channel(100);
-        let (tx_to_p2p, rx_from_consensus) = mpsc::channel(100);
+        let (tx_to_consensus, rx_from_p2p) = mpsc::channel(Self::TX_TO_CONSENSUS_CHANNEL_SIZE);
+        let (tx_to_p2p, rx_from_consensus) = mpsc::channel(Self::TX_TO_P2P_CHANNEL_SIZE);
         let (tx_sync_to_consensus, rx_from_sync) = mpsc::channel(1);
         let (info_watch_tx, info_watch_rx) = watch::channel(ConsensusInfo::default());
 
@@ -217,6 +219,20 @@ impl TestEnvironment {
             }
         };
         timeout(Duration::from_millis(300), wait_for_exit_fut).await
+    }
+
+    async fn wait_tx_to_p2p_consumed(&self) {
+        let start = std::time::Instant::now();
+        let timeout_duration = Duration::from_millis(300);
+
+        while start.elapsed() < timeout_duration {
+            if self.tx_to_p2p.capacity() == Self::TX_TO_P2P_CHANNEL_SIZE {
+                // All messages consumed
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        panic!("Timeout waiting for tx_to_p2p to be consumed");
     }
 }
 
@@ -630,6 +646,10 @@ async fn test_proposal_fin_deferred_until_parent_block_committed() {
         }
     }
 
+    tracing::error!(
+        "P2P_TASK_TESTS: sending CommitBlock for HeightAndRound::new(1, 0), \
+         ConsensusValue(ProposalCommitment(Felt::ONE)",
+    );
     // Step 7: Send CommitBlock for parent block (should trigger finalization)
     env.tx_to_p2p
         .send(crate::consensus::inner::P2PTaskEvent::CommitBlock(
@@ -639,6 +659,16 @@ async fn test_proposal_fin_deferred_until_parent_block_committed() {
         .await
         .expect("Failed to send CommitBlock");
     env.verify_task_alive().await;
+
+    // Make sure the above message is consumed before proceeding, otherwise we can
+    // get an ugly race condition which does not occur in reality but will make the
+    // test fail once in a while
+    env.wait_tx_to_p2p_consumed().await;
+
+    // TODO
+    // 2 flows here:
+    // 1. normal ConfirmFinalizedBlockCommitted
+    // 2. the block is in the main DB
 
     // Step 8: At some point sync sends SyncMessageToConsensus::GetFinalizedBlock
     // for H=1, and then confirms committing the block with
