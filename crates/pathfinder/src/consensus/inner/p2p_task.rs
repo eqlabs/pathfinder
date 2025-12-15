@@ -538,7 +538,8 @@ pub fn spawn(
                                 height_and_round.height(),
                                 height_and_round.round(),
                             )?
-                            // TODO make sure this is a fatal error
+                            // This will cause the p2p_task to exit which will in turn cause the
+                            // entire process to exit.
                             .context(format!(
                                 "Consensus finalized block at {height_and_round} that is about to \
                                  be committed should always be waiting in the consensus DB - \
