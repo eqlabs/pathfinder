@@ -36,13 +36,7 @@ r2d2 = { workspace = true }
 r2d2_sqlite = { workspace = true }
 rand = { workspace = true }
 rayon = { workspace = true }
-rusqlite = { workspace = true, features = [
-    "bundled",
-    "functions",
-    "vtab",
-    "array",
-    "hooks",
-] }
+rusqlite = { workspace = true, features = ["bundled", "array", "hooks"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = [
     "arbitrary_precision",
