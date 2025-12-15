@@ -306,8 +306,8 @@ async fn verify_no_proposal_event(rx: &mut mpsc::Receiver<ConsensusTaskEvent>, d
     let start = std::time::Instant::now();
     while start.elapsed() < duration {
         match rx.try_recv() {
-            Ok(ConsensusTaskEvent::CommandFromP2P(ConsensusCommand::Proposal(_))) => {
-                panic!("Unexpected proposal event received");
+            Ok(ConsensusTaskEvent::CommandFromP2P(proposal @ ConsensusCommand::Proposal(_))) => {
+                panic!("Unexpected proposal event received: {proposal:?}");
             }
             Ok(_) => {
                 // Other event, continue checking
@@ -532,12 +532,23 @@ fn create_proposal_commitment_part(
 /// Verify ProposalFin is deferred (no proposal event), then verify
 /// finalization occurs after parent block is committed. Also verify
 /// ProposalFin is persisted in the database even when deferred.
+#[rstest::rstest]
+#[case::consensus_ahead_of_fgw(true)]
+#[case::fgw_ahead_of_consensus(false)]
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
-async fn test_proposal_fin_deferred_until_parent_block_committed() {
+async fn test_proposal_fin_deferred_until_parent_block_committed(
+    #[case] consensus_ahead_of_fgw: bool,
+) {
     let chain_id = ChainId::SEPOLIA_TESTNET;
     let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
     let mut env = TestEnvironment::new(chain_id, validator_address);
     env.create_committed_block(0);
+    if !consensus_ahead_of_fgw {
+        // Simulate the case where FGW magically has the block which consensus has not
+        // produced yet. We don't care if this is possible in reality, we just want our
+        // storage to be consistent against all odds.
+        env.create_committed_block(1);
+    }
     env.create_uncommitted_finalized_block(1, 0);
     env.wait_for_task_initialization().await;
 
@@ -624,8 +635,16 @@ async fn test_proposal_fin_deferred_until_parent_block_committed() {
         .expect("Failed to send ProposalFin");
     env.verify_task_alive().await;
 
-    // Verify: Still no proposal event
-    verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
+    if consensus_ahead_of_fgw {
+        // Verify: Still no proposal event
+        verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
+    } else {
+        // Verify: Proposal event should be sent now
+        let proposal_cmd = wait_for_proposal_event(&mut env.rx_from_p2p, Duration::from_secs(3))
+            .await
+            .expect("Expected proposal event after TransactionsFin");
+        verify_proposal_event(proposal_cmd, 2, proposal_commitment);
+    }
 
     // Check what's in the database right after ProposalFin
     #[cfg(debug_assertions)]
@@ -646,10 +665,6 @@ async fn test_proposal_fin_deferred_until_parent_block_committed() {
         }
     }
 
-    tracing::error!(
-        "P2P_TASK_TESTS: sending CommitBlock for HeightAndRound::new(1, 0), \
-         ConsensusValue(ProposalCommitment(Felt::ONE)",
-    );
     // Step 7: Send CommitBlock for parent block (should trigger finalization)
     env.tx_to_p2p
         .send(crate::consensus::inner::P2PTaskEvent::CommitBlock(
@@ -665,27 +680,29 @@ async fn test_proposal_fin_deferred_until_parent_block_committed() {
     // test fail once in a while
     env.wait_tx_to_p2p_consumed().await;
 
-    // TODO
-    // 2 flows here:
-    // 1. normal ConfirmFinalizedBlockCommitted
-    // 2. the block is in the main DB
+    if consensus_ahead_of_fgw {
+        // Step 8: At some point sync sends SyncMessageToConsensus::GetFinalizedBlock
+        // for H=1, and then confirms committing the block with
+        // SyncMessageToConsensus::ConfirmFinalizedBlockCommitted
+        env.tx_sync_to_consensus
+            .send(SyncMessageToConsensus::ConfirmFinalizedBlockCommitted {
+                number: BlockNumber::new_or_panic(1),
+            })
+            .await
+            .expect("Failed to send ConfirmFinalizedBlockCommitted");
+        env.verify_task_alive().await;
 
-    // Step 8: At some point sync sends SyncMessageToConsensus::GetFinalizedBlock
-    // for H=1, and then confirms committing the block with
-    // SyncMessageToConsensus::ConfirmFinalizedBlockCommitted
-    env.tx_sync_to_consensus
-        .send(SyncMessageToConsensus::ConfirmFinalizedBlockCommitted {
-            number: BlockNumber::new_or_panic(1),
-        })
-        .await
-        .expect("Failed to send ConfirmFinalizedBlockCommitted");
-    env.verify_task_alive().await;
-
-    // Verify: Proposal event should be sent now
-    let proposal_cmd = wait_for_proposal_event(&mut env.rx_from_p2p, Duration::from_secs(3))
-        .await
-        .expect("Expected proposal event after TransactionsFin");
-    verify_proposal_event(proposal_cmd, 2, proposal_commitment);
+        // Verify: Proposal event should be sent now
+        let proposal_cmd = wait_for_proposal_event(&mut env.rx_from_p2p, Duration::from_secs(3))
+            .await
+            .expect("Expected proposal event after TransactionsFin");
+        verify_proposal_event(proposal_cmd, 2, proposal_commitment);
+    } else {
+        // Step 8: It turns out that for some unknown reason the feeder
+        // gateway has already produced the block for H=1 that
+        // the consensus has just agreed upon.
+        env.verify_task_alive().await;
+    }
 
     // Verify proposal parts persisted
     // Query with validator_address (receiver) to get foreign proposals

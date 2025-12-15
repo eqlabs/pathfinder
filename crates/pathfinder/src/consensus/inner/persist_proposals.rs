@@ -116,12 +116,6 @@ impl<'tx> ConsensusProposals<'tx> {
         round: u32,
         block: ConsensusFinalizedL2Block,
     ) -> anyhow::Result<bool> {
-        tracing::error!(
-            "CONSENSUS_DB Persisting consensus finalized block at height {}, round {}",
-            height,
-            round
-        );
-
         let serde_block = dto::ConsensusFinalizedBlock::try_into_dto(block)?;
         let finalized_block = dto::PersistentConsensusFinalizedBlock::V0(serde_block);
         let buf = bincode::serde::encode_to_vec(finalized_block, bincode::config::standard())
@@ -138,12 +132,6 @@ impl<'tx> ConsensusProposals<'tx> {
         height: u64,
         round: u32,
     ) -> anyhow::Result<Option<ConsensusFinalizedL2Block>> {
-        tracing::error!(
-            "CONSENSUS_DB Reading consensus finalized block at height {}, round {}",
-            height,
-            round
-        );
-
         if let Some(buf) = self.tx.read_consensus_finalized_block(height, round)? {
             let block = Self::decode_finalized_block(&buf[..])?;
             Ok(Some(block))
@@ -159,11 +147,6 @@ impl<'tx> ConsensusProposals<'tx> {
         &self,
         height: u64,
     ) -> anyhow::Result<Option<ConsensusFinalizedL2Block>> {
-        tracing::error!(
-            "CONSENSUS_DB Reading consensus finalized block for LAST round at height {}",
-            height,
-        );
-
         if let Some(buf) = self
             .tx
             .read_consensus_finalized_block_for_last_round(height)?
@@ -182,24 +165,12 @@ impl<'tx> ConsensusProposals<'tx> {
         height: u64,
         commit_round: u32,
     ) -> anyhow::Result<()> {
-        tracing::error!(
-            "CONSENSUS_DB Removing uncommitted consensus finalized blocks at height {}, except \
-             for commit round {}",
-            height,
-            commit_round
-        );
-
         self.tx
             .remove_uncommitted_consensus_finalized_blocks(height, commit_round)
     }
 
     /// Remove all finalized blocks for a given height.
     pub fn remove_consensus_finalized_blocks(&self, height: u64) -> anyhow::Result<()> {
-        tracing::error!(
-            "CONSENSUS_DB Removing all consensus finalized blocks at height {}",
-            height,
-        );
-
         self.tx.remove_consensus_finalized_blocks(height)
     }
 
