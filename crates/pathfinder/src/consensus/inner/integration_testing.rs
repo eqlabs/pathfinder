@@ -206,3 +206,29 @@ pub fn debug_fail_on_decided(
         data_directory,
     );
 }
+
+#[cfg(all(
+    feature = "p2p",
+    feature = "consensus-integration-tests",
+    debug_assertions
+))]
+pub fn send_outdated_vote(vote_height: u64, inject_failure: Option<InjectFailureConfig>) -> bool {
+    matches!(inject_failure,
+        Some(InjectFailureConfig {
+            height,
+            trigger: InjectFailureTrigger::OutdatedVote,
+        }) if vote_height >= height
+    )
+}
+
+#[cfg(not(all(
+    feature = "p2p",
+    feature = "consensus-integration-tests",
+    debug_assertions
+)))]
+pub fn send_outdated_vote(
+    _proposal_height: u64,
+    _inject_failure: Option<InjectFailureConfig>,
+) -> bool {
+    false
+}
