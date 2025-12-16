@@ -333,7 +333,6 @@ pub fn spawn(
                                     &mut batch_execution_manager,
                                     &proposals_db,
                                     number,
-                                    info_watch_tx.clone(),
                                 )?;
                                 Ok(success)
                             }
@@ -551,6 +550,26 @@ pub fn spawn(
                             "Proposal commitment mismatch"
                         );
 
+                        info_watch_tx.send_if_modified(|info| {
+                            let do_update = match info.highest_decision {
+                                None => true,
+                                Some((highest_decided_height, highest_decided_value)) => {
+                                    let new_height =
+                                        height_and_round.height() > highest_decided_height.get();
+                                    let new_value = value.0 != highest_decided_value;
+                                    new_height || new_value
+                                }
+                            };
+                            if do_update {
+                                let height = BlockNumber::new_or_panic(height_and_round.height());
+                                *info = ConsensusInfo {
+                                    highest_decision: Some((height, value.0)),
+                                    ..*info
+                                };
+                            }
+                            do_update
+                        });
+
                         integration_testing::debug_fail_on_proposal_committed(
                             height_and_round.height(),
                             inject_failure,
@@ -610,7 +629,6 @@ pub fn spawn(
                                 &mut batch_execution_manager,
                                 &proposals_db,
                                 block_number,
-                                info_watch_tx.clone(),
                             )?;
                         }
 
@@ -682,40 +700,7 @@ fn on_finalized_block_committed(
     batch_execution_manager: &mut BatchExecutionManager,
     proposals_db: &ConsensusProposals<'_>,
     number: pathfinder_common::BlockNumber,
-    info_watch_tx: watch::Sender<ConsensusInfo>,
 ) -> Result<ComputationSuccess, anyhow::Error> {
-    let block = proposals_db
-        .read_consensus_finalized_block_for_last_round(number.get())?
-        .context(
-            "No finalized block found - logic error: finalized block for the last round should \
-             exist when commit confirmation is received",
-        )?;
-    let value = ProposalCommitment(block.header.state_diff_commitment.0);
-    // TODO maybe we should remove this watch altogether with its respective
-    // RPC method, because it's not reporting a decision anymore but rather
-    // being in the process of committing a decided upon block which is
-    // slightly different. And the consensus tests should rely on what
-    // actually ends up in the main DB, otherwise the entire process of:
-    // finalizing, deciding, committing is not properly tested.
-    info_watch_tx.send_if_modified(|info| {
-        let do_update = match info.highest_decision {
-            None => true,
-            Some((highest_decided_height, highest_decided_value)) => {
-                let new_height = number.get() > highest_decided_height.get();
-                let new_value = value != highest_decided_value;
-                new_height || new_value
-            }
-        };
-        if do_update {
-            let height = BlockNumber::new_or_panic(number.get());
-            *info = ConsensusInfo {
-                highest_decision: Some((height, value)),
-                ..*info
-            };
-        }
-        do_update
-    });
-
     // In practice this should remove the finalized block for the last round at the
     // height, because lower rounds were already removed when the proposal was
     // decided upon in that last round.
