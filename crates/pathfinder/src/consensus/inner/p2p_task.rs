@@ -197,7 +197,7 @@ pub fn spawn(
                         //
                         // This call may yield unreliable results if history_depth is too small and
                         // the currently decided upon and finalized block has not been committed by
-                        // the sync task yet, becasue we're only checking the main DB here.
+                        // the sync task yet, because we're only checking the main DB here.
                         if is_outdated_p2p_event(&main_db_tx, &event.kind, config.history_depth)? {
                             return Ok(ComputationSuccess::ChangePeerScore {
                                 peer_id: event.source,
@@ -692,7 +692,7 @@ fn on_finalized_block_committed(
         )?;
     let value = ProposalCommitment(block.header.state_diff_commitment.0);
     // TODO maybe we should remove this watch altogether with its respective
-    // RPC method, because it's not reproting a decision anymore but rather
+    // RPC method, because it's not reporting a decision anymore but rather
     // being in the process of committing a decided upon block which is
     // slightly different. And the consensus tests should rely on what
     // actually ends up in the main DB, otherwise the entire process of:
@@ -717,7 +717,7 @@ fn on_finalized_block_committed(
     });
 
     // In practice this should remove the finalized block for the last round at the
-    // height, becasue lower rounds were already removed when the proposal was
+    // height, because lower rounds were already removed when the proposal was
     // decided upon in that last round.
     proposals_db.remove_consensus_finalized_blocks(number.get())?;
 
