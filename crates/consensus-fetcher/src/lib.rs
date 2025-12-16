@@ -153,6 +153,7 @@ pub fn get_validators_at_height(
         ContractAddress::ZERO, // ETH fee address (not used for calls)
         ContractAddress::ZERO, // STRK fee address (not used for calls)
         None,                  // No native class cache
+        false,                 // Don't force native execution for incompatible classes
     );
 
     // The entry point selector for get_validators_at_height
@@ -212,6 +213,7 @@ pub fn get_proposers_at_height(
         ContractAddress::ZERO, // ETH fee address (not used for calls)
         ContractAddress::ZERO, // STRK fee address (not used for calls)
         None,                  // No native class cache
+        false,                 // Don't force native execution for incompatible classes
     );
 
     // The entry point selector for get_proposers_at_height
