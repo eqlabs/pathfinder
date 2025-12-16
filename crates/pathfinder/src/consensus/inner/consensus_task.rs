@@ -258,24 +258,23 @@ pub fn spawn(
                                 .await
                                 .expect("Commit block receiver not to be dropped");
 
-                            let old_next_height = next_height;
+                            let prev_height = next_height;
                             // Either move to the next height, or catch up if the decided height
                             // is ahead of our current next_height.
                             next_height = next_height
                                 .max(height)
                                 .checked_add(1)
                                 .expect("Height never reaches i64::MAX");
-                            if old_next_height != next_height {
-                                tracing::trace!(%next_height, from_height=%old_next_height, "changing height to moving to");
 
-                                start_height(
-                                    &mut consensus,
-                                    next_height,
-                                    validator_set_provider
-                                        .get_validator_set(next_height)
-                                        .context("Failed to get validator set")?,
-                                );
-                            }
+                            tracing::trace!(%prev_height, %next_height, "Changing height");
+
+                            start_height(
+                                &mut consensus,
+                                next_height,
+                                validator_set_provider
+                                    .get_validator_set(next_height)
+                                    .context("Failed to get validator set")?,
+                            );
                         }
                         ConsensusEvent::Error(error) => {
                             if error.is_recoverable() {
