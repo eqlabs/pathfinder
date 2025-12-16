@@ -832,8 +832,11 @@ async fn consumer(
                     metrics::histogram!("block_processing_duration_seconds")
                         .record(update_t.as_secs_f64());
                     metrics::gauge!("block_latency").set(latency as f64);
-                    metrics::gauge!("block_time")
-                        .set((block_timestamp.get() - latest_timestamp.get()) as f64);
+                    if let Some(block_time_secs) =
+                        block_timestamp.get().checked_sub(latest_timestamp.get())
+                    {
+                        metrics::gauge!("block_time").set(block_time_secs as f64);
+                    }
                     latest_timestamp = block_timestamp;
                     next_number += 1;
 
