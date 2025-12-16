@@ -684,8 +684,13 @@ fn on_finalized_block_committed(
     number: pathfinder_common::BlockNumber,
     info_watch_tx: watch::Sender<ConsensusInfo>,
 ) -> Result<ComputationSuccess, anyhow::Error> {
-    proposals_db.remove_consensus_finalized_blocks(number.get())?;
-
+    let block = proposals_db
+        .read_consensus_finalized_block_for_last_round(number.get())?
+        .context(
+            "No finalized block found - logic error: finalized block for the last round should \
+             exist when commit confirmation is received",
+        )?;
+    let value = ProposalCommitment(block.header.state_diff_commitment.0);
     // TODO maybe we should remove this watch altogether with its respective
     // RPC method, because it's not reproting a decision anymore but rather
     // being in the process of committing a decided upon block which is
@@ -693,26 +698,28 @@ fn on_finalized_block_committed(
     // actually ends up in the main DB, otherwise the entire process of:
     // finalizing, deciding, committing is not properly tested.
     info_watch_tx.send_if_modified(|info| {
-        /* FIXME
         let do_update = match info.highest_decision {
             None => true,
             Some((highest_decided_height, highest_decided_value)) => {
-                let new_height = height_and_round.height() > highest_decided_height.get();
-                let new_value = value.0 != highest_decided_value;
+                let new_height = number.get() > highest_decided_height.get();
+                let new_value = value != highest_decided_value;
                 new_height || new_value
             }
         };
         if do_update {
-            let height = BlockNumber::new_or_panic(height_and_round.height());
+            let height = BlockNumber::new_or_panic(number.get());
             *info = ConsensusInfo {
-                highest_decision: Some((height, value.0)),
+                highest_decision: Some((height, value)),
                 ..*info
             };
         }
         do_update
-        */
-        false
     });
+
+    // In practice this should remove the finalized block for the last round at the
+    // height, becasue lower rounds were already removed when the proposal was
+    // decided upon in that last round.
+    proposals_db.remove_consensus_finalized_blocks(number.get())?;
 
     tracing::debug!(
         "🖧  🗑️ {validator_address} removed finalized block for last round at height {} after \
