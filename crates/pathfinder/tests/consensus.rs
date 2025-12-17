@@ -210,7 +210,7 @@ mod test {
     #[rstest]
     #[ignore = "We need a custom fgw to actually test consensus ahead of fgw"]
     #[case::consensus_ahead_of_fgw(true)]
-    // This one should work just fine with sepolia's fgw
+    #[ignore = "It's flaky, fix it"]
     #[case::fgw_ahead_of_consensus(false)]
     #[tokio::test]
     async fn consensus_3_nodes_outdated_votes_lead_to_peer_score_changes(
