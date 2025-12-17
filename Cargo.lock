@@ -5180,6 +5180,7 @@ dependencies = [
  "anyhow",
  "clap",
  "const-decoder",
+ "futures",
  "pathfinder",
  "pathfinder-common",
  "pathfinder-storage",

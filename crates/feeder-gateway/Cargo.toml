@@ -10,6 +10,7 @@ rust-version = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 const-decoder = { workspace = true }
+futures = { workspace = true }
 pathfinder = { path = "../pathfinder" }
 pathfinder-common = { path = "../common", features = ["full-serde"] }
 pathfinder-storage = { path = "../storage" }
