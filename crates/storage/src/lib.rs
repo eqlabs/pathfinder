@@ -84,6 +84,8 @@ pub struct StorageManager {
     blockchain_history_mode: BlockchainHistoryMode,
 }
 
+pub struct ReadOnlyStorageManager(StorageManager);
+
 impl std::fmt::Debug for StorageManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("StorageManager")
@@ -127,6 +129,12 @@ impl StorageManager {
             | OpenFlags::SQLITE_OPEN_NO_MUTEX
             | OpenFlags::SQLITE_OPEN_URI;
         self.create_pool_with_flags(capacity, flags)
+    }
+}
+
+impl ReadOnlyStorageManager {
+    pub fn create_read_only_pool(&self, capacity: NonZeroU32) -> anyhow::Result<Storage> {
+        self.0.create_read_only_pool(capacity)
     }
 }
 
@@ -365,6 +373,74 @@ impl StorageBuilder {
             trie_prune_mode,
             blockchain_history_mode,
         })
+    }
+
+    /// Does not perform any migration, just loads the database in read-only
+    /// mode. This is useful for tools which only need to read from the
+    /// database, especially when a Pathfinder instance is writing to it at the
+    /// same time.
+    pub fn readonly(self) -> anyhow::Result<ReadOnlyStorageManager> {
+        let Self {
+            database_path,
+            journal_mode,
+            event_filter_cache_size,
+            ..
+        } = self;
+
+        let mut open_flags = OpenFlags::default();
+        open_flags.remove(OpenFlags::SQLITE_OPEN_CREATE);
+        let mut connection = rusqlite::Connection::open_with_flags(&database_path, open_flags)
+            .context("Opening DB to load running event filter")?;
+
+        let init_num_blocks_kept = connection
+            .query_row(
+                "SELECT value FROM storage_options WHERE option = 'prune_blockchain'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        let blockchain_history_mode = {
+            if let Some(num_blocks_kept) = init_num_blocks_kept {
+                BlockchainHistoryMode::Prune { num_blocks_kept }
+            } else {
+                BlockchainHistoryMode::Archive
+            }
+        };
+
+        let prune_flag_is_set = connection
+            .query_row(
+                "SELECT 1 FROM storage_options WHERE option = 'prune_tries'",
+                [],
+                |_| Ok(()),
+            )
+            .optional()
+            .map(|x| x.is_some())?;
+
+        let trie_prune_mode = if prune_flag_is_set {
+            TriePruneMode::Prune {
+                num_blocks_kept: 20,
+            }
+        } else {
+            TriePruneMode::Archive
+        };
+
+        let running_event_filter = event::RunningEventFilter::load(&connection.transaction()?)
+            .context("Loading running event filter")?;
+
+        connection
+            .close()
+            .map_err(|(_connection, error)| error)
+            .context("Closing DB after loading running event filter")?;
+
+        Ok(ReadOnlyStorageManager(StorageManager {
+            database_path,
+            journal_mode,
+            event_filter_cache: Arc::new(AggregateBloomCache::with_size(event_filter_cache_size)),
+            running_event_filter: Arc::new(Mutex::new(running_event_filter)),
+            trie_prune_mode,
+            blockchain_history_mode,
+        }))
     }
 
     /// - If there is no explicitly requested configuration, assumes the user
