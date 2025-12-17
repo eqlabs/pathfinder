@@ -664,7 +664,7 @@ fn start_consensus_aware_fgw_sync(
     config: &config::Config,
     submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker,
     tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
-    sync_to_consensus_tx: tokio::sync::mpsc::Sender<pathfinder_lib::SyncRequestToConsensus>,
+    sync_to_consensus_tx: tokio::sync::mpsc::Sender<pathfinder_lib::SyncMessageToConsensus>,
     notifications: Notifications,
     gateway_public_key: pathfinder_common::PublicKey,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {

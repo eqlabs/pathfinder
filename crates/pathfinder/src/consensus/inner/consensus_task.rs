@@ -24,28 +24,26 @@ use p2p_proto::consensus::{
     ProposalPart,
 };
 use pathfinder_common::{
-    BlockHash,
     BlockId,
     BlockNumber,
     ChainId,
+    ConsensusFinalizedL2Block,
     ContractAddress,
-    L2Block,
     ProposalCommitment,
     StarknetVersion,
+    StateDiffCommitment,
 };
 use pathfinder_consensus::{
     Config,
     Consensus,
     ConsensusCommand,
     ConsensusEvent,
-    NetworkMessage,
     Proposal,
     Round,
-    SignedVote,
     ValidatorSet,
     ValidatorSetProvider,
 };
-use pathfinder_storage::{Storage, TransactionBehavior};
+use pathfinder_storage::Storage;
 use tokio::sync::mpsc;
 
 use super::fetch_proposers::L2ProposerSelector;
@@ -63,7 +61,6 @@ pub fn spawn(
     tx_to_p2p: mpsc::Sender<P2PTaskEvent>,
     mut rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
     main_storage: Storage,
-    consensus_storage: Storage,
     data_directory: &Path,
     // Does nothing in production builds. Used for integration testing only.
     inject_failure: Option<InjectFailureConfig>,
@@ -71,16 +68,16 @@ pub fn spawn(
     let data_directory = data_directory.to_path_buf();
 
     util::task::spawn(async move {
-        let highest_finalized = highest_finalized(&consensus_storage)
-            .context("Failed to read highest finalized block at startup")?;
+        let highest_committed = highest_committed(&main_storage)
+            .context("Failed to read highest committed block at startup")?;
         // Get the validator address and validator set provider
         let validator_address = config.my_validator_address;
         let validator_set_provider =
-            L2ValidatorSetProvider::new(consensus_storage.clone(), chain_id, config.clone());
+            L2ValidatorSetProvider::new(main_storage.clone(), chain_id, config.clone());
 
         // Get the proposer selector
         let proposer_selector =
-            L2ProposerSelector::new(consensus_storage.clone(), chain_id, config.clone());
+            L2ProposerSelector::new(main_storage.clone(), chain_id, config.clone());
 
         let mut consensus =
             Consensus::<ConsensusValue, ContractAddress, L2ProposerSelector>::recover_with_proposal_selector(
@@ -91,27 +88,23 @@ pub fn spawn(
                 // the staking contract is implemented. Related issue: https://github.com/eqlabs/pathfinder/issues/2936
                 Arc::new(validator_set_provider.clone()),
                 proposer_selector,
-                highest_finalized,
+                highest_committed,
             )?;
 
         // Compute the next height to work on using all available information:
         // - max_active_height: highest incomplete/active height being tracked
         // - last_decided_height: highest decided height (even if not actively tracked)
-        // - highest_finalized + 1: next height after what's been committed to DB
+        // - highest_committed + 1: next height after what's been committed to main DB
         let mut next_height = [
             consensus.max_active_height().unwrap_or(0),
             consensus.last_decided_height().unwrap_or(0),
-            highest_finalized.map(|h| h + 1).unwrap_or(0),
+            highest_committed.map(|h| h + 1).unwrap_or(0),
         ]
         .into_iter()
         .max()
         .unwrap_or(0);
 
-        // A validator that joins the consensus network and is lagging behind will vote
-        // Nil for its current height, because the consensus network is already at a
-        // higher height. This is a workaround for the missing sync/catch-up mechanism.
-        // Related issue: https://github.com/eqlabs/pathfinder/issues/2934
-        let mut last_nil_vote_height = None;
+        tracing::trace!(%next_height, "consensus task started with");
 
         start_height(
             &mut consensus,
@@ -226,21 +219,9 @@ pub fn spawn(
                             // TODO Sometimes the engine requests gossiping votes for heights that
                             // are a few steps behind the current height and have already been
                             // decided upon. This is due to the fact that `history_depth` in config
-                            // is > 0 and we're not supporting round certificates yet. Setting
-                            // history depth to a low value (or 0) should mitigate this issue for
-                            // now.
+                            // is > 0 and we're not supporting round certificates yet. Once round
+                            // certificates are supported this check can be removed.
                             if msg.height() >= next_height {
-                                // Record the highest height at which we voted Nil as it may be an
-                                // indication that we're lagging behind the consensus network.
-                                if let NetworkMessage::Vote(SignedVote { vote, .. }) = &msg {
-                                    if vote.is_nil() {
-                                        last_nil_vote_height = Some(
-                                            vote.height
-                                                .max(last_nil_vote_height.unwrap_or_default()),
-                                        );
-                                    }
-                                }
-
                                 tx_to_p2p
                                     .send(P2PTaskEvent::GossipRequest(msg))
                                     .await
@@ -277,18 +258,23 @@ pub fn spawn(
                                 .await
                                 .expect("Commit block receiver not to be dropped");
 
-                            if height == next_height {
-                                next_height = next_height
-                                    .checked_add(1)
-                                    .expect("Height never reaches i64::MAX");
-                                start_height(
-                                    &mut consensus,
-                                    next_height,
-                                    validator_set_provider
-                                        .get_validator_set(next_height)
-                                        .context("Failed to get validator set")?,
-                                );
-                            }
+                            let prev_height = next_height;
+                            // Either move to the next height, or catch up if the decided height
+                            // is ahead of our current next_height.
+                            next_height = next_height
+                                .max(height)
+                                .checked_add(1)
+                                .expect("Height never reaches i64::MAX");
+
+                            tracing::trace!(%prev_height, %next_height, "Changing height");
+
+                            start_height(
+                                &mut consensus,
+                                next_height,
+                                validator_set_provider
+                                    .get_validator_set(next_height)
+                                    .context("Failed to get validator set")?,
+                            );
                         }
                         ConsensusEvent::Error(error) => {
                             if error.is_recoverable() {
@@ -338,29 +324,15 @@ pub fn spawn(
                         // consensus engine is already started for this new height carried in those
                         // messages.
                         ConsensusCommand::Proposal(_) | ConsensusCommand::Vote(_) => {
-                            // TODO catch up with the current height of the consensus network using
-                            // sync, for the time being just observe the height in the rebroadcasted
-                            // votes or in the proposals.
-                            let last_nil = last_nil_vote_height.take();
-
-                            if let Some(last_nil) = last_nil {
-                                if cmd_height > next_height && cmd_height > last_nil {
-                                    tracing::info!(
-                                        "🧠 ⏩  {validator_address} catching up current height \
-                                         {next_height} -> {cmd_height}",
-                                    );
-                                    next_height = cmd_height;
-                                } else {
-                                    last_nil_vote_height = Some(last_nil);
-                                }
-                            }
-
+                            // Make sure we don't start older heights that have already been decided
+                            // upon, or are still in progress due to race conditions, or are too old
+                            // to fit in history depth anyway.
                             let is_decided = consensus
                                 .last_decided_height()
                                 .is_some_and(|last_decided| cmd_height <= last_decided);
                             if is_decided {
                                 tracing::debug!(
-                                    "🧠 🤷  Not starting old height {cmd_height} at {next_height}"
+                                    lower_height=%cmd_height, %next_height, "🧠 🤷  Skipping start consensus for"
                                 );
                             } else {
                                 start_height(
@@ -385,27 +357,32 @@ pub fn spawn(
     })
 }
 
-fn highest_finalized(storage: &Storage) -> anyhow::Result<Option<u64>> {
-    let mut db_conn = storage
+/// Reads the highest committed block number from main storage.
+fn highest_committed(main_storage: &Storage) -> anyhow::Result<Option<u64>> {
+    let mut db_conn = main_storage
         .connection()
-        .context("Failed to create database connection for reading highest finalized block")?;
+        .context("Failed to create database connection for reading highest committed block")?;
     let db_txn = db_conn
         .transaction()
-        .context("Failed to create database transaction for reading highest finalized block")?;
-    let highest_finalized = db_txn
+        .context("Failed to create database transaction for reading highest committed block")?;
+    let highest_committed = db_txn
         .block_number(BlockId::Latest)
         .context("Failed to query latest block number")?
         .map(|x| x.get());
-    Ok(highest_finalized)
+    Ok(highest_committed)
 }
 
+/// Starts consensus for the given height if not already active.
 fn start_height(
     consensus: &mut Consensus<ConsensusValue, ContractAddress, L2ProposerSelector>,
     height: u64,
     validator_set: ValidatorSet<ContractAddress>,
 ) {
     if !consensus.is_height_active(height) {
+        tracing::trace!(%height, "🧠 🚀  Starting consensus for");
         consensus.handle_command(ConsensusCommand::StartHeight(height, validator_set));
+    } else {
+        tracing::trace!(%height, "🧠 🤷  Consensus already active for");
     }
 }
 
@@ -420,7 +397,7 @@ pub(crate) fn create_empty_proposal(
     round: Round,
     proposer: ContractAddress,
     main_storage: Storage,
-) -> anyhow::Result<(Vec<ProposalPart>, L2Block)> {
+) -> anyhow::Result<(Vec<ProposalPart>, ConsensusFinalizedL2Block)> {
     let round = round.as_u32().context(format!(
         "Attempted to create proposal with Nil round at height {height}"
     ))?;
@@ -443,13 +420,13 @@ pub(crate) fn create_empty_proposal(
         let db_txn = db_conn
             .transaction()
             .context("Create database transaction")?;
-        // TODO it should probably be not a block hash but the state diff commitment of
-        // the parent block
-        let hash = db_txn.block_hash(parent_number.into())?.unwrap_or_default();
+        let hash = db_txn
+            .state_diff_commitment(parent_number)?
+            .unwrap_or_default();
         db_txn.commit()?;
         hash
     } else {
-        BlockHash::ZERO
+        StateDiffCommitment::ZERO
     };
 
     // The only version handled by consensus, so far
@@ -483,28 +460,11 @@ pub(crate) fn create_empty_proposal(
         l1_da_mode: L1DataAvailabilityMode::default(),
     };
 
-    let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())
+    let block = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())
         .context("Failed to create validator block info stage")?
         .verify_proposal_commitment(&proposal_commitment)
         .context("Failed to verify proposal commitment")?;
-    let mut db_conn = main_storage
-        .connection()
-        .context("Creating database connection")?;
-    let db_txn = db_conn
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .context("Create database transaction")?;
-    let readonly_storage = main_storage.clone();
-    let finalized_block = validator
-        .finalize(
-            &db_txn,
-            readonly_storage,
-            false, // Do not verify hashes for empty proposals
-        )
-        .context("Failed to finalize block")?;
-    db_txn
-        .commit()
-        .context("Failed to commit finalized block")?;
-    let proposal_commitment_hash = Hash(finalized_block.header.state_diff_commitment.0);
+    let proposal_commitment_hash = Hash(block.header.state_diff_commitment.0);
 
     Ok((
         vec![
@@ -514,7 +474,7 @@ pub(crate) fn create_empty_proposal(
                 proposal_commitment: proposal_commitment_hash,
             }),
         ],
-        finalized_block,
+        block,
     ))
 }
 

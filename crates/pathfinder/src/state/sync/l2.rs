@@ -22,7 +22,7 @@ use crate::state::block_hash::{
 };
 use crate::state::sync::class::{download_class, DownloadedClass};
 use crate::state::sync::SyncEvent;
-use crate::SyncRequestToConsensus;
+use crate::SyncMessageToConsensus;
 
 #[derive(Default, Debug, Clone, Copy)]
 pub struct Timings {
@@ -346,10 +346,10 @@ where
 /// Same as [sync] with the key differences being:
 ///   - has no bulk sync phase (PoC for consensus sync, keeping it as simple as
 ///     possible)
-///   - interacts with consensus via [SyncRequestToConsensus]
+///   - interacts with consensus via [SyncMessageToConsensus]
 pub async fn consensus_sync<GatewayClient>(
     tx_event: mpsc::Sender<SyncEvent>,
-    sync_to_consensus_tx: mpsc::Sender<SyncRequestToConsensus>,
+    sync_to_consensus_tx: mpsc::Sender<SyncMessageToConsensus>,
     context: L2SyncContext<GatewayClient>,
     mut head: Option<(BlockNumber, BlockHash, StateCommitment)>,
     mut blocks: BlockChain,
@@ -380,7 +380,7 @@ where
         // Check if the Consensus engine has already committed this block
         // to avoid redundant downloads.
         let (tx, rx) = tokio::sync::oneshot::channel();
-        let request = SyncRequestToConsensus::GetFinalizedBlock {
+        let request = SyncMessageToConsensus::GetConsensusFinalizedBlock {
             number: next,
             reply: tx,
         };
@@ -393,16 +393,24 @@ where
             .await
             .context("Receiving committed block from consensus")?;
 
-        if let Some(block) = reply {
+        if let Some(l2_block) = reply {
             tracing::debug!("Block {next} already committed in consensus, skipping download");
 
-            head = Some((next, block.header.hash, block.header.state_commitment));
-            blocks.push(next, block.header.hash, block.header.state_commitment);
+            let (state_tries_updated_tx, rx) = tokio::sync::oneshot::channel();
 
             tx_event
-                .send(SyncEvent::FinalizedConsensusBlock(block))
+                .send(SyncEvent::FinalizedConsensusBlock {
+                    l2_block,
+                    state_tries_updated_tx,
+                })
                 .await
                 .context("Event channel closed")?;
+            let (block_hash, state_commitment) = rx
+                .await
+                .context("Waiting for state tries to be updated in consumer")?;
+
+            head = Some((next, block_hash, state_commitment));
+            blocks.push(next, block_hash, state_commitment);
 
             continue 'outer;
         }

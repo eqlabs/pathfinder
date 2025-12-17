@@ -1,7 +1,7 @@
 use anyhow::Context;
 use p2p_proto::consensus::ProposalPart;
-use pathfinder_common::{ContractAddress, L2Block};
-use pathfinder_storage::Transaction;
+use pathfinder_common::{ConsensusFinalizedL2Block, ContractAddress};
+use pathfinder_storage::consensus::ConsensusTransaction;
 
 use crate::consensus::inner::conv::{IntoModel, TryIntoDto};
 use crate::consensus::inner::dto;
@@ -9,12 +9,12 @@ use crate::consensus::inner::dto;
 /// A wrapper around a consensus database transaction that provides
 /// methods for persisting and retrieving proposal parts and finalized blocks.
 pub struct ConsensusProposals<'tx> {
-    pub tx: Transaction<'tx>,
+    tx: ConsensusTransaction<'tx>,
 }
 
 impl<'tx> ConsensusProposals<'tx> {
     /// Create a new `ConsensusProposals` wrapper around a transaction.
-    pub fn new(tx: Transaction<'tx>) -> Self {
+    pub fn new(tx: ConsensusTransaction<'tx>) -> Self {
         Self { tx }
     }
 
@@ -107,17 +107,17 @@ impl<'tx> ConsensusProposals<'tx> {
         self.tx.remove_consensus_proposal_parts(height, round)
     }
 
-    /// Persist a finalized block for a given height and round.
+    /// Persist a consensus-finalized block for a given height and round.
     /// Returns `true` if an existing entry was updated, `false` if a new entry
     /// was created.
-    pub fn persist_finalized_block(
+    pub fn persist_consensus_finalized_block(
         &self,
         height: u64,
         round: u32,
-        block: L2Block,
+        block: ConsensusFinalizedL2Block,
     ) -> anyhow::Result<bool> {
-        let serde_block = dto::FinalizedBlock::try_into_dto(block)?;
-        let finalized_block = dto::PersistentFinalizedBlock::V0(serde_block);
+        let serde_block = dto::ConsensusFinalizedBlock::try_into_dto(block)?;
+        let finalized_block = dto::PersistentConsensusFinalizedBlock::V0(serde_block);
         let buf = bincode::serde::encode_to_vec(finalized_block, bincode::config::standard())
             .context("Serializing finalized block")?;
         let updated = self
@@ -126,8 +126,12 @@ impl<'tx> ConsensusProposals<'tx> {
         Ok(updated)
     }
 
-    /// Read a finalized block for a given height and round.
-    pub fn read_finalized_block(&self, height: u64, round: u32) -> anyhow::Result<Option<L2Block>> {
+    /// Read a consensus-finalized block for a given height and round.
+    pub fn read_consensus_finalized_block(
+        &self,
+        height: u64,
+        round: u32,
+    ) -> anyhow::Result<Option<ConsensusFinalizedL2Block>> {
         if let Some(buf) = self.tx.read_consensus_finalized_block(height, round)? {
             let block = Self::decode_finalized_block(&buf[..])?;
             Ok(Some(block))
@@ -136,8 +140,37 @@ impl<'tx> ConsensusProposals<'tx> {
         }
     }
 
+    /// Read a consensus-finalized block for a given height and highest round
+    /// available. In practice this should be the only round left in the DB
+    /// for that height.
+    pub fn read_consensus_finalized_block_for_last_round(
+        &self,
+        height: u64,
+    ) -> anyhow::Result<Option<ConsensusFinalizedL2Block>> {
+        if let Some(buf) = self
+            .tx
+            .read_consensus_finalized_block_for_last_round(height)?
+        {
+            let block = Self::decode_finalized_block(&buf[..])?;
+            Ok(Some(block))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Remove all finalized blocks for the given height **except** the one from
+    /// `commit_round`.
+    pub fn remove_uncommitted_consensus_finalized_blocks(
+        &self,
+        height: u64,
+        commit_round: u32,
+    ) -> anyhow::Result<()> {
+        self.tx
+            .remove_uncommitted_consensus_finalized_blocks(height, commit_round)
+    }
+
     /// Remove all finalized blocks for a given height.
-    pub fn remove_finalized_blocks(&self, height: u64) -> anyhow::Result<()> {
+    pub fn remove_consensus_finalized_blocks(&self, height: u64) -> anyhow::Result<()> {
         self.tx.remove_consensus_finalized_blocks(height)
     }
 
@@ -151,12 +184,12 @@ impl<'tx> ConsensusProposals<'tx> {
         Ok(parts)
     }
 
-    fn decode_finalized_block(buf: &[u8]) -> anyhow::Result<L2Block> {
-        let persistent_block: dto::PersistentFinalizedBlock =
+    fn decode_finalized_block(buf: &[u8]) -> anyhow::Result<ConsensusFinalizedL2Block> {
+        let persistent_block: dto::PersistentConsensusFinalizedBlock =
             bincode::serde::decode_from_slice(buf, bincode::config::standard())
                 .context("Deserializing finalized block")?
                 .0;
-        let dto::PersistentFinalizedBlock::V0(dto_block) = persistent_block;
+        let dto::PersistentConsensusFinalizedBlock::V0(dto_block) = persistent_block;
         Ok(dto_block.into_model())
     }
 }
@@ -168,18 +201,19 @@ mod tests {
     use p2p_proto::consensus::{BlockInfo, ProposalCommitment, ProposalInit};
     use pathfinder_common::prelude::*;
     use pathfinder_crypto::Felt;
-    use pathfinder_storage::StorageBuilder;
+    use pathfinder_storage::consensus::{ConsensusConnection, ConsensusStorage};
 
     use super::*;
 
-    fn setup_test_db() -> (pathfinder_storage::Storage, pathfinder_storage::Connection) {
-        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
-        let mut conn = storage.connection().unwrap();
+    fn setup_test_db() -> (ConsensusStorage, ConsensusConnection) {
+        let consensus_storage =
+            ConsensusStorage::in_tempdir().expect("Failed to create temp database");
+        let mut conn = consensus_storage.connection().unwrap();
         let tx = conn.transaction().unwrap();
         tx.ensure_consensus_proposals_table_exists().unwrap();
         tx.ensure_consensus_finalized_blocks_table_exists().unwrap();
         tx.commit().unwrap();
-        (storage, conn)
+        (consensus_storage, conn)
     }
 
     fn create_test_proposal_parts(
@@ -215,13 +249,13 @@ mod tests {
         ]
     }
 
-    fn create_test_finalized_block(height: u64) -> L2Block {
-        use pathfinder_common::{BlockHeader, BlockNumber};
+    fn create_test_consensus_finalized_block(height: u64) -> ConsensusFinalizedL2Block {
+        use pathfinder_common::{BlockNumber, ConsensusFinalizedBlockHeader};
 
-        let mut header: BlockHeader = Faker.fake();
+        let mut header: ConsensusFinalizedBlockHeader = Faker.fake();
         header.number = BlockNumber::new_or_panic(height);
 
-        L2Block {
+        ConsensusFinalizedL2Block {
             header,
             state_update: Faker.fake(),
             transactions_and_receipts: vec![],
@@ -566,11 +600,11 @@ mod tests {
 
         let height = 100u64;
         let round = 1u32;
-        let block = create_test_finalized_block(height);
+        let block = create_test_consensus_finalized_block(height);
 
         // Persist new block
         let updated = proposals_db
-            .persist_finalized_block(height, round, block.clone())
+            .persist_consensus_finalized_block(height, round, block.clone())
             .unwrap();
         assert!(!updated, "Should return false for new entry");
         proposals_db.commit().unwrap();
@@ -578,7 +612,9 @@ mod tests {
         // Read it back in new transaction
         let tx2 = conn.transaction().unwrap();
         let proposals_db2 = ConsensusProposals::new(tx2);
-        let retrieved = proposals_db2.read_finalized_block(height, round).unwrap();
+        let retrieved = proposals_db2
+            .read_consensus_finalized_block(height, round)
+            .unwrap();
         assert!(retrieved.is_some(), "Should retrieve persisted block");
         let retrieved_block = retrieved.unwrap();
         assert_eq!(retrieved_block.header.number.get(), height);
@@ -598,23 +634,27 @@ mod tests {
         let proposals_db = ConsensusProposals::new(tx);
 
         let height = 100u64;
-        let block1 = create_test_finalized_block(height);
-        let block2 = create_test_finalized_block(height);
+        let block1 = create_test_consensus_finalized_block(height);
+        let block2 = create_test_consensus_finalized_block(height);
 
         // Persist blocks for multiple rounds
         proposals_db
-            .persist_finalized_block(height, 1, block1)
+            .persist_consensus_finalized_block(height, 1, block1)
             .unwrap();
         proposals_db
-            .persist_finalized_block(height, 2, block2)
+            .persist_consensus_finalized_block(height, 2, block2)
             .unwrap();
         proposals_db.commit().unwrap();
 
         // Verify isolation: both should exist independently
         let tx2 = conn.transaction().unwrap();
         let proposals_db2 = ConsensusProposals::new(tx2);
-        let retrieved1 = proposals_db2.read_finalized_block(height, 1).unwrap();
-        let retrieved2 = proposals_db2.read_finalized_block(height, 2).unwrap();
+        let retrieved1 = proposals_db2
+            .read_consensus_finalized_block(height, 1)
+            .unwrap();
+        let retrieved2 = proposals_db2
+            .read_consensus_finalized_block(height, 2)
+            .unwrap();
 
         assert!(retrieved1.is_some(), "Round 1 block should exist");
         assert!(retrieved2.is_some(), "Round 2 block should exist");
@@ -623,7 +663,9 @@ mod tests {
         assert_eq!(retrieved2.unwrap().header.number.get(), height);
 
         // Remove all blocks for height (should remove all rounds)
-        proposals_db2.remove_finalized_blocks(height).unwrap();
+        proposals_db2
+            .remove_consensus_finalized_blocks(height)
+            .unwrap();
         proposals_db2.commit().unwrap();
 
         // Verify all rounds are gone
@@ -631,14 +673,14 @@ mod tests {
         let proposals_db3 = ConsensusProposals::new(tx3);
         assert!(
             proposals_db3
-                .read_finalized_block(height, 1)
+                .read_consensus_finalized_block(height, 1)
                 .unwrap()
                 .is_none(),
             "Round 1 should be removed"
         );
         assert!(
             proposals_db3
-                .read_finalized_block(height, 2)
+                .read_consensus_finalized_block(height, 2)
                 .unwrap()
                 .is_none(),
             "Round 2 should be removed"

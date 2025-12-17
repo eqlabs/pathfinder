@@ -698,7 +698,7 @@ struct ConsensusCli {
 
     #[arg(
         long = "consensus.history-depth",
-        long_help = "How many historical consensus engines (ie. those prior to the current one) to keep enabled. Warning!Setting this value to 0 may stall small networks in some circumstances.",
+        long_help = "How many historical consensus engines (ie. those prior to the current one) to keep enabled. Warning! Setting this value to below 2 may stall small networks in some circumstances.",
         action = clap::ArgAction::Set,
         default_value = "10",
         value_name = "DEPTH",

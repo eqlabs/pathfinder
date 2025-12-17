@@ -827,7 +827,7 @@ mod tests {
                         CallParam(EntryPoint::hashed(b"call").0),
                         // Length of the call data for the called contract
                         call_param!("1"),
-                        // Number of calls, but then no more data; leads to deserailization error
+                        // Number of calls, but then no more data; leads to deserialization error
                         call_param!("0x1"),
                     ],
                 },

@@ -133,6 +133,17 @@ mod test {
         utils::wait_for_test_end(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT).await
     }
 
+    // TODO(consensus)
+    //
+    // 1. Apparently the test waits until H=20 and H=13 for Dan, but in
+    // fact consensus in all nodes reaches H=33 before the test finishes on my
+    // (ie. Chris') machine
+    //
+    // 2. Change the test so that Dan actually catches up to the current
+    // consensus height, whatever it is, this will require some custom FGW
+    //
+    // 3. IMPORTANT: assert that there is no leftover data for lower heights when
+    //    Dan finally catches up
     #[tokio::test]
     async fn consensus_3_nodes_fourth_node_joins_late_can_catch_up() -> anyhow::Result<()> {
         const NUM_NODES: usize = 4;
@@ -196,8 +207,15 @@ mod test {
     /// not causing the process to exit but instead forcing nodes to send
     /// outdated votes which leads to them being punished by their peers
     /// (via peer score penalties).
+    #[rstest]
+    #[ignore = "We need a custom fgw to actually test consensus ahead of fgw"]
+    #[case::consensus_ahead_of_fgw(true)]
+    // This one should work just fine with sepolia's fgw
+    #[case::fgw_ahead_of_consensus(false)]
     #[tokio::test]
-    async fn consensus_3_nodes_outdated_votes_lead_to_peer_score_changes() {
+    async fn consensus_3_nodes_outdated_votes_lead_to_peer_score_changes(
+        #[case] consensus_ahead_of_fgw: bool,
+    ) {
         const NUM_NODES: usize = 3;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
         const TEST_TIMEOUT: Duration = Duration::from_secs(60);
@@ -216,9 +234,10 @@ mod test {
         };
         // Do this for all three nodes, one of them will be picked to send a proposal
         // at LAST_VALID_HEIGHT + 1 and the other two will be the sabotaging nodes.
-        let mut configs = configs
-            .into_iter()
-            .map(|cfg| cfg.with_inject_failure(Some(inject_failure)));
+        let mut configs = configs.into_iter().map(|cfg| {
+            cfg.with_inject_failure(Some(inject_failure))
+                .with_sync_enabled()
+        });
 
         let alice = PathfinderInstance::spawn(configs.next().unwrap()).unwrap();
         alice
@@ -242,14 +261,20 @@ mod test {
 
         utils::log_elapsed(stopwatch);
 
-        // Wait until all three nodes reach `LAST_VALID_HEIGHT`..
-        let alice_client = wait_for_height(&alice, LAST_VALID_HEIGHT, POLL_HEIGHT);
-        let bob_client = wait_for_height(&bob, LAST_VALID_HEIGHT, POLL_HEIGHT);
-        let charlie_client = wait_for_height(&charlie, LAST_VALID_HEIGHT, POLL_HEIGHT);
+        if consensus_ahead_of_fgw {
+            // Wait until all three nodes reach `LAST_VALID_HEIGHT`..
+            let alice_client = wait_for_height(&alice, LAST_VALID_HEIGHT, POLL_HEIGHT);
+            let bob_client = wait_for_height(&bob, LAST_VALID_HEIGHT, POLL_HEIGHT);
+            let charlie_client = wait_for_height(&charlie, LAST_VALID_HEIGHT, POLL_HEIGHT);
 
-        utils::wait_for_test_end(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT)
-            .await
-            .unwrap();
+            utils::wait_for_test_end(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT)
+                .await
+                .unwrap();
+        } else {
+            // Sync will keep on downloading blocks from sepolia and consensus
+            // will just stall at H=0, which we don't really care about as much
+            // as we care about one of the nodes getting a penalty.
+        }
 
         // ..then wait a bit more for the next height, which should never become decided
         // upon because one of the nodes is sabotaging the consensus network (sending

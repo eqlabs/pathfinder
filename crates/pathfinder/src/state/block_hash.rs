@@ -374,6 +374,8 @@ fn compute_final_hash_v1(header: &BlockHeader, starknet_version_str: &str) -> Bl
     BlockHash(hasher.finish().into())
 }
 
+// TODO consider passing a representation of the block header that does not
+// contain the hash itself.
 pub fn compute_final_hash(header: &BlockHeader) -> BlockHash {
     compute_final_hash0(header, &header.starknet_version.to_string())
 }

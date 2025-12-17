@@ -5,6 +5,7 @@
 //! of order), rollback scenarios, and database persistence. They test the
 //! complete path from receiving P2P events to sending consensus commands.
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -13,49 +14,59 @@ use p2p::libp2p::identity::Keypair;
 use p2p::libp2p::PeerId;
 use p2p_proto::consensus::ProposalPart;
 use pathfinder_common::prelude::*;
-use pathfinder_common::{ChainId, ConsensusInfo, ContractAddress, L2Block, ProposalCommitment};
+use pathfinder_common::{
+    ChainId,
+    ConsensusFinalizedBlockHeader,
+    ConsensusFinalizedL2Block,
+    ConsensusInfo,
+    ContractAddress,
+    ProposalCommitment,
+};
 use pathfinder_consensus::ConsensusCommand;
 use pathfinder_crypto::Felt;
-use pathfinder_storage::StorageBuilder;
+use pathfinder_storage::consensus::ConsensusStorage;
+use pathfinder_storage::{Storage, StorageBuilder};
 use tokio::sync::{mpsc, watch};
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
 
 use crate::consensus::inner::persist_proposals::ConsensusProposals;
 use crate::consensus::inner::test_helpers::{create_test_proposal, create_transaction_batch};
-use crate::consensus::inner::{p2p_task, ConsensusTaskEvent, ConsensusValue, P2PTaskConfig};
+use crate::consensus::inner::{
+    p2p_task,
+    ConsensusTaskEvent,
+    ConsensusValue,
+    P2PTaskConfig,
+    P2PTaskEvent,
+};
+use crate::SyncMessageToConsensus;
 
 /// Helper struct to setup and manage the test environment (databases,
 /// channels, mock client)
 struct TestEnvironment {
-    main_storage: pathfinder_storage::Storage,
-    // Chris: FIXME wrap consensus storage in a newtype to avoid confusion and force the compiler
-    // to help us not mix them up
-    consensus_storage: pathfinder_storage::Storage,
+    main_storage: Storage,
+    consensus_storage: ConsensusStorage,
     p2p_client_receiver: mpsc::UnboundedReceiver<p2p::core::Command<p2p::consensus::Command>>,
     p2p_tx: mpsc::UnboundedSender<Event>,
-    tx_to_p2p: mpsc::Sender<crate::consensus::inner::P2PTaskEvent>,
+    tx_to_p2p: mpsc::Sender<P2PTaskEvent>,
     rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
+    tx_sync_to_consensus: mpsc::Sender<SyncMessageToConsensus>,
     handle: Arc<Mutex<Option<tokio::task::JoinHandle<anyhow::Result<()>>>>>,
 
     // Keep these alive to prevent receiver from being dropped
-    _sync_request_tx: mpsc::Sender<crate::SyncRequestToConsensus>,
     _info_watch_rx: watch::Receiver<crate::consensus::ConsensusInfo>,
-    // -------------
 }
 
 impl TestEnvironment {
     const HISTORY_DEPTH: u64 = 10;
+    const TX_TO_CONSENSUS_CHANNEL_SIZE: usize = 100;
+    const TX_TO_P2P_CHANNEL_SIZE: usize = 100;
 
     fn new(chain_id: ChainId, validator_address: ContractAddress) -> Self {
-        // Create temp directory for consensus storage
-        let consensus_storage_dir = tempfile::tempdir().expect("Failed to create temp directory");
-        let consensus_storage_dir = consensus_storage_dir.path().to_path_buf();
-
         // Initialize temp pathfinder and consensus databases
         let main_storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let consensus_storage =
-            StorageBuilder::in_tempdir().expect("Failed to create consensus temp database");
+            ConsensusStorage::in_tempdir().expect("Failed to create consensus temp database");
 
         // Initialize consensus storage tables
         {
@@ -70,9 +81,9 @@ impl TestEnvironment {
 
         // Mock channels for p2p communication
         let (p2p_tx, p2p_rx) = mpsc::unbounded_channel();
-        let (tx_to_consensus, rx_from_p2p) = mpsc::channel(100);
-        let (tx_to_p2p, rx_from_consensus) = mpsc::channel(100);
-        let (sync_requests_tx, sync_requests_rx) = mpsc::channel(1);
+        let (tx_to_consensus, rx_from_p2p) = mpsc::channel(Self::TX_TO_CONSENSUS_CHANNEL_SIZE);
+        let (tx_to_p2p, rx_from_consensus) = mpsc::channel(Self::TX_TO_P2P_CHANNEL_SIZE);
+        let (tx_sync_to_consensus, rx_from_sync) = mpsc::channel(1);
         let (info_watch_tx, info_watch_rx) = watch::channel(ConsensusInfo::default());
 
         // Create mock Client (used for receiving events in these tests)
@@ -91,11 +102,12 @@ impl TestEnvironment {
             p2p_rx,
             tx_to_consensus,
             rx_from_consensus,
-            sync_requests_rx,
+            rx_from_sync,
             info_watch_tx,
             main_storage.clone(),
             consensus_storage.clone(),
-            &consensus_storage_dir,
+            // Only used for failure injection, which does not happen in these tests
+            &PathBuf::default(),
             true,
             None,
         );
@@ -107,8 +119,8 @@ impl TestEnvironment {
             p2p_tx,
             tx_to_p2p,
             rx_from_p2p,
+            tx_sync_to_consensus,
             handle: Arc::new(Mutex::new(Some(handle))),
-            _sync_request_tx: sync_requests_tx,
             _info_watch_rx: info_watch_rx,
         }
     }
@@ -117,8 +129,6 @@ impl TestEnvironment {
         let block_id_felt = Felt::from(height);
         let mut db_conn = self.main_storage.connection().unwrap();
         let db_tx = db_conn.transaction().unwrap();
-        let mut cons_db_conn = self.consensus_storage.connection().unwrap();
-        let cons_db_tx = cons_db_conn.transaction().unwrap();
 
         let parent_header = BlockHeader::builder()
             .number(BlockNumber::new_or_panic(height))
@@ -132,8 +142,6 @@ impl TestEnvironment {
 
         db_tx.insert_block_header(&parent_header).unwrap();
         db_tx.commit().unwrap();
-        cons_db_tx.insert_block_header(&parent_header).unwrap();
-        cons_db_tx.commit().unwrap();
     }
 
     fn create_uncommitted_finalized_block(&self, height: u64, round: u32) {
@@ -141,25 +149,21 @@ impl TestEnvironment {
         let mut consensus_db_conn = self.consensus_storage.connection().unwrap();
         let consensus_db_tx = consensus_db_conn.transaction().unwrap();
         let proposals_db = ConsensusProposals::new(consensus_db_tx);
-        let block = L2Block {
-            header: BlockHeader::builder()
-                .number(BlockNumber::new_or_panic(height))
-                .timestamp(BlockTimestamp::new_or_panic(1000))
-                .calculated_state_commitment(
-                    StorageCommitment(block_id_felt),
-                    ClassCommitment(block_id_felt),
-                )
-                .sequencer_address(SequencerAddress::ZERO)
-                .state_diff_commitment(StateDiffCommitment(block_id_felt))
-                .finalize_with_hash(BlockHash(block_id_felt)),
+        let block = ConsensusFinalizedL2Block {
+            header: ConsensusFinalizedBlockHeader {
+                number: BlockNumber::new_or_panic(height),
+                timestamp: BlockTimestamp::new_or_panic(1000),
+                state_diff_commitment: StateDiffCommitment(block_id_felt),
+                ..Default::default()
+            },
             state_update: Default::default(),
             transactions_and_receipts: vec![],
             events: vec![],
         };
         proposals_db
-            .persist_finalized_block(height, round, block)
+            .persist_consensus_finalized_block(height, round, block)
             .unwrap();
-        proposals_db.tx.commit().unwrap();
+        proposals_db.commit().unwrap();
     }
 
     async fn wait_for_task_initialization(&self) {
@@ -215,6 +219,20 @@ impl TestEnvironment {
             }
         };
         timeout(Duration::from_millis(300), wait_for_exit_fut).await
+    }
+
+    async fn wait_tx_to_p2p_consumed(&self) {
+        let start = std::time::Instant::now();
+        let timeout_duration = Duration::from_millis(300);
+
+        while start.elapsed() < timeout_duration {
+            if self.tx_to_p2p.capacity() == Self::TX_TO_P2P_CHANNEL_SIZE {
+                // All messages consumed
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        panic!("Timeout waiting for tx_to_p2p to be consumed");
     }
 }
 
@@ -288,8 +306,8 @@ async fn verify_no_proposal_event(rx: &mut mpsc::Receiver<ConsensusTaskEvent>, d
     let start = std::time::Instant::now();
     while start.elapsed() < duration {
         match rx.try_recv() {
-            Ok(ConsensusTaskEvent::CommandFromP2P(ConsensusCommand::Proposal(_))) => {
-                panic!("Unexpected proposal event received");
+            Ok(ConsensusTaskEvent::CommandFromP2P(proposal @ ConsensusCommand::Proposal(_))) => {
+                panic!("Unexpected proposal event received: {proposal:?}");
             }
             Ok(_) => {
                 // Other event, continue checking
@@ -341,7 +359,7 @@ fn verify_proposal_event(
 ///
 /// Also verifies the total count matches `expected_count`.
 fn verify_proposal_parts_persisted(
-    consensus_storage: &pathfinder_storage::Storage,
+    consensus_storage: &ConsensusStorage,
     height: u64,
     round: u32,
     validator_address: &ContractAddress, // Query with validator address (receiver)
@@ -444,7 +462,7 @@ fn verify_proposal_parts_persisted(
 
 /// Helper: Verify transaction count from persisted proposal parts
 fn verify_transaction_count(
-    consensus_storage: &pathfinder_storage::Storage,
+    consensus_storage: &ConsensusStorage,
     height: u64,
     round: u32,
     validator_address: &ContractAddress,
@@ -514,12 +532,23 @@ fn create_proposal_commitment_part(
 /// Verify ProposalFin is deferred (no proposal event), then verify
 /// finalization occurs after parent block is committed. Also verify
 /// ProposalFin is persisted in the database even when deferred.
+#[rstest::rstest]
+#[case::consensus_ahead_of_fgw(true)]
+#[case::fgw_ahead_of_consensus(false)]
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
-async fn test_proposal_fin_deferred_until_parent_block_committed() {
+async fn test_proposal_fin_deferred_until_parent_block_committed(
+    #[case] consensus_ahead_of_fgw: bool,
+) {
     let chain_id = ChainId::SEPOLIA_TESTNET;
     let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
     let mut env = TestEnvironment::new(chain_id, validator_address);
     env.create_committed_block(0);
+    if !consensus_ahead_of_fgw {
+        // Simulate the case where FGW magically has the block which consensus has not
+        // produced yet. We don't care if this is possible in reality, we just want our
+        // storage to be consistent against all odds.
+        env.create_committed_block(1);
+    }
     env.create_uncommitted_finalized_block(1, 0);
     env.wait_for_task_initialization().await;
 
@@ -606,8 +635,16 @@ async fn test_proposal_fin_deferred_until_parent_block_committed() {
         .expect("Failed to send ProposalFin");
     env.verify_task_alive().await;
 
-    // Verify: Still no proposal event
-    verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
+    if consensus_ahead_of_fgw {
+        // Verify: Still no proposal event
+        verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
+    } else {
+        // Verify: Proposal event should be sent now
+        let proposal_cmd = wait_for_proposal_event(&mut env.rx_from_p2p, Duration::from_secs(3))
+            .await
+            .expect("Expected proposal event after TransactionsFin");
+        verify_proposal_event(proposal_cmd, 2, proposal_commitment);
+    }
 
     // Check what's in the database right after ProposalFin
     #[cfg(debug_assertions)]
@@ -638,11 +675,34 @@ async fn test_proposal_fin_deferred_until_parent_block_committed() {
         .expect("Failed to send CommitBlock");
     env.verify_task_alive().await;
 
-    // Verify: Proposal event should be sent now
-    let proposal_cmd = wait_for_proposal_event(&mut env.rx_from_p2p, Duration::from_secs(3))
-        .await
-        .expect("Expected proposal event after TransactionsFin");
-    verify_proposal_event(proposal_cmd, 2, proposal_commitment);
+    // Make sure the above message is consumed before proceeding, otherwise we can
+    // get an ugly race condition which does not occur in reality but will make the
+    // test fail once in a while
+    env.wait_tx_to_p2p_consumed().await;
+
+    if consensus_ahead_of_fgw {
+        // Step 8: At some point sync sends SyncMessageToConsensus::GetFinalizedBlock
+        // for H=1, and then confirms committing the block with
+        // SyncMessageToConsensus::ConfirmFinalizedBlockCommitted
+        env.tx_sync_to_consensus
+            .send(SyncMessageToConsensus::ConfirmFinalizedBlockCommitted {
+                number: BlockNumber::new_or_panic(1),
+            })
+            .await
+            .expect("Failed to send ConfirmFinalizedBlockCommitted");
+        env.verify_task_alive().await;
+
+        // Verify: Proposal event should be sent now
+        let proposal_cmd = wait_for_proposal_event(&mut env.rx_from_p2p, Duration::from_secs(3))
+            .await
+            .expect("Expected proposal event after TransactionsFin");
+        verify_proposal_event(proposal_cmd, 2, proposal_commitment);
+    } else {
+        // Step 8: It turns out that for some unknown reason the feeder
+        // gateway has already produced the block for H=1 that
+        // the consensus has just agreed upon.
+        env.verify_task_alive().await;
+    }
 
     // Verify proposal parts persisted
     // Query with validator_address (receiver) to get foreign proposals
