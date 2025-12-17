@@ -43,7 +43,9 @@ pub fn update_starknet_state(
                                 .into())
                             }
                         };
-                        let transaction = connection.transaction()?;
+                        let transaction = connection
+                            .transaction()
+                            .map_err(|e| StateUpdateError::StorageError(e.into()))?;
                         update_contract_state(
                             **contract_address,
                             update.storage,
