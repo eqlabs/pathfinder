@@ -61,7 +61,7 @@ impl ConsensusStorage {
     }
 
     pub fn connection(&self) -> anyhow::Result<ConsensusConnection> {
-        let conn = self.0.connection()?;
+        let conn = self.0.connection().map_err(anyhow::Error::from)?; // TODO: This will be updated to use StorageError
         Ok(ConsensusConnection(conn))
     }
 }

@@ -99,3 +99,9 @@ where
         Self::ApplicationError(value.into())
     }
 }
+
+impl From<pathfinder_storage::StorageError> for RpcError {
+    fn from(value: pathfinder_storage::StorageError) -> Self {
+        Self::InternalError(value.into())
+    }
+}
