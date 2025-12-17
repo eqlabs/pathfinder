@@ -176,6 +176,9 @@ pub async fn trace_transaction(
                 context.contract_addresses.eth_l2_token_address,
                 context.contract_addresses.strk_l2_token_address,
                 context.native_class_cache,
+                context
+                    .config
+                    .native_execution_force_use_for_incompatible_classes,
             );
 
             let executor_transactions = transactions

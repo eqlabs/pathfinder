@@ -167,6 +167,7 @@ pub struct ExecutionState {
     eth_fee_address: ContractAddress,
     strk_fee_address: ContractAddress,
     native_class_cache: Option<NativeClassCache>,
+    native_execution_force_use_for_incompatible_classes: bool,
 }
 
 pub fn create_executor<S: StorageAdapter + Clone>(
@@ -271,6 +272,7 @@ impl ExecutionState {
             block_number,
             self.pending_state.is_some(),
             self.native_class_cache,
+            self.native_execution_force_use_for_incompatible_classes,
         );
         let pending_state_reader = PendingStateReader::new(raw_reader, self.pending_state.clone());
 
@@ -408,6 +410,7 @@ impl ExecutionState {
         eth_fee_address: ContractAddress,
         strk_fee_address: ContractAddress,
         native_class_cache: Option<NativeClassCache>,
+        native_execution_force_use_for_incompatible_classes: bool,
     ) -> Self {
         Self {
             chain_id,
@@ -419,6 +422,7 @@ impl ExecutionState {
             eth_fee_address,
             strk_fee_address,
             native_class_cache,
+            native_execution_force_use_for_incompatible_classes,
         }
     }
 
@@ -432,6 +436,7 @@ impl ExecutionState {
         eth_fee_address: ContractAddress,
         strk_fee_address: ContractAddress,
         native_class_cache: Option<NativeClassCache>,
+        native_execution_force_use_for_incompatible_classes: bool,
     ) -> Self {
         Self {
             chain_id,
@@ -443,6 +448,7 @@ impl ExecutionState {
             eth_fee_address,
             strk_fee_address,
             native_class_cache,
+            native_execution_force_use_for_incompatible_classes,
         }
     }
 
@@ -466,6 +472,7 @@ impl ExecutionState {
             eth_fee_address,
             strk_fee_address,
             native_class_cache,
+            native_execution_force_use_for_incompatible_classes: false,
         }
     }
 }

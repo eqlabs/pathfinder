@@ -154,6 +154,7 @@ fn execute(
         ETH_FEE_TOKEN_ADDRESS,
         STRK_FEE_TOKEN_ADDRESS,
         Some(native_class_cache),
+        false,
     );
 
     let transactions = work

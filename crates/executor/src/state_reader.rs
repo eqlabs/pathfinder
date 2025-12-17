@@ -45,6 +45,8 @@ pub struct PathfinderStateReader<S> {
     ignore_block_number_for_classes: bool,
     #[allow(unused)]
     native_class_cache: Option<NativeClassCache>,
+    #[allow(unused)]
+    native_execution_force_use_for_incompatible_classes: bool,
     casm_hash_v2_cache:
         Arc<Mutex<cached::SizedCache<ClassHash, starknet_api::core::CompiledClassHash>>>,
 }
@@ -55,12 +57,14 @@ impl<S: StorageAdapter> PathfinderStateReader<S> {
         block_number: Option<BlockNumber>,
         ignore_block_number_for_classes: bool,
         native_class_cache: Option<NativeClassCache>,
+        native_execution_force_use_for_incompatible_classes: bool,
     ) -> Self {
         Self {
             storage_adapter,
             block_number,
             ignore_block_number_for_classes,
             native_class_cache,
+            native_execution_force_use_for_incompatible_classes,
             casm_hash_v2_cache: Arc::new(Mutex::new(cached::SizedCache::with_size(1024))),
         }
     }
@@ -120,7 +124,9 @@ impl<S: StorageAdapter> PathfinderStateReader<S> {
                 let sierra_version = self.sierra_version_from_class(&class_definition)?;
 
                 #[cfg(feature = "cairo-native")]
-                let runnable_class = if sierra_version >= SierraVersion::new(1, 7, 0) {
+                let runnable_class = if self.native_execution_force_use_for_incompatible_classes
+                    || sierra_version >= SierraVersion::new(1, 7, 0)
+                {
                     if let Some(native_class_cache) = &self.native_class_cache {
                         match native_class_cache.get(
                             pathfinder_class_hash,

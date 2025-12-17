@@ -7,6 +7,12 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- The new `--rpc.native-execution-force-use-for-incompatible-classes` CLI option can be used to force use of native execution even for pre-1.7.0 Sierra classes (where fee calculation is known to be inaccurate). Use this flag at your own risk.
+
 ## [0.21.3] - 2025-12-03
 
 ### Added

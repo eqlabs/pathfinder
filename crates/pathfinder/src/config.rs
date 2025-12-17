@@ -642,6 +642,15 @@ struct NativeExecutionCli {
         env = "PATHFINDER_RPC_NATIVE_EXECUTION_COMPILER_OPTIMIZATION_LEVEL"
     )]
     optimization_level: u8,
+
+    #[arg(
+        long = "rpc.native-execution-force-use-for-incompatible-classes",
+        long_help = "Force use of Cairo native execution even for Sierra classes before 1.7.0 that are known to result in incorrect cost calculation.",
+        action = clap::ArgAction::Set,
+        default_value = "false",
+        env = "PATHFINDER_RPC_NATIVE_EXECUTION_FORCE_USE_FOR_INCOMPATIBLE_CLASSES"
+    )]
+    force_use_for_incompatible_classes: bool,
 }
 
 #[cfg(feature = "p2p")]
@@ -924,6 +933,7 @@ pub struct NativeExecutionConfig {
     enabled: bool,
     class_cache_size: NonZeroUsize,
     optimization_level: u8,
+    force_use_for_incompatible_classes: bool,
 }
 
 #[cfg(not(feature = "cairo-native"))]
@@ -1033,6 +1043,10 @@ impl NativeExecutionConfig {
     pub fn optimization_level(&self) -> u8 {
         0
     }
+
+    pub fn force_use_for_incompatible_classes(&self) -> bool {
+        false
+    }
 }
 
 #[cfg(feature = "cairo-native")]
@@ -1042,6 +1056,7 @@ impl NativeExecutionConfig {
             enabled: args.is_native_execution_enabled,
             class_cache_size: args.class_cache_size,
             optimization_level: args.optimization_level,
+            force_use_for_incompatible_classes: args.force_use_for_incompatible_classes,
         }
     }
 
@@ -1055,6 +1070,10 @@ impl NativeExecutionConfig {
 
     pub fn optimization_level(&self) -> u8 {
         self.optimization_level
+    }
+
+    pub fn force_use_for_incompatible_classes(&self) -> bool {
+        self.force_use_for_incompatible_classes
     }
 }
 
