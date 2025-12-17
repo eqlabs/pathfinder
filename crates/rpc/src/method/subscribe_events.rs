@@ -170,7 +170,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
         let storage = state.storage.clone();
         let (events, last_l1_block, last_block) = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
             let mut conn = storage.connection()?;
-            let db = conn.transaction().map_err(RpcError::InternalError)?;
+            let db = conn.transaction()?;
 
             if db.blockchain_pruning_enabled() {
                 let blockchain_history_tip = db

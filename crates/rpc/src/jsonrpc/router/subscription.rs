@@ -210,7 +210,7 @@ where
 
         let mut current_block = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
             let mut conn = storage.connection()?;
-            let db = conn.transaction().map_err(RpcError::InternalError)?;
+            let db = conn.transaction()?;
 
             let starting_block = match starting_block {
                 SubscriptionBlockId::Number(starting_block_number)
