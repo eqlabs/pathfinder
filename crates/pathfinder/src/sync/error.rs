@@ -3,6 +3,7 @@ use std::sync::Arc;
 use p2p::libp2p::PeerId;
 use p2p::PeerData;
 use pathfinder_common::{BlockNumber, ClassHash, SignedBlockHeader};
+use pathfinder_storage::StorageError;
 
 #[derive(Debug, thiserror::Error, Clone)]
 pub(super) enum SyncError {
@@ -117,5 +118,12 @@ impl PartialEq for SyncError {
 impl From<anyhow::Error> for SyncError {
     fn from(e: anyhow::Error) -> Self {
         Self::Fatal(Arc::new(e))
+    }
+}
+
+impl From<StorageError> for SyncError {
+    fn from(e: StorageError) -> Self {
+        // StorageError is always fatal
+        Self::Fatal(Arc::new(e.into()))
     }
 }

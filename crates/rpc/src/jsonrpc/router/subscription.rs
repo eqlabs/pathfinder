@@ -209,7 +209,7 @@ where
         let starting_block = T::starting_block(&params);
 
         let mut current_block = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
-            let mut conn = storage.connection().map_err(RpcError::InternalError)?;
+            let mut conn = storage.connection()?;
             let db = conn.transaction().map_err(RpcError::InternalError)?;
 
             let starting_block = match starting_block {

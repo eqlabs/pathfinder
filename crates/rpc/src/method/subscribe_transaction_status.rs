@@ -296,7 +296,7 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
                                 // 3. Transactions accepted on L1.
                                 let storage = state.storage.clone();
                                 let l1_state = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
-                                    let mut conn = storage.connection().map_err(RpcError::InternalError)?;
+                                    let mut conn = storage.connection()?;
                                     let db = conn.transaction().map_err(RpcError::InternalError)?;
                                     let l1_state = db.latest_l1_state().map_err(RpcError::InternalError)?;
                                     Ok(l1_state)
@@ -348,7 +348,7 @@ async fn current_known_tx_status(
     // pending data and DB, the DB would contain "fresher" transaction status
     // information.
     let (l1_state, tx_with_receipt) = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
-        let mut conn = storage.connection().map_err(RpcError::InternalError)?;
+        let mut conn = storage.connection()?;
         let db = conn.transaction().map_err(RpcError::InternalError)?;
         let l1_block_number = db.latest_l1_state().map_err(RpcError::InternalError)?;
         let tx_with_receipt = db

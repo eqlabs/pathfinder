@@ -1078,9 +1078,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
             let tx_batch = tx_batch.clone();
             append_and_persist_part(height_and_round, proposal_part, proposals_db, &mut parts)?;
 
-            let mut main_db_conn = main_readonly_storage
-                .connection()
-                .map_err(ProposalHandlingError::Fatal)?;
+            let mut main_db_conn = main_readonly_storage.connection()?;
             let main_db_tx = main_db_conn
                 .transaction()
                 .map_err(ProposalHandlingError::Fatal)?;
@@ -1257,9 +1255,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                     )?;
 
                     let valid_round = valid_round_from_parts(&parts, &height_and_round)?;
-                    let mut main_db_conn = main_readonly_storage
-                        .connection()
-                        .map_err(ProposalHandlingError::Fatal)?;
+                    let mut main_db_conn = main_readonly_storage.connection()?;
                     let main_db_tx = main_db_conn
                         .transaction()
                         .map_err(ProposalHandlingError::Fatal)?;

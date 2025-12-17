@@ -71,3 +71,9 @@ impl ProposalHandlingError {
         }
     }
 }
+
+impl From<pathfinder_storage::StorageError> for ProposalHandlingError {
+    fn from(value: pathfinder_storage::StorageError) -> Self {
+        Self::Fatal(value.into())
+    }
+}

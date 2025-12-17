@@ -648,6 +648,12 @@ impl From<anyhow::Error> for TraceBlockTransactionsError {
     }
 }
 
+impl From<pathfinder_storage::StorageError> for TraceBlockTransactionsError {
+    fn from(value: pathfinder_storage::StorageError) -> Self {
+        Self::Internal(value.into())
+    }
+}
+
 impl From<TraceBlockTransactionsError> for crate::error::ApplicationError {
     fn from(value: TraceBlockTransactionsError) -> Self {
         match value {
@@ -719,7 +725,7 @@ pub(crate) mod tests {
         let context = RpcContext::for_tests().with_storage(storage.clone());
 
         let (next_block_header, transactions, traces) = {
-            let mut db = storage.connection()?;
+            let mut db = storage.connection().map_err(anyhow::Error::from)?;
             let tx = db.transaction()?;
 
             tx.insert_sierra_class_definition(
@@ -935,7 +941,7 @@ pub(crate) mod tests {
         ];
 
         let pending_block = {
-            let mut db = storage.connection()?;
+            let mut db = storage.connection().map_err(anyhow::Error::from)?;
             let tx = db.transaction()?;
 
             tx.insert_sierra_class_definition(
@@ -1054,7 +1060,7 @@ pub(crate) mod tests {
         ];
 
         let pending_data = {
-            let mut db = storage.connection()?;
+            let mut db = storage.connection().map_err(anyhow::Error::from)?;
             let tx = db.transaction()?;
 
             tx.insert_sierra_class_definition(
@@ -1200,7 +1206,7 @@ pub(crate) mod tests {
         ];
 
         let pending_data = {
-            let mut db = storage.connection()?;
+            let mut db = storage.connection().map_err(anyhow::Error::from)?;
             let tx = db.transaction()?;
 
             tx.insert_sierra_class_definition(
