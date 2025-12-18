@@ -8,7 +8,6 @@ mod gossip_retry;
 mod integration_testing;
 mod p2p_task;
 mod persist_proposals;
-mod proposal_error;
 
 #[cfg(test)]
 mod test_helpers;

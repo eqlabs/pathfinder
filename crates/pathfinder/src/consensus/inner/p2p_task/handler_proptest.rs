@@ -46,7 +46,7 @@ use crate::consensus::inner::batch_execution::BatchExecutionManager;
 use crate::consensus::inner::open_consensus_storage;
 use crate::consensus::inner::p2p_task::{handle_incoming_proposal_part, ValidatorCache};
 use crate::consensus::inner::persist_proposals::ConsensusProposals;
-use crate::consensus::inner::proposal_error::ProposalHandlingError;
+use crate::consensus::ProposalHandlingError;
 use crate::validator::{deployed_address, TransactionExt};
 
 proptest! {

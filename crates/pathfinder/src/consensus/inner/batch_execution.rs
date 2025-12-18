@@ -13,6 +13,7 @@ use pathfinder_common::{BlockId, BlockNumber};
 use pathfinder_executor::BlockExecutorExt;
 use pathfinder_storage::Transaction;
 
+use crate::consensus::ProposalHandlingError;
 use crate::validator::{TransactionExt, ValidatorTransactionBatchStage};
 
 /// Manages batch execution with rollback support for TransactionsFin
@@ -76,7 +77,7 @@ impl BatchExecutionManager {
         validator: &mut ValidatorTransactionBatchStage<E>,
         main_db_tx: &Transaction<'_>,
         deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ProposalHandlingError> {
         // Check if execution should be deferred
         if should_defer_execution(height_and_round, main_db_tx)? {
             tracing::debug!(
@@ -108,9 +109,7 @@ impl BatchExecutionManager {
         }
 
         // Execute the batch
-        validator
-            .execute_batch::<T>(all_transactions)
-            .context("Failed to execute transaction batch")?;
+        validator.execute_batch::<T>(all_transactions)?;
 
         // Mark that execution has started for this height/round
         self.executing.insert(height_and_round);
@@ -149,7 +148,7 @@ impl BatchExecutionManager {
         height_and_round: HeightAndRound,
         transactions: Vec<proto_consensus::Transaction>,
         validator: &mut ValidatorTransactionBatchStage<E>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ProposalHandlingError> {
         // Mark that execution has started for this height/round, even if batch is
         // empty. This is necessary because TransactionsFin may arrive later and
         // requires execution to have started.
@@ -164,9 +163,7 @@ impl BatchExecutionManager {
         }
 
         // Execute the batch
-        validator
-            .execute_batch::<T>(transactions)
-            .context("Failed to execute transaction batch")?;
+        validator.execute_batch::<T>(transactions)?;
 
         tracing::debug!(
             "Transaction batch execution for height and round {height_and_round} is complete"
@@ -186,14 +183,14 @@ impl BatchExecutionManager {
         height_and_round: HeightAndRound,
         transactions_fin: proto_consensus::TransactionsFin,
         validator: &mut ValidatorTransactionBatchStage<E>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ProposalHandlingError> {
         // Verify that execution has started (at least one batch was executed, not
         // deferred)
         if !self.executing.contains(&height_and_round) {
-            return Err(anyhow::anyhow!(
+            return Err(ProposalHandlingError::Fatal(anyhow::anyhow!(
                 "No execution state found for {height_and_round}. Execution should have started \
                  before processing TransactionsFin."
-            ));
+            )));
         }
 
         let target_transaction_count = transactions_fin.executed_transaction_count as usize;
@@ -215,12 +212,10 @@ impl BatchExecutionManager {
             // Note: rollback_to_transaction takes a 0-based index, but
             // executed_transaction_count is a count. To keep N transactions,
             // we need to rollback to index N-1 (which keeps transactions 0 through N-1).
-            let target_index = target_transaction_count
-                .checked_sub(1)
-                .context("Cannot rollback to 0 transactions")?;
-            validator
-                .rollback_to_transaction::<T>(target_index)
-                .context("Failed to rollback to target transaction count")?;
+            let target_index = target_transaction_count.checked_sub(1).ok_or_else(|| {
+                ProposalHandlingError::Fatal(anyhow::anyhow!("Cannot rollback to 0 transactions"))
+            })?;
+            validator.rollback_to_transaction::<T>(target_index)?;
         } else if target_transaction_count > current_transaction_count {
             // This shouldn't happen with proper message ordering and no protocol errors.
             // Ordering is guaranteed by p2p::consensus::handle_incoming_proposal_message.
@@ -295,13 +290,16 @@ impl Default for ProposalCommitmentWithOrigin {
 pub fn should_defer_execution(
     height_and_round: HeightAndRound,
     main_db_tx: &Transaction<'_>,
-) -> anyhow::Result<bool> {
+) -> Result<bool, ProposalHandlingError> {
     let parent_block = height_and_round.height().checked_sub(1);
     let defer = if let Some(parent_block) = parent_block {
-        let parent_block =
-            BlockNumber::new(parent_block).context("Block number is larger than i64::MAX")?;
+        let parent_block = BlockNumber::new(parent_block)
+            .context("Block number is larger than i64::MAX")
+            .map_err(ProposalHandlingError::Fatal)?;
         let parent_block = BlockId::Number(parent_block);
-        let parent_committed = main_db_tx.block_exists(parent_block)?;
+        let parent_committed = main_db_tx
+            .block_exists(parent_block)
+            .map_err(ProposalHandlingError::Fatal)?;
         !parent_committed
     } else {
         false
