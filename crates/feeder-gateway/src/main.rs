@@ -477,7 +477,7 @@ async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyh
     let span = tracing::info_span!("Server::run", ?socket_addr);
     tracing::info!(parent: &span, "listening on http://{}", socket_addr);
 
-    debug_create_port_marker_file("feeder-gateway", socket_addr.port(), &cli.database_path);
+    debug_create_port_marker_file("feeder_gateway", socket_addr.port(), &cli.database_path);
 
     server_fut.instrument(span).await;
 

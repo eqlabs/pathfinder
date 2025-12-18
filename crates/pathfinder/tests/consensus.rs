@@ -26,6 +26,7 @@ mod test {
     use pathfinder_lib::config::integration_testing::{InjectFailureConfig, InjectFailureTrigger};
     use rstest::rstest;
 
+    use crate::common::feeder_gateway::FeederGateway;
     use crate::common::pathfinder_instance::{respawn_on_fail, PathfinderInstance};
     use crate::common::rpc_client::{get_consensus_info, wait_for_block_exists, wait_for_height};
     use crate::common::utils;
@@ -156,8 +157,14 @@ mod test {
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
         let (configs, stopwatch) = utils::setup(NUM_NODES)?;
-        let mut configs = configs.into_iter();
 
+        let alice_cfg = configs.first().unwrap();
+        let mut fgw = FeederGateway::spawn(&alice_cfg)?;
+        fgw.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
+
+        let mut configs = configs
+            .into_iter()
+            .map(|cfg| cfg.with_local_feeder_gateway(fgw.port()));
         let alice = PathfinderInstance::spawn(configs.next().unwrap())?;
         alice.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
 
