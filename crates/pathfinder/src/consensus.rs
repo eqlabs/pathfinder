@@ -9,6 +9,9 @@ use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
 use crate::SyncMessageToConsensus;
 
+mod error;
+pub use error::{ProposalError, ProposalHandlingError};
+
 #[cfg(feature = "p2p")]
 mod inner;
 
