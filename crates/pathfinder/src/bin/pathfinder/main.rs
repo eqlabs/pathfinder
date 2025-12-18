@@ -626,7 +626,6 @@ fn start_feeder_gateway_sync(
     notifications: Notifications,
     gateway_public_key: pathfinder_common::PublicKey,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
-    let (sync_to_consensus_tx, _) = tokio::sync::mpsc::channel(1);
     let sync_context = SyncContext {
         storage,
         ethereum: ethereum_client,
@@ -640,7 +639,7 @@ fn start_feeder_gateway_sync(
         pending_data: tx_pending,
         submitted_tx_tracker,
         // Only used in consensus-aware sync.
-        sync_to_consensus_tx,
+        sync_to_consensus_tx: None,
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         notifications,
         block_cache_size: 10_000,
@@ -680,7 +679,7 @@ fn start_consensus_aware_fgw_sync(
         l1_poll_interval: config.l1_poll_interval,
         pending_data: tx_pending,
         submitted_tx_tracker,
-        sync_to_consensus_tx,
+        sync_to_consensus_tx: Some(sync_to_consensus_tx),
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         notifications,
         block_cache_size: 10_000,

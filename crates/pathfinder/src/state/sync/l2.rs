@@ -349,7 +349,7 @@ where
 ///   - interacts with consensus via [SyncMessageToConsensus]
 pub async fn consensus_sync<GatewayClient>(
     tx_event: mpsc::Sender<SyncEvent>,
-    sync_to_consensus_tx: mpsc::Sender<SyncMessageToConsensus>,
+    sync_to_consensus_tx: Option<mpsc::Sender<SyncMessageToConsensus>>,
     context: L2SyncContext<GatewayClient>,
     mut head: Option<(BlockNumber, BlockHash, StateCommitment)>,
     mut blocks: BlockChain,
@@ -385,6 +385,8 @@ where
             reply: tx,
         };
         sync_to_consensus_tx
+            .as_ref()
+            .expect("Channel is always available in consensus-aware sync")
             .send(request)
             .await
             .context("Requesting committed block")?;
