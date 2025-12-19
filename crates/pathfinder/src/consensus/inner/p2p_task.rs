@@ -939,8 +939,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
             height_and_round.height(),
             height_and_round.round(),
             &validator_address,
-        )
-        .map_err(ProposalHandlingError::Fatal)?
+        )?
         .unwrap_or_default();
 
     let has_txns_fin = parts
@@ -982,14 +981,12 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
             let proposal_init = prop_init.clone();
             parts.push(proposal_part);
             let proposer_address = ContractAddress(proposal_init.proposer.0);
-            let updated = proposals_db
-                .persist_parts(
-                    height_and_round.height(),
-                    height_and_round.round(),
-                    &proposer_address,
-                    &parts,
-                )
-                .map_err(ProposalHandlingError::Fatal)?;
+            let updated = proposals_db.persist_parts(
+                height_and_round.height(),
+                height_and_round.round(),
+                &proposer_address,
+                &parts,
+            )?;
             assert!(!updated);
             let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init)
                 .map_err(ProposalHandlingError::Fatal)?;
@@ -1407,14 +1404,12 @@ fn append_and_persist_part(
 ) -> Result<ContractAddress, ProposalHandlingError> {
     parts.push(proposal_part);
     let proposer_address = proposer_address_from_parts(parts, &height_and_round)?;
-    let updated = proposals_db
-        .persist_parts(
-            height_and_round.height(),
-            height_and_round.round(),
-            &proposer_address,
-            parts,
-        )
-        .map_err(ProposalHandlingError::Fatal)?;
+    let updated = proposals_db.persist_parts(
+        height_and_round.height(),
+        height_and_round.round(),
+        &proposer_address,
+        parts,
+    )?;
     assert!(updated);
     Ok(proposer_address)
 }
