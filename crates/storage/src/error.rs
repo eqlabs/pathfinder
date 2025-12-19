@@ -29,3 +29,13 @@ impl From<r2d2::Error> for StorageError {
         Self(anyhow::Error::from(error))
     }
 }
+
+impl StorageError {
+    /// Adds context to the error and returns a new `StorageError`.
+    pub fn with_context<C>(self, context: C) -> Self
+    where
+        C: std::fmt::Display + Send + Sync + 'static,
+    {
+        Self(self.0.context(context))
+    }
+}
