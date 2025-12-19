@@ -255,6 +255,24 @@ pub fn spawn(
                                                 error = %error.error_message(),
                                                 "Invalid proposal part from peer - skipping, continuing operation"
                                             );
+                                            // Purge the proposal from storage
+                                            if let Err(purge_err) = proposals_db.remove_parts(
+                                                height_and_round.height(),
+                                                Some(height_and_round.round()),
+                                            ) {
+                                                tracing::error!(
+                                                    validator = %validator_address,
+                                                    height_and_round = %height_and_round,
+                                                    error = %purge_err,
+                                                    "Failed to purge proposal parts after recoverable error"
+                                                );
+                                            } else {
+                                                tracing::debug!(
+                                                    validator = %validator_address,
+                                                    height_and_round = %height_and_round,
+                                                    "Purged proposal parts after recoverable error"
+                                                );
+                                            }
                                             Ok(ComputationSuccess::Continue)
                                         } else {
                                             tracing::error!(
