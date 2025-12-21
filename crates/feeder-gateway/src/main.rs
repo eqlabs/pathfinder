@@ -61,7 +61,12 @@ use warp::Filter;
 #[derive(Parser)]
 #[command(version)]
 struct Cli {
-    #[arg(long_help = "Database path")]
+    #[arg(
+        long_help = "Database path. WARNING! If the database is not immediately available, the \
+                     feeder gateway will keep retrying until a timeout occurs. Additionally \
+                     CUSTOM chain is assumed until the database is available and the chain is \
+                     read from it."
+    )]
     pub database_path: PathBuf,
     #[arg(
         long_help = "Port to listen on, 0 means random OS assigned value",
@@ -219,14 +224,11 @@ async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyh
 
     let storage_rx_clone = storage_rx.clone();
     let get_contract_addresses = warp::path("get_contract_addresses").map(move || {
-        let Some(chain) = maybe_chain(storage_rx_clone.clone()) else {
-            return Err(storage_unavailable_response());
-        };
-
+        let chain = maybe_chain(storage_rx_clone.clone()).unwrap_or(Chain::Custom);
         let addresses = contract_addresses(chain).unwrap();
         let reply =
             serde_json::json!({"GpsStatementVerifier": addresses.gps, "Starknet": addresses.core});
-        Ok(warp::reply::json(&reply))
+        warp::reply::json(&reply)
     });
 
     #[derive(Debug, Deserialize)]

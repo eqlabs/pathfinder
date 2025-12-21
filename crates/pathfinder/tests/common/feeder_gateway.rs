@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::time::Duration;
 
@@ -36,6 +36,7 @@ impl FeederGateway {
             ])
             .stdout(stdout_file)
             .stderr(stderr_file)
+            .env("RUST_LOG", "trace")
             .spawn()
             .context("Spawning local feeder gateway")?;
 
