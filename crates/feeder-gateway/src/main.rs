@@ -477,7 +477,12 @@ async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyh
     let span = tracing::info_span!("Server::run", ?socket_addr);
     tracing::info!(parent: &span, "listening on http://{}", socket_addr);
 
-    debug_create_port_marker_file("feeder_gateway", socket_addr.port(), &cli.database_path);
+    let data_directory = cli
+        .database_path
+        .parent()
+        .context("Getting database parent directory")?;
+
+    debug_create_port_marker_file("feeder_gateway", socket_addr.port(), data_directory);
 
     server_fut.instrument(span).await;
 
