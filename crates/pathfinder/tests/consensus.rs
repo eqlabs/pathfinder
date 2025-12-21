@@ -159,12 +159,12 @@ mod test {
         let (configs, stopwatch) = utils::setup(NUM_NODES)?;
 
         let alice_cfg = configs.first().unwrap();
-        let mut fgw = FeederGateway::spawn(&alice_cfg)?;
-        fgw.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
+        let mut _fgw = FeederGateway::spawn(&alice_cfg)?;
+        _fgw.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
 
         let mut configs = configs
             .into_iter()
-            .map(|cfg| cfg.with_local_feeder_gateway(fgw.port()));
+            .map(|cfg| cfg.with_local_feeder_gateway(_fgw.port()));
         let alice = PathfinderInstance::spawn(configs.next().unwrap())?;
         alice.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
 
