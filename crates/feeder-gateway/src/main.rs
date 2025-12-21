@@ -78,6 +78,16 @@ struct Cli {
                      read from it."
     )]
     pub expected_version: Option<i64>,
+    #[arg(
+        long,
+        long_help = "If set, the process will wait for the database file to become available. A \
+                     marker file named ADD_MARKER_FILENAME_HERE should be created next to the DB \
+                     file to indicate that the DB file has been properly migrated and is ready \
+                     for usage. If the database is not immediately available, the feeder gateway \
+                     will keep retrying until a timeout occurs. Additionally CUSTOM chain is \
+                     assumed and the feeder gateway will panic if a mismatch occurs."
+    )]
+    pub wait_for_custom_db_ready: bool,
     #[command(flatten)]
     pub reorg: ReorgCli,
 }
@@ -187,6 +197,8 @@ fn wait_for_storage(
                         // --wait-for-custom-db-ready which forces CUSTOM chain and enables waiting
                         // for the database file to be ready and when it's ready read the chain from
                         // it and panic if it's not CUSTOM
+                        //
+                        // TODO how to detect that the DB is ready, ie migrated????
                         Chain::Custom
                     };
                     tracing::info!("Database is now available");
