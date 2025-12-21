@@ -2,6 +2,7 @@ use anyhow::Context;
 use p2p_proto::consensus::ProposalPart;
 use pathfinder_common::{ConsensusFinalizedL2Block, ContractAddress};
 use pathfinder_storage::consensus::ConsensusTransaction;
+use pathfinder_storage::StorageError;
 
 use crate::consensus::inner::conv::{IntoModel, TryIntoDto};
 use crate::consensus::inner::dto;
@@ -19,10 +20,10 @@ impl<'tx> ConsensusProposals<'tx> {
     }
 
     /// Commit the underlying transaction.
-    pub fn commit(self) -> anyhow::Result<()> {
+    pub fn commit(self) -> Result<(), StorageError> {
         self.tx
             .commit()
-            .context("Committing consensus proposals transaction")
+            .map_err(|e| e.with_context("Committing consensus proposals transaction"))
     }
 
     /// Persist proposal parts for a given height, round, and proposer.
@@ -34,7 +35,7 @@ impl<'tx> ConsensusProposals<'tx> {
         round: u32,
         proposer: &ContractAddress,
         parts: &[ProposalPart],
-    ) -> anyhow::Result<bool> {
+    ) -> Result<bool, StorageError> {
         let serde_parts = parts
             .iter()
             .map(|p| dto::ProposalPart::try_into_dto(p.clone()))
@@ -54,7 +55,7 @@ impl<'tx> ConsensusProposals<'tx> {
         height: u64,
         round: u32,
         validator: &ContractAddress,
-    ) -> anyhow::Result<Option<Vec<ProposalPart>>> {
+    ) -> Result<Option<Vec<ProposalPart>>, StorageError> {
         if let Some(buf) = self
             .tx
             .own_consensus_proposal_parts(height, round, validator)?
@@ -73,7 +74,7 @@ impl<'tx> ConsensusProposals<'tx> {
         height: u64,
         round: u32,
         validator: &ContractAddress,
-    ) -> anyhow::Result<Option<Vec<ProposalPart>>> {
+    ) -> Result<Option<Vec<ProposalPart>>, StorageError> {
         if let Some(buf) = self
             .tx
             .foreign_consensus_proposal_parts(height, round, validator)?
@@ -91,7 +92,7 @@ impl<'tx> ConsensusProposals<'tx> {
         &self,
         height: u64,
         validator: &ContractAddress,
-    ) -> anyhow::Result<Option<(u32, Vec<ProposalPart>)>> {
+    ) -> Result<Option<(u32, Vec<ProposalPart>)>, StorageError> {
         if let Some((round, buf)) = self.tx.last_consensus_proposal_parts(height, validator)? {
             let parts = Self::decode_proposal_parts(&buf[..])?;
             let last_round = round.try_into().context("Invalid round")?;
@@ -103,7 +104,7 @@ impl<'tx> ConsensusProposals<'tx> {
 
     /// Remove proposal parts for a given height and optionally a specific
     /// round. If `round` is `None`, all rounds for that height are removed.
-    pub fn remove_parts(&self, height: u64, round: Option<u32>) -> anyhow::Result<()> {
+    pub fn remove_parts(&self, height: u64, round: Option<u32>) -> Result<(), StorageError> {
         self.tx.remove_consensus_proposal_parts(height, round)
     }
 
@@ -115,7 +116,7 @@ impl<'tx> ConsensusProposals<'tx> {
         height: u64,
         round: u32,
         block: ConsensusFinalizedL2Block,
-    ) -> anyhow::Result<bool> {
+    ) -> Result<bool, StorageError> {
         let serde_block = dto::ConsensusFinalizedBlock::try_into_dto(block)?;
         let finalized_block = dto::PersistentConsensusFinalizedBlock::V0(serde_block);
         let buf = bincode::serde::encode_to_vec(finalized_block, bincode::config::standard())
@@ -131,7 +132,7 @@ impl<'tx> ConsensusProposals<'tx> {
         &self,
         height: u64,
         round: u32,
-    ) -> anyhow::Result<Option<ConsensusFinalizedL2Block>> {
+    ) -> Result<Option<ConsensusFinalizedL2Block>, StorageError> {
         if let Some(buf) = self.tx.read_consensus_finalized_block(height, round)? {
             let block = Self::decode_finalized_block(&buf[..])?;
             Ok(Some(block))
@@ -146,7 +147,7 @@ impl<'tx> ConsensusProposals<'tx> {
     pub fn read_consensus_finalized_block_for_last_round(
         &self,
         height: u64,
-    ) -> anyhow::Result<Option<ConsensusFinalizedL2Block>> {
+    ) -> Result<Option<ConsensusFinalizedL2Block>, StorageError> {
         if let Some(buf) = self
             .tx
             .read_consensus_finalized_block_for_last_round(height)?
@@ -164,13 +165,13 @@ impl<'tx> ConsensusProposals<'tx> {
         &self,
         height: u64,
         commit_round: u32,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), StorageError> {
         self.tx
             .remove_uncommitted_consensus_finalized_blocks(height, commit_round)
     }
 
     /// Remove all finalized blocks for a given height.
-    pub fn remove_consensus_finalized_blocks(&self, height: u64) -> anyhow::Result<()> {
+    pub fn remove_consensus_finalized_blocks(&self, height: u64) -> Result<(), StorageError> {
         self.tx.remove_consensus_finalized_blocks(height)
     }
 

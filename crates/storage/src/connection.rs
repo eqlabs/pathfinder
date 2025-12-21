@@ -30,6 +30,7 @@ pub use rusqlite::TransactionBehavior;
 pub use trie::{Node, NodeRef, RootIndexUpdate, StoredNode, TrieStorageIndex, TrieUpdate};
 
 use crate::bloom::AggregateBloomCache;
+use crate::StorageError;
 
 type PooledConnection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
 
@@ -58,7 +59,7 @@ impl Connection {
         }
     }
 
-    pub fn transaction(&mut self) -> anyhow::Result<Transaction<'_>> {
+    pub fn transaction(&mut self) -> Result<Transaction<'_>, StorageError> {
         let tx = self.connection.transaction()?;
         Ok(Transaction {
             transaction: tx,
@@ -72,7 +73,7 @@ impl Connection {
     pub fn transaction_with_behavior(
         &mut self,
         behavior: TransactionBehavior,
-    ) -> anyhow::Result<Transaction<'_>> {
+    ) -> Result<Transaction<'_>, StorageError> {
         let tx = self.connection.transaction_with_behavior(behavior)?;
         Ok(Transaction {
             transaction: tx,
