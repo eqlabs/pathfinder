@@ -40,6 +40,7 @@ use pathfinder_storage::Storage;
 use rayon::prelude::*;
 use tracing::debug;
 
+use crate::consensus::ProposalHandlingError;
 use crate::state::block_hash::{
     calculate_event_commitment,
     calculate_receipt_commitment,
@@ -56,7 +57,7 @@ pub enum ValidationResult {
 pub fn new(
     chain_id: ChainId,
     proposal_init: ProposalInit,
-) -> anyhow::Result<ValidatorBlockInfoStage> {
+) -> Result<ValidatorBlockInfoStage, ProposalHandlingError> {
     ValidatorBlockInfoStage::new(chain_id, proposal_init)
 }
 
@@ -72,12 +73,13 @@ impl ValidatorBlockInfoStage {
     pub fn new(
         chain_id: ChainId,
         proposal_init: ProposalInit,
-    ) -> anyhow::Result<ValidatorBlockInfoStage> {
+    ) -> Result<ValidatorBlockInfoStage, ProposalHandlingError> {
         // TODO(validator) how can we validate the proposal init?
         Ok(ValidatorBlockInfoStage {
             chain_id,
             proposal_height: BlockNumber::new(proposal_init.block_number)
-                .context("ProposalInit height exceeds i64::MAX")?,
+                .context("ProposalInit height exceeds i64::MAX")
+                .map_err(ProposalHandlingError::recoverable)?,
         })
     }
 
@@ -85,7 +87,7 @@ impl ValidatorBlockInfoStage {
         self,
         block_info: BlockInfo,
         main_storage: Storage,
-    ) -> anyhow::Result<ValidatorTransactionBatchStage<E>> {
+    ) -> Result<ValidatorTransactionBatchStage<E>, ProposalHandlingError> {
         let _span = tracing::debug_span!(
             "Validator::validate_block_info",
             height = %block_info.block_number,
@@ -99,12 +101,12 @@ impl ValidatorBlockInfoStage {
             proposal_height,
         } = self;
 
-        anyhow::ensure!(
-            proposal_height == block_info.block_number,
-            "ProposalInit height does not match BlockInfo height: {} != {}",
-            proposal_height,
-            block_info.block_number,
-        );
+        if proposal_height != block_info.block_number {
+            return Err(ProposalHandlingError::recoverable_msg(format!(
+                "ProposalInit height does not match BlockInfo height: {} != {}",
+                proposal_height, block_info.block_number,
+            )));
+        }
 
         // TODO(validator) validate block info (timestamp, gas prices)
 
@@ -138,7 +140,8 @@ impl ValidatorBlockInfoStage {
             StarknetVersion::new(0, 14, 0, 0), /* TODO(validator) should probably come from
                                                 * somewhere... */
         )
-        .context("Creating internal BlockInfo representation")?;
+        .context("Creating internal BlockInfo representation")
+        .map_err(ProposalHandlingError::recoverable)?;
 
         Ok(ValidatorTransactionBatchStage {
             chain_id,
@@ -158,68 +161,68 @@ impl ValidatorBlockInfoStage {
     pub fn verify_proposal_commitment(
         self,
         proposal_commitment: &p2p_proto::consensus::ProposalCommitment,
-    ) -> anyhow::Result<ConsensusFinalizedL2Block> {
+    ) -> Result<ConsensusFinalizedL2Block, ProposalHandlingError> {
         if proposal_commitment.state_diff_commitment != Hash::ZERO {
-            return Err(anyhow::anyhow!(
+            return Err(ProposalHandlingError::recoverable_msg(format!(
                 "Empty proposal commitment should have zero state_diff_commitment, got: {}",
                 proposal_commitment.state_diff_commitment
-            ));
+            )));
         }
 
         if proposal_commitment.transaction_commitment != Hash::ZERO {
-            return Err(anyhow::anyhow!(
+            return Err(ProposalHandlingError::recoverable_msg(format!(
                 "Empty proposal commitment should have zero transaction_commitment, got: {}",
                 proposal_commitment.transaction_commitment
-            ));
+            )));
         }
 
         if proposal_commitment.event_commitment != Hash::ZERO {
-            return Err(anyhow::anyhow!(
+            return Err(ProposalHandlingError::recoverable_msg(format!(
                 "Empty proposal commitment should have zero event_commitment, got: {}",
                 proposal_commitment.event_commitment
-            ));
+            )));
         }
 
         if proposal_commitment.receipt_commitment != Hash::ZERO {
-            return Err(anyhow::anyhow!(
+            return Err(ProposalHandlingError::recoverable_msg(format!(
                 "Empty proposal commitment should have zero receipt_commitment, got: {}",
                 proposal_commitment.receipt_commitment
-            ));
+            )));
         }
 
         if proposal_commitment.l1_gas_price_fri != 0 {
-            return Err(anyhow::anyhow!(
+            return Err(ProposalHandlingError::recoverable_msg(format!(
                 "Empty proposal commitment should have zero l1_gas_price_fri, got: {}",
                 proposal_commitment.l1_gas_price_fri
-            ));
+            )));
         }
 
         if proposal_commitment.l1_data_gas_price_fri != 0 {
-            return Err(anyhow::anyhow!(
+            return Err(ProposalHandlingError::recoverable_msg(format!(
                 "Empty proposal commitment should have zero l1_data_gas_price_fri, got: {}",
                 proposal_commitment.l1_data_gas_price_fri
-            ));
+            )));
         }
 
         if proposal_commitment.l2_gas_price_fri != 0 {
-            return Err(anyhow::anyhow!(
+            return Err(ProposalHandlingError::recoverable_msg(format!(
                 "Empty proposal commitment should have zero l2_gas_price_fri, got: {}",
                 proposal_commitment.l2_gas_price_fri
-            ));
+            )));
         }
 
         if proposal_commitment.l2_gas_used != 0 {
-            return Err(anyhow::anyhow!(
+            return Err(ProposalHandlingError::recoverable_msg(format!(
                 "Empty proposal commitment should have zero l2_gas_used, got: {}",
                 proposal_commitment.l2_gas_used
-            ));
+            )));
         }
 
         if proposal_commitment.l1_da_mode != p2p_proto::common::L1DataAvailabilityMode::Calldata {
-            return Err(anyhow::anyhow!(
+            return Err(ProposalHandlingError::recoverable_msg(format!(
                 "Empty proposal commitment should have Calldata l1_da_mode, got: {:?}",
                 proposal_commitment.l1_da_mode
-            ));
+            )));
         }
 
         // TODO check parent_commitment
@@ -232,9 +235,11 @@ impl ValidatorBlockInfoStage {
         Ok(ConsensusFinalizedL2Block {
             header: ConsensusFinalizedBlockHeader {
                 number: BlockNumber::new(proposal_commitment.block_number)
-                    .context("ProposalCommitment block number exceeds i64::MAX")?,
+                    .context("ProposalCommitment block number exceeds i64::MAX")
+                    .map_err(ProposalHandlingError::recoverable)?,
                 timestamp: BlockTimestamp::new(proposal_commitment.timestamp)
-                    .context("ProposalCommitment timestamp exceeds i64::MAX")?,
+                    .context("ProposalCommitment timestamp exceeds i64::MAX")
+                    .map_err(ProposalHandlingError::recoverable)?,
                 eth_l1_gas_price: GasPrice::ZERO,
                 strk_l1_gas_price: GasPrice::ZERO,
                 eth_l1_data_gas_price: GasPrice::ZERO,
@@ -242,7 +247,8 @@ impl ValidatorBlockInfoStage {
                 eth_l2_gas_price: GasPrice::ZERO,
                 strk_l2_gas_price: GasPrice::ZERO,
                 sequencer_address: SequencerAddress(proposal_commitment.builder.0),
-                starknet_version: StarknetVersion::from_str(&proposal_commitment.protocol_version)?,
+                starknet_version: StarknetVersion::from_str(&proposal_commitment.protocol_version)
+                    .map_err(ProposalHandlingError::recoverable)?,
                 event_commitment: EventCommitment::ZERO,
                 transaction_commitment: TransactionCommitment::ZERO,
                 transaction_count: 0,
@@ -286,7 +292,7 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
         chain_id: ChainId,
         block_info: pathfinder_executor::types::BlockInfo,
         main_storage: Storage,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, ProposalHandlingError> {
         Ok(ValidatorTransactionBatchStage {
             chain_id,
             block_info,
@@ -317,7 +323,7 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
     fn reconstruct_executor_from_state_update(
         &self,
         state_update_data: &StateUpdateData,
-    ) -> anyhow::Result<E> {
+    ) -> Result<E, ProposalHandlingError> {
         // Convert StateUpdateData to StateUpdate
         let state_update = StateUpdate {
             block_hash: pathfinder_common::BlockHash::ZERO,
@@ -336,12 +342,16 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
             self.block_info,
             ETH_FEE_TOKEN_ADDRESS,
             STRK_FEE_TOKEN_ADDRESS,
-            self.main_storage
-                .connection()
-                .context("Creating database connection for executor reconstruction")?,
+            self.main_storage.connection().map_err(|e| {
+                ProposalHandlingError::fatal(
+                    anyhow::Error::from(e)
+                        .context("Creating database connection for executor reconstruction"),
+                )
+            })?,
             Arc::new(state_update),
         )
         .context("Creating BlockExecutor from state update")
+        .map_err(ProposalHandlingError::fatal)
     }
 
     /// Execute a batch of transactions using a single executor and extract
@@ -349,7 +359,7 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
     pub fn execute_batch<T: TransactionExt>(
         &mut self,
         transactions: Vec<p2p_proto::consensus::Transaction>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ProposalHandlingError> {
         if transactions.is_empty() {
             return Ok(());
         }
@@ -367,7 +377,8 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
         let txns = transactions
             .iter()
             .map(|t| T::try_map_transaction(t.clone()))
-            .collect::<anyhow::Result<Vec<_>>>()?;
+            .collect::<anyhow::Result<Vec<_>>>()
+            .map_err(ProposalHandlingError::recoverable)?;
         let (common_txns, executor_txns): (Vec<_>, Vec<_>) = txns.into_iter().unzip();
 
         // Verify transaction hashes
@@ -384,27 +395,34 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
                 }
             })
             .collect::<anyhow::Result<Vec<_>>>()
-            .context("Verifying transaction hashes")?;
+            .context("Verifying transaction hashes")
+            .map_err(ProposalHandlingError::recoverable)?;
 
         // Initialize executor on first batch, or use existing executor
         if self.executor.is_none() {
             // First batch - start from initial state
-            self.executor = Some(E::new(
-                self.chain_id,
-                self.block_info,
-                ETH_FEE_TOKEN_ADDRESS,
-                STRK_FEE_TOKEN_ADDRESS,
-                self.main_storage
-                    .connection()
-                    .context("Creating database connection")?,
-            )?);
+            self.executor = Some(
+                E::new(
+                    self.chain_id,
+                    self.block_info,
+                    ETH_FEE_TOKEN_ADDRESS,
+                    STRK_FEE_TOKEN_ADDRESS,
+                    self.main_storage.connection().map_err(|e| {
+                        ProposalHandlingError::fatal(
+                            anyhow::Error::from(e).context("Creating database connection"),
+                        )
+                    })?,
+                )
+                .map_err(ProposalHandlingError::fatal)?,
+            );
         }
 
         // Get mutable reference to executor
         let executor = self
             .executor
             .as_mut()
-            .context("Executor should be initialized")?;
+            .context("Executor should be initialized")
+            .map_err(ProposalHandlingError::fatal)?;
 
         // Set the correct transaction index
         executor.set_transaction_index(self.transactions.len());
@@ -414,7 +432,9 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
             executor.execute(executor_txns)?.into_iter().unzip();
 
         // Extract cumulative state diff after batch execution
-        let state_diff = executor.extract_state_diff()?;
+        let state_diff = executor
+            .extract_state_diff()
+            .map_err(ProposalHandlingError::fatal)?;
         let state_update_data: StateUpdateData = state_diff.into();
         self.cumulative_state_updates.push(state_update_data);
 
@@ -460,13 +480,13 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
     }
 
     /// Rollback to the state after a specific batch (discard later batches)
-    pub fn rollback_to_batch(&mut self, target_batch: usize) -> anyhow::Result<()> {
+    pub fn rollback_to_batch(&mut self, target_batch: usize) -> Result<(), ProposalHandlingError> {
         if target_batch >= self.cumulative_state_updates.len() {
-            return Err(anyhow::anyhow!(
+            return Err(ProposalHandlingError::recoverable_msg(format!(
                 "Target batch {} exceeds available batches {}",
                 target_batch,
                 self.cumulative_state_updates.len()
-            ));
+            )));
         }
 
         // Calculate how many transactions to keep based on the target batch
@@ -486,7 +506,8 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
         self.executor = Some(self.reconstruct_executor_from_state_update(state_update_at_target)?);
         self.executor
             .as_mut()
-            .context("Executor should be initialized after reconstruction")?
+            .context("Executor should be initialized after reconstruction")
+            .map_err(ProposalHandlingError::fatal)?
             .set_transaction_index(transactions_to_keep);
 
         // Validate consistency after rollback
@@ -507,7 +528,7 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
     pub fn rollback_to_transaction<T: TransactionExt>(
         &mut self,
         target_transaction_count: usize,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ProposalHandlingError> {
         let target_batch = self.find_batch_containing_transaction(target_transaction_count)?;
 
         let cumulative_size_up_to_batch: usize = self.batch_sizes.iter().take(target_batch).sum();
@@ -553,7 +574,10 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
         }
     }
 
-    fn find_batch_containing_transaction(&self, target_count: usize) -> anyhow::Result<usize> {
+    fn find_batch_containing_transaction(
+        &self,
+        target_count: usize,
+    ) -> Result<usize, ProposalHandlingError> {
         let mut cumulative_size = 0;
         for (batch_idx, &batch_size) in self.batch_sizes.iter().enumerate() {
             if cumulative_size + batch_size > target_count {
@@ -561,23 +585,29 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
             }
             cumulative_size += batch_size;
         }
-        Err(anyhow::anyhow!(
+        Err(ProposalHandlingError::recoverable_msg(format!(
             "Transaction count {} exceeds total transactions {}",
             target_count,
             self.transactions.len()
-        ))
+        )))
     }
 
     #[cfg(test)]
     /// Finalize with the current state (up to the last executed transaction)
-    pub fn finalize(&mut self) -> anyhow::Result<Option<pathfinder_executor::types::StateDiff>> {
+    pub fn finalize(
+        &mut self,
+    ) -> Result<Option<pathfinder_executor::types::StateDiff>, ProposalHandlingError> {
         if self.executor.is_none() {
             return Ok(None);
         }
 
         // Take the single executor and finalize it
-        let executor = self.executor.take().context("Executor should exist")?;
-        let state_diff = executor.finalize()?;
+        let executor = self
+            .executor
+            .take()
+            .context("Executor should exist")
+            .map_err(ProposalHandlingError::fatal)?;
+        let state_diff = executor.finalize().map_err(ProposalHandlingError::Fatal)?;
 
         Ok(Some(state_diff))
     }
@@ -604,29 +634,31 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
     }
 
     /// Validate that batch tracking vectors are consistent
-    fn validate_batch_consistency(&self) -> anyhow::Result<()> {
+    fn validate_batch_consistency(&self) -> Result<(), ProposalHandlingError> {
         if self.cumulative_state_updates.len() != self.batch_sizes.len() {
-            return Err(anyhow::anyhow!(
+            return Err(ProposalHandlingError::recoverable_msg(format!(
                 "Batch consistency error: {} state updates but {} batch sizes",
                 self.cumulative_state_updates.len(),
                 self.batch_sizes.len()
-            ));
+            )));
         }
 
         // Validate that the sum of batch sizes matches the total transaction count
         let total_batch_transactions: usize = self.batch_sizes.iter().sum();
         if total_batch_transactions != self.transactions.len() {
-            return Err(anyhow::anyhow!(
+            return Err(ProposalHandlingError::recoverable_msg(format!(
                 "Batch size mismatch: batch sizes sum to {} but we have {} transactions",
                 total_batch_transactions,
                 self.transactions.len()
-            ));
+            )));
         }
 
         // Validate that batch sizes are non-zero
         for (i, &size) in self.batch_sizes.iter().enumerate() {
             if size == 0 {
-                return Err(anyhow::anyhow!("Invalid batch size: batch {i} has size 0"));
+                return Err(ProposalHandlingError::recoverable_msg(format!(
+                    "Invalid batch size: batch {i} has size 0"
+                )));
             }
         }
 
@@ -634,22 +666,22 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
     }
 
     /// Validate that the validator state is consistent
-    pub fn validate_state_consistency(&self) -> anyhow::Result<()> {
+    pub fn validate_state_consistency(&self) -> Result<(), ProposalHandlingError> {
         // Validate that receipts and events match transaction count
         if self.receipts.len() != self.transactions.len() {
-            return Err(anyhow::anyhow!(
+            return Err(ProposalHandlingError::recoverable_msg(format!(
                 "State inconsistency: {} receipts but {} transactions",
                 self.receipts.len(),
                 self.transactions.len()
-            ));
+            )));
         }
 
         if self.events.len() != self.transactions.len() {
-            return Err(anyhow::anyhow!(
+            return Err(ProposalHandlingError::recoverable_msg(format!(
                 "State inconsistency: {} event arrays but {} transactions",
                 self.events.len(),
                 self.transactions.len()
-            ));
+            )));
         }
         Ok(())
     }
@@ -660,12 +692,14 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
     pub fn record_proposal_commitment(
         &mut self,
         proposal_commitment: &p2p_proto::consensus::ProposalCommitment,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ProposalHandlingError> {
         let expected_block_header = ConsensusFinalizedBlockHeader {
             number: BlockNumber::new(proposal_commitment.block_number)
-                .context("ProposalCommitment block number exceeds i64::MAX")?,
+                .context("ProposalCommitment block number exceeds i64::MAX")
+                .map_err(ProposalHandlingError::recoverable)?,
             timestamp: BlockTimestamp::new(proposal_commitment.timestamp)
-                .context("ProposalCommitment timestamp exceeds i64::MAX")?,
+                .context("ProposalCommitment timestamp exceeds i64::MAX")
+                .map_err(ProposalHandlingError::recoverable)?,
             // TODO prices should be validated against proposal_commitment values
             eth_l1_gas_price: self.block_info.eth_l1_gas_price,
             strk_l1_gas_price: self.block_info.strk_l1_gas_price,
@@ -674,7 +708,8 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
             eth_l2_gas_price: self.block_info.eth_l2_gas_price,
             strk_l2_gas_price: self.block_info.strk_l2_gas_price,
             sequencer_address: SequencerAddress(proposal_commitment.builder.0),
-            starknet_version: StarknetVersion::from_str(&proposal_commitment.protocol_version)?,
+            starknet_version: StarknetVersion::from_str(&proposal_commitment.protocol_version)
+                .map_err(ProposalHandlingError::recoverable)?,
             event_commitment: EventCommitment(proposal_commitment.event_commitment.0),
             transaction_commitment: TransactionCommitment(
                 proposal_commitment.transaction_commitment.0,
@@ -702,7 +737,7 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
     pub fn consensus_finalize(
         self,
         expected_proposal_commitment: ProposalCommitment,
-    ) -> anyhow::Result<ConsensusFinalizedL2Block> {
+    ) -> Result<ConsensusFinalizedL2Block, ProposalHandlingError> {
         let next_stage = self.consensus_finalize0()?;
         let actual_proposal_commitment = next_stage.header.state_diff_commitment;
 
@@ -717,16 +752,18 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
         if actual_proposal_commitment.0 == expected_proposal_commitment.0 {
             Ok(next_stage)
         } else {
-            Err(anyhow::anyhow!(
+            Err(ProposalHandlingError::recoverable_msg(format!(
                 "expected {expected_proposal_commitment}, actual {actual_proposal_commitment}"
-            ))
+            )))
         }
     }
 
     /// Finalizes the block, producing a header with all commitments except
     /// the state commitment and block hash, which are computed in the last
     /// stage.
-    pub(crate) fn consensus_finalize0(self) -> anyhow::Result<ConsensusFinalizedL2Block> {
+    pub(crate) fn consensus_finalize0(
+        self,
+    ) -> Result<ConsensusFinalizedL2Block, ProposalHandlingError> {
         let Self {
             block_info,
             expected_block_header,
@@ -751,21 +788,26 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
         let state_update = if executor.is_none() && transactions.is_empty() {
             StateUpdateData::default()
         } else {
-            let executor = executor.context("Executor should exist for finalization")?;
-            let state_diff = executor.finalize()?;
+            let executor = executor
+                .context("Executor should exist for finalization")
+                .map_err(ProposalHandlingError::fatal)?;
+            let state_diff = executor.finalize().map_err(ProposalHandlingError::fatal)?;
             StateUpdateData::from(state_diff)
         };
 
         let transaction_commitment =
-            calculate_transaction_commitment(&transactions, block_info.starknet_version)?;
-        let receipt_commitment = calculate_receipt_commitment(&receipts)?;
+            calculate_transaction_commitment(&transactions, block_info.starknet_version)
+                .map_err(ProposalHandlingError::fatal)?;
+        let receipt_commitment =
+            calculate_receipt_commitment(&receipts).map_err(ProposalHandlingError::fatal)?;
         let events_ref_by_txn = events
             .iter()
             .zip(transactions.iter().map(|t| t.hash))
             .map(|(e, h)| (h, e.as_slice()))
             .collect::<Vec<_>>();
         let event_commitment =
-            calculate_event_commitment(&events_ref_by_txn, block_info.starknet_version)?;
+            calculate_event_commitment(&events_ref_by_txn, block_info.starknet_version)
+                .map_err(ProposalHandlingError::fatal)?;
         let state_diff_commitment = state_update.compute_state_diff_commitment();
 
         let header = ConsensusFinalizedBlockHeader {
@@ -806,11 +848,15 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
             {
                 // Skip validation for dummy commitments in tests
             } else if header != expected_header {
-                anyhow::bail!("expected {expected_header:?}, actual {header:?}");
+                return Err(ProposalHandlingError::recoverable_msg(format!(
+                    "expected {expected_header:?}, actual {header:?}"
+                )));
             }
             #[cfg(not(test))]
             if header != expected_header {
-                anyhow::bail!("expected {expected_header:?}, actual {header:?}");
+                return Err(ProposalHandlingError::recoverable_msg(format!(
+                    "expected {expected_header:?}, actual {header:?}"
+                )));
             }
         }
 

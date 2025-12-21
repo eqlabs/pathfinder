@@ -43,7 +43,6 @@ use tokio::sync::{mpsc, watch};
 
 use super::gossip_retry::{GossipHandler, GossipRetryConfig};
 use super::persist_proposals::ConsensusProposals;
-use super::proposal_error::{ProposalError, ProposalHandlingError};
 use super::{integration_testing, ConsensusTaskEvent, ConsensusValue, P2PTaskConfig, P2PTaskEvent};
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::consensus::inner::batch_execution::{
@@ -52,6 +51,7 @@ use crate::consensus::inner::batch_execution::{
     DeferredExecution,
     ProposalCommitmentWithOrigin,
 };
+use crate::consensus::{ProposalError, ProposalHandlingError};
 use crate::validator::{
     ProdTransactionMapper,
     TransactionExt,
@@ -988,8 +988,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                 &parts,
             )?;
             assert!(!updated);
-            let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init)
-                .map_err(ProposalHandlingError::Fatal)?;
+            let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init)?;
             validator_cache.insert(height_and_round, ValidatorStage::BlockInfo(validator));
             Ok(None)
         }
@@ -1018,9 +1017,8 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
             let block_info = block_info.clone();
             append_and_persist_part(height_and_round, proposal_part, proposals_db, &mut parts)?;
 
-            let new_validator = validator
-                .validate_consensus_block_info(block_info, main_readonly_storage)
-                .map_err(ProposalHandlingError::Fatal)?;
+            let new_validator =
+                validator.validate_consensus_block_info(block_info, main_readonly_storage)?;
             validator_cache.insert(
                 height_and_round,
                 ValidatorStage::TransactionBatch(Box::new(new_validator)),
@@ -1079,15 +1077,13 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
             let main_db_tx = main_db_conn.transaction()?;
             // Use BatchExecutionManager to handle optimistic execution with checkpoints and
             // deferral
-            batch_execution_manager
-                .process_batch_with_deferral::<E, T>(
-                    height_and_round,
-                    tx_batch,
-                    &mut validator,
-                    &main_db_tx,
-                    &mut deferred_executions.lock().unwrap(),
-                )
-                .map_err(ProposalHandlingError::Fatal)?;
+            batch_execution_manager.process_batch_with_deferral::<E, T>(
+                height_and_round,
+                tx_batch,
+                &mut validator,
+                &main_db_tx,
+                &mut deferred_executions.lock().unwrap(),
+            )?;
 
             validator_cache.insert(
                 height_and_round,
@@ -1114,11 +1110,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                     let validator = validator_stage
                         .try_into_block_info_stage()
                         .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
-                    let block = validator
-                        .verify_proposal_commitment(proposal_commitment)
-                        // TODO(consensus) verification can result in both fatal (storage related)
-                        // and recoverable (all other) errors
-                        .map_err(ProposalHandlingError::Fatal)?;
+                    let block = validator.verify_proposal_commitment(proposal_commitment)?;
 
                     proposals_db.persist_consensus_finalized_block(
                         height_and_round.height(),
@@ -1159,11 +1151,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                         .try_into_transaction_batch_stage()
                         .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
 
-                    validator
-                        .record_proposal_commitment(proposal_commitment)
-                        // TODO(consensus) verification can result in both fatal (storage related)
-                        // and recoverable (all other) errors
-                        .map_err(ProposalHandlingError::Fatal)?;
+                    validator.record_proposal_commitment(proposal_commitment)?;
                     validator_cache.insert(
                         height_and_round,
                         ValidatorStage::TransactionBatch(validator),
@@ -1264,9 +1252,9 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                         proposals_db,
                         &mut validator_cache,
                     )
-                    // TODO(consensus) verification can result in both fatal (storage related)
-                    // and recoverable (all other) errors
-                    .map_err(ProposalHandlingError::Fatal)?;
+                    // Note: We classify as recoverable by default, but storage errors in the
+                    // chain are automatically detected and converted to fatal.
+                    .map_err(ProposalHandlingError::recoverable)?;
 
                     Ok(proposal_commitment)
                 }
@@ -1351,15 +1339,11 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                 );
             } else {
                 // Execution has started - process TransactionsFin immediately
-                batch_execution_manager
-                    .process_transactions_fin::<E, T>(
-                        height_and_round,
-                        *transactions_fin,
-                        &mut validator,
-                    )
-                    // FIXME this is actually a bug: execution can result in both fatal (storage
-                    // related) and recoverable (all other) errors
-                    .map_err(ProposalHandlingError::Fatal)?;
+                batch_execution_manager.process_transactions_fin::<E, T>(
+                    height_and_round,
+                    *transactions_fin,
+                    &mut validator,
+                )?;
 
                 // After processing TransactionsFin, check if ProposalFin was deferred
                 // and should now be finalized
