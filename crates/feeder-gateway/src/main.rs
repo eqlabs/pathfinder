@@ -61,18 +61,23 @@ use warp::Filter;
 #[derive(Parser)]
 #[command(version)]
 struct Cli {
-    #[arg(
-        long_help = "Database path. WARNING! If the database is not immediately available, the \
-                     feeder gateway will keep retrying until a timeout occurs. Additionally \
-                     CUSTOM chain is assumed until the database is available and the chain is \
-                     read from it."
-    )]
+    #[arg(long_help = "Database path.")]
     pub database_path: PathBuf,
     #[arg(
+        long,
         long_help = "Port to listen on, 0 means random OS assigned value",
         default_value = "8080"
     )]
     pub port: u16,
+    #[arg(
+        long,
+        long_help = "If set, the process will wait for the database file to become available with \
+                     this version. WARNING! If the database is not immediately available, the \
+                     feeder gateway will keep retrying until a timeout occurs. Additionally \
+                     CUSTOM chain is assumed until the database is available and the chain is \
+                     read from it."
+    )]
+    pub expected_version: Option<i64>,
     #[command(flatten)]
     pub reorg: ReorgCli,
 }
@@ -104,8 +109,23 @@ async fn main() -> anyhow::Result<()> {
 
     let db_path = cli.database_path.clone();
 
+    // If no expected version is set, attempt to connect to the database
+    // immediately.
+    if cli.expected_version.is_none() {
+        let storage = pathfinder_storage::StorageBuilder::file(db_path.clone())
+            .readonly()?
+            .create_read_only_pool(NonZeroU32::new(10).unwrap())?;
+        let chain = {
+            let mut connection = storage.connection()?;
+            let tx = connection.transaction()?;
+            get_chain(&tx)?
+        };
+        storage_tx.send(Some((storage, chain)))?;
+    }
+
     tokio::select! {
         storage_err = wait_for_storage(
+            cli.expected_version,
             &db_path,
             storage_tx,
             Duration::from_secs(30),
@@ -124,14 +144,22 @@ struct ReorgConfig {
     pub reorg_to_block: BlockNumber,
 }
 
-/// Waits for the storage to become available. The task **does not join** if the
-/// storage becomes available, it just **keeps running**. The task only returns
-/// if an error is encountered, including a timeout.
+/// Waits for the storage to become available at a given version. This is to
+/// ensure that any migrations performed by the process that is creating the
+/// database have been finished. The task **does not join** if the storage
+/// becomes available or `expected_version` is `None` (which means the databases
+/// file is expected to be available immediately), it just **keeps running**.
+/// The task only returns if an error is encountered, including a timeout.
 fn wait_for_storage(
+    expected_version: Option<i64>,
     path: &Path,
     storage_tx: Sender<Option<(Storage, Chain)>>,
     timeout: Duration,
 ) -> impl Future<Output = anyhow::Error> {
+    let Some(expected_version) = expected_version else {
+        return futures::future::pending().boxed();
+    };
+
     let path = path.to_path_buf();
     let jh = tokio::task::spawn_blocking(move || {
         let stopwatch = std::time::Instant::now();
@@ -141,19 +169,31 @@ fn wait_for_storage(
                 Ok(file) => {
                     drop(file);
                     tracing::info!("Database file found, attempting to connect...");
-                    let storage = pathfinder_storage::StorageBuilder::file(path)
+                    let storage = pathfinder_storage::StorageBuilder::file(path.clone())
                         .readonly()?
                         .create_read_only_pool(NonZeroU32::new(10).unwrap())?;
                     let chain = {
                         let mut connection = storage.connection()?;
                         let tx = connection.transaction()?;
-                        get_chain(&tx)?
+                        let user_version = tx.user_version()?;
+                        if user_version != expected_version {
+                            tracing::info!("Database not yet migrated, retrying...");
+                            std::thread::sleep(std::time::Duration::from_millis(200));
+                            continue;
+                        }
+
+                        // FIXME use a marker file in pathfinder to show that the DB is ready and
+                        // migrated change the cli flag to
+                        // --wait-for-custom-db-ready which forces CUSTOM chain and enables waiting
+                        // for the database file to be ready and when it's ready read the chain from
+                        // it and panic if it's not CUSTOM
+                        Chain::Custom
                     };
                     tracing::info!("Database is now available");
                     return anyhow::Ok((storage, chain));
                 }
                 Err(_) => {
-                    tracing::info!("Database not yet available, retrying...");
+                    tracing::info!("Database file not yet available, retrying...");
                     std::thread::sleep(std::time::Duration::from_millis(200));
                 }
             }
@@ -188,6 +228,7 @@ fn wait_for_storage(
             Err(e) => err(e),
         },
     )
+    .boxed()
 }
 
 async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyhow::Result<()> {

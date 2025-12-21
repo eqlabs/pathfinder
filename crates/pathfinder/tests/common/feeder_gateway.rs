@@ -31,12 +31,14 @@ impl FeederGateway {
         let feeder_bin = feeder_gateway_bin();
         let process = Command::new(feeder_bin)
             .args([
+                "--port=0",
+                "--expected-version=76",
                 db_dir.join("custom.sqlite").to_str().expect("Valid utf8"),
-                "0",
             ])
             .stdout(stdout_file)
             .stderr(stderr_file)
             .env("RUST_LOG", "trace")
+            .env("RUST_BACKTRACE", "full")
             .spawn()
             .context("Spawning local feeder gateway")?;
 
