@@ -10,6 +10,7 @@ use bloom::AggregateBloomCache;
 pub use bloom::AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
 use connection::pruning::BlockchainHistoryMode;
 mod connection;
+mod error;
 pub mod fake;
 mod params;
 mod schema;
@@ -22,6 +23,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
 pub use connection::*;
+pub use error::StorageError;
 use event::RunningEventFilter;
 pub use event::EVENT_KEY_FILTER_LIMIT;
 use pathfinder_common::BlockNumber;
@@ -549,8 +551,8 @@ fn validate_mode_and_update_db(
 
 impl Storage {
     /// Returns a new Sqlite [Connection] to the database.
-    pub fn connection(&self) -> anyhow::Result<Connection> {
-        let conn = self.0.pool.get()?;
+    pub fn connection(&self) -> Result<Connection, StorageError> {
+        let conn = self.0.pool.get().map_err(StorageError::from)?;
         Ok(Connection::new(
             conn,
             self.0.event_filter_cache.clone(),
