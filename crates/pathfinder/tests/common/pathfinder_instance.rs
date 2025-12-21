@@ -77,8 +77,7 @@ impl PathfinderInstance {
             .stderr(stderr_file)
             .env(
                 "RUST_LOG",
-                "pathfinder_lib=trace,pathfinder=trace,pathfinder_lib=trace,\
-                 pathfinder_consensus=trace,p2p=off,\
+                "pathfinder_lib=trace,pathfinder=trace,pathfinder_consensus=trace,p2p=off,\
                  informalsystems_malachitebft_core_consensus=trace",
             )
             .arg("--ethereum.url=https://ethereum-sepolia-rpc.publicnode.com");
