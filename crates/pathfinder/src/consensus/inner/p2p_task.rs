@@ -199,7 +199,12 @@ pub fn spawn(
                         // This call may yield unreliable results if history_depth is too small and
                         // the currently decided upon and finalized block has not been committed by
                         // the sync task yet, because we're only checking the main DB here.
-                        if is_outdated_p2p_event(&main_db_tx, &event.kind, config.history_depth)? {
+                        if is_outdated_p2p_event(
+                            &main_db_tx,
+                            &event.kind,
+                            config.history_depth,
+                            &proposals_db,
+                        )? {
                             return Ok(ComputationSuccess::ChangePeerScore {
                                 peer_id: event.source,
                                 delta: peer_score::penalty::OUTDATED_MESSAGE,
@@ -869,20 +874,58 @@ fn is_outdated_p2p_event(
     db_tx: &Transaction<'_>,
     event: &EventKind,
     history_depth: u64,
+    proposals_db: &ConsensusProposals<'_>,
 ) -> anyhow::Result<bool> {
     // Ignore messages that refer to already committed blocks.
     let incoming_height = event.height();
-    let latest_committed = db_tx.block_number(BlockId::Latest)?;
-    if let Some(latest_committed) = latest_committed {
-        if incoming_height < latest_committed.get().saturating_sub(history_depth) {
+
+    // Check the consensus database for the latest finalized height, which
+    // represents blocks that consensus has decided upon (even if not yet
+    // committed to main DB).
+    let latest_finalized = proposals_db
+        .inner()
+        .latest_finalized_height()
+        .map_err(|e| {
+            anyhow::Error::from(e)
+                .context("Failed to query latest finalized height from consensus database")
+        })?;
+
+    if let Some(latest_finalized) = latest_finalized {
+        let threshold = latest_finalized.saturating_sub(history_depth);
+        if incoming_height < threshold {
             tracing::info!(
                 "🖧  ⛔ ignoring incoming p2p event {} for height {incoming_height} because latest \
-                 committed block is {latest_committed} and history depth is {history_depth}",
+                 finalized height is {latest_finalized} and history depth is {history_depth}",
                 event.type_name()
             );
             return Ok(true);
         }
+    } else {
+        // Fallback to main database if no finalized blocks in consensus DB yet
+        let latest_committed = db_tx
+            .block_number(BlockId::Latest)
+            .context("Failed to query latest committed block for outdated event check")?;
+
+        if let Some(latest_committed) = latest_committed {
+            let threshold = latest_committed.get().saturating_sub(history_depth);
+            if incoming_height < threshold {
+                tracing::info!(
+                    "🖧  ⛔ ignoring incoming p2p event {} for height {incoming_height} because \
+                     latest committed block is {latest_committed} and history depth is \
+                     {history_depth}",
+                    event.type_name()
+                );
+                return Ok(true);
+            }
+        } else {
+            tracing::debug!(
+                "🖧  No committed blocks found in database, cannot determine if event {} for \
+                 height {incoming_height} is outdated",
+                event.type_name()
+            );
+        }
     }
+
     Ok(false)
 }
 

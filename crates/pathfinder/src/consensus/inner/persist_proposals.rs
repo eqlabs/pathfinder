@@ -19,6 +19,11 @@ impl<'tx> ConsensusProposals<'tx> {
         Self { tx }
     }
 
+    /// Get a reference to the inner transaction.
+    pub fn inner(&self) -> &ConsensusTransaction<'tx> {
+        &self.tx
+    }
+
     /// Commit the underlying transaction.
     pub fn commit(self) -> Result<(), StorageError> {
         self.tx

@@ -378,6 +378,24 @@ impl ConsensusTransaction<'_> {
             .map_err(StorageError::from)
     }
 
+    /// Get the highest finalized block height from the consensus database.
+    /// This represents the latest height that consensus has decided upon,
+    /// which may be ahead of what's committed to the main database.
+    pub fn latest_finalized_height(&self) -> Result<Option<u64>, StorageError> {
+        self.0
+            .inner()
+            .query_row(
+                r"SELECT height
+                FROM consensus_finalized_blocks
+                ORDER BY height DESC
+                LIMIT 1",
+                [],
+                |row| row.get_i64(0).map(|h| h as u64),
+            )
+            .optional()
+            .map_err(StorageError::from)
+    }
+
     /// Remove all finalized blocks for the given height **except** the one from
     /// `commit_round`.
     pub fn remove_uncommitted_consensus_finalized_blocks(
