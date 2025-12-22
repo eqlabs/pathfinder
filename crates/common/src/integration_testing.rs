@@ -23,16 +23,3 @@ pub fn debug_create_port_marker_file(_name: &str, _value: u16, _data_directory: 
         }
     }
 }
-
-pub fn debug_create_marker_file(_name: &str, _value: impl AsRef<[u8]>, _data_directory: &Path) {
-    #[cfg(debug_assertions)]
-    {
-        if std::env::var_os("PATHFINDER_TEST_ENABLE_PORT_MARKER_FILES").is_some() {
-            _ = std::fs::create_dir_all(_data_directory);
-            let marker_file = _data_directory.join(format!("pid_{}_{}", std::process::id(), _name));
-            std::fs::write(&marker_file, _value).unwrap_or_else(|_| {
-                panic!("Failed to create marker file {}", marker_file.display())
-            });
-        }
-    }
-}
