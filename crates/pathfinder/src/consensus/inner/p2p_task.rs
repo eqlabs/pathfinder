@@ -1168,7 +1168,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                     // - [x] Block Info
                     // - [ ] in any order:
                     //      - [?] at least one Transaction Batch
-                    //      - [?] Transactions Fin
+                    //      - [?] Executed Transaction Count
                     // - [x] Proposal Fin
                     let validator_stage = validator_cache.remove(&height_and_round)?;
                     let validator = validator_stage
