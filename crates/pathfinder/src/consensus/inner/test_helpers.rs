@@ -70,21 +70,21 @@ pub fn create_test_proposal(
         .as_secs();
 
     let proposal_init = proto_consensus::ProposalInit {
-        block_number: height,
+        height,
         round,
         valid_round: None,
         proposer: proposer_address,
     };
 
     let block_info = proto_consensus::BlockInfo {
-        block_number: height,
+        height,
         timestamp,
         builder: proposer_address,
         l1_da_mode: L1DataAvailabilityMode::default(),
         l2_gas_price_fri: 1,
         l1_gas_price_wei: 1_000_000_000,
         l1_data_gas_price_wei: 1,
-        eth_to_strk_rate: 1_000_000_000,
+        eth_to_fri_rate: 1_000_000_000,
     };
 
     (proposal_init, block_info)
@@ -133,9 +133,9 @@ mod tests {
         let (proposal_init, block_info) =
             create_test_proposal(chain_id, height, round, proposer, transactions);
 
-        assert_eq!(proposal_init.block_number, height);
+        assert_eq!(proposal_init.height, height);
         assert_eq!(proposal_init.round, round);
-        assert_eq!(block_info.block_number, height);
+        assert_eq!(block_info.height, height);
         assert_eq!(block_info.builder.0, proposer.0);
     }
 }

@@ -20,16 +20,14 @@ use std::sync::{Arc, Mutex};
 use fake::Fake as _;
 use p2p::consensus::HeightAndRound;
 use p2p::sync::client::conv::TryFromDto;
-use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
+use p2p_proto::common::{Address, Hash};
 use p2p_proto::consensus::{
     BlockInfo,
-    ProposalCommitment,
     ProposalFin,
     ProposalInit,
     ProposalPart,
     Transaction,
     TransactionVariant as ConsensusVariant,
-    TransactionsFin,
 };
 use p2p_proto::sync::transaction::{DeclareV3WithoutClass, TransactionVariant as SyncVariant};
 use p2p_proto::transaction::DeclareV3WithClass;
@@ -65,7 +63,7 @@ proptest! {
         let mut batch_execution_manager = BatchExecutionManager::new();
 
         let (proposal_parts, expect_success) = match proposal_type {
-            strategy::ProposalCase::ValidEmpty => (create_structurally_valid_empty_proposal(seed), true),
+            strategy::ProposalCase::ValidEmpty => (create_structurally_valid_empty_proposal(), true),
             strategy::ProposalCase::StructurallyValidNonEmptyExecutionOk =>
                 create_structurally_valid_non_empty_proposal(seed, true),
             strategy::ProposalCase::StructurallyValidNonEmptyExecutionFails =>
@@ -161,13 +159,12 @@ fn dump_parts(proposal_parts: &[ProposalPart]) -> String {
 fn dump_part(part: &ProposalPart) -> Cow<'static, str> {
     match part {
         ProposalPart::Init(_) => "Init".into(),
+        ProposalPart::Fin(_) => "Fin".into(),
         ProposalPart::BlockInfo(_) => "BlockInfo".into(),
         ProposalPart::TransactionBatch(batch) => format!("Batch(len: {})", batch.len()).into(),
-        ProposalPart::TransactionsFin(TransactionsFin {
-            executed_transaction_count,
-        }) => format!("TxnFin(count: {executed_transaction_count})").into(),
-        ProposalPart::ProposalCommitment(_) => "Commitment".into(),
-        ProposalPart::Fin(_) => "Fin".into(),
+        ProposalPart::ExecutedTransactionCount(count) => {
+            format!("ExecutedTxnCount({})", count).into()
+        }
     }
 }
 
@@ -175,35 +172,16 @@ fn dump_part(part: &ProposalPart) -> Cow<'static, str> {
 ///
 /// The proposal parts will be ordered as follows:
 /// - Proposal Init
-/// - Proposal Commitment
 /// - Proposal Fin
-fn create_structurally_valid_empty_proposal(seed: u64) -> Vec<ProposalPart> {
-    use rand::SeedableRng;
-    // Explicitly choose RNG to make sure seeded proposals are always reproducible
-    let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
+fn create_structurally_valid_empty_proposal() -> Vec<ProposalPart> {
     let mut proposal_parts = Vec::new();
     let init = ProposalPart::Init(ProposalInit {
-        block_number: 0,
+        height: 0,
         round: 0,
         valid_round: None,
         proposer: Address(ContractAddress::ZERO.0),
     });
     proposal_parts.push(init);
-
-    let mut proposal_commitment: ProposalCommitment = fake::Faker.fake_with_rng(&mut rng);
-    proposal_commitment.block_number = 0;
-    proposal_commitment.builder = Address(ContractAddress::ZERO.0);
-    proposal_commitment.state_diff_commitment = Hash::ZERO;
-    proposal_commitment.transaction_commitment = Hash::ZERO;
-    proposal_commitment.event_commitment = Hash::ZERO;
-    proposal_commitment.receipt_commitment = Hash::ZERO;
-    proposal_commitment.l1_gas_price_fri = 0;
-    proposal_commitment.l1_data_gas_price_fri = 0;
-    proposal_commitment.l2_gas_price_fri = 0;
-    proposal_commitment.l2_gas_used = 0;
-    proposal_commitment.l1_da_mode = L1DataAvailabilityMode::default();
-    let proposal_commitment = ProposalPart::ProposalCommitment(proposal_commitment);
-    proposal_parts.push(proposal_commitment);
 
     let proposal_fin = ProposalPart::Fin(ProposalFin {
         proposal_commitment: Hash::ZERO,
@@ -220,8 +198,8 @@ fn create_structurally_valid_empty_proposal(seed: u64) -> Vec<ProposalPart> {
 /// The proposal parts will be ordered as follows:
 /// - Proposal Init
 /// - Block Info
-/// - In random order: one or more Transaction Batches, Transactions Fin,
-///   Proposal Commitment
+/// - In random order: one or more Transaction Batches, Executed Transaction
+///   Count,
 /// - Proposal Fin
 fn create_structurally_valid_non_empty_proposal(
     seed: u64,
@@ -232,13 +210,13 @@ fn create_structurally_valid_non_empty_proposal(
     let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
     let mut proposal_parts = Vec::new();
     let init = ProposalPart::Init(ProposalInit {
-        block_number: 0,
+        height: 0,
         round: 0,
         valid_round: None,
         proposer: Address(ContractAddress::ZERO.0),
     });
     let mut block_info: BlockInfo = fake::Faker.fake_with_rng(&mut rng);
-    block_info.block_number = 0;
+    block_info.height = 0;
     block_info.builder = Address(ContractAddress::ZERO.0);
     let block_info = ProposalPart::BlockInfo(block_info);
 
@@ -265,19 +243,10 @@ fn create_structurally_valid_non_empty_proposal(
         MockExecutor::set_fail_at_txn(fail_at);
     }
 
-    let transactions_fin = ProposalPart::TransactionsFin(TransactionsFin {
-        executed_transaction_count,
-    });
-    let mut proposal_commitment: ProposalCommitment = fake::Faker.fake_with_rng(&mut rng);
-    proposal_commitment.block_number = 0;
-    proposal_commitment.builder = Address(ContractAddress::ZERO.0);
-    proposal_commitment.state_diff_commitment = Hash::ZERO;
-    proposal_commitment.transaction_commitment = Hash::ZERO;
-    proposal_commitment.receipt_commitment = Hash::ZERO;
-    let proposal_commitment = ProposalPart::ProposalCommitment(proposal_commitment);
+    let executed_transaction_count =
+        ProposalPart::ExecutedTransactionCount(executed_transaction_count);
 
-    relaxed_ordered_parts.push(transactions_fin);
-    relaxed_ordered_parts.push(proposal_commitment);
+    relaxed_ordered_parts.push(executed_transaction_count);
     // All other parts except init, block info, and proposal fin can be in any order
     relaxed_ordered_parts.shuffle(&mut rng);
 
@@ -302,7 +271,7 @@ struct InvalidProposalConfig {
     remove_all_txns: bool,
     init: ModifyPart,
     block_info: ModifyPart,
-    txn_fin: ModifyPart,
+    executed_txn_count: ModifyPart,
     proposal_commitment: ModifyPart,
     proposal_fin: ModifyPart,
     shuffle: bool,
@@ -317,7 +286,7 @@ impl InvalidProposalConfig {
         !self.remove_all_txns
             && matches!(self.init, ModifyPart::DoNothing)
             && matches!(self.block_info, ModifyPart::DoNothing)
-            && matches!(self.txn_fin, ModifyPart::DoNothing)
+            && matches!(self.executed_txn_count, ModifyPart::DoNothing)
             && matches!(self.proposal_commitment, ModifyPart::DoNothing)
             && matches!(self.proposal_fin, ModifyPart::DoNothing)
     }
@@ -327,14 +296,18 @@ impl InvalidProposalConfig {
 /// does at least one of the following:
 /// - removes all transaction batches,
 /// - removes or duplicates some of the following: proposal init, block info,
-///   transactions fin, proposal commitment, proposal fin
+///   executed transactions count, proposal fin
 /// - reshuffles all of the parts without respect to to the spec, or how
 ///   permissive we are wrt the ordering.
-fn create_structurally_invalid_proposal(seed: u64, fail_at_txn: bool) -> (Vec<ProposalPart>, bool) {
+fn create_structurally_invalid_proposal(
+    seed: u64,
+    execution_succeeds: bool,
+) -> (Vec<ProposalPart>, bool) {
     use rand::SeedableRng;
     // Explicitly choose RNG to make sure seeded proposals are always reproducible
     let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
-    let (mut proposal_parts, _) = create_structurally_valid_non_empty_proposal(seed, fail_at_txn);
+    let (mut proposal_parts, _) =
+        create_structurally_valid_non_empty_proposal(seed, execution_succeeds);
     let config: InvalidProposalConfig = fake::Faker.fake_with_rng(&mut rng);
 
     if config.remove_all_txns {
@@ -346,14 +319,11 @@ fn create_structurally_invalid_proposal(seed: u64, fail_at_txn: bool) -> (Vec<Pr
     modify_part(&mut proposal_parts, &mut rng, config.block_info, |x| {
         x.is_block_info()
     });
-    modify_part(&mut proposal_parts, &mut rng, config.txn_fin, |x| {
-        x.is_transactions_fin()
-    });
     modify_part(
         &mut proposal_parts,
         &mut rng,
-        config.proposal_commitment,
-        |x| x.is_proposal_commitment(),
+        config.executed_txn_count,
+        |x| x.is_executed_transaction_count(),
     );
     modify_part(&mut proposal_parts, &mut rng, config.proposal_fin, |x| {
         x.is_proposal_fin()
@@ -366,12 +336,24 @@ fn create_structurally_invalid_proposal(seed: u64, fail_at_txn: bool) -> (Vec<Pr
     // If we were unfortunate enough to get an unmodified proposal, let's at least
     // force removing the init at the head, so that the proposal is invalid for
     // sure.
-    if config.maybe_valid() {
+    if config.maybe_valid() || well_ordered_proposal(&proposal_parts) {
         proposal_parts.remove(0);
     }
 
     // This proposal should always fail, regardless of execution outcome
     (proposal_parts, false)
+}
+
+fn well_ordered_proposal(proposal_parts: &[ProposalPart]) -> bool {
+    proposal_parts
+        .first()
+        .is_some_and(|first| first.is_proposal_init())
+        && proposal_parts
+            .get(1)
+            .is_some_and(|part| part.is_block_info())
+        && proposal_parts
+            .last()
+            .is_some_and(|last| last.is_proposal_fin())
 }
 
 /// Removes a proposal part if the flag is true, or duplicates it if the flag

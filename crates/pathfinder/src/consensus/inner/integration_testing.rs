@@ -110,19 +110,15 @@ pub fn debug_fail_on_proposal_part(
                         ProposalPart::BlockInfo(_),
                         InjectFailureTrigger::BlockInfoRx
                     )
+                    | (ProposalPart::Fin(_), InjectFailureTrigger::ProposalFinRx)
                     | (
                         ProposalPart::TransactionBatch(_),
                         InjectFailureTrigger::TransactionBatchRx
                     )
                     | (
-                        ProposalPart::ProposalCommitment(_),
-                        InjectFailureTrigger::ProposalCommitmentRx
+                        ProposalPart::ExecutedTransactionCount(_),
+                        InjectFailureTrigger::ExecutedTransactionCountRx
                     )
-                    | (
-                        ProposalPart::TransactionsFin(_),
-                        InjectFailureTrigger::TransactionsFinRx
-                    )
-                    | (ProposalPart::Fin(_), InjectFailureTrigger::ProposalFinRx)
             )
         },
         height,
@@ -188,7 +184,7 @@ pub fn debug_fail_on_vote(
                 )
             )
         },
-        vote.block_number,
+        vote.height,
         inject_failure,
         data_directory,
     );

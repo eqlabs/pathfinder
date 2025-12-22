@@ -30,7 +30,7 @@ impl IntoModel<proto::ProposalPart> for dto::ProposalPart {
     fn into_model(self) -> proto::ProposalPart {
         match self {
             dto::ProposalPart::Init(p) => proto::ProposalPart::Init(proto::ProposalInit {
-                block_number: p.block_number,
+                height: p.height,
                 round: p.round,
                 valid_round: p.valid_round,
                 proposer: p2p_proto::common::Address(p.proposer.into()),
@@ -39,48 +39,20 @@ impl IntoModel<proto::ProposalPart> for dto::ProposalPart {
                 proposal_commitment: p2p_proto::common::Hash(p.proposal_commitment.into()),
             }),
             dto::ProposalPart::BlockInfo(p) => proto::ProposalPart::BlockInfo(proto::BlockInfo {
-                block_number: p.block_number,
+                height: p.height,
                 builder: p2p_proto::common::Address(p.builder.into()),
                 timestamp: p.timestamp,
                 l2_gas_price_fri: p.l2_gas_price_fri,
                 l1_gas_price_wei: p.l1_gas_price_wei,
                 l1_data_gas_price_wei: p.l1_data_gas_price_wei,
-                eth_to_strk_rate: p.eth_to_strk_rate,
+                eth_to_fri_rate: p.eth_to_fri_rate,
                 l1_da_mode: p.l1_da_mode.into_model(),
             }),
             dto::ProposalPart::TransactionBatch(batch) => proto::ProposalPart::TransactionBatch(
                 batch.into_iter().map(|t| t.into_model()).collect(),
             ),
-            dto::ProposalPart::TransactionsFin(p) => {
-                proto::ProposalPart::TransactionsFin(proto::TransactionsFin {
-                    executed_transaction_count: p.executed_transaction_count,
-                })
-            }
-            dto::ProposalPart::ProposalCommitment(p) => {
-                proto::ProposalPart::ProposalCommitment(proto::ProposalCommitment {
-                    block_number: p.block_number,
-                    parent_commitment: p2p_proto::common::Hash(p.parent_commitment.into()),
-                    builder: p2p_proto::common::Address(p.builder.into()),
-                    timestamp: p.timestamp,
-                    protocol_version: p.protocol_version,
-                    old_state_root: p2p_proto::common::Hash(p.old_state_root.into()),
-                    version_constant_commitment: p2p_proto::common::Hash(
-                        p.version_constant_commitment.into(),
-                    ),
-                    state_diff_commitment: p2p_proto::common::Hash(p.state_diff_commitment.into()),
-                    transaction_commitment: p2p_proto::common::Hash(
-                        p.transaction_commitment.into(),
-                    ),
-                    event_commitment: p2p_proto::common::Hash(p.event_commitment.into()),
-                    receipt_commitment: p2p_proto::common::Hash(p.receipt_commitment.into()),
-                    concatenated_counts: p.concatenated_counts.into(),
-                    l1_gas_price_fri: p.l1_gas_price_fri,
-                    l1_data_gas_price_fri: p.l1_data_gas_price_fri,
-                    l2_gas_price_fri: p.l2_gas_price_fri,
-                    l2_gas_used: p.l2_gas_used,
-                    next_l2_gas_price_fri: p.next_l2_gas_price_fri,
-                    l1_da_mode: p.l1_da_mode.into_model(),
-                })
+            dto::ProposalPart::ExecutedTransactionCount(count) => {
+                proto::ProposalPart::ExecutedTransactionCount(count)
             }
         }
     }
@@ -291,7 +263,7 @@ impl TryIntoDto<proto::ProposalPart> for dto::ProposalPart {
     fn try_into_dto(p: proto::ProposalPart) -> anyhow::Result<dto::ProposalPart> {
         let r = match p {
             proto::ProposalPart::Init(q) => dto::ProposalPart::Init(dto::ProposalInit {
-                block_number: q.block_number,
+                height: q.height,
                 round: q.round,
                 valid_round: q.valid_round,
                 proposer: q.proposer.0.into(),
@@ -300,13 +272,13 @@ impl TryIntoDto<proto::ProposalPart> for dto::ProposalPart {
                 proposal_commitment: q.proposal_commitment.0.into(),
             }),
             proto::ProposalPart::BlockInfo(q) => dto::ProposalPart::BlockInfo(dto::BlockInfo {
-                block_number: q.block_number,
+                height: q.height,
                 builder: q.builder.0.into(),
                 timestamp: q.timestamp,
                 l2_gas_price_fri: q.l2_gas_price_fri,
                 l1_gas_price_wei: q.l1_gas_price_wei,
                 l1_data_gas_price_wei: q.l1_data_gas_price_wei,
-                eth_to_strk_rate: q.eth_to_strk_rate,
+                eth_to_fri_rate: q.eth_to_fri_rate,
                 l1_da_mode: u8::try_into_dto(q.l1_da_mode)?,
             }),
             proto::ProposalPart::TransactionBatch(proto_batch) => {
@@ -317,32 +289,8 @@ impl TryIntoDto<proto::ProposalPart> for dto::ProposalPart {
                         .collect::<Result<Vec<dto::TransactionWithClass>, _>>()?,
                 )
             }
-            proto::ProposalPart::TransactionsFin(q) => {
-                dto::ProposalPart::TransactionsFin(dto::TransactionsFin {
-                    executed_transaction_count: q.executed_transaction_count,
-                })
-            }
-            proto::ProposalPart::ProposalCommitment(q) => {
-                dto::ProposalPart::ProposalCommitment(Box::new(dto::ProposalCommitment {
-                    block_number: q.block_number,
-                    parent_commitment: q.parent_commitment.0.into(),
-                    builder: q.builder.0.into(),
-                    timestamp: q.timestamp,
-                    protocol_version: q.protocol_version,
-                    old_state_root: q.old_state_root.0.into(),
-                    version_constant_commitment: q.version_constant_commitment.0.into(),
-                    state_diff_commitment: q.state_diff_commitment.0.into(),
-                    transaction_commitment: q.transaction_commitment.0.into(),
-                    event_commitment: q.event_commitment.0.into(),
-                    receipt_commitment: q.receipt_commitment.0.into(),
-                    concatenated_counts: q.concatenated_counts.into(),
-                    l1_gas_price_fri: q.l1_gas_price_fri,
-                    l1_data_gas_price_fri: q.l1_data_gas_price_fri,
-                    l2_gas_price_fri: q.l2_gas_price_fri,
-                    l2_gas_used: q.l2_gas_used,
-                    next_l2_gas_price_fri: q.next_l2_gas_price_fri,
-                    l1_da_mode: u8::try_into_dto(q.l1_da_mode)?,
-                }))
+            proto::ProposalPart::ExecutedTransactionCount(q) => {
+                dto::ProposalPart::ExecutedTransactionCount(q)
             }
         };
         Ok(r)

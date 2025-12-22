@@ -199,7 +199,7 @@ impl<'tx> ConsensusProposals<'tx> {
 mod tests {
     use fake::{Fake, Faker};
     use p2p_proto::common::Address;
-    use p2p_proto::consensus::{BlockInfo, ProposalCommitment, ProposalInit};
+    use p2p_proto::consensus::{BlockInfo, ProposalInit};
     use pathfinder_common::prelude::*;
     use pathfinder_crypto::Felt;
     use pathfinder_storage::consensus::{ConsensusConnection, ConsensusStorage};
@@ -226,7 +226,7 @@ mod tests {
         vec![
             ProposalPart::Init({
                 let mut init: ProposalInit = Faker.fake();
-                init.block_number = height;
+                init.height = height;
                 init.round = round;
                 init.valid_round = None;
                 init.proposer = proposer_addr;
@@ -234,18 +234,12 @@ mod tests {
             }),
             ProposalPart::BlockInfo({
                 let mut block_info: BlockInfo = Faker.fake();
-                block_info.block_number = height;
+                block_info.height = height;
                 block_info.builder = proposer_addr;
                 block_info
             }),
             ProposalPart::TransactionBatch(vec![]),
-            ProposalPart::TransactionsFin(Faker.fake()),
-            ProposalPart::ProposalCommitment({
-                let mut commitment: ProposalCommitment = Faker.fake();
-                commitment.block_number = height;
-                commitment.builder = proposer_addr;
-                commitment
-            }),
+            ProposalPart::ExecutedTransactionCount(Faker.fake()),
             ProposalPart::Fin(Faker.fake()),
         ]
     }

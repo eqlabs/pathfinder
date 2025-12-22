@@ -13,15 +13,20 @@ mod persist_proposals;
 mod test_helpers;
 
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use p2p::consensus::{Event, HeightAndRound};
 use p2p_proto::consensus::ProposalPart;
 use pathfinder_common::{
+    BlockNumber,
+    BlockTimestamp,
     ChainId,
+    ConsensusFinalizedBlockHeader,
     ConsensusFinalizedL2Block,
     ConsensusInfo,
     ContractAddress,
     ProposalCommitment,
+    StarknetVersion,
 };
 use pathfinder_consensus::{ConsensusCommand, ConsensusEvent, NetworkMessage};
 use pathfinder_storage::consensus::open_consensus_storage;
@@ -160,5 +165,31 @@ impl HeightExt for NetworkMessage<ConsensusValue, ContractAddress> {
             NetworkMessage::Proposal(proposal) => proposal.proposal.height,
             NetworkMessage::Vote(vote) => vote.vote.height,
         }
+    }
+}
+
+/// Creates an empty finalized L2 block for the given height.
+///
+/// TODO: The consensus spec does not define this for empty proposals. However,
+/// the validator logic and storage usage patterns currently require a finalized
+/// block to be created even for empty proposals. For now, we create a (mostly)
+/// default block header with the necessary fields filled in.
+pub(crate) fn create_empty_block(height: u64) -> ConsensusFinalizedL2Block {
+    let timestamp = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    // The only version handled by consensus, so far
+    let starknet_version = StarknetVersion::new(0, 14, 0, 0);
+
+    ConsensusFinalizedL2Block {
+        header: ConsensusFinalizedBlockHeader {
+            number: BlockNumber::new_or_panic(height),
+            timestamp: BlockTimestamp::new_or_panic(timestamp),
+            starknet_version,
+            ..Default::default()
+        },
+        ..Default::default()
     }
 }

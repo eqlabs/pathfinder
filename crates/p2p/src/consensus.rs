@@ -80,7 +80,7 @@ impl EventKind {
     pub fn height(&self) -> u64 {
         match self {
             EventKind::Proposal(hnr, _) => hnr.height(),
-            EventKind::Vote(vote) => vote.block_number,
+            EventKind::Vote(vote) => vote.height,
         }
     }
 
@@ -261,14 +261,14 @@ mod tests {
 
         // Create a sample proposal
         let block_info = BlockInfo {
-            block_number: 100,
+            height: 100,
             timestamp: 1234567890,
             builder: Address(Felt::from_hex_str("0x456").unwrap()),
             l1_da_mode: L1DataAvailabilityMode::Calldata,
             l2_gas_price_fri: 1000,
             l1_gas_price_wei: 2000,
             l1_data_gas_price_wei: 3000,
-            eth_to_strk_rate: 4000,
+            eth_to_fri_rate: 4000,
         };
         let proposal = ProposalPart::BlockInfo(block_info);
 
@@ -301,14 +301,14 @@ mod tests {
 
         // Create a sample proposal
         let block_info = BlockInfo {
-            block_number: 100,
+            height: 100,
             timestamp: 1234567890,
             builder: Address(Felt::from_hex_str("0x456").unwrap()),
             l1_da_mode: L1DataAvailabilityMode::Calldata,
             l2_gas_price_fri: 1000,
             l1_gas_price_wei: 2000,
             l1_data_gas_price_wei: 3000,
-            eth_to_strk_rate: 4000,
+            eth_to_fri_rate: 4000,
         };
         let proposal = ProposalPart::BlockInfo(block_info);
 
@@ -490,21 +490,21 @@ mod tests {
         let votes = vec![
             Vote {
                 vote_type: VoteType::Prevote,
-                block_number: 100,
+                height: 100,
                 round: 1,
                 proposal_commitment: Some(Hash(Felt::from_hex_str("0x123").unwrap())),
                 voter: Address(Felt::from_hex_str("0x456").unwrap()),
             },
             Vote {
                 vote_type: VoteType::Precommit,
-                block_number: 100,
+                height: 100,
                 round: 1,
                 proposal_commitment: Some(Hash(Felt::from_hex_str("0x789").unwrap())),
                 voter: Address(Felt::from_hex_str("0xabc").unwrap()),
             },
             Vote {
                 vote_type: VoteType::Prevote,
-                block_number: 101,
+                height: 101,
                 round: 2,
                 proposal_commitment: None, // NIL vote
                 voter: Address(Felt::from_hex_str("0xdef").unwrap()),
@@ -580,7 +580,7 @@ mod tests {
 
         // ProposalInit
         stream.push(ProposalPart::Init(ProposalInit {
-            block_number: height,
+            height,
             round,
             proposer: p2p_proto::common::Address(Felt::from_hex_str("0x123").unwrap()),
             valid_round: None,
@@ -588,14 +588,14 @@ mod tests {
 
         // BlockInfo
         stream.push(ProposalPart::BlockInfo(BlockInfo {
-            block_number: height,
+            height,
             timestamp: 1234567890 + base,
             builder: p2p_proto::common::Address(Felt::from_hex_str("0x456").unwrap()),
             l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
             l2_gas_price_fri: 1000 + base as u128,
             l1_gas_price_wei: 2000 + base as u128,
             l1_data_gas_price_wei: 3000 + base as u128,
-            eth_to_strk_rate: 4000 + base as u128,
+            eth_to_fri_rate: 4000 + base as u128,
         }));
 
         // TransactionBatch (send a few)

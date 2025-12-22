@@ -11,28 +11,14 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 use std::vec;
 
 use anyhow::Context;
 use p2p::consensus::HeightAndRound;
-use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
-use p2p_proto::consensus::{
-    ProposalCommitment as ProposalCommitmentProto,
-    ProposalFin,
-    ProposalInit,
-    ProposalPart,
-};
-use pathfinder_common::{
-    BlockId,
-    BlockNumber,
-    ChainId,
-    ConsensusFinalizedL2Block,
-    ContractAddress,
-    ProposalCommitment,
-    StarknetVersion,
-    StateDiffCommitment,
-};
+use p2p_proto::common::{Address, Hash};
+use p2p_proto::consensus::{ProposalFin, ProposalInit, ProposalPart};
+use pathfinder_common::{BlockId, ConsensusFinalizedL2Block, ContractAddress, ProposalCommitment};
 use pathfinder_consensus::{
     Config,
     Consensus,
@@ -51,7 +37,7 @@ use super::fetch_validators::L2ValidatorSetProvider;
 use super::{integration_testing, ConsensusTaskEvent, ConsensusValue, HeightExt, P2PTaskEvent};
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
-use crate::validator::ValidatorBlockInfoStage;
+use crate::consensus::inner::create_empty_block;
 
 #[allow(clippy::too_many_arguments)]
 pub fn spawn(
@@ -143,20 +129,7 @@ pub fn spawn(
                                  {round}",
                             );
 
-                            let main_storage = main_storage.clone();
-                            match util::task::spawn_blocking(move |_| {
-                                create_empty_proposal(
-                                    chain_id,
-                                    height,
-                                    round.into(),
-                                    validator_address,
-                                    main_storage,
-                                )
-                            })
-                            .await
-                            .context("Task join error during proposal creation")
-                            .and_then(|result| result.context("Failed to create empty proposal"))
-                            {
+                            match create_empty_proposal(height, round.into(), validator_address) {
                                 Ok((wire_proposal, finalized_block)) => {
                                     let ProposalFin {
                                         proposal_commitment,
@@ -392,96 +365,37 @@ fn start_height(
 ///
 /// https://github.com/starknet-io/starknet-p2p-specs/blob/main/p2p/proto/consensus/consensus.md#empty-proposals
 pub(crate) fn create_empty_proposal(
-    chain_id: ChainId,
     height: u64,
     round: Round,
     proposer: ContractAddress,
-    main_storage: Storage,
 ) -> anyhow::Result<(Vec<ProposalPart>, ConsensusFinalizedL2Block)> {
     let round = round.as_u32().context(format!(
         "Attempted to create proposal with Nil round at height {height}"
     ))?;
     let proposer = Address(proposer.0);
-    let timestamp = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
     let proposal_init = ProposalInit {
-        block_number: height,
+        height,
         round,
         valid_round: None,
         proposer,
     };
-    let current_block = BlockNumber::new(height).context("Invalid height")?;
-    let parent_proposal_commitment_hash = if let Some(parent_number) = current_block.parent() {
-        let mut db_conn = main_storage
-            .connection()
-            .context("Creating database connection")?;
-        let db_txn = db_conn
-            .transaction()
-            .context("Create database transaction")?;
-        let hash = db_txn
-            .state_diff_commitment(parent_number)?
-            .unwrap_or_default();
-        db_txn.commit()?;
-        hash
-    } else {
-        StateDiffCommitment::ZERO
-    };
-
-    // The only version handled by consensus, so far
-    let starknet_version = StarknetVersion::new(0, 14, 0, 0);
-
-    // Empty proposal is strictly defined in the spec:
-    // https://github.com/starknet-io/starknet-p2p-specs/blob/main/p2p/proto/consensus/consensus.md#empty-proposals
-    let proposal_commitment = ProposalCommitmentProto {
-        block_number: height,
-        parent_commitment: Hash(parent_proposal_commitment_hash.0),
-        builder: proposer,
-        timestamp,
-        protocol_version: starknet_version.to_string(),
-        // TODO required by the spec
-        old_state_root: Default::default(),
-        // TODO required by the spec
-        version_constant_commitment: Default::default(),
-        state_diff_commitment: Hash::ZERO,
-        transaction_commitment: Hash::ZERO,
-        event_commitment: Hash::ZERO,
-        receipt_commitment: Hash::ZERO,
-        // TODO should contain len of version_constant_commitment
-        concatenated_counts: Default::default(),
-        l1_gas_price_fri: 0,
-        l1_data_gas_price_fri: 0,
-        l2_gas_price_fri: 0,
-        l2_gas_used: 0,
-        // TODO keep the value from the last block as per spec
-        next_l2_gas_price_fri: 0,
-        // Equivalent to zero on the wire
-        l1_da_mode: L1DataAvailabilityMode::default(),
-    };
-
-    let block = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())
-        .context("Failed to create validator block info stage")?
-        .verify_proposal_commitment(&proposal_commitment)
-        .context("Failed to verify proposal commitment")?;
-    let proposal_commitment_hash = Hash(block.header.state_diff_commitment.0);
+    let empty_block = create_empty_block(height);
+    let proposal_commitment_hash = Hash(empty_block.header.state_diff_commitment.0);
 
     Ok((
         vec![
             ProposalPart::Init(proposal_init),
-            ProposalPart::ProposalCommitment(proposal_commitment),
             ProposalPart::Fin(ProposalFin {
                 proposal_commitment: proposal_commitment_hash,
             }),
         ],
-        block,
+        empty_block,
     ))
 }
 
 #[cfg(test)]
 mod tests {
     use pathfinder_crypto::Felt;
-    use pathfinder_storage::StorageBuilder;
 
     use super::*;
 
@@ -489,33 +403,24 @@ mod tests {
     /// and finalizes it without requiring an executor.
     #[test]
     fn test_create_empty_proposal() {
-        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
-        let chain_id = ChainId::SEPOLIA_TESTNET;
         let height = 0u64;
         let round = Round::new(0);
         let proposer = ContractAddress::new_or_panic(Felt::from_hex_str("0x1").unwrap());
 
         // Create an empty proposal - this should succeed without an executor
-        let (proposal_parts, finalized_block) =
-            create_empty_proposal(chain_id, height, round, proposer, storage)
-                .expect("create_empty_proposal should succeed for empty proposals");
+        let (proposal_parts, finalized_block) = create_empty_proposal(height, round, proposer)
+            .expect("create_empty_proposal should succeed for empty proposals");
 
         // Verify proposal structure
         assert!(
-            proposal_parts.len() == 3,
-            "Empty proposal should have exactly Init, ProposalCommitment, and Fin"
+            proposal_parts.len() == 2,
+            "Empty proposal should have exactly Init and Fin"
         );
 
         // Verify it starts with Init
         assert!(
             matches!(proposal_parts[0], ProposalPart::Init(_)),
             "First part should be ProposalInit"
-        );
-
-        // Verify it has ProposalCommitment
-        assert!(
-            matches!(proposal_parts[1], ProposalPart::ProposalCommitment(_)),
-            "Second part should be ProposalCommitment"
         );
 
         // Verify it ends with Fin

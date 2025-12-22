@@ -5,16 +5,14 @@ package starknet.consensus.consensus;
 import "proto/common.proto";
 import "proto/transaction.proto";
 
-// WIP - will change
-
 // Contains all variants of mempool and an L1Handler variant to cover all transactions that can be
 // in a new block.
 message ConsensusTransaction {
     oneof txn {
-        starknet.transaction.DeclareV3WithClass declare_v3        = 1;
-        starknet.transaction.DeployAccountV3    deploy_account_v3 = 2;
-        starknet.transaction.InvokeV3           invoke_v3         = 3;
-        starknet.transaction.L1HandlerV0        l1_handler        = 4;
+        starknet.transaction.DeclareV3WithClass declare_v3     = 1;
+        starknet.transaction.DeployAccountV3 deploy_account_v3 = 2;
+        starknet.transaction.InvokeV3 invoke_v3                = 3;
+        starknet.transaction.L1HandlerV0 l1_handler            = 4;
     }
     starknet.common.Hash transaction_hash = 5;
 }
@@ -28,100 +26,67 @@ message Vote {
     // We use a type field to distinguish between prevotes and precommits instead of different
     // messages, to make sure the data, and therefore the signatures, are unambiguous between
     // Prevote and Precommit.
-    VoteType      vote_type           = 1;
-    uint64        block_number        = 2;
-    uint32        round               = 3;
+    VoteType      vote_type           = 2;
+    uint64        height              = 3;
+    uint32        round               = 4;
     // This is optional since a vote can be NIL.
-    optional starknet.common.Hash proposal_commitment = 4;
-    // Identifies the voter.
-    starknet.common.Address       voter               = 5;
+    optional starknet.common.Hash proposal_commitment = 5;
+    starknet.common.Address       voter               = 6;
 }
 
-// Streaming of proposals is done on the "consensus_proposal" topic.
-message ConsensusStreamId {
-    uint64 block_number = 1;
-    uint32 round        = 2;
-    uint64 nonce        = 3;
-}
-
-// Messages which make up a Proposal stream.
-message ProposalPart {
-    oneof messages {
-        ProposalInit       init            = 1;
-        ProposalFin        fin             = 2;
-        BlockInfo          block_info      = 3;
-        TransactionBatch   transactions    = 4;
-        TransactionsFin    transaction_fin = 5;
-        ProposalCommitment commitment      = 6;
+message StreamMessage {
+    oneof message {
+        bytes content = 1;
+        starknet.common.Fin fin       = 2;
     }
+    bytes stream_id   = 3;
+    uint64 message_id = 4;
 }
 
 message ProposalInit {
-    uint64          block_number = 1;
-    uint32          round        = 2;
-    optional uint32 valid_round  = 3;
-    starknet.common.Address         proposer     = 4;
+    uint64 height               = 1;
+    uint32 round                = 2;
+    optional uint32 valid_round = 3;
+    starknet.common.Address proposer            = 4;
 }
 
-// Identifies the content proposed (and executed). Consensus is reached on the value contained here.
-message ProposalFin {
-    starknet.common.Hash proposal_commitment = 1;
+message BlockInfo {
+    uint64 height                     = 1;
+    uint64 timestamp                  = 2;
+    starknet.common.Address builder                   = 3;
+    starknet.common.L1DataAvailabilityMode l1_da_mode = 4;
+    starknet.common.Uint128 l2_gas_price_fri          = 5;
+    starknet.common.Uint128 l1_gas_price_wei          = 6;
+    starknet.common.Uint128 l1_data_gas_price_wei     = 7;
+    // TODO: consider removing and putting all fri prices instead
+    starknet.common.Uint128 eth_to_fri_rate           = 8;
 }
 
 message TransactionBatch {
     repeated ConsensusTransaction transactions = 1;
 }
 
-// Marks the completion of the transaction streaming.
-message TransactionsFin {
-    // Total number of transactions executed in the proposal.
-    uint64 executed_transaction_count = 1;
+message ProposalFin {
+    // Identifies a Starknet block based on the content streamed in the proposal.
+    starknet.common.Hash proposal_commitment = 1;
 }
 
-// The content and stream_id are generic fields. The user of the stream can choose to pass whatever
-// message that they want. The messages are then encoded in bytes.
-message StreamMessage {
+// Network format:
+// 1. First message is ProposalInit
+// 2. Last message is ProposalFin
+//
+// Empty block - no other messages sent.
+//
+// Block with transactions:
+// 3. block_info is sent once
+// 4. transactions is sent repeatedly
+// 5. executed_transaction_count is sent once
+message ProposalPart {
     oneof message {
-        bytes content = 1;
-        starknet.common.Fin   fin     = 2;
+        ProposalInit init                 = 1;
+        ProposalFin fin                   = 2;
+        BlockInfo block_info              = 3;
+        TransactionBatch transactions     = 4;
+        uint64 executed_transaction_count = 5;
     }
-    bytes stream_id        = 3;
-    uint64 sequence_number = 4;
-}
-
-message ProposalCommitment {
-    uint64                 block_number                 = 1;
-    starknet.common.Hash                   parent_commitment            = 2;
-    starknet.common.Address                builder                      = 3;
-    uint64                 timestamp                    = 4;
-    string                 protocol_version             = 5; // Starknet version
-    // State root of block `H-K`, where `K` is defined by the protocol's version.
-    starknet.common.Hash                   old_state_root               = 6;
-    starknet.common.Hash                   version_constant_commitment  = 7;
-    // The state diff commitment returned  by the Starknet Feeder Gateway
-    starknet.common.Hash                   state_diff_commitment        = 8;
-    starknet.common.Hash                   transaction_commitment       = 9;
-    starknet.common.Hash                   event_commitment             = 10;
-    starknet.common.Hash                   receipt_commitment           = 11;
-    // Lets for the 5 preceding commitments.
-    // TODO: Just put the sizes explicitly? This is relatively free compared actually hashing the
-    // lists we commit to. If not, should we also pack other fields?
-    starknet.common.Felt252                concatenated_counts          = 12;
-    starknet.common.Uint128                l1_gas_price_fri             = 13;
-    starknet.common.Uint128                l1_data_gas_price_fri        = 14;
-    starknet.common.Uint128                l2_gas_price_fri             = 15;
-    starknet.common.Uint128                l2_gas_used                  = 16;
-    starknet.common.Uint128                next_l2_gas_price_fri        = 17;
-    starknet.common.L1DataAvailabilityMode l1_da_mode                   = 18;
-}
-
-message BlockInfo {
-    uint64                 block_number          = 1;
-    starknet.common.Address                builder               = 2;
-    uint64                 timestamp             = 3;
-    starknet.common.Uint128                l2_gas_price_fri      = 4;
-    starknet.common.Uint128                l1_gas_price_wei      = 5;
-    starknet.common.Uint128                l1_data_gas_price_wei = 6;
-    starknet.common.Uint128                eth_to_strk_rate      = 7;
-    starknet.common.L1DataAvailabilityMode l1_da_mode            = 8;
 }
