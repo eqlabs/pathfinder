@@ -25,7 +25,7 @@ impl<T: ProtobufSerializable> ProtobufSerializable for StreamMessage<T> {
     fn to_protobuf_bytes(&self) -> Vec<u8> {
         let proto_message = p2p_proto::consensus::StreamMessage {
             stream_id: self.stream_id.into(),
-            sequence_number: self.message_id,
+            message_id: self.message_id,
             message: match &self.message {
                 StreamMessageBody::Content(content) => {
                     p2p_proto::consensus::StreamMessageVariant::Content(content.to_protobuf_bytes())
@@ -49,7 +49,7 @@ impl<T: ProtobufSerializable> ProtobufSerializable for StreamMessage<T> {
 
         Ok(StreamMessage {
             stream_id: proto_message.stream_id.try_into()?,
-            message_id: proto_message.sequence_number,
+            message_id: proto_message.message_id,
             message,
         })
     }
@@ -141,14 +141,14 @@ mod tests {
     fn test_encode_decode() {
         // Create a sample ProposalPart
         let block_info = p2p_proto::consensus::BlockInfo {
-            block_number: 100,
+            height: 100,
             timestamp: 1234567890,
             builder: Address(Felt::from_hex_str("0x456").unwrap()),
             l1_da_mode: L1DataAvailabilityMode::Calldata,
             l2_gas_price_fri: 1000,
             l1_gas_price_wei: 2000,
             l1_data_gas_price_wei: 3000,
-            eth_to_strk_rate: 4000,
+            eth_to_fri_rate: 4000,
         };
         let proposal = p2p_proto::consensus::ProposalPart::BlockInfo(block_info);
 

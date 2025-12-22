@@ -36,12 +36,10 @@ mod test {
     //      - ProposalInit,
     //      - BlockInfo,
     //      - TransactionBatch(/*Non-empty vec of transactions*/),
-    //      - TransactionsFin,
-    //      - ProposalCommitment,
+    //      - ExecutedTransactionCount,
     //      - ProposalFin,
     //   - [x] empty proposals, which follow the spec, ie. no transaction batches:
     //      - ProposalInit,
-    //      - ProposalCommitment,
     //      - ProposalFin,
     // - node set sizes:
     //   - [x] 3 nodes, network stalls if 1 node fails,
@@ -62,11 +60,9 @@ mod test {
     #[case::fail_on_block_info_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::BlockInfoRx }))]
     #[ignore = "TODO Determine why the test fails"]
     #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::TransactionBatchRx }))]
-    #[ignore = "TransactionsFin is not currently present in fake proposals, so this test is the \
-                same as the happy path right now."]
-    #[case::fail_on_transactions_fin_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::TransactionsFinRx }))]
-    #[ignore = "TODO Determine why the test fails"]
-    #[case::fail_on_proposal_commitment_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalCommitmentRx }))]
+    #[ignore = "ExecutedTransactionCount is not currently present in fake proposals, so this test \
+                is the same as the happy path right now."]
+    #[case::fail_on_executed_transaction_count_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ExecutedTransactionCountRx }))]
     #[ignore = "TODO Determine why the test fails"]
     #[case::fail_on_proposal_fin_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalFinRx }))]
     #[case::fail_on_entire_proposal_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::EntireProposalRx }))]

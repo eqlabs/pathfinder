@@ -19,13 +19,12 @@ pub enum ProposalPart {
     Fin(ProposalFin),
     BlockInfo(BlockInfo),
     TransactionBatch(Vec<TransactionWithClass>),
-    TransactionsFin(TransactionsFin),
-    ProposalCommitment(Box<ProposalCommitment>),
+    ExecutedTransactionCount(u64),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ProposalInit {
-    pub block_number: u64,
+    pub height: u64,
     pub round: u32,
     pub valid_round: Option<u32>,
     pub proposer: MinimalFelt,
@@ -33,13 +32,13 @@ pub struct ProposalInit {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct BlockInfo {
-    pub block_number: u64,
+    pub height: u64,
     pub builder: MinimalFelt,
     pub timestamp: u64,
     pub l2_gas_price_fri: u128,
     pub l1_gas_price_wei: u128,
     pub l1_data_gas_price_wei: u128,
-    pub eth_to_strk_rate: u128,
+    pub eth_to_fri_rate: u128,
     pub l1_da_mode: u8,
 }
 
@@ -52,33 +51,6 @@ pub struct ProposalFin {
 pub struct TransactionWithClass {
     pub variant: TransactionVariantWithClass,
     pub hash: MinimalFelt,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct TransactionsFin {
-    pub executed_transaction_count: u64,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ProposalCommitment {
-    pub block_number: u64,
-    pub parent_commitment: MinimalFelt,
-    pub builder: MinimalFelt,
-    pub timestamp: u64,
-    pub protocol_version: String,
-    pub old_state_root: MinimalFelt,
-    pub version_constant_commitment: MinimalFelt,
-    pub state_diff_commitment: MinimalFelt,
-    pub transaction_commitment: MinimalFelt,
-    pub event_commitment: MinimalFelt,
-    pub receipt_commitment: MinimalFelt,
-    pub concatenated_counts: MinimalFelt,
-    pub l1_gas_price_fri: u128,
-    pub l1_data_gas_price_fri: u128,
-    pub l2_gas_price_fri: u128,
-    pub l2_gas_used: u128,
-    pub next_l2_gas_price_fri: u128,
-    pub l1_da_mode: u8,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

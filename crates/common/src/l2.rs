@@ -37,8 +37,7 @@ pub struct L2Block {
 /// differences from an [L2Block] are:
 /// - the state tries have not been updated yet,
 /// - in consequence the block hash could not have been computed yet.
-#[derive(Clone, Debug)]
-
+#[derive(Clone, Debug, Default)]
 pub struct ConsensusFinalizedL2Block {
     pub header: ConsensusFinalizedBlockHeader,
     pub state_update: StateUpdateData,

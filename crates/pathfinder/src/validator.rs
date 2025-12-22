@@ -5,7 +5,6 @@ use std::time::Instant;
 use anyhow::Context;
 use p2p::sync::client::conv::TryFromDto;
 use p2p_proto::class::Cairo1Class;
-use p2p_proto::common::Hash;
 use p2p_proto::consensus::{BlockInfo, ProposalInit, TransactionVariant as ConsensusVariant};
 use p2p_proto::sync::transaction::{DeclareV3WithoutClass, TransactionVariant as SyncVariant};
 use p2p_proto::transaction::DeclareV3WithClass;
@@ -17,20 +16,14 @@ use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     class_definition,
     BlockNumber,
-    BlockTimestamp,
     ChainId,
     ConsensusFinalizedBlockHeader,
     ConsensusFinalizedL2Block,
     EntryPoint,
-    EventCommitment,
-    GasPrice,
     L1DataAvailabilityMode,
     ProposalCommitment,
-    ReceiptCommitment,
     SequencerAddress,
     StarknetVersion,
-    StateDiffCommitment,
-    TransactionCommitment,
     TransactionHash,
 };
 use pathfinder_executor::types::{to_starknet_api_transaction, BlockInfoPriceConverter};
@@ -77,7 +70,7 @@ impl ValidatorBlockInfoStage {
         // TODO(validator) how can we validate the proposal init?
         Ok(ValidatorBlockInfoStage {
             chain_id,
-            proposal_height: BlockNumber::new(proposal_init.block_number)
+            proposal_height: BlockNumber::new(proposal_init.height)
                 .context("ProposalInit height exceeds i64::MAX")
                 .map_err(ProposalHandlingError::recoverable)?,
         })
@@ -90,7 +83,7 @@ impl ValidatorBlockInfoStage {
     ) -> Result<ValidatorTransactionBatchStage<E>, ProposalHandlingError> {
         let _span = tracing::debug_span!(
             "Validator::validate_block_info",
-            height = %block_info.block_number,
+            height = %block_info.height,
             timestamp = %block_info.timestamp,
             builder = %block_info.builder.0,
         )
@@ -101,28 +94,28 @@ impl ValidatorBlockInfoStage {
             proposal_height,
         } = self;
 
-        if proposal_height != block_info.block_number {
+        if proposal_height != block_info.height {
             return Err(ProposalHandlingError::recoverable_msg(format!(
                 "ProposalInit height does not match BlockInfo height: {} != {}",
-                proposal_height, block_info.block_number,
+                proposal_height, block_info.height,
             )));
         }
 
         // TODO(validator) validate block info (timestamp, gas prices)
 
         let BlockInfo {
-            block_number,
+            height,
             timestamp,
             builder,
             l1_da_mode,
             l2_gas_price_fri,
             l1_gas_price_wei,
             l1_data_gas_price_wei,
-            eth_to_strk_rate,
+            eth_to_fri_rate,
         } = block_info;
 
         let block_info = pathfinder_executor::types::BlockInfo::try_from_proposal(
-            block_number,
+            height,
             timestamp,
             SequencerAddress(builder.0),
             match l1_da_mode {
@@ -135,7 +128,7 @@ impl ValidatorBlockInfoStage {
                 l2_gas_price_fri,
                 l1_gas_price_wei,
                 l1_data_gas_price_wei,
-                eth_to_strk_rate,
+                eth_to_fri_rate,
             ),
             StarknetVersion::new(0, 14, 0, 0), /* TODO(validator) should probably come from
                                                 * somewhere... */
@@ -146,7 +139,6 @@ impl ValidatorBlockInfoStage {
         Ok(ValidatorTransactionBatchStage {
             chain_id,
             block_info,
-            expected_block_header: None,
             transactions: Vec::new(),
             receipts: Vec::new(),
             events: Vec::new(),
@@ -157,119 +149,12 @@ impl ValidatorBlockInfoStage {
             main_storage,
         })
     }
-
-    pub fn verify_proposal_commitment(
-        self,
-        proposal_commitment: &p2p_proto::consensus::ProposalCommitment,
-    ) -> Result<ConsensusFinalizedL2Block, ProposalHandlingError> {
-        if proposal_commitment.state_diff_commitment != Hash::ZERO {
-            return Err(ProposalHandlingError::recoverable_msg(format!(
-                "Empty proposal commitment should have zero state_diff_commitment, got: {}",
-                proposal_commitment.state_diff_commitment
-            )));
-        }
-
-        if proposal_commitment.transaction_commitment != Hash::ZERO {
-            return Err(ProposalHandlingError::recoverable_msg(format!(
-                "Empty proposal commitment should have zero transaction_commitment, got: {}",
-                proposal_commitment.transaction_commitment
-            )));
-        }
-
-        if proposal_commitment.event_commitment != Hash::ZERO {
-            return Err(ProposalHandlingError::recoverable_msg(format!(
-                "Empty proposal commitment should have zero event_commitment, got: {}",
-                proposal_commitment.event_commitment
-            )));
-        }
-
-        if proposal_commitment.receipt_commitment != Hash::ZERO {
-            return Err(ProposalHandlingError::recoverable_msg(format!(
-                "Empty proposal commitment should have zero receipt_commitment, got: {}",
-                proposal_commitment.receipt_commitment
-            )));
-        }
-
-        if proposal_commitment.l1_gas_price_fri != 0 {
-            return Err(ProposalHandlingError::recoverable_msg(format!(
-                "Empty proposal commitment should have zero l1_gas_price_fri, got: {}",
-                proposal_commitment.l1_gas_price_fri
-            )));
-        }
-
-        if proposal_commitment.l1_data_gas_price_fri != 0 {
-            return Err(ProposalHandlingError::recoverable_msg(format!(
-                "Empty proposal commitment should have zero l1_data_gas_price_fri, got: {}",
-                proposal_commitment.l1_data_gas_price_fri
-            )));
-        }
-
-        if proposal_commitment.l2_gas_price_fri != 0 {
-            return Err(ProposalHandlingError::recoverable_msg(format!(
-                "Empty proposal commitment should have zero l2_gas_price_fri, got: {}",
-                proposal_commitment.l2_gas_price_fri
-            )));
-        }
-
-        if proposal_commitment.l2_gas_used != 0 {
-            return Err(ProposalHandlingError::recoverable_msg(format!(
-                "Empty proposal commitment should have zero l2_gas_used, got: {}",
-                proposal_commitment.l2_gas_used
-            )));
-        }
-
-        if proposal_commitment.l1_da_mode != p2p_proto::common::L1DataAvailabilityMode::Calldata {
-            return Err(ProposalHandlingError::recoverable_msg(format!(
-                "Empty proposal commitment should have Calldata l1_da_mode, got: {:?}",
-                proposal_commitment.l1_da_mode
-            )));
-        }
-
-        // TODO check parent_commitment
-        // TODO check builder
-        // TODO check old_state_root
-        // TODO check version_constant_commitment
-        // TODO check concatenated_counts
-        // TODO check next_l2_gas_price_fri vs prev block
-
-        Ok(ConsensusFinalizedL2Block {
-            header: ConsensusFinalizedBlockHeader {
-                number: BlockNumber::new(proposal_commitment.block_number)
-                    .context("ProposalCommitment block number exceeds i64::MAX")
-                    .map_err(ProposalHandlingError::recoverable)?,
-                timestamp: BlockTimestamp::new(proposal_commitment.timestamp)
-                    .context("ProposalCommitment timestamp exceeds i64::MAX")
-                    .map_err(ProposalHandlingError::recoverable)?,
-                eth_l1_gas_price: GasPrice::ZERO,
-                strk_l1_gas_price: GasPrice::ZERO,
-                eth_l1_data_gas_price: GasPrice::ZERO,
-                strk_l1_data_gas_price: GasPrice::ZERO,
-                eth_l2_gas_price: GasPrice::ZERO,
-                strk_l2_gas_price: GasPrice::ZERO,
-                sequencer_address: SequencerAddress(proposal_commitment.builder.0),
-                starknet_version: StarknetVersion::from_str(&proposal_commitment.protocol_version)
-                    .map_err(ProposalHandlingError::recoverable)?,
-                event_commitment: EventCommitment::ZERO,
-                transaction_commitment: TransactionCommitment::ZERO,
-                transaction_count: 0,
-                event_count: 0,
-                l1_da_mode: L1DataAvailabilityMode::Calldata,
-                receipt_commitment: ReceiptCommitment::ZERO,
-                state_diff_commitment: StateDiffCommitment::ZERO,
-                state_diff_length: 0,
-            },
-            state_update: StateUpdateData::default(),
-            transactions_and_receipts: Vec::new(),
-            events: Vec::new(),
-        })
-    }
 }
 
 /// Executes transactions and manages the block execution state.
 pub struct ValidatorTransactionBatchStage<E> {
     chain_id: ChainId,
     block_info: pathfinder_executor::types::BlockInfo,
-    expected_block_header: Option<ConsensusFinalizedBlockHeader>,
     transactions: Vec<Transaction>,
     receipts: Vec<Receipt>,
     events: Vec<Vec<Event>>,
@@ -296,7 +181,6 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
         Ok(ValidatorTransactionBatchStage {
             chain_id,
             block_info,
-            expected_block_header: None,
             transactions: Vec::new(),
             receipts: Vec::new(),
             events: Vec::new(),
@@ -306,10 +190,6 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
             batch_p2p_transactions: Vec::new(),
             main_storage,
         })
-    }
-
-    pub fn has_proposal_commitment(&self) -> bool {
-        self.expected_block_header.is_some()
     }
 
     /// Get the current number of executed transactions
@@ -686,50 +566,6 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
         Ok(())
     }
 
-    // TODO we should probably introduce another stage because we expect exactly one
-    // proposal commitment per proposal and the API allows calling this multiple
-    // times
-    pub fn record_proposal_commitment(
-        &mut self,
-        proposal_commitment: &p2p_proto::consensus::ProposalCommitment,
-    ) -> Result<(), ProposalHandlingError> {
-        let expected_block_header = ConsensusFinalizedBlockHeader {
-            number: BlockNumber::new(proposal_commitment.block_number)
-                .context("ProposalCommitment block number exceeds i64::MAX")
-                .map_err(ProposalHandlingError::recoverable)?,
-            timestamp: BlockTimestamp::new(proposal_commitment.timestamp)
-                .context("ProposalCommitment timestamp exceeds i64::MAX")
-                .map_err(ProposalHandlingError::recoverable)?,
-            // TODO prices should be validated against proposal_commitment values
-            eth_l1_gas_price: self.block_info.eth_l1_gas_price,
-            strk_l1_gas_price: self.block_info.strk_l1_gas_price,
-            eth_l1_data_gas_price: self.block_info.eth_l1_data_gas_price,
-            strk_l1_data_gas_price: self.block_info.strk_l1_data_gas_price,
-            eth_l2_gas_price: self.block_info.eth_l2_gas_price,
-            strk_l2_gas_price: self.block_info.strk_l2_gas_price,
-            sequencer_address: SequencerAddress(proposal_commitment.builder.0),
-            starknet_version: StarknetVersion::from_str(&proposal_commitment.protocol_version)
-                .map_err(ProposalHandlingError::recoverable)?,
-            event_commitment: EventCommitment(proposal_commitment.event_commitment.0),
-            transaction_commitment: TransactionCommitment(
-                proposal_commitment.transaction_commitment.0,
-            ),
-            transaction_count: 0, // TODO validate concatenated_counts
-            event_count: 0,       // TODO validate concatenated_counts
-            l1_da_mode: match proposal_commitment.l1_da_mode {
-                p2p_proto::common::L1DataAvailabilityMode::Blob => L1DataAvailabilityMode::Blob,
-                p2p_proto::common::L1DataAvailabilityMode::Calldata => {
-                    L1DataAvailabilityMode::Calldata
-                }
-            },
-            receipt_commitment: ReceiptCommitment(proposal_commitment.receipt_commitment.0),
-            state_diff_commitment: StateDiffCommitment(proposal_commitment.state_diff_commitment.0),
-            state_diff_length: 0, // TODO validate concatenated_counts
-        };
-        self.expected_block_header = Some(expected_block_header);
-        Ok(())
-    }
-
     /// Finalizes the block, producing a header with all commitments except
     /// the state commitment and block hash, which are computed in the sync task
     /// just before the block is committed into main storage. Also verifies that
@@ -766,7 +602,6 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
     ) -> Result<ConsensusFinalizedL2Block, ProposalHandlingError> {
         let Self {
             block_info,
-            expected_block_header,
             executor,
             transactions,
             receipts,
@@ -836,29 +671,6 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
             self.block_info.number,
             start.elapsed().as_millis()
         );
-
-        if let Some(expected_header) = expected_block_header {
-            // Skip header validation in tests when using dummy commitments (all zeros)
-            // This allows e2e tests to focus on batch execution logic without commitment
-            // complexity
-            #[cfg(test)]
-            if expected_header.state_diff_commitment.0.is_zero()
-                && expected_header.transaction_commitment.0.is_zero()
-                && expected_header.receipt_commitment.0.is_zero()
-            {
-                // Skip validation for dummy commitments in tests
-            } else if header != expected_header {
-                return Err(ProposalHandlingError::recoverable_msg(format!(
-                    "expected {expected_header:?}, actual {header:?}"
-                )));
-            }
-            #[cfg(not(test))]
-            if header != expected_header {
-                return Err(ProposalHandlingError::recoverable_msg(format!(
-                    "expected {expected_header:?}, actual {header:?}"
-                )));
-            }
-        }
 
         Ok(ConsensusFinalizedL2Block {
             header,
@@ -1518,7 +1330,7 @@ mod tests {
 
         // Create a proposal init for height 0
         let proposal_init = p2p_proto::consensus::ProposalInit {
-            block_number: 0,
+            height: 0,
             round: 0,
             valid_round: None,
             proposer: p2p_proto::common::Address(Felt::from_hex_str("0x1").unwrap()),
@@ -1526,14 +1338,14 @@ mod tests {
 
         // Create block info
         let block_info = p2p_proto::consensus::BlockInfo {
-            block_number: 0,
+            height: 0,
             timestamp: 1000,
             builder: p2p_proto::common::Address(Felt::from_hex_str("0x1").unwrap()),
             l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
             l2_gas_price_fri: 1,
             l1_gas_price_wei: 1_000_000_000,
             l1_data_gas_price_wei: 1,
-            eth_to_strk_rate: 1_000_000_000,
+            eth_to_fri_rate: 1_000_000_000,
         };
 
         // Create validator stages (empty proposal path)

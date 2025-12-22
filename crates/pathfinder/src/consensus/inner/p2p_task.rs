@@ -51,6 +51,7 @@ use crate::consensus::inner::batch_execution::{
     DeferredExecution,
     ProposalCommitmentWithOrigin,
 };
+use crate::consensus::inner::create_empty_block;
 use crate::consensus::{ProposalError, ProposalHandlingError};
 use crate::validator::{
     ProdTransactionMapper,
@@ -109,8 +110,8 @@ pub fn spawn(
     // Contains transaction batches and proposal finalizations that are
     // waiting for previous block to be committed before they can be executed.
     let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
-    // Manages batch execution with checkpoint-based rollback for TransactionsFin
-    // support
+    // Manages batch execution with checkpoint-based rollback for
+    // ExecutedTransactionCount support
     let mut batch_execution_manager = BatchExecutionManager::new();
     // Keep track of whether we've already emitted a warning about the
     // event channel size exceeding the limit, to avoid spamming the logs.
@@ -812,18 +813,18 @@ fn execute_deferred_for_next_height<E: BlockExecutorExt, T: TransactionExt>(
                 )?;
             }
 
-            // Process deferred TransactionsFin
-            if let Some(transactions_fin) = deferred.transactions_fin {
+            // Process deferred ExecutedTransactionCount
+            if let Some(executed_transaction_count) = deferred.executed_transaction_count {
                 tracing::debug!(
-                    "🖧  ⚙️ processing deferred TransactionsFin for height and round {hnr}"
+                    "🖧  ⚙️ processing deferred ExecutedTransactionCount for height and round {hnr}"
                 );
                 // Execution has started at this point (from execute_batch above, if
                 // transactions were non-empty). If transactions were empty,
                 // execute_batch handles marking execution as started, so we can
-                // process TransactionsFin immediately.
-                batch_execution_manager.process_transactions_fin::<E, T>(
+                // process ExecutedTransactionCount immediately.
+                batch_execution_manager.process_executed_transaction_count::<E, T>(
                     hnr,
-                    transactions_fin,
+                    executed_transaction_count,
                     &mut validator,
                 )?;
             }
@@ -931,10 +932,8 @@ async fn send_proposal_to_consensus(
 ///
 /// We always enforce the following order of proposal parts:
 /// 1. Proposal Init
-/// 2. Block Info for non-empty proposals (or Proposal Commitment for empty
-///    proposals)
-/// 3. In random order: at least one Transaction Batch, Proposal Commitment,
-///    Transactions Fin
+/// 2. Block Info for non-empty proposals (or Proposal Fin for empty proposals)
+/// 3. In random order: at least one Transaction Batch, ExecutedTransactionCount
 /// 4. Proposal Fin
 ///
 /// The [spec](https://github.com/starknet-io/starknet-p2p-specs/blob/main/p2p/proto/consensus/consensus.md#order-of-messages) is more restrictive.
@@ -952,7 +951,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
     data_directory: &Path,
     inject_failure_config: Option<InjectFailureConfig>,
 ) -> Result<Option<ProposalCommitmentWithOrigin>, ProposalHandlingError> {
-    let mut parts = proposals_db
+    let mut parts_for_height_and_round = proposals_db
         .foreign_parts(
             height_and_round.height(),
             height_and_round.round(),
@@ -960,12 +959,9 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
         )?
         .unwrap_or_default();
 
-    let has_txns_fin = parts
+    let has_executed_txn_count = parts_for_height_and_round
         .iter()
-        .any(|part| matches!(part, ProposalPart::TransactionsFin(_)));
-    let has_commitment = parts
-        .iter()
-        .any(|part| matches!(part, ProposalPart::ProposalCommitment(_)));
+        .any(|part| matches!(part, ProposalPart::ExecutedTransactionCount(_)));
 
     // Does nothing in production builds.
     integration_testing::debug_fail_on_proposal_part(
@@ -977,33 +973,33 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
 
     match proposal_part {
         ProposalPart::Init(ref prop_init) => {
-            if !parts.is_empty() {
+            if !parts_for_height_and_round.is_empty() {
                 return Err(ProposalHandlingError::Recoverable(
                     ProposalError::UnexpectedProposalPart {
                         message: format!(
                             "Unexpected proposal Init for height and round {} at position {}",
                             height_and_round,
-                            parts.len()
+                            parts_for_height_and_round.len()
                         ),
                     },
                 ));
             }
+
             // If this is a valid proposal, then this may be an empty proposal:
             // - [x] Proposal Init
-            // - [ ] Proposal Commitment
             // - [ ] Proposal Fin
             // or the first part of a non-empty proposal:
             // - [x] Proposal Init
             // - [ ] Block Info
             // (...)
             let proposal_init = prop_init.clone();
-            parts.push(proposal_part);
+            parts_for_height_and_round.push(proposal_part);
             let proposer_address = ContractAddress(proposal_init.proposer.0);
             let updated = proposals_db.persist_parts(
                 height_and_round.height(),
                 height_and_round.round(),
                 &proposer_address,
-                &parts,
+                &parts_for_height_and_round,
             )?;
             assert!(!updated);
             let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init)?;
@@ -1011,17 +1007,18 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
             Ok(None)
         }
         ProposalPart::BlockInfo(ref block_info) => {
-            if parts.len() != 1 {
+            if parts_for_height_and_round.len() != 1 {
                 return Err(ProposalHandlingError::Recoverable(
                     ProposalError::UnexpectedProposalPart {
                         message: format!(
                             "Unexpected proposal BlockInfo for height and round {} at position {}",
                             height_and_round,
-                            parts.len()
+                            parts_for_height_and_round.len()
                         ),
                     },
                 ));
             }
+
             // Looks like a non-empty proposal:
             // - [x] Proposal Init
             // - [x] Block Info
@@ -1033,7 +1030,12 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                 .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
 
             let block_info = block_info.clone();
-            append_and_persist_part(height_and_round, proposal_part, proposals_db, &mut parts)?;
+            append_and_persist_part(
+                height_and_round,
+                proposal_part,
+                proposals_db,
+                &mut parts_for_height_and_round,
+            )?;
 
             let new_validator =
                 validator.validate_consensus_block_info(block_info, main_readonly_storage)?;
@@ -1045,14 +1047,14 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
         }
         ProposalPart::TransactionBatch(ref tx_batch) => {
             // TODO check if there is a length limit for the batch at network level
-            if parts.len() < 2 {
+            if parts_for_height_and_round.len() < 2 {
                 return Err(ProposalHandlingError::Recoverable(
                     ProposalError::UnexpectedProposalPart {
                         message: format!(
                             "Unexpected proposal TransactionBatch for height and round {} at \
                              position {}",
                             height_and_round,
-                            parts.len()
+                            parts_for_height_and_round.len()
                         ),
                     },
                 ));
@@ -1065,18 +1067,18 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                             "Received empty TransactionBatch for height and round {} at position \
                              {}",
                             height_and_round,
-                            parts.len()
+                            parts_for_height_and_round.len()
                         ),
                     },
                 ));
             }
+
             // Looks like a non-empty proposal:
             // - [x] Proposal Init
             // - [x] Block Info
             // - [ ] in any order:
             //      - [x] at least one Transaction Batch
-            //      - [?] Transactions Fin
-            //      - [?] Proposal Commitment
+            //      - [?] Executed Transaction Count
             // - [ ] Proposal Fin
             tracing::debug!(
                 "🖧  ⚙️ executing transaction batch for height and round {height_and_round}..."
@@ -1089,7 +1091,12 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                 .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
 
             let tx_batch = tx_batch.clone();
-            append_and_persist_part(height_and_round, proposal_part, proposals_db, &mut parts)?;
+            append_and_persist_part(
+                height_and_round,
+                proposal_part,
+                proposals_db,
+                &mut parts_for_height_and_round,
+            )?;
 
             let mut main_db_conn = main_readonly_storage.connection()?;
             let main_db_tx = main_db_conn.transaction()?;
@@ -1110,84 +1117,6 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
 
             Ok(None)
         }
-        ProposalPart::ProposalCommitment(ref proposal_commitment) => {
-            match parts.len() {
-                1 => {
-                    // Looks like this could be an empty proposal:
-                    // - [x] Proposal Init
-                    // - [x] Proposal Commitment
-                    // - [ ] Proposal Fin
-                    append_and_persist_part(
-                        height_and_round,
-                        proposal_part.clone(),
-                        proposals_db,
-                        &mut parts,
-                    )?;
-
-                    let validator_stage = validator_cache.remove(&height_and_round)?;
-                    let validator = validator_stage
-                        .try_into_block_info_stage()
-                        .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
-                    let block = validator.verify_proposal_commitment(proposal_commitment)?;
-
-                    proposals_db.persist_consensus_finalized_block(
-                        height_and_round.height(),
-                        height_and_round.round(),
-                        block,
-                    )?;
-                    Ok(None)
-                }
-                2.. => {
-                    if has_commitment {
-                        return Err(ProposalHandlingError::Recoverable(
-                            ProposalError::UnexpectedProposalPart {
-                                message: format!(
-                                    "Duplicate ProposalCommitment for height and round \
-                                     {height_and_round}",
-                                ),
-                            },
-                        ));
-                    }
-
-                    // Looks like a non-empty proposal:
-                    // - [x] Proposal Init
-                    // - [x] Block Info
-                    // - [ ] in any order:
-                    //      - [?] at least one Transaction Batch
-                    //      - [?] Transactions Fin
-                    //      - [x] Proposal Commitment
-                    // - [ ] Proposal Fin
-                    append_and_persist_part(
-                        height_and_round,
-                        proposal_part.clone(),
-                        proposals_db,
-                        &mut parts,
-                    )?;
-
-                    let validator_stage = validator_cache.remove(&height_and_round)?;
-                    let mut validator = validator_stage
-                        .try_into_transaction_batch_stage()
-                        .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
-
-                    validator.record_proposal_commitment(proposal_commitment)?;
-                    validator_cache.insert(
-                        height_and_round,
-                        ValidatorStage::TransactionBatch(validator),
-                    );
-                    Ok(None)
-                }
-                _ => Err(ProposalHandlingError::Recoverable(
-                    ProposalError::UnexpectedProposalPart {
-                        message: format!(
-                            "Unexpected proposal ProposalCommitment for height and round {} at \
-                             position {}",
-                            height_and_round,
-                            parts.len()
-                        ),
-                    },
-                )),
-            }
-        }
         ProposalPart::Fin(ProposalFin {
             proposal_commitment,
         }) => {
@@ -1195,24 +1124,30 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                 "🖧  ⚙️ finalizing consensus for height and round {height_and_round}..."
             );
 
-            match parts.len() {
-                2 if parts
-                    .get(1)
+            match parts_for_height_and_round.len() {
+                1 if parts_for_height_and_round
+                    .first()
                     .expect("part 1 to exist")
-                    .is_proposal_commitment() =>
+                    .is_proposal_init() =>
                 {
                     // Looks like an empty proposal:
                     // - [x] Proposal Init
-                    // - [x] Proposal Commitment
                     // - [x] Proposal Fin
+                    proposals_db.persist_consensus_finalized_block(
+                        height_and_round.height(),
+                        height_and_round.round(),
+                        create_empty_block(height_and_round.height()),
+                    )?;
+
                     let proposer_address = append_and_persist_part(
                         height_and_round,
                         proposal_part,
                         proposals_db,
-                        &mut parts,
+                        &mut parts_for_height_and_round,
                     )?;
 
-                    let valid_round = valid_round_from_parts(&parts, &height_and_round)?;
+                    let valid_round =
+                        valid_round_from_parts(&parts_for_height_and_round, &height_and_round)?;
                     let proposal_commitment = Some(ProposalCommitmentWithOrigin {
                         proposal_commitment: ProposalCommitment(proposal_commitment.0),
                         proposer_address,
@@ -1223,39 +1158,32 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                     // block finalization
                     Ok(proposal_commitment)
                 }
-                5.. if parts.get(1).expect("part 1 to exist").is_block_info() => {
+                4.. if parts_for_height_and_round
+                    .get(1)
+                    .expect("part 1 to exist")
+                    .is_block_info() =>
+                {
                     // Looks like a non-empty proposal:
                     // - [x] Proposal Init
                     // - [x] Block Info
                     // - [ ] in any order:
                     //      - [?] at least one Transaction Batch
                     //      - [?] Transactions Fin
-                    //      - [?] Proposal Commitment
                     // - [x] Proposal Fin
                     let validator_stage = validator_cache.remove(&height_and_round)?;
                     let validator = validator_stage
                         .try_into_transaction_batch_stage()
                         .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
 
-                    if !validator.has_proposal_commitment() {
-                        return Err(ProposalHandlingError::Recoverable(
-                            ProposalError::UnexpectedProposalPart {
-                                message: format!(
-                                    "Transaction batch missing proposal commitment for height and \
-                                     round {height_and_round}"
-                                ),
-                            },
-                        ));
-                    }
-
                     let proposer_address = append_and_persist_part(
                         height_and_round,
                         proposal_part,
                         proposals_db,
-                        &mut parts,
+                        &mut parts_for_height_and_round,
                     )?;
 
-                    let valid_round = valid_round_from_parts(&parts, &height_and_round)?;
+                    let valid_round =
+                        valid_round_from_parts(&parts_for_height_and_round, &height_and_round)?;
                     let mut main_db_conn = main_readonly_storage.connection()?;
                     let main_db_tx = main_db_conn.transaction()?;
                     let proposal_commitment = defer_or_execute_proposal_fin::<E, T>(
@@ -1282,35 +1210,40 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                             "Unexpected proposal ProposalFin for height and round {} at position \
                              {}",
                             height_and_round,
-                            parts.len()
+                            parts_for_height_and_round.len()
                         ),
                     },
                 )),
             }
         }
-        ProposalPart::TransactionsFin(ref transactions_fin) => {
+        ProposalPart::ExecutedTransactionCount(executed_txn_count) => {
             tracing::debug!(
-                "🖧  ⚙️ handling TransactionsFin for height and round {height_and_round}..."
+                "🖧  ⚙️ handling ExecutedTransactionCount for height and round \
+                 {height_and_round}..."
             );
 
-            if !parts.get(1).map(|p| p.is_block_info()).unwrap_or_default() {
+            if !parts_for_height_and_round
+                .get(1)
+                .is_some_and(|p| p.is_block_info())
+            {
                 return Err(ProposalHandlingError::Recoverable(
                     ProposalError::UnexpectedProposalPart {
                         message: format!(
-                            "Unexpected proposal TransactionsFin for height and round {} at \
-                             position {}",
+                            "Unexpected proposal ExecutedTransactionCount for height and round {} \
+                             at position {}",
                             height_and_round,
-                            parts.len()
+                            parts_for_height_and_round.len()
                         ),
                     },
                 ));
             }
 
-            if has_txns_fin {
+            if has_executed_txn_count {
                 return Err(ProposalHandlingError::Recoverable(
                     ProposalError::UnexpectedProposalPart {
                         message: format!(
-                            "Duplicate TransactionsFin for height and round {height_and_round}",
+                            "Duplicate ExecutedTransactionCount for height and round \
+                             {height_and_round}",
                         ),
                     },
                 ));
@@ -1320,14 +1253,13 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
             // - [x] Block Info
             // - [ ] in any order:
             //      - [?] at least one Transaction Batch
-            //      - [x] Transactions Fin
-            //      - [?] Proposal Commitment
+            //      - [x] Executed Transaction Count
             // - [ ] Proposal Fin
             append_and_persist_part(
                 height_and_round,
                 proposal_part.clone(),
                 proposals_db,
-                &mut parts,
+                &mut parts_for_height_and_round,
             )?;
 
             let validator_stage = validator_cache.remove(&height_and_round)?;
@@ -1339,42 +1271,42 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
             let execution_started = batch_execution_manager.is_executing(&height_and_round);
 
             if !execution_started {
-                // Execution hasn't started - store TransactionsFin for later processing
-                // This can happen if:
+                // Execution hasn't started - store ExecutedTransactionCount for later
+                // processing This can happen if:
                 // 1. Transactions are deferred (deferred entry already exists)
-                // 2. TransactionsFin arrives before execution starts (need to create deferred
-                //    entry)
-                // Note: With message ordering guarantees, TransactionsFin should always arrive
-                // after all TransactionBatches, but execution may not have started yet if
-                // batches were deferred.
+                // 2. ExecutedTransactionCount arrives before execution starts (need to create
+                //    deferred entry)
+                // Note: With message ordering guarantees, ExecutedTransactionCount should
+                // always arrive after all TransactionBatches, but execution may not have
+                // started yet if batches were deferred.
                 let mut dex = deferred_executions.lock().unwrap();
 
                 let deferred = dex.entry(height_and_round).or_default();
-                deferred.transactions_fin = Some(*transactions_fin);
+                deferred.executed_transaction_count = Some(executed_txn_count);
                 tracing::debug!(
-                    "TransactionsFin for {height_and_round} is deferred - storing for later \
-                     processing (execution not started yet)"
+                    "ExecutedTransactionCount for {height_and_round} is deferred - storing for \
+                     later processing (execution not started yet)"
                 );
             } else {
-                // Execution has started - process TransactionsFin immediately
-                batch_execution_manager.process_transactions_fin::<E, T>(
+                // Execution has started - process ExecutedTransactionCount immediately
+                batch_execution_manager.process_executed_transaction_count::<E, T>(
                     height_and_round,
-                    *transactions_fin,
+                    executed_txn_count,
                     &mut validator,
                 )?;
 
-                // After processing TransactionsFin, check if ProposalFin was deferred
+                // After processing ExecutedTransactionCount, check if ProposalFin was deferred
                 // and should now be finalized
                 let mut dex = deferred_executions.lock().unwrap();
                 if let Some(deferred) = dex.get_mut(&height_and_round) {
                     if let Some(deferred_commitment) = deferred.commitment.take() {
                         drop(dex);
-                        // TransactionsFin is now processed, we can finalize the proposal
+                        // ExecutedTransactionCount is now processed, we can finalize the proposal
                         let block = validator
                             .consensus_finalize(deferred_commitment.proposal_commitment)?;
                         tracing::debug!(
                             "🖧  ⚙️ finalizing deferred ProposalFin for height and round \
-                             {height_and_round} after TransactionsFin was processed"
+                             {height_and_round} after ExecutedTransactionCount was processed"
                         );
 
                         proposals_db.persist_consensus_finalized_block(
@@ -1476,17 +1408,17 @@ fn defer_or_execute_proposal_fin<E: BlockExecutorExt, T: TransactionExt>(
                 )?;
             }
 
-            // Process deferred TransactionsFin if it was stored
-            if let Some(transactions_fin) = deferred.transactions_fin {
+            // Process deferred ExecutedTransactionCount if it was stored
+            if let Some(executed_transaction_count) = deferred.executed_transaction_count {
                 tracing::debug!(
-                    "🖧  ⚙️ processing deferred TransactionsFin for height and round \
+                    "🖧  ⚙️ processing deferred ExecutedTransactionCount for height and round \
                      {height_and_round}"
                 );
                 // Execution has started at this point (from execute_batch),
-                // so we can process TransactionsFin immediately
-                batch_execution_manager.process_transactions_fin::<E, T>(
+                // so we can process ExecutedTransactionCount immediately
+                batch_execution_manager.process_executed_transaction_count::<E, T>(
                     height_and_round,
-                    transactions_fin,
+                    executed_transaction_count,
                     &mut validator,
                 )?;
             }
@@ -1515,12 +1447,13 @@ fn defer_or_execute_proposal_fin<E: BlockExecutorExt, T: TransactionExt>(
             }
         }
 
-        // Check if execution has started but TransactionsFin hasn't been processed yet
-        // If so, defer ProposalFin until TransactionsFin arrives
+        // Check if execution has started but ExecutedTransactionCount hasn't been
+        // processed yet If so, defer ProposalFin until ExecutedTransactionCount
+        // arrives
         if batch_execution_manager.should_defer_proposal_fin(&height_and_round) {
             tracing::debug!(
                 "🖧  ⚙️ consensus finalize for height and round {height_and_round} is deferred \
-                 because TransactionsFin hasn't been processed yet"
+                 because ExecutedTransactionCount hasn't been processed yet"
             );
 
             let mut deferred_executions = deferred_executions.lock().unwrap();
@@ -1561,7 +1494,7 @@ fn p2p_vote_to_consensus_vote(
             p2p_proto::consensus::VoteType::Prevote => pathfinder_consensus::VoteType::Prevote,
             p2p_proto::consensus::VoteType::Precommit => pathfinder_consensus::VoteType::Precommit,
         },
-        height: vote.block_number,
+        height: vote.height,
         round: vote.round.into(),
         value: vote
             .proposal_commitment
@@ -1579,7 +1512,7 @@ fn consensus_vote_to_p2p_vote(
             pathfinder_consensus::VoteType::Prevote => p2p_proto::consensus::VoteType::Prevote,
             pathfinder_consensus::VoteType::Precommit => p2p_proto::consensus::VoteType::Precommit,
         },
-        block_number: vote.height,
+        height: vote.height,
         round: vote.round.as_u32().expect("Round not to be Nil"),
         proposal_commitment: vote.value.map(|v| Hash(v.0 .0)),
         voter: Address(vote.validator_address.0),

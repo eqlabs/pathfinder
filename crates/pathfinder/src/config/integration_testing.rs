@@ -16,11 +16,10 @@ pub use enabled::*;
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum InjectFailureTrigger {
     ProposalInitRx,
+    ProposalFinRx,
     BlockInfoRx,
     TransactionBatchRx,
-    TransactionsFinRx,
-    ProposalCommitmentRx,
-    ProposalFinRx,
+    ExecutedTransactionCountRx,
     EntireProposalRx,
     EntireProposalPersisted,
     PrevoteRx,
@@ -34,11 +33,10 @@ impl InjectFailureTrigger {
     pub fn as_str(&self) -> &'static str {
         match self {
             InjectFailureTrigger::ProposalInitRx => "proposal_init_rx",
+            InjectFailureTrigger::ProposalFinRx => "proposal_fin_rx",
             InjectFailureTrigger::BlockInfoRx => "block_info_rx",
             InjectFailureTrigger::TransactionBatchRx => "txn_batch_rx",
-            InjectFailureTrigger::TransactionsFinRx => "txns_fin_rx",
-            InjectFailureTrigger::ProposalCommitmentRx => "proposal_commitment_rx",
-            InjectFailureTrigger::ProposalFinRx => "proposal_fin_rx",
+            InjectFailureTrigger::ExecutedTransactionCountRx => "executed_txn_count_rx",
             InjectFailureTrigger::EntireProposalRx => "entire_proposal_rx",
             InjectFailureTrigger::EntireProposalPersisted => "entire_proposal_persisted",
             InjectFailureTrigger::PrevoteRx => "prevote_rx",
@@ -56,11 +54,10 @@ impl FromStr for InjectFailureTrigger {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "proposal_init_rx" => Ok(InjectFailureTrigger::ProposalInitRx),
+            "proposal_fin_rx" => Ok(InjectFailureTrigger::ProposalFinRx),
             "block_info_rx" => Ok(InjectFailureTrigger::BlockInfoRx),
             "txn_batch_rx" => Ok(InjectFailureTrigger::TransactionBatchRx),
-            "txns_fin_rx" => Ok(InjectFailureTrigger::TransactionsFinRx),
-            "proposal_commitment_rx" => Ok(InjectFailureTrigger::ProposalCommitmentRx),
-            "proposal_fin_rx" => Ok(InjectFailureTrigger::ProposalFinRx),
+            "executed_txn_count_rx" => Ok(InjectFailureTrigger::ExecutedTransactionCountRx),
             "entire_proposal_rx" => Ok(InjectFailureTrigger::EntireProposalRx),
             "entire_proposal_persisted" => Ok(InjectFailureTrigger::EntireProposalPersisted),
             "prevote_rx" => Ok(InjectFailureTrigger::PrevoteRx),

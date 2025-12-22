@@ -1,8 +1,9 @@
-//! Batch execution manager with rollback support for TransactionsFin
+//! Batch execution manager with rollback support for ExecutedTransactionCount
 //!
 //! This module provides functionality to handle optimistic execution of
-//! transaction batches with the ability to rollback when TransactionsFin
-//! indicates fewer transactions were actually executed by the proposer.
+//! transaction batches with the ability to rollback when
+//! ExecutedTransactionCount indicates fewer transactions were actually executed
+//! by the proposer.
 
 use std::collections::{HashMap, HashSet};
 
@@ -16,17 +17,17 @@ use pathfinder_storage::Transaction;
 use crate::consensus::ProposalHandlingError;
 use crate::validator::{TransactionExt, ValidatorTransactionBatchStage};
 
-/// Manages batch execution with rollback support for TransactionsFin
+/// Manages batch execution with rollback support for ExecutedTransactionCount
 #[derive(Debug, Clone)]
 pub struct BatchExecutionManager {
     /// Tracks which proposals (height/round) have started execution.
     /// An entry exists here if at least one batch has been executed (not
     /// deferred).
     executing: HashSet<HeightAndRound>,
-    /// Tracks which proposals (height/round) have had TransactionsFin
-    /// processed. An entry exists here if TransactionsFin has been
+    /// Tracks which proposals (height/round) have had ExecutedTransactionCount
+    /// processed. An entry exists here if ExecutedTransactionCount has been
     /// successfully processed for this height/round.
-    transactions_fin_processed: HashSet<HeightAndRound>,
+    executed_transaction_count_processed: HashSet<HeightAndRound>,
 }
 
 impl BatchExecutionManager {
@@ -34,7 +35,7 @@ impl BatchExecutionManager {
     pub fn new() -> Self {
         Self {
             executing: HashSet::new(),
-            transactions_fin_processed: HashSet::new(),
+            executed_transaction_count_processed: HashSet::new(),
         }
     }
 
@@ -46,25 +47,29 @@ impl BatchExecutionManager {
         self.executing.contains(height_and_round)
     }
 
-    /// Check if TransactionsFin has been processed for the given height and
-    /// round
+    /// Check if ExecutedTransactionCount has been processed for the given
+    /// height and round
     ///
-    /// Returns `true` if TransactionsFin has been successfully processed
-    /// for this height/round.
-    pub fn is_transactions_fin_processed(&self, height_and_round: &HeightAndRound) -> bool {
-        self.transactions_fin_processed.contains(height_and_round)
+    /// Returns `true` if ExecutedTransactionCount has been successfully
+    /// processed for this height/round.
+    pub fn is_executed_transaction_count_processed(
+        &self,
+        height_and_round: &HeightAndRound,
+    ) -> bool {
+        self.executed_transaction_count_processed
+            .contains(height_and_round)
     }
 
     /// Check if ProposalFin should be deferred for the given height and round
     ///
     /// ProposalFin should be deferred if execution has started but
-    /// TransactionsFin hasn't been processed yet. This ensures that we
-    /// don't finalize a proposal before we know the final transaction
-    /// count.
+    /// ExecutedTransactionCount hasn't been processed yet. This ensures that we
+    /// don't finalize a proposal before we know the final transaction count.
     ///
     /// Note: This is in its own method to prevent drift with tests.
     pub fn should_defer_proposal_fin(&self, height_and_round: &HeightAndRound) -> bool {
-        self.is_executing(height_and_round) && !self.is_transactions_fin_processed(height_and_round)
+        self.is_executing(height_and_round)
+            && !self.is_executed_transaction_count_processed(height_and_round)
     }
 
     /// Process a transaction batch with deferral support
@@ -97,7 +102,8 @@ impl BatchExecutionManager {
         // Execute any previously deferred transactions first
         let deferred = deferred_executions.remove(&height_and_round);
         let deferred_txns_len = deferred.as_ref().map_or(0, |d| d.transactions.len());
-        let deferred_transactions_fin = deferred.as_ref().and_then(|d| d.transactions_fin);
+        let deferred_executed_transaction_count =
+            deferred.as_ref().and_then(|d| d.executed_transaction_count);
 
         let mut all_transactions = transactions;
         if let Some(DeferredExecution {
@@ -119,19 +125,24 @@ impl BatchExecutionManager {
              additionally {deferred_txns_len} previously deferred transactions were executed",
         );
 
-        // If TransactionsFin was deferred (arrived before execution started, e.g.,
-        // because batches were deferred), process it now that execution has
-        // started.
+        // If ExecutedTransactionCount was deferred (arrived before execution started,
+        // e.g., because batches were deferred), process it now that execution
+        // has started.
         // Assuming message ordering is guaranteed...
         //   (see p2p::consensus::handle_incoming_proposal_message)
-        // ...if TransactionsFin is deferred, all batches are also in the deferred
-        // entry, so we can safely process TransactionsFin here.
-        if let Some(transactions_fin) = deferred_transactions_fin {
+        // ...if ExecutedTransactionCount is deferred, all batches are also in the
+        // deferred entry, so we can safely process ExecutedTransactionCount
+        // here.
+        if let Some(executed_txn_count) = deferred_executed_transaction_count {
             tracing::debug!(
-                "Processing deferred TransactionsFin for {height_and_round} after batch execution \
-                 started"
+                "Processing deferred ExecutedTransactionCount for {height_and_round} after batch \
+                 execution started"
             );
-            self.process_transactions_fin::<E, T>(height_and_round, transactions_fin, validator)?;
+            self.process_executed_transaction_count::<E, T>(
+                height_and_round,
+                executed_txn_count,
+                validator,
+            )?;
         }
 
         Ok(())
@@ -150,8 +161,8 @@ impl BatchExecutionManager {
         validator: &mut ValidatorTransactionBatchStage<E>,
     ) -> Result<(), ProposalHandlingError> {
         // Mark that execution has started for this height/round, even if batch is
-        // empty. This is necessary because TransactionsFin may arrive later and
-        // requires execution to have started.
+        // empty. This is necessary because ExecutedTransactionCount may arrive later
+        // and requires execution to have started.
         self.executing.insert(height_and_round);
 
         if transactions.is_empty() {
@@ -172,16 +183,16 @@ impl BatchExecutionManager {
         Ok(())
     }
 
-    /// Process TransactionsFin message
+    /// Process ExecutedTransactionCount message
     ///
-    /// Processes TransactionsFin immediately with rollback support. Assumes
-    /// execution has already started (at least one batch executed). If
-    /// transactions are deferred, deferral should be handled by the caller
-    /// before calling this function.
-    pub fn process_transactions_fin<E: BlockExecutorExt, T: TransactionExt>(
+    /// Processes ExecutedTransactionCount immediately with rollback support.
+    /// Assumes execution has already started (at least one batch executed).
+    /// If transactions are deferred, deferral should be handled by the
+    /// caller before calling this function.
+    pub fn process_executed_transaction_count<E: BlockExecutorExt, T: TransactionExt>(
         &mut self,
         height_and_round: HeightAndRound,
-        transactions_fin: proto_consensus::TransactionsFin,
+        executed_transaction_count: u64,
         validator: &mut ValidatorTransactionBatchStage<E>,
     ) -> Result<(), ProposalHandlingError> {
         // Verify that execution has started (at least one batch was executed, not
@@ -189,15 +200,15 @@ impl BatchExecutionManager {
         if !self.executing.contains(&height_and_round) {
             return Err(ProposalHandlingError::Fatal(anyhow::anyhow!(
                 "No execution state found for {height_and_round}. Execution should have started \
-                 before processing TransactionsFin."
+                 before processing ExecutedTransactionCount."
             )));
         }
 
-        let target_transaction_count = transactions_fin.executed_transaction_count as usize;
+        let target_transaction_count = executed_transaction_count as usize;
         let current_transaction_count = validator.transaction_count();
 
         tracing::debug!(
-            "Processing TransactionsFin for {height_and_round}: \
+            "Processing ExecutedTransactionCount for {height_and_round}: \
              target={target_transaction_count}, current={current_transaction_count}"
         );
 
@@ -219,11 +230,13 @@ impl BatchExecutionManager {
         } else if target_transaction_count > current_transaction_count {
             // This shouldn't happen with proper message ordering and no protocol errors.
             // Ordering is guaranteed by p2p::consensus::handle_incoming_proposal_message.
-            // TransactionsFin should arrive after all TransactionBatches, so we should have
-            // at least as many transactions as TransactionsFin indicates.
+            // ExecutedTransactionCount should arrive after all TransactionBatches, so we
+            // should have at least as many transactions as
+            // ExecutedTransactionCount indicates.
             tracing::warn!(
-                "TransactionsFin for {height_and_round} indicates {} transactions, but we only \
-                 have {} transactions. This may indicate a protocol violation or missing batches.",
+                "ExecutedTransactionCount for {height_and_round} indicates {} transactions, but \
+                 we only have {} transactions. This may indicate a protocol violation or missing \
+                 batches.",
                 target_transaction_count,
                 current_transaction_count
             );
@@ -233,8 +246,9 @@ impl BatchExecutionManager {
             "Finalized {height_and_round} with {target_transaction_count} executed transactions"
         );
 
-        // Mark TransactionsFin as processed for this height/round
-        self.transactions_fin_processed.insert(height_and_round);
+        // Mark ExecutedTransactionCount as processed for this height/round
+        self.executed_transaction_count_processed
+            .insert(height_and_round);
 
         Ok(())
     }
@@ -242,7 +256,9 @@ impl BatchExecutionManager {
     /// Clean up completed executions
     pub fn cleanup(&mut self, height_and_round: &HeightAndRound) {
         let had_execution = self.executing.remove(height_and_round);
-        let had_transactions_fin = self.transactions_fin_processed.remove(height_and_round);
+        let had_transactions_fin = self
+            .executed_transaction_count_processed
+            .remove(height_and_round);
         if had_execution || had_transactions_fin {
             tracing::debug!("Cleaned up execution state for {height_and_round}");
         }
@@ -258,13 +274,13 @@ impl Default for BatchExecutionManager {
 /// Represents transactions received from the network that are waiting for
 /// previous block to be committed before they can be executed. Also holds
 /// optional proposal commitment and proposer address in case that the entire
-/// proposal has been received. May also store TransactionsFin if it arrives
-/// while transactions are deferred.
+/// proposal has been received. May also store ExecutedTransactionCount if it
+/// arrives while transactions are deferred.
 #[derive(Debug, Clone, Default)]
 pub struct DeferredExecution {
     pub transactions: Vec<proto_consensus::Transaction>,
     pub commitment: Option<ProposalCommitmentWithOrigin>,
-    pub transactions_fin: Option<proto_consensus::TransactionsFin>,
+    pub executed_transaction_count: Option<u64>,
 }
 
 /// Proposal commitment and the address of its proposer.
@@ -369,13 +385,12 @@ mod tests {
     }
 
     /// Test that BatchExecutionManager correctly tracks execution state and
-    /// TransactionsFin processing. This verifies the tracking methods that
-    /// are used by defer_or_execute_proposal_fin to determine
-    /// whether ProposalFin should be deferred.
+    /// ExecutedTransactionCount processing. This verifies the tracking methods
+    /// that are used by defer_or_execute_proposal_fin to determine whether
+    /// ProposalFin should be deferred.
     #[tokio::test]
     async fn test_execution_state_tracking() {
         use p2p::consensus::HeightAndRound;
-        use p2p_proto::consensus::TransactionsFin;
         use pathfinder_common::{
             BlockNumber,
             BlockTimestamp,
@@ -420,8 +435,8 @@ mod tests {
             "Execution should not have started initially"
         );
         assert!(
-            !batch_execution_manager.is_transactions_fin_processed(&height_and_round),
-            "TransactionsFin should not be processed initially"
+            !batch_execution_manager.is_executed_transaction_count_processed(&height_and_round),
+            "ExecutedTransactionCount should not be processed initially"
         );
 
         // Execute a batch to start execution
@@ -440,51 +455,48 @@ mod tests {
             "Execution should have started after execute_batch"
         );
 
-        // Verify TransactionsFin has NOT been processed yet
+        // Verify ExecutedTransactionCount has NOT been processed yet
         assert!(
-            !batch_execution_manager.is_transactions_fin_processed(&height_and_round),
-            "TransactionsFin should not be processed yet"
+            !batch_execution_manager.is_executed_transaction_count_processed(&height_and_round),
+            "ExecutedTransactionCount should not be processed yet"
         );
 
         // Verify that ProposalFin should be deferred
         assert!(
             batch_execution_manager.should_defer_proposal_fin(&height_and_round),
-            "ProposalFin should be deferred when execution started but TransactionsFin not \
-             processed"
+            "ProposalFin should be deferred when execution started but ExecutedTransactionCount \
+             not processed"
         );
 
-        // Now process TransactionsFin
-        let transactions_fin = TransactionsFin {
-            executed_transaction_count: 5,
-        };
+        // Now process ExecutedTransactionCount
+        let executed_transaction_count = 5;
         batch_execution_manager
-            .process_transactions_fin::<BlockExecutor, ProdTransactionMapper>(
+            .process_executed_transaction_count::<BlockExecutor, ProdTransactionMapper>(
                 height_and_round,
-                transactions_fin,
+                executed_transaction_count,
                 &mut validator_stage,
             )
-            .expect("Failed to process TransactionsFin");
+            .expect("Failed to process ExecutedTransactionCount");
 
-        // Verify TransactionsFin is now marked as processed
+        // Verify ExecutedTransactionCount is now marked as processed
         assert!(
-            batch_execution_manager.is_transactions_fin_processed(&height_and_round),
-            "TransactionsFin should be marked as processed after process_transactions_fin"
+            batch_execution_manager.is_executed_transaction_count_processed(&height_and_round),
+            "ExecutedTransactionCount should be marked as processed after process_transactions_fin"
         );
 
         // Now ProposalFin should NOT be deferred
         assert!(
             !batch_execution_manager.should_defer_proposal_fin(&height_and_round),
-            "ProposalFin should NOT be deferred after TransactionsFin is processed"
+            "ProposalFin should NOT be deferred after ExecutedTransactionCount is processed"
         );
     }
 
-    /// Test that TransactionsFin arriving before any TransactionBatch is
-    /// handled gracefully. TransactionsFin should be stored in deferred entry
-    /// even if no batches have been deferred yet.
+    /// Test that ExecutedTransactionCount arriving before any TransactionBatch
+    /// is handled gracefully. ExecutedTransactionCount should be stored in
+    /// deferred entry even if no batches have been deferred yet.
     #[tokio::test]
-    async fn test_transactions_fin_before_any_batch() {
+    async fn test_executed_transaction_count_before_any_batch() {
         use p2p::consensus::HeightAndRound;
-        use p2p_proto::consensus::TransactionsFin;
         use pathfinder_common::prelude::*;
         use pathfinder_common::{
             BlockNumber,
@@ -556,26 +568,25 @@ mod tests {
             "No deferred entry should exist initially"
         );
 
-        // Step 1: TransactionsFin arrives when execution hasn't started yet
-        // (Note: With P2P message ordering guarantees, TransactionsFin will always
-        // arrive after all TransactionBatches, but execution may not have started
-        // if batches were deferred. This test simulates the case where TransactionsFin
-        // arrives before execution starts, e.g., because batches were deferred.)
-        let transactions_fin = TransactionsFin {
-            executed_transaction_count: 5,
-        };
+        // Step 1: ExecutedTransactionCount arrives when execution hasn't started yet
+        // (Note: With P2P message ordering guarantees, ExecutedTransactionCount will
+        // always arrive after all TransactionBatches, but execution may not have
+        // started if batches were deferred. This test simulates the case where
+        // ExecutedTransactionCount arrives before execution starts, e.g., because
+        // batches were deferred).
+        let executed_transaction_count = 5;
 
-        // Simulate the fix: create deferred entry and store TransactionsFin
+        // Simulate the fix: create deferred entry and store ExecutedTransactionCount
         let deferred = deferred_executions.entry(height_and_round).or_default();
-        deferred.transactions_fin = Some(transactions_fin);
+        deferred.executed_transaction_count = Some(executed_transaction_count);
 
-        // Verify TransactionsFin was stored
+        // Verify ExecutedTransactionCount was stored
         assert!(
             deferred_executions
                 .get(&height_and_round)
-                .and_then(|d| d.transactions_fin.as_ref())
+                .and_then(|d| d.executed_transaction_count.as_ref())
                 .is_some(),
-            "TransactionsFin should be stored in deferred entry"
+            "ExecutedTransactionCount should be stored in deferred entry"
         );
 
         // Step 2: TransactionBatch arrives and executes
@@ -598,17 +609,17 @@ mod tests {
             "Execution should have started after batch execution"
         );
 
-        // Verify TransactionsFin was processed (marked as processed)
+        // Verify ExecutedTransactionCount was processed (marked as processed)
         assert!(
-            batch_execution_manager.is_transactions_fin_processed(&height_and_round),
-            "TransactionsFin should be processed after batch execution"
+            batch_execution_manager.is_executed_transaction_count_processed(&height_and_round),
+            "ExecutedTransactionCount should be processed after batch execution"
         );
 
-        // Verify validator state matches TransactionsFin count
+        // Verify validator state matches ExecutedTransactionCount count
         assert_eq!(
             validator_stage.transaction_count(),
             5,
-            "Validator should have 5 transactions matching TransactionsFin count"
+            "Validator should have 5 transactions matching ExecutedTransactionCount"
         );
     }
 
@@ -754,11 +765,10 @@ mod tests {
         }
     }
 
-    /// Test TransactionsFin processing with rollback support.
+    /// Test ExecutedTransactionCount processing with rollback support.
     #[tokio::test]
-    async fn test_transactions_fin_rollback() {
+    async fn test_executed_transaction_count_rollback() {
         use p2p::consensus::HeightAndRound;
-        use p2p_proto::consensus::TransactionsFin;
         use pathfinder_common::ChainId;
         use pathfinder_storage::StorageBuilder;
 
@@ -808,26 +818,25 @@ mod tests {
         assert_eq!(
             validator_stage.transaction_count(),
             14,
-            "Should have 14 transactions before TransactionsFin"
+            "Should have 14 transactions before ExecutedTransactionCount"
         );
 
-        // Test 1: Normal case - no rollback (TransactionsFin matches current count)
+        // Test 1: Normal case - no rollback (ExecutedTransactionCount matches current
+        // count)
         {
-            let transactions_fin = TransactionsFin {
-                executed_transaction_count: 14,
-            };
+            let executed_transaction_count = 14;
 
             batch_execution_manager
-                .process_transactions_fin::<BlockExecutor, ProdTransactionMapper>(
+                .process_executed_transaction_count::<BlockExecutor, ProdTransactionMapper>(
                     height_and_round,
-                    transactions_fin,
+                    executed_transaction_count,
                     &mut validator_stage,
                 )
-                .expect("Failed to process TransactionsFin");
+                .expect("Failed to process ExecutedTransactionCount");
 
             assert!(
-                batch_execution_manager.is_transactions_fin_processed(&height_and_round),
-                "TransactionsFin should be marked as processed"
+                batch_execution_manager.is_executed_transaction_count_processed(&height_and_round),
+                "ExecutedTransactionCount should be marked as processed"
             );
             assert_eq!(
                 validator_stage.transaction_count(),
@@ -836,7 +845,7 @@ mod tests {
             );
         }
 
-        // Test 2: Rollback case - TransactionsFin indicates fewer transactions
+        // Test 2: Rollback case - ExecutedTransactionCount indicates fewer transactions
         // Re-execute batches to get back to 14 transactions
         let storage_2 = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let mut validator_stage_2 = ValidatorTransactionBatchStage::<BlockExecutor>::new(
@@ -873,26 +882,24 @@ mod tests {
             )
             .expect("Failed to execute batch 3");
 
-        let transactions_fin_rollback = TransactionsFin {
-            executed_transaction_count: 7, // Rollback from 14 to 7
-        };
+        let executed_transaction_count = 7; // Rollback from 14 to 7
 
         batch_execution_manager
-            .process_transactions_fin::<BlockExecutor, ProdTransactionMapper>(
+            .process_executed_transaction_count::<BlockExecutor, ProdTransactionMapper>(
                 height_and_round_2,
-                transactions_fin_rollback,
+                executed_transaction_count,
                 &mut validator_stage_2,
             )
-            .expect("Failed to process TransactionsFin with rollback");
+            .expect("Failed to process ExecutedTransactionCount with rollback");
 
         assert!(
-            batch_execution_manager.is_transactions_fin_processed(&height_and_round_2),
-            "TransactionsFin should be marked as processed after rollback"
+            batch_execution_manager.is_executed_transaction_count_processed(&height_and_round_2),
+            "ExecutedTransactionCount should be marked as processed after rollback"
         );
         assert_eq!(
             validator_stage_2.transaction_count(),
             7,
-            "Transaction count should be rolled back to 7 (matching TransactionsFin count)"
+            "Transaction count should be rolled back to 7 (matching ExecutedTransactionCount)"
         );
     }
 
@@ -900,7 +907,6 @@ mod tests {
     #[tokio::test]
     async fn test_empty_batch() {
         use p2p::consensus::HeightAndRound;
-        use p2p_proto::consensus::TransactionsFin;
         use pathfinder_common::ChainId;
         use pathfinder_storage::StorageBuilder;
 
@@ -934,22 +940,20 @@ mod tests {
             "No transactions should be executed"
         );
 
-        // TransactionsFin can be processed after empty batch
-        let transactions_fin = TransactionsFin {
-            executed_transaction_count: 0,
-        };
+        // ExecutedTransactionCount can be processed after empty batch
+        let executed_transaction_count = 0;
 
         batch_execution_manager
-            .process_transactions_fin::<BlockExecutor, ProdTransactionMapper>(
+            .process_executed_transaction_count::<BlockExecutor, ProdTransactionMapper>(
                 height_and_round,
-                transactions_fin,
+                executed_transaction_count,
                 &mut validator_stage,
             )
-            .expect("Failed to process TransactionsFin after empty batch");
+            .expect("Failed to process ExecutedTransactionCount after empty batch");
 
         assert!(
-            batch_execution_manager.is_transactions_fin_processed(&height_and_round),
-            "TransactionsFin should be processed after empty batch"
+            batch_execution_manager.is_executed_transaction_count_processed(&height_and_round),
+            "ExecutedTransactionCount should be processed after empty batch"
         );
     }
 }
