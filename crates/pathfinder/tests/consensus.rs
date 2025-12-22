@@ -26,6 +26,7 @@ mod test {
     use pathfinder_lib::config::integration_testing::{InjectFailureConfig, InjectFailureTrigger};
     use rstest::rstest;
 
+    use crate::common::feeder_gateway::FeederGateway;
     use crate::common::pathfinder_instance::{respawn_on_fail, PathfinderInstance};
     use crate::common::rpc_client::{get_consensus_info, wait_for_block_exists, wait_for_height};
     use crate::common::utils;
@@ -152,8 +153,27 @@ mod test {
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
         let (configs, stopwatch) = utils::setup(NUM_NODES)?;
-        let mut configs = configs.into_iter();
 
+        let alice_cfg = configs.first().unwrap();
+        let mut _fgw = FeederGateway::spawn(&alice_cfg)?;
+        _fgw.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
+
+        // We want everybody to have sync enabled so that not only Alice, Bob, and
+        // Charlie decide upon the new blocks but also they are able to **commit the
+        // blocks to their main DBs**. The trick is that the FGw will not provide any
+        // meaningful data to the 3 nodes because it's feeding off of Alice's DB which
+        // means it'll always be lagging behind the nodes that achieve consensus.
+        //
+        // This means that initially Dan will be actually syncing from the FGw until he
+        // catches up with the other nodes, at which point he should be committing the
+        // consensus-decided blocks to his own main DB, before actually sync is able to
+        // get them from the FGw.
+        //
+        // TODO !!! not only wait for decided upon but also committed to main DB
+        let mut configs = configs.into_iter().map(|cfg| {
+            cfg.with_local_feeder_gateway(_fgw.port())
+                .with_sync_enabled()
+        });
         let alice = PathfinderInstance::spawn(configs.next().unwrap())?;
         alice.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
 
@@ -172,7 +192,7 @@ mod test {
 
         utils::log_elapsed(stopwatch);
 
-        // Use channels to send and update of the rpc port
+        // Use channels to send and update the rpc port
         let alice_client = wait_for_height(&alice, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
         let bob_client = wait_for_height(&bob, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
         let charlie_client = wait_for_height(&charlie, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
@@ -190,7 +210,9 @@ mod test {
         let charlie_client = wait_for_height(&charlie, FINAL_HEIGHT, POLL_HEIGHT);
 
         // Wait for a block that was decided before this node joined to be synced.
-        let dan_client = wait_for_block_exists(&dan, HEIGHT_TO_ADD_FOURTH_NODE - 2, POLL_HEIGHT);
+        // let dan_client = wait_for_block_exists(&dan, HEIGHT_TO_ADD_FOURTH_NODE - 2,
+        // POLL_HEIGHT);
+        let dan_client = wait_for_height(&dan, FINAL_HEIGHT, POLL_HEIGHT);
 
         utils::wait_for_test_end(
             vec![alice_client, bob_client, charlie_client, dan_client],
