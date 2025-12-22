@@ -128,6 +128,7 @@ async fn main() -> anyhow::Result<()> {
             cli.expected_version,
             &db_path,
             storage_tx,
+            Duration::from_millis(500),
             Duration::from_secs(30),
         ) => {
             Err(storage_err)
@@ -154,6 +155,7 @@ fn wait_for_storage(
     expected_version: Option<i64>,
     path: &Path,
     storage_tx: Sender<Option<(Storage, Chain)>>,
+    poll_interval: Duration,
     timeout: Duration,
 ) -> impl Future<Output = anyhow::Error> {
     let Some(expected_version) = expected_version else {
@@ -169,16 +171,36 @@ fn wait_for_storage(
                 Ok(file) => {
                     drop(file);
                     tracing::info!("Database file found, attempting to connect...");
-                    let storage = pathfinder_storage::StorageBuilder::file(path.clone())
-                        .readonly()?
-                        .create_read_only_pool(NonZeroU32::new(10).unwrap())?;
+
+                    let Ok(storage_manager) =
+                        pathfinder_storage::StorageBuilder::file(path.clone()).readonly()
+                    else {
+                        tracing::info!(
+                            "Creating read only storage manager failed, database is not ready, \
+                             retrying..."
+                        );
+                        std::thread::sleep(poll_interval);
+                        continue;
+                    };
+
+                    let Ok(storage) =
+                        storage_manager.create_read_only_pool(NonZeroU32::new(10).unwrap())
+                    else {
+                        tracing::info!(
+                            "Creating connection pool failed, database is not ready, retrying..."
+                        );
+                        std::thread::sleep(poll_interval);
+                        continue;
+                    };
+
                     let chain = {
                         let mut connection = storage.connection()?;
                         let tx = connection.transaction()?;
+
                         let user_version = tx.user_version()?;
                         if user_version != expected_version {
                             tracing::info!("Database not yet migrated, retrying...");
-                            std::thread::sleep(std::time::Duration::from_millis(200));
+                            std::thread::sleep(poll_interval);
                             continue;
                         }
 
@@ -194,7 +216,7 @@ fn wait_for_storage(
                 }
                 Err(_) => {
                     tracing::info!("Database file not yet available, retrying...");
-                    std::thread::sleep(std::time::Duration::from_millis(200));
+                    std::thread::sleep(poll_interval);
                 }
             }
 
@@ -330,7 +352,7 @@ async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyh
                                 let tx = connection.transaction().unwrap();
 
                                 resolve_block(&tx, block_id, &reorg_config, reorged)
-                            }).await.unwrap();
+                            }).await.context("Joining blocking task").flatten();
 
                             match block {
                                 Ok(block) => {
@@ -382,7 +404,7 @@ async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyh
                                 let tx = connection.transaction().unwrap();
 
                                 resolve_signature(&tx, block_id)
-                            }).await.unwrap();
+                            }).await.context("Joining blocking task").flatten();
 
                             match signature {
                                 Ok(signature) => {
@@ -426,7 +448,7 @@ async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyh
                                 let tx = connection.transaction().unwrap();
 
                                 resolve_state_update(&tx, block_id, &reorg_config, reorged.clone()).and_then(|state_update| resolve_block(&tx, block_id, &reorg_config, reorged).map(|block| (block, state_update)))
-                            }).await.unwrap();
+                            }).await.context("Joining blocking task").flatten();
 
                             match block_and_state_update {
                                 Ok((block, state_update)) => {
@@ -487,7 +509,7 @@ async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyh
                         let tx = connection.transaction().unwrap();
 
                         resolve_class(&tx, class_hash.class_hash)
-                    }).await.unwrap();
+                    }).await.context("Joining blocking task").flatten();
 
                     match class {
                         Ok(class) => {
