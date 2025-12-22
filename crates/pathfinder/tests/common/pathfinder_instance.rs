@@ -1,6 +1,5 @@
 //! Utilities for spawning and managing Pathfinder instances.
 
-use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
@@ -77,9 +76,9 @@ impl PathfinderInstance {
             .stderr(stderr_file)
             .env(
                 "RUST_LOG",
-                "pathfinder_lib=trace,pathfinder=trace,pathfinder_lib=trace,\
-                 pathfinder_consensus=trace,p2p=off,\
-                 informalsystems_malachitebft_core_consensus=trace",
+                "pathfinder_lib=trace,pathfinder=trace,pathfinder_consensus=trace,p2p=off,\
+                 informalsystems_malachitebft_core_consensus=trace,starknet_gateway_client=trace,\
+                 starknet_gateway_types=trace,pathfinder_storage=trace",
             )
             .arg("--ethereum.url=https://ethereum-sepolia-rpc.publicnode.com");
 
