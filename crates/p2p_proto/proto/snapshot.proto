@@ -28,7 +28,7 @@ message PatriciaRangeProof {
     repeated PatriciaNode nodes = 1;
 }
 
-// leafs of the contract state tree
+// leaves of the contract state tree
 message ContractState {
     starknet.common.Address address = 1;  // the key
     starknet.common.Hash class = 2;
