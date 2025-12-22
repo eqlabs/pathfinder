@@ -37,8 +37,11 @@ impl FeederGateway {
             ])
             .stdout(stdout_file)
             .stderr(stderr_file)
-            .env("RUST_LOG", "trace")
-            .env("RUST_BACKTRACE", "full")
+            .env(
+                "RUST_LOG",
+                "trace,feeder_gateway=trace,pathfinder_lib=trace,pathfinder_storage=trace,\
+                 starknet_gateway_types=trace",
+            )
             .spawn()
             .context("Spawning local feeder gateway")?;
 
