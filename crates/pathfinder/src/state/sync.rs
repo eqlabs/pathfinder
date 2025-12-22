@@ -463,6 +463,8 @@ where
         ) -> F2
         + Copy,
 {
+    tracing::error!("ZZZZ 0020");
+
     let l1_context = L1SyncContext::from(&context);
     let l2_context = L2SyncContext::from(&context);
 
@@ -495,6 +497,8 @@ where
 
     let (event_sender, event_receiver) = mpsc::channel(8);
 
+    tracing::error!("ZZZZ 0021");
+
     // Get the latest block from the database
     let l2_head = tokio::task::block_in_place(|| -> anyhow::Result<_> {
         let tx = db_conn.transaction()?;
@@ -506,11 +510,18 @@ where
         Ok(l2_head)
     })?;
 
+    tracing::error!("ZZZZ 0022");
+
+    // FIXME if Alice is the sole proposer, she will wait forever, because the fgw
+    // is supposed to be tracking her own advances in consensus.
+    //
     // Get the latest block from the sequencer
     let gateway_latest = sequencer
         .head()
         .await
         .context("Fetching latest block from gateway")?;
+
+    tracing::error!("ZZZZ 0023");
 
     // Keep polling the sequencer for the latest block
     let (tx_latest, rx_latest) = tokio::sync::watch::channel(gateway_latest);
@@ -520,15 +531,21 @@ where
         tx_latest,
     ));
 
+    tracing::error!("ZZZZ 0024");
+
     // Start L1 producer task. Clone the event sender so that the channel remains
     // open even if the producer task fails.
     let mut l1_handle = util::task::spawn(l1_sync(event_sender.clone(), l1_context.clone()));
+
+    tracing::error!("ZZZZ 0025");
 
     // Fetch latest blocks from storage
     let latest_blocks = latest_n_blocks(&mut db_conn, block_cache_size)
         .await
         .context("Fetching latest blocks from storage")?;
     let block_chain = BlockChain::with_capacity(block_cache_size, latest_blocks);
+
+    tracing::error!("ZZZZ 0026");
 
     // Start L2 producer task. Clone the event sender so that the channel remains
     // open even if the producer task fails.
@@ -540,6 +557,8 @@ where
         block_chain,
         rx_latest.clone(),
     ));
+
+    tracing::error!("ZZZZ 0027");
 
     let (current_num, current_hash, _) = l2_head.unwrap_or_default();
     let (tx_current, _rx_current) = tokio::sync::watch::channel((current_num, current_hash));
@@ -554,6 +573,8 @@ where
     };
     let mut consumer_handle =
         util::task::spawn(consumer(event_receiver, consumer_context, tx_current));
+
+    tracing::error!("ZZZZ 0028");
 
     loop {
         tokio::select! {
