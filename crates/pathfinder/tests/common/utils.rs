@@ -91,14 +91,7 @@ fn pathfinder_bin() -> PathBuf {
     assert!(path.pop());
     assert!(path.pop());
     path.push("target");
-    #[cfg(debug_assertions)]
-    {
-        path.push("debug");
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        path.push("release");
-    }
+    path.push("debug");
     path.push("pathfinder");
     path
 }
@@ -108,14 +101,7 @@ pub fn feeder_gateway_bin() -> PathBuf {
     assert!(path.pop());
     assert!(path.pop());
     path.push("target");
-    #[cfg(debug_assertions)]
-    {
-        path.push("debug");
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        path.push("release");
-    }
+    path.push("debug");
     path.push("feeder-gateway");
     path
 }
