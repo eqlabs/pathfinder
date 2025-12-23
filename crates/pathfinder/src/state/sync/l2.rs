@@ -101,13 +101,19 @@ pub async fn sync<GatewayClient>(
     context: L2SyncContext<GatewayClient>,
     mut head: Option<(BlockNumber, BlockHash, StateCommitment)>,
     mut blocks: BlockChain,
-    mut latest: tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+    mut latest: tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>,
 ) -> anyhow::Result<()>
 where
     GatewayClient: GatewayApi + Clone + Send + 'static,
 {
     // Phase 1: catch up to the latest block
-    let bulk_tail = latest.borrow().0;
+    let bulk_tail = latest
+        .borrow()
+        .expect(
+            "In feeder gateway sync, the watch is always initialized with a value fetched from \
+             the feeder gateway upon startup",
+        )
+        .0;
     bulk_sync(
         tx_event.clone(),
         context.clone(),
@@ -168,7 +174,13 @@ where
                 DownloadBlock::Wait => {
                     // Wait for the latest block to change.
                     if latest
-                        .wait_for(|(_, hash)| hash != &head.unwrap_or_default().1)
+                        .wait_for(|x| {
+                            x.expect(
+                                "In feeder gateway sync, the watch is always initialized with a \
+                                 value fetched from the feeder gateway upon startup",
+                            )
+                            .1 != head.unwrap_or_default().1
+                        })
                         .await
                         .is_err()
                     {
@@ -353,7 +365,7 @@ pub async fn consensus_sync<GatewayClient>(
     context: L2SyncContext<GatewayClient>,
     mut head: Option<(BlockNumber, BlockHash, StateCommitment)>,
     mut blocks: BlockChain,
-    mut latest: tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+    mut latest: tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>,
 ) -> anyhow::Result<()>
 where
     GatewayClient: GatewayApi + Clone + Send + 'static,
@@ -451,7 +463,7 @@ where
                 DownloadBlock::Wait => {
                     // Wait for the latest block to change.
                     if latest
-                        .wait_for(|(_, hash)| hash != &head.unwrap_or_default().1)
+                        .wait_for(|x| x.is_some_and(|(_, hash)| hash != head.unwrap_or_default().1))
                         .await
                         .is_err()
                     {
@@ -634,7 +646,7 @@ where
 pub async fn poll_latest(
     gateway: impl GatewayApi,
     interval: Duration,
-    sender: tokio::sync::watch::Sender<(BlockNumber, BlockHash)>,
+    sender: tokio::sync::watch::Sender<Option<(BlockNumber, BlockHash)>>,
 ) {
     let mut interval = tokio::time::interval(interval);
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -650,7 +662,7 @@ pub async fn poll_latest(
             continue;
         };
 
-        if sender.send(latest).is_err() {
+        if sender.send(Some(latest)).is_err() {
             tracing::debug!("Channel closed, exiting");
             break;
         }
@@ -1668,7 +1680,7 @@ mod tests {
         fn spawn_sync_with_latest(
             tx_event: mpsc::Sender<SyncEvent>,
             sequencer: MockGatewayApi,
-            latest: tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+            latest: tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>,
         ) -> JoinHandle<anyhow::Result<()>> {
             let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
                 pathfinder_storage::TriePruneMode::Archive,
@@ -1682,7 +1694,7 @@ mod tests {
             tx_event: mpsc::Sender<SyncEvent>,
             sequencer: MockGatewayApi,
             storage: pathfinder_storage::Storage,
-            latest: tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+            latest: tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>,
         ) -> JoinHandle<anyhow::Result<()>> {
             let sequencer = std::sync::Arc::new(sequencer);
             let context = L2SyncContext {
@@ -2432,7 +2444,7 @@ mod tests {
 
                 // Make sure L2 sync "waits" on the new block to be published at the end of the
                 // test.
-                latest_tx.send((BLOCK2_NUMBER, BLOCK2_HASH)).unwrap();
+                latest_tx.send(Some((BLOCK2_NUMBER, BLOCK2_HASH))).unwrap();
 
                 assert_matches!(rx_event.recv().await.unwrap(),
                 SyncEvent::DownloadedBlock((block, _), state_update, _, _, _) => {
@@ -2823,7 +2835,7 @@ mod tests {
                 // Make sure L2 sync "waits" on the new block to be published at the end of the
                 // test.
                 latest_tx
-                    .send((block1_v2.block_number, block1_v2.block_hash))
+                    .send(Some((block1_v2.block_number, block1_v2.block_hash)))
                     .unwrap();
 
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::DownloadedBlock((block, _), state_update, _, _, _) => {
@@ -3158,7 +3170,9 @@ mod tests {
 
                 // Make sure L2 sync "waits" on the new block to be published at the end of the
                 // test.
-                latest_tx.send((BLOCK2_NUMBER, BLOCK2_HASH_V2)).unwrap();
+                latest_tx
+                    .send(Some((BLOCK2_NUMBER, BLOCK2_HASH_V2)))
+                    .unwrap();
 
                 // Reorg started from block #1
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Reorg(tail) => {
@@ -3382,7 +3396,9 @@ mod tests {
 
                 // Make sure L2 sync "waits" on the new block to be published at the end of the
                 // test.
-                latest_tx.send((BLOCK2_NUMBER, BLOCK2_HASH_V2)).unwrap();
+                latest_tx
+                    .send(Some((BLOCK2_NUMBER, BLOCK2_HASH_V2)))
+                    .unwrap();
 
                 // Reorg started from block #2
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Reorg(tail) => {

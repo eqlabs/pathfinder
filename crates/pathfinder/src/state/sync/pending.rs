@@ -14,7 +14,7 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
     sequencer: S,
     poll_interval: std::time::Duration,
     storage: Storage,
-    latest: watch::Receiver<(BlockNumber, BlockHash)>,
+    latest: watch::Receiver<Option<(BlockNumber, BlockHash)>>,
     current: watch::Receiver<(BlockNumber, BlockHash)>,
     fetch_casm_from_fgw: bool,
 ) {
@@ -48,7 +48,7 @@ pub async fn poll_pre_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
     sequencer: &S,
     poll_interval: std::time::Duration,
     storage: &Storage,
-    latest: &watch::Receiver<(BlockNumber, BlockHash)>,
+    latest: &watch::Receiver<Option<(BlockNumber, BlockHash)>>,
     current: &watch::Receiver<(BlockNumber, BlockHash)>,
     fetch_casm_from_fgw: bool,
 ) {
@@ -58,7 +58,12 @@ pub async fn poll_pre_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
     loop {
         let t_fetch = Instant::now();
 
-        let latest = latest.borrow().0.get();
+        let Some(latest) = latest.borrow().map(|(latest, _)| latest.get()) else {
+            tracing::debug!("Latest block is not known yet; skipping pending block download");
+            tokio::time::sleep_until(t_fetch + poll_interval).await;
+            continue;
+        };
+
         let current = current.borrow().0.get();
 
         if latest.abs_diff(current) > 6 {
@@ -140,7 +145,7 @@ pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
     sequencer: &S,
     poll_interval: std::time::Duration,
     storage: &Storage,
-    latest: &watch::Receiver<(BlockNumber, BlockHash)>,
+    latest: &watch::Receiver<Option<(BlockNumber, BlockHash)>>,
     current: &watch::Receiver<(BlockNumber, BlockHash)>,
     fetch_casm_from_fgw: bool,
 ) {
@@ -185,7 +190,12 @@ pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
     loop {
         let t_fetch = Instant::now();
 
-        let (latest_number, latest_hash) = *latest.borrow();
+        let Some((latest_number, latest_hash)) = *latest.borrow() else {
+            tracing::debug!("Latest block is not known yet; skipping pre-confirmed block download");
+            tokio::time::sleep_until(t_fetch + poll_interval).await;
+            continue;
+        };
+
         let current_number = current.borrow().0.get();
 
         if latest_number.get().abs_diff(current_number) > IN_SYNC_THRESHOLD {
@@ -753,7 +763,7 @@ mod tests {
 
         let latest_block_number = BlockNumber::new_or_panic(10);
 
-        let (_, rx_latest) = watch::channel((latest_block_number, our_latest_hash));
+        let (_, rx_latest) = watch::channel(Some((latest_block_number, our_latest_hash)));
         let (_, rx_current) = watch::channel((latest_block_number, our_latest_hash));
 
         let sequencer = Arc::new(sequencer);
@@ -838,7 +848,7 @@ mod tests {
 
         let latest_block_number = BlockNumber::new_or_panic(10);
 
-        let (_, rx_latest) = watch::channel((latest_block_number, our_latest_hash));
+        let (_, rx_latest) = watch::channel(Some((latest_block_number, our_latest_hash)));
         let (_, rx_current) = watch::channel((latest_block_number, our_latest_hash));
 
         let sequencer = Arc::new(sequencer);
@@ -927,7 +937,7 @@ mod tests {
 
         let latest_block_number = BlockNumber::new_or_panic(10);
 
-        let (_, rx_latest) = watch::channel((latest_block_number, our_latest_hash));
+        let (_, rx_latest) = watch::channel(Some((latest_block_number, our_latest_hash)));
         let (_, rx_current) = watch::channel((latest_block_number, our_latest_hash));
 
         let sequencer = Arc::new(sequencer);
