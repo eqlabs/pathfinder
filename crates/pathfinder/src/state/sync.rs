@@ -21,6 +21,7 @@ use pathfinder_storage::pruning::BlockchainHistoryMode;
 use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
+use starknet_gateway_types::error::{KnownStarknetErrorCode, SequencerError};
 use starknet_gateway_types::reply::{
     Block,
     GasPrices,
@@ -168,7 +169,7 @@ where
             L2SyncContext<SequencerClient>,
             Option<(BlockNumber, BlockHash, StateCommitment)>,
             BlockChain,
-            tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+            tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>,
         ) -> F2
         + Copy,
 {
@@ -222,7 +223,7 @@ where
         .context("Fetching latest block from gateway")?;
 
     // Keep polling the sequencer for the latest block
-    let (tx_latest, rx_latest) = tokio::sync::watch::channel(gateway_latest);
+    let (tx_latest, rx_latest) = tokio::sync::watch::channel(Some(gateway_latest));
     let mut latest_handle = util::task::spawn(l2::poll_latest(
         sequencer.clone(),
         head_poll_interval,
@@ -459,7 +460,7 @@ where
             L2SyncContext<SequencerClient>,
             Option<(BlockNumber, BlockHash, StateCommitment)>,
             BlockChain,
-            tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+            tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>,
         ) -> F2
         + Copy,
 {
@@ -506,11 +507,26 @@ where
         Ok(l2_head)
     })?;
 
-    // Get the latest block from the sequencer
-    let gateway_latest = sequencer
-        .head()
-        .await
-        .context("Fetching latest block from gateway")?;
+    // (Jan 2026) Although this will not happen on mainnet, nor on testnet, we can
+    // imagine custom networks (in particular ad-hoc integration test networks)
+    // which start from genesis, where the genesis block is decided upon in
+    // consensus and it will not not be available at a feeder gateway until >=3
+    // network participants actually decide upon the genesis block.
+    let gateway_latest = match sequencer.head().await {
+        Ok(gateway_latest) => Some(gateway_latest),
+        Err(SequencerError::StarknetError(e))
+            if e.code == KnownStarknetErrorCode::BlockNotFound.into() =>
+        {
+            None
+        }
+        // head() retries on all errors except starknet errors, if we encounter a mismatch in
+        // starknet error code, let's assume that the error still stems from a missing block, so we
+        // log it and carry on
+        Err(e) => {
+            tracing::error!("Error fetching latest block from gateway: {e:?}");
+            Err(e).context("Fetching latest block from gateway")?
+        }
+    };
 
     // Keep polling the sequencer for the latest block
     let (tx_latest, rx_latest) = tokio::sync::watch::channel(gateway_latest);
@@ -1213,17 +1229,18 @@ async fn update_sync_status_latest(
     state: Arc<SyncState>,
     starting_block_hash: BlockHash,
     starting_block_num: BlockNumber,
-    mut latest: tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+    mut latest: tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>,
 ) {
     let starting = NumberedBlock::from((starting_block_hash, starting_block_num));
 
     let mut latest_hash = BlockHash::default();
     loop {
         let Ok((number, hash)) = latest
-            .wait_for(|(_, hash)| hash != &latest_hash)
+            .wait_for(|x| x.is_some_and(|(_, hash)| hash != latest_hash))
             .await
             .as_deref()
             .copied()
+            .map(|x| x.expect("We waited for a value that is Some"))
         else {
             break;
         };
