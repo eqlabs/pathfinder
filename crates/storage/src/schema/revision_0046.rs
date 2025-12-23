@@ -52,7 +52,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                 progress_logged = Instant::now();
             }
 
-            insert_statement.execute(params![prev_block_number, bloom.to_compressed_bytes()])?;
+            insert_statement.execute(params![prev_block_number, bloom.into_compressed_bytes()])?;
 
             bloom = BloomFilter::new();
             prev_block_number = current_block_number;
@@ -82,7 +82,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     }
 
     if events_in_filter > 0 {
-        insert_statement.execute(params![prev_block_number, bloom.to_compressed_bytes()])?;
+        insert_statement.execute(params![prev_block_number, bloom.into_compressed_bytes()])?;
     }
 
     tracing::info!("Dropping starknet_events table");

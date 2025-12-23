@@ -127,7 +127,7 @@ impl Transaction<'_> {
             bloom.set_address(&event.from_address);
         }
 
-        running_event_filter.filter.insert(&bloom, block_number);
+        running_event_filter.filter.insert(bloom, block_number);
         running_event_filter.next_block = block_number + 1;
 
         // This check is the reason that blocks cannot be skipped, if they were we would
@@ -776,7 +776,7 @@ impl RunningEventFilter {
                 break;
             };
 
-            filter.insert(&bloom, block_number);
+            filter.insert(bloom, block_number);
         }
 
         Ok(Self {
@@ -851,8 +851,8 @@ mod tests {
             filter.set_keys(&[event_key!("0xdeadbeef")]);
             filter.set_address(&contract_address!("0x1234"));
 
-            aggregate.insert(&filter, BlockNumber::GENESIS);
-            aggregate.insert(&filter, BlockNumber::GENESIS + 1);
+            aggregate.insert(filter.clone(), BlockNumber::GENESIS);
+            aggregate.insert(filter, BlockNumber::GENESIS + 1);
             let constraints = EventConstraints {
                 from_block: None,
                 to_block: None,
@@ -876,8 +876,8 @@ mod tests {
             filter.set_keys(&[event_key!("0xdeadbeef")]);
             filter.set_address(&contract_address!("0x1234"));
 
-            aggregate.insert(&filter, BlockNumber::GENESIS);
-            aggregate.insert(&filter, BlockNumber::GENESIS + 1);
+            aggregate.insert(filter.clone(), BlockNumber::GENESIS);
+            aggregate.insert(filter, BlockNumber::GENESIS + 1);
             let constraints = EventConstraints {
                 from_block: None,
                 to_block: None,
@@ -898,8 +898,8 @@ mod tests {
             filter.set_keys(&[event_key!("0xdeadbeef")]);
             filter.set_address(&contract_address!("0x1234"));
 
-            aggregate.insert(&filter, BlockNumber::GENESIS);
-            aggregate.insert(&filter, BlockNumber::GENESIS + 1);
+            aggregate.insert(filter.clone(), BlockNumber::GENESIS);
+            aggregate.insert(filter, BlockNumber::GENESIS + 1);
             let constraints = EventConstraints {
                 from_block: None,
                 to_block: None,
@@ -920,8 +920,8 @@ mod tests {
             filter.set_address(&contract_address!("0x1234"));
             filter.set_keys(&[event_key!("0xdeadbeef")]);
 
-            aggregate.insert(&filter, BlockNumber::GENESIS);
-            aggregate.insert(&filter, BlockNumber::GENESIS + 1);
+            aggregate.insert(filter.clone(), BlockNumber::GENESIS);
+            aggregate.insert(filter, BlockNumber::GENESIS + 1);
             let constraints = EventConstraints {
                 from_block: None,
                 to_block: None,
@@ -953,8 +953,8 @@ mod tests {
             filter.set_keys(&[event_key!("0xdeadbeef")]);
             filter.set_address(&contract_address!("0x1234"));
 
-            aggregate.insert(&filter, BlockNumber::GENESIS);
-            aggregate.insert(&filter, BlockNumber::GENESIS + 1);
+            aggregate.insert(filter.clone(), BlockNumber::GENESIS);
+            aggregate.insert(filter, BlockNumber::GENESIS + 1);
             let constraints = EventConstraints {
                 from_block: None,
                 to_block: None,

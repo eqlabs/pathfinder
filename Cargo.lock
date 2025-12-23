@@ -8807,6 +8807,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "sha3",
+ "siphasher",
  "tempfile",
  "test-log",
  "thiserror 2.0.17",
