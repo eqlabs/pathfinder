@@ -168,7 +168,7 @@ where
             L2SyncContext<SequencerClient>,
             Option<(BlockNumber, BlockHash, StateCommitment)>,
             BlockChain,
-            tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+            tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>,
         ) -> F2
         + Copy,
 {
@@ -222,7 +222,7 @@ where
         .context("Fetching latest block from gateway")?;
 
     // Keep polling the sequencer for the latest block
-    let (tx_latest, rx_latest) = tokio::sync::watch::channel(gateway_latest);
+    let (tx_latest, rx_latest) = tokio::sync::watch::channel(Some(gateway_latest));
     let mut latest_handle = util::task::spawn(l2::poll_latest(
         sequencer.clone(),
         head_poll_interval,
@@ -459,7 +459,7 @@ where
             L2SyncContext<SequencerClient>,
             Option<(BlockNumber, BlockHash, StateCommitment)>,
             BlockChain,
-            tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+            tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>,
         ) -> F2
         + Copy,
 {
@@ -512,14 +512,30 @@ where
 
     tracing::error!("ZZZZ 0022");
 
+    // Although this will not happen on mainnet, nor on testnet, we can imagine
+    // custom networks which start from genesis, where the genesis block is decided
+    // upon in consensus and not magically fetched from some feeder gateway. In such
+    // case we need to timeout, especially if this node is either a proposer or a
+    // validator that takes part in the voting process for that very first block.
+    let gateway_latest = match tokio::time::timeout(Duration::from_secs(5), sequencer.head()).await
+    {
+        Ok(Ok(gateway_latest)) => Some(gateway_latest),
+        Ok(Err(e)) => {
+            tracing::warn!(?e, "Fetching latest block from gateway failed");
+            anyhow::bail!("Fetching latest block from gateway failed: {e}");
+        }
+        Err(_) => None,
+    };
+
     // FIXME if Alice is the sole proposer, she will wait forever, because the fgw
-    // is supposed to be tracking her own advances in consensus.
+    // is supposed to be tracking her own advances in consensus. Add timeout and use
+    // Option.
     //
     // Get the latest block from the sequencer
-    let gateway_latest = sequencer
-        .head()
-        .await
-        .context("Fetching latest block from gateway")?;
+    // let gateway_latest = sequencer
+    //     .head()
+    //     .await
+    //     .context("Fetching latest block from gateway")?;
 
     tracing::error!("ZZZZ 0023");
 
@@ -1234,17 +1250,18 @@ async fn update_sync_status_latest(
     state: Arc<SyncState>,
     starting_block_hash: BlockHash,
     starting_block_num: BlockNumber,
-    mut latest: tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+    mut latest: tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>,
 ) {
     let starting = NumberedBlock::from((starting_block_hash, starting_block_num));
 
     let mut latest_hash = BlockHash::default();
     loop {
         let Ok((number, hash)) = latest
-            .wait_for(|(_, hash)| hash != &latest_hash)
+            .wait_for(|x| x.is_some_and(|(_, hash)| hash != latest_hash))
             .await
             .as_deref()
             .copied()
+            .map(|x| x.expect("We waited for a value that is Some"))
         else {
             break;
         };
