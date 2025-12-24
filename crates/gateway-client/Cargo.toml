@@ -39,7 +39,7 @@ reqwest = { workspace = true, features = ["json"] }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 test-log = { workspace = true, features = ["trace"] }
 tracing-subscriber = { workspace = true }
-warp = { workspace = true }
+warp = { workspace = true, features = ["compression-gzip"] }
 
 [[test]]
 name = "integration-metrics"
