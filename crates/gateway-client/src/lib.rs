@@ -1264,4 +1264,81 @@ mod tests {
                 .unwrap();
         }
     }
+
+    mod gzip_compression {
+        use std::io::Write;
+
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+        use warp::http::{Response, StatusCode};
+        use warp::Filter;
+
+        use super::*;
+
+        #[test_log::test(tokio::test)]
+        async fn handles_gzip_compressed_responses() {
+            // Expected response values
+            const EXPECTED_BLOCK_NUMBER: u64 = 9703;
+            const EXPECTED_BLOCK_HASH: &str =
+                "0x6a2755817d86ade81ed0fea2eaf23d94264e2f25aff43ecb2e5000bf3ec28b7";
+
+            // Create the JSON response that will be gzip-compressed by the server
+            let response_json = serde_json::json!({
+                "block_hash": EXPECTED_BLOCK_HASH,
+                "block_number": EXPECTED_BLOCK_NUMBER
+            });
+            let uncompressed_json_bytes = serde_json::to_vec(&response_json).unwrap();
+
+            // Compress the JSON response with gzip (simulating what the feeder gateway will
+            // do)
+            let mut gzip_encoder = GzEncoder::new(Vec::new(), Compression::default());
+            gzip_encoder.write_all(&uncompressed_json_bytes).unwrap();
+            let gzip_compressed_body = gzip_encoder.finish().unwrap();
+
+            // Create a mock server that returns gzip-compressed responses
+            let server_filter = warp::path("feeder_gateway")
+                .and(warp::path("get_block"))
+                .and(warp::query::<std::collections::HashMap<String, String>>())
+                .then(move |_| {
+                    let gzip_compressed_body = gzip_compressed_body.clone();
+                    async move {
+                        Response::builder()
+                            .status(StatusCode::OK)
+                            .header("Content-Type", "application/json")
+                            .header("Content-Encoding", "gzip")
+                            .body(gzip_compressed_body)
+                    }
+                });
+
+            let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+            let (server_addr, server_future) = warp::serve(server_filter)
+                .bind_with_graceful_shutdown(([127, 0, 0, 1], 0), async {
+                    shutdown_rx.await.ok();
+                });
+            let server_handle = tokio::spawn(server_future);
+
+            let server_url = Url::parse(&format!("http://{server_addr}")).unwrap();
+            let client = Client::for_test(server_url)
+                .unwrap()
+                .disable_retry_for_tests();
+
+            // Make a request (reqwest should automatically decompress the gzip response)
+            let (actual_block_number, actual_block_hash) = client
+                .block_header(BlockId::Number(BlockNumber::new_or_panic(
+                    EXPECTED_BLOCK_NUMBER,
+                )))
+                .await
+                .unwrap();
+
+            // Verify the response was correctly decompressed and parsed
+            assert_eq!(
+                actual_block_number,
+                BlockNumber::new_or_panic(EXPECTED_BLOCK_NUMBER)
+            );
+            assert_eq!(actual_block_hash, block_hash!(EXPECTED_BLOCK_HASH));
+
+            shutdown_tx.send(()).unwrap();
+            server_handle.await.unwrap();
+        }
+    }
 }

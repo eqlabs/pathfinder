@@ -110,6 +110,7 @@ reqwest = { version = "0.12.23", default-features = false, features = [
     "http2",
     "rustls-tls-native-roots",
     "charset",
+    "gzip",
 ] }
 rstest = "0.18.2"
 rusqlite = "0.37.0"
