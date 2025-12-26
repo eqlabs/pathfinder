@@ -15,6 +15,7 @@ use pathfinder_common::state_update::{StateUpdate, StateUpdateData};
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     class_definition,
+    BlockId,
     BlockNumber,
     ChainId,
     ConsensusFinalizedBlockHeader,
@@ -101,7 +102,9 @@ impl ValidatorBlockInfoStage {
             )));
         }
 
-        // TODO(validator) validate block info (timestamp, gas prices)
+        validate_block_info_timestamp(block_info.height, block_info.timestamp, &main_storage)?;
+
+        // TODO(validator) validate gas prices
 
         let BlockInfo {
             height,
@@ -149,6 +152,52 @@ impl ValidatorBlockInfoStage {
             main_storage,
         })
     }
+}
+
+fn validate_block_info_timestamp(
+    height: u64,
+    proposal_timestamp: u64,
+    main_storage: &Storage,
+) -> Result<(), ProposalHandlingError> {
+    let Some(parent_height) = height.checked_sub(1) else {
+        // Genesis block, no parent to validate against.
+        return Ok(());
+    };
+
+    let mut db_conn = main_storage
+        .connection()
+        .context("Creating database connection for timestamp validation")
+        .map_err(ProposalHandlingError::fatal)?;
+    let db_tx = db_conn
+        .transaction()
+        .context("Creating DB transaction for timestamp validation")
+        .map_err(ProposalHandlingError::fatal)?;
+
+    let block_num = BlockNumber::new_or_panic(parent_height);
+    let parent_header = db_tx
+        .block_header(BlockId::Number(block_num))
+        .context("Fetching block header for timestamp validation")
+        .map_err(ProposalHandlingError::fatal)?;
+
+    let Some(parent_header) = parent_header else {
+        // TODO: Deferred timestamp validation
+        // let msg = format!(
+        //     "Parent block header not found for height {}",
+        //     parent_height
+        // );
+        // return Err(ProposalHandlingError::recoverable_msg(msg));
+        return Ok(());
+    };
+
+    if proposal_timestamp <= parent_header.timestamp.get() {
+        let msg = format!(
+            "Proposal timestamp must be strictly greater than parent block timestamp: {} <= {}",
+            proposal_timestamp, parent_header.timestamp
+        );
+        return Err(ProposalHandlingError::recoverable_msg(msg));
+    }
+
+    Ok(())
 }
 
 /// Executes transactions and manages the block execution state.
@@ -681,6 +730,24 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
     }
 }
 
+impl std::fmt::Debug for ValidatorTransactionBatchStage<pathfinder_executor::BlockExecutor> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ValidatorTransactionBatchStage")
+            .field("chain_id", &self.chain_id)
+            .field("block_info", &self.block_info)
+            .field("transactions_len", &self.transactions.len())
+            .field("receipts_len", &self.receipts.len())
+            .field("events_len", &self.events.len())
+            .field("executor_initialized", &self.executor.is_some())
+            .field(
+                "cumulative_state_updates_len",
+                &self.cumulative_state_updates.len(),
+            )
+            .field("batch_sizes", &self.batch_sizes)
+            .finish()
+    }
+}
+
 pub enum ValidatorStage<E> {
     BlockInfo(ValidatorBlockInfoStage),
     TransactionBatch(Box<ValidatorTransactionBatchStage<E>>),
@@ -896,9 +963,13 @@ pub fn deployed_address(txnv: &TransactionVariant) -> Option<starknet_api::core:
 
 #[cfg(test)]
 mod tests {
+    use assert_matches::assert_matches;
     use p2p_proto::consensus::TransactionVariant;
     use p2p_proto::transaction::L1HandlerV0;
     use pathfinder_common::{
+        block_hash_bytes,
+        BlockHash,
+        BlockHeader,
         BlockNumber,
         BlockTimestamp,
         ChainId,
@@ -911,8 +982,10 @@ mod tests {
     use pathfinder_executor::types::BlockInfo;
     use pathfinder_executor::BlockExecutor;
     use pathfinder_storage::StorageBuilder;
+    use rstest::rstest;
 
     use super::*;
+    use crate::consensus::ProposalError;
 
     fn create_test_transaction(index: usize) -> p2p_proto::consensus::Transaction {
         let txn = TransactionVariant::L1HandlerV0(L1HandlerV0 {
@@ -1407,5 +1480,138 @@ mod tests {
             0,
             "Empty proposal should have no declared Sierra classes"
         );
+    }
+
+    #[rstest]
+    #[case::later_than_parent(2000, None)]
+    #[case::equal_to_parent(
+        1000,
+        Some(String::from(
+            "Proposal timestamp must be strictly greater than parent block timestamp: 1000 <= 1000"
+        ))
+    )]
+    #[case::earlier_than_parent(
+        700,
+        Some(String::from(
+            "Proposal timestamp must be strictly greater than parent block timestamp: 700 <= 1000"
+        ))
+    )]
+    fn timestamp_validation_parent_block_found(
+        #[case] proposal_timestamp: u64,
+        #[case] expected_error_message: Option<String>,
+    ) {
+        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let mut db_conn = storage.connection().expect("Failed to get DB connection");
+        let db_tx = db_conn
+            .transaction()
+            .expect("Failed to begin DB transaction");
+
+        // Insert parent header.
+        let header0 = BlockHeader {
+            hash: block_hash_bytes!(b"block hash 0"),
+            parent_hash: BlockHash::default(),
+            number: BlockNumber::new_or_panic(0),
+            timestamp: BlockTimestamp::new_or_panic(1000),
+            ..Default::default()
+        };
+        db_tx
+            .insert_block_header(&header0)
+            .expect("Failed to insert block header 0");
+        db_tx.commit().expect("Failed to commit DB transaction");
+
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+        let proposal_init1 = p2p_proto::consensus::ProposalInit {
+            height: 1,
+            round: 0,
+            valid_round: None,
+            proposer: p2p_proto::common::Address(Felt::from_hex_str("0x1").unwrap()),
+        };
+
+        let validator_block_info1 = ValidatorBlockInfoStage::new(chain_id, proposal_init1)
+            .expect("Failed to create ValidatorBlockInfoStage");
+
+        let block_info1 = p2p_proto::consensus::BlockInfo {
+            height: 1,
+            timestamp: proposal_timestamp,
+            builder: p2p_proto::common::Address(Felt::from_hex_str("0x1").unwrap()),
+            l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
+            l2_gas_price_fri: 1,
+            l1_gas_price_wei: 1_000_000_000,
+            l1_data_gas_price_wei: 1,
+            eth_to_fri_rate: 1_000_000_000,
+        };
+        let result = validator_block_info1
+            .validate_consensus_block_info::<BlockExecutor>(block_info1, storage);
+
+        if let Some(expected_error_message) = expected_error_message {
+            let err = result.unwrap_err();
+            assert_matches!(
+                err,
+                ProposalHandlingError::Recoverable(
+                    ProposalError::ValidationFailed { message }
+                ) if message == expected_error_message,
+                "Proposal validation error did not match expected value",
+            );
+        } else {
+            assert!(result.is_ok());
+        }
+    }
+
+    #[rstest]
+    #[case(BlockNumber::GENESIS)]
+    #[ignore = "TODO With deferred execution, not having a parent in the database is considered
+        valid when receiving proposal parts. We could also have deferred block info validation,
+        where we wait until parent is committed before validating timestamps."]
+    #[case(BlockNumber::new_or_panic(42))]
+    fn timestamp_validation_parent_block_not_found(#[case] proposal_height: BlockNumber) {
+        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+
+        let proposal_init = p2p_proto::consensus::ProposalInit {
+            height: proposal_height.get(),
+            round: 0,
+            valid_round: None,
+            proposer: p2p_proto::common::Address(Felt::from_hex_str("0x1").unwrap()),
+        };
+
+        let validator_block_info = ValidatorBlockInfoStage::new(chain_id, proposal_init)
+            .expect("Failed to create ValidatorBlockInfoStage");
+
+        let block_info = p2p_proto::consensus::BlockInfo {
+            height: proposal_height.get(),
+            timestamp: 1000,
+            builder: p2p_proto::common::Address(Felt::from_hex_str("0x1").unwrap()),
+            l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
+            l2_gas_price_fri: 1,
+            l1_gas_price_wei: 1_000_000_000,
+            l1_data_gas_price_wei: 1,
+            eth_to_fri_rate: 1_000_000_000,
+        };
+
+        if proposal_height == BlockNumber::GENESIS {
+            // Genesis block should pass timestamp validation even though it does not have a
+            // parent.
+            assert!(
+                validator_block_info
+                    .validate_consensus_block_info::<BlockExecutor>(block_info, storage)
+                    .is_ok(),
+                "Genesis block timestamp validation should pass even without parent"
+            );
+        } else {
+            let err = validator_block_info
+                .validate_consensus_block_info::<BlockExecutor>(block_info, storage)
+                .unwrap_err();
+            let expected_err_message = format!(
+                "Parent block header not found for height {}",
+                proposal_height.get() - 1,
+            );
+            assert_matches!(
+                err,
+                ProposalHandlingError::Recoverable(
+                    ProposalError::ValidationFailed { message }
+                ) if message == expected_err_message,
+                "Timestamp validation without parent should fail",
+            );
+        }
     }
 }
