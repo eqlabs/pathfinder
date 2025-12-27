@@ -345,15 +345,17 @@ fn create_structurally_invalid_proposal(
 }
 
 fn well_ordered_proposal(proposal_parts: &[ProposalPart]) -> bool {
-    proposal_parts
-        .first()
-        .is_some_and(|first| first.is_proposal_init())
-        && proposal_parts
-            .get(1)
-            .is_some_and(|part| part.is_block_info())
-        && proposal_parts
-            .last()
-            .is_some_and(|last| last.is_proposal_fin())
+    match proposal_parts {
+        [] => true,
+        [ProposalPart::Init(_)] => true,
+        // Empty proposal
+        [ProposalPart::Init(_), ProposalPart::Fin(_)] => true,
+        // Non-empty proposal
+        [ProposalPart::Init(_), ProposalPart::BlockInfo(_), rest @ ..] => {
+            rest.last().is_none_or(|part| part.is_proposal_fin())
+        }
+        _ => false,
+    }
 }
 
 /// Removes a proposal part if the flag is true, or duplicates it if the flag
