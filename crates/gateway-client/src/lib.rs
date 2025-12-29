@@ -315,6 +315,7 @@ impl Client {
             inner: reqwest::Client::builder()
                 .timeout(timeout)
                 .user_agent(pathfinder_version::USER_AGENT)
+                .gzip(true)
                 .build()?,
             gateway,
             feeder_gateway,
