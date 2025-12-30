@@ -127,7 +127,7 @@ mod test {
             None => Either::Right(bob),
         };
 
-        utils::wait_for_test_end(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT).await
+        utils::join_all(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT).await
     }
 
     // TODO(consensus)
@@ -201,7 +201,7 @@ mod test {
         let charlie_committed =
             wait_for_block_exists(&charlie, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
 
-        utils::wait_for_test_end(
+        utils::join_all(
             vec![
                 alice_decided,
                 bob_decided,
@@ -232,7 +232,7 @@ mod test {
         let dan_decided = wait_for_height(&dan, FINAL_HEIGHT, POLL_HEIGHT);
         let dan_committed = wait_for_block_exists(&dan, FINAL_HEIGHT, POLL_HEIGHT);
 
-        utils::wait_for_test_end(
+        utils::join_all(
             vec![
                 alice_decided,
                 bob_decided,
@@ -311,7 +311,7 @@ mod test {
             let bob_client = wait_for_height(&bob, LAST_VALID_HEIGHT, POLL_HEIGHT);
             let charlie_client = wait_for_height(&charlie, LAST_VALID_HEIGHT, POLL_HEIGHT);
 
-            utils::wait_for_test_end(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT)
+            utils::join_all(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT)
                 .await
                 .unwrap();
         } else {
@@ -327,7 +327,7 @@ mod test {
         let bob_client = wait_for_height(&bob, LAST_VALID_HEIGHT + 1, POLL_HEIGHT);
         let charlie_client = wait_for_height(&charlie, LAST_VALID_HEIGHT + 1, POLL_HEIGHT);
 
-        let err = utils::wait_for_test_end(
+        let err = utils::join_all(
             vec![alice_client, bob_client, charlie_client],
             POLL_HEIGHT * 10,
         )
