@@ -31,6 +31,7 @@ use starknet_gateway_types::reply::{
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::sync::watch::Sender as WatchSender;
 
+use crate::consensus::ConsensusChannels;
 use crate::state::block_hash;
 use crate::state::l1::L1SyncContext;
 use crate::state::l2::{BlockChain, L2SyncContext};
@@ -108,7 +109,6 @@ pub struct SyncContext<G, E> {
     pub l1_poll_interval: Duration,
     pub pending_data: WatchSender<PendingData>,
     pub submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker,
-    pub sync_to_consensus_tx: Option<mpsc::Sender<SyncMessageToConsensus>>,
     pub block_validation_mode: l2::BlockValidationMode,
     pub notifications: Notifications,
     pub block_cache_size: usize,
@@ -117,6 +117,7 @@ pub struct SyncContext<G, E> {
     pub sequencer_public_key: PublicKey,
     pub fetch_concurrency: std::num::NonZeroUsize,
     pub fetch_casm_from_fgw: bool,
+    // pub consensus_channels: Option<ConsensusChannels>,
 }
 
 impl<G, E> From<&SyncContext<G, E>> for L1SyncContext<E>
@@ -187,7 +188,6 @@ where
         l1_poll_interval: _,
         pending_data,
         submitted_tx_tracker,
-        sync_to_consensus_tx,
         block_validation_mode: _,
         notifications,
         block_cache_size,
@@ -196,6 +196,7 @@ where
         sequencer_public_key: _,
         fetch_concurrency: _,
         fetch_casm_from_fgw,
+        // consensus_channels,
     } = context;
 
     let mut db_conn = storage
@@ -273,7 +274,8 @@ where
         pending_data,
         verify_tree_hashes: context.verify_tree_hashes,
         notifications,
-        sync_to_consensus_tx,
+        // sync_to_consensus_tx,
+        sync_to_consensus_tx: None,
     };
     let mut consumer_handle =
         util::task::spawn(consumer(event_receiver, consumer_context, tx_current));
@@ -446,6 +448,7 @@ pub async fn consensus_sync<Ethereum, SequencerClient, F1, F2, L1Sync, L2Sync>(
     context: SyncContext<SequencerClient, Ethereum>,
     mut l1_sync: L1Sync,
     l2_sync: L2Sync,
+    consensus_channels: ConsensusChannels,
 ) -> anyhow::Result<()>
 where
     Ethereum: EthereumApi + Clone + Send + 'static,
@@ -455,7 +458,7 @@ where
     L1Sync: FnMut(mpsc::Sender<SyncEvent>, L1SyncContext<Ethereum>) -> F1,
     L2Sync: FnOnce(
             mpsc::Sender<SyncEvent>,
-            Option<mpsc::Sender<SyncMessageToConsensus>>,
+            Option<ConsensusChannels>,
             L2SyncContext<SequencerClient>,
             Option<(BlockNumber, BlockHash, StateCommitment)>,
             BlockChain,
@@ -480,7 +483,6 @@ where
         l1_poll_interval: _,
         pending_data,
         submitted_tx_tracker,
-        sync_to_consensus_tx,
         block_validation_mode: _,
         notifications,
         block_cache_size,
@@ -489,6 +491,7 @@ where
         sequencer_public_key: _,
         fetch_concurrency: _,
         fetch_casm_from_fgw: _,
+        // consensus_channels,
     } = context;
 
     let mut db_conn = storage
@@ -520,10 +523,14 @@ where
     let gateway_latest = match tokio::time::timeout(Duration::from_secs(5), sequencer.head()).await
     {
         Ok(Ok(gateway_latest)) => Some(gateway_latest),
+        // TODO the condition is too lax
         Ok(Err(e)) => {
             tracing::warn!(?e, "Fetching latest block from gateway failed");
-            anyhow::bail!("Fetching latest block from gateway failed: {e}");
+            // anyhow::bail!("Fetching latest block from gateway failed: {e}");
+            None
         }
+        // TODO retry on timeout, the other way round than now, we want to only continue if we are
+        // sure (because the fgw has replied with propoer startkent error)
         Err(_) => None,
     };
 
@@ -563,11 +570,13 @@ where
 
     tracing::error!("ZZZZ 0026");
 
+    let sync_to_consensus_tx = consensus_channels.sync_to_consensus_tx.clone();
+
     // Start L2 producer task. Clone the event sender so that the channel remains
     // open even if the producer task fails.
     let mut l2_handle = util::task::spawn(l2_sync(
         event_sender.clone(),
-        sync_to_consensus_tx.clone(),
+        Some(consensus_channels.clone()),
         l2_context.clone(),
         l2_head,
         block_chain,
@@ -585,7 +594,7 @@ where
         pending_data,
         verify_tree_hashes: context.verify_tree_hashes,
         notifications,
-        sync_to_consensus_tx: sync_to_consensus_tx.clone(),
+        sync_to_consensus_tx: Some(sync_to_consensus_tx.clone()),
     };
     let mut consumer_handle =
         util::task::spawn(consumer(event_receiver, consumer_context, tx_current));
@@ -648,7 +657,7 @@ where
                 let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
                 let fut = l2_sync(
                     event_sender.clone(),
-                    sync_to_consensus_tx.clone(),
+                    Some(consensus_channels.clone()),
                     l2_context.clone(),
                     l2_head,
                     block_chain,
