@@ -25,6 +25,7 @@ pub struct ConsensusTaskHandles {
 }
 
 /// Various channels used to communicate with the consensus engine.
+#[derive(Clone)]
 pub struct ConsensusChannels {
     /// Watcher for the latest [ConsensusInfo].
     pub consensus_info_watch: watch::Receiver<ConsensusInfo>,

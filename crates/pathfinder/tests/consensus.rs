@@ -222,14 +222,10 @@ mod test {
         let alice_decided = wait_for_height(&alice, FINAL_HEIGHT, POLL_HEIGHT);
         let bob_decided = wait_for_height(&bob, FINAL_HEIGHT, POLL_HEIGHT);
         let charlie_decided = wait_for_height(&charlie, FINAL_HEIGHT, POLL_HEIGHT);
+        let dan_decided = wait_for_height(&dan, FINAL_HEIGHT, POLL_HEIGHT);
         let alice_committed = wait_for_block_exists(&alice, FINAL_HEIGHT, POLL_HEIGHT);
         let bob_committed = wait_for_block_exists(&bob, FINAL_HEIGHT, POLL_HEIGHT);
         let charlie_committed = wait_for_block_exists(&charlie, FINAL_HEIGHT, POLL_HEIGHT);
-
-        // Wait for a block that was decided before this node joined to be synced.
-        // let dan_client = wait_for_block_exists(&dan, HEIGHT_TO_ADD_FOURTH_NODE - 2,
-        // POLL_HEIGHT);
-        let dan_decided = wait_for_height(&dan, FINAL_HEIGHT, POLL_HEIGHT);
         let dan_committed = wait_for_block_exists(&dan, FINAL_HEIGHT, POLL_HEIGHT);
 
         utils::join_all(

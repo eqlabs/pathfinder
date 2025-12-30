@@ -32,6 +32,7 @@ use starknet_gateway_types::reply::{
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::sync::watch::Sender as WatchSender;
 
+use crate::consensus::ConsensusChannels;
 use crate::state::block_hash;
 use crate::state::l1::L1SyncContext;
 use crate::state::l2::{BlockChain, L2SyncContext};
@@ -109,7 +110,6 @@ pub struct SyncContext<G, E> {
     pub l1_poll_interval: Duration,
     pub pending_data: WatchSender<PendingData>,
     pub submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker,
-    pub sync_to_consensus_tx: Option<mpsc::Sender<SyncMessageToConsensus>>,
     pub block_validation_mode: l2::BlockValidationMode,
     pub notifications: Notifications,
     pub block_cache_size: usize,
@@ -188,7 +188,6 @@ where
         l1_poll_interval: _,
         pending_data,
         submitted_tx_tracker,
-        sync_to_consensus_tx,
         block_validation_mode: _,
         notifications,
         block_cache_size,
@@ -274,7 +273,7 @@ where
         pending_data,
         verify_tree_hashes: context.verify_tree_hashes,
         notifications,
-        sync_to_consensus_tx,
+        sync_to_consensus_tx: None,
     };
     let mut consumer_handle =
         util::task::spawn(consumer(event_receiver, consumer_context, tx_current));
@@ -447,6 +446,7 @@ pub async fn consensus_sync<Ethereum, SequencerClient, F1, F2, L1Sync, L2Sync>(
     context: SyncContext<SequencerClient, Ethereum>,
     mut l1_sync: L1Sync,
     l2_sync: L2Sync,
+    consensus_channels: ConsensusChannels,
 ) -> anyhow::Result<()>
 where
     Ethereum: EthereumApi + Clone + Send + 'static,
@@ -456,7 +456,7 @@ where
     L1Sync: FnMut(mpsc::Sender<SyncEvent>, L1SyncContext<Ethereum>) -> F1,
     L2Sync: FnOnce(
             mpsc::Sender<SyncEvent>,
-            Option<mpsc::Sender<SyncMessageToConsensus>>,
+            Option<ConsensusChannels>,
             L2SyncContext<SequencerClient>,
             Option<(BlockNumber, BlockHash, StateCommitment)>,
             BlockChain,
@@ -479,7 +479,6 @@ where
         l1_poll_interval: _,
         pending_data,
         submitted_tx_tracker,
-        sync_to_consensus_tx,
         block_validation_mode: _,
         notifications,
         block_cache_size,
@@ -519,12 +518,11 @@ where
         {
             None
         }
-        // head() retries on all errors except starknet errors, if we encounter a mismatch in
-        // starknet error code, let's assume that the error still stems from a missing block, so we
-        // log it and carry on
-        Err(e) => {
-            tracing::error!("Error fetching latest block from gateway: {e:?}");
-            Err(e).context("Fetching latest block from gateway")?
+        // head() retries on non starknet errors so any other starknet error code indicates
+        // a problem with the feeder gateway
+        Err(error) => {
+            tracing::error!(%error, "Error fetching latest block from gateway");
+            Err(error).context("Fetching latest block from gateway")?
         }
     };
 
@@ -546,11 +544,13 @@ where
         .context("Fetching latest blocks from storage")?;
     let block_chain = BlockChain::with_capacity(block_cache_size, latest_blocks);
 
+    let sync_to_consensus_tx = consensus_channels.sync_to_consensus_tx.clone();
+
     // Start L2 producer task. Clone the event sender so that the channel remains
     // open even if the producer task fails.
     let mut l2_handle = util::task::spawn(l2_sync(
         event_sender.clone(),
-        sync_to_consensus_tx.clone(),
+        Some(consensus_channels.clone()),
         l2_context.clone(),
         l2_head,
         block_chain,
@@ -566,7 +566,7 @@ where
         pending_data,
         verify_tree_hashes: context.verify_tree_hashes,
         notifications,
-        sync_to_consensus_tx: sync_to_consensus_tx.clone(),
+        sync_to_consensus_tx: Some(sync_to_consensus_tx.clone()),
     };
     let mut consumer_handle =
         util::task::spawn(consumer(event_receiver, consumer_context, tx_current));
@@ -627,7 +627,7 @@ where
                 let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
                 let fut = l2_sync(
                     event_sender.clone(),
-                    sync_to_consensus_tx.clone(),
+                    Some(consensus_channels.clone()),
                     l2_context.clone(),
                     l2_head,
                     block_chain,

@@ -330,9 +330,11 @@ pub fn spawn(
                                     .read_consensus_finalized_and_decided_block(number.get())?
                                     .map(Box::new);
 
-                                tracing::trace!(
-                                    %number, response=?resp, "🖧  📥 {validator_address} get consensus finalized and decided upon block"
-                                );
+                                if resp.is_none() {
+                                    tracing::trace!(
+                                        %number, "🖧  ❌ {validator_address} no finalized and decided upon block found"
+                                    );
+                                }
 
                                 reply
                                     .send(resp)

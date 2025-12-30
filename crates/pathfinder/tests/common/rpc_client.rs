@@ -164,7 +164,18 @@ async fn wait_for_block_exists_fut(
                     b.block_hash
                 );
                 return;
+            } else {
+                println!(
+                    "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} has block {} < \
+                     {block_height}",
+                    b.block_number
+                );
             }
+        } else {
+            println!(
+                "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} does not have block \
+                 {block_height} yet"
+            );
         }
     }
 }

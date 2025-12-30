@@ -13,6 +13,7 @@ use starknet_gateway_types::reply::{Block, BlockSignature, Status};
 use tokio::sync::mpsc;
 use tracing::Instrument;
 
+use crate::consensus::ConsensusChannels;
 use crate::state::block_hash::{
     calculate_event_commitment,
     calculate_receipt_commitment,
@@ -358,10 +359,10 @@ where
 /// Same as [sync] with the key differences being:
 ///   - has no bulk sync phase (PoC for consensus sync, keeping it as simple as
 ///     possible)
-///   - interacts with consensus via [SyncMessageToConsensus]
+///   - interacts with consensus via [ConsensusChannels]
 pub async fn consensus_sync<GatewayClient>(
     tx_event: mpsc::Sender<SyncEvent>,
-    sync_to_consensus_tx: Option<mpsc::Sender<SyncMessageToConsensus>>,
+    consensus_channels: Option<ConsensusChannels>,
     context: L2SyncContext<GatewayClient>,
     mut head: Option<(BlockNumber, BlockHash, StateCommitment)>,
     mut blocks: BlockChain,
@@ -381,6 +382,25 @@ where
         fetch_casm_from_fgw,
     } = context;
 
+    let ConsensusChannels {
+        mut consensus_info_watch,
+        sync_to_consensus_tx,
+    } = consensus_channels
+        .expect("In consensus-aware L2 sync, consensus channels are always provided");
+
+    // In case of a freshly bootstapped network both watched values will not be
+    // available, so we wait for either to yield a value to avoid busy-looping
+    // in the loop below.
+    let consensus_watch_fut = consensus_info_watch.wait_for(|info| info.highest_decision.is_some());
+    let fgw_watch_fut = latest.wait_for(|fgw_head| fgw_head.is_some());
+
+    tokio::select! {
+        biased;
+
+        _ = consensus_watch_fut => {}
+        _ = fgw_watch_fut => {}
+    }
+
     // Start polling head of chain
     'outer: loop {
         // Get the next block from L2.
@@ -397,8 +417,6 @@ where
             reply: tx,
         };
         sync_to_consensus_tx
-            .as_ref()
-            .expect("Channel is always available in consensus-aware sync")
             .send(request)
             .await
             .context("Requesting committed block")?;
@@ -408,8 +426,6 @@ where
             .context("Receiving committed block from consensus")?;
 
         if let Some(l2_block) = reply {
-            tracing::debug!("Block {next} already committed in consensus, skipping download");
-
             let (state_tries_updated_tx, rx) = tokio::sync::oneshot::channel();
 
             tx_event
@@ -419,6 +435,7 @@ where
                 })
                 .await
                 .context("Event channel closed")?;
+
             let (block_hash, state_commitment) = rx
                 .await
                 .context("Waiting for state tries to be updated in consumer")?;
@@ -428,8 +445,6 @@ where
 
             continue 'outer;
         }
-
-        tracing::debug!("Downloading block {next} from sequencer");
 
         // We start downloading the signature for the block
         let signature_handle = util::task::spawn({
@@ -458,9 +473,12 @@ where
             .await?
             {
                 DownloadBlock::Block(block, commitments, state_update, state_diff_commitment) => {
-                    break (block, commitments, state_update, state_diff_commitment)
+                    break (block, commitments, state_update, state_diff_commitment);
                 }
                 DownloadBlock::Wait => {
+                    // Now try from consensus
+                    continue 'outer;
+
                     // Wait for the latest block to change.
                     if latest
                         .wait_for(|x| x.is_some_and(|(_, hash)| hash != head.unwrap_or_default().1))
@@ -471,7 +489,10 @@ where
                         return Ok(());
                     }
                 }
-                DownloadBlock::Retry => {}
+                DownloadBlock::Retry => {
+                    // Now try from consensus
+                    continue 'outer;
+                }
                 DownloadBlock::Reorg => {
                     head = match head {
                         Some(some_head) => reorg(
@@ -820,6 +841,16 @@ async fn download_block(
                 let state_update = Box::new(state_update);
                 let state_diff_length = state_update.state_diff_length();
 
+                // Currently empty proposals used for consensus integration tests carry an empty
+                // state diff commitment.
+                #[cfg(all(feature = "consensus-integration-tests", feature = "p2p",))]
+                let state_diff_commitment =
+                    if block.state_diff_commitment == Some(StateDiffCommitment::ZERO) {
+                        StateDiffCommitment::ZERO
+                    } else {
+                        state_diff_commitment
+                    };
+
                 let block_number = block.block_number;
                 let verify_result = verify_gateway_block_commitments_and_hash(
                     &block,
@@ -867,11 +898,19 @@ async fn download_block(
             }
         }
         Err(SequencerError::StarknetError(err)) if err.code == BlockNotFound.into() => {
-            // We've queried past the head of the chain.
-            let (seq_head_number, seq_head_hash) = sequencer
-                .head()
-                .await
-                .context("Query sequencer for latest block")?;
+            // We've queried past the head of the chain or the genesis block is not yet
+            let (seq_head_number, seq_head_hash) = match sequencer.head().await {
+                Ok(x) => x,
+                Err(SequencerError::StarknetError(err)) if err.code == BlockNotFound.into() => {
+                    return Ok(DownloadBlock::Wait);
+                }
+                // head() retries on non starknet errors so any other starknet error code indicates
+                // a problem with the feeder gateway
+                Err(error) => {
+                    tracing::error!(%error, "Error fetching latest block from gateway");
+                    Err(error).context("Fetching latest block from gateway")?
+                }
+            };
 
             if seq_head_number >= block_number {
                 // We were ahead of the sequencer but in the meantime it has caught up to us. We
@@ -910,7 +949,13 @@ async fn download_block(
                 }
             }
         }
-        Err(other) => Err(other).context("Download block from sequencer"),
+        Err(other) => {
+            tracing::trace!(
+                "YYYY 023 Error downloading block from sequencer: {:?}",
+                other
+            );
+            Err(other).context("Download block from sequencer")
+        }
     }
 }
 
