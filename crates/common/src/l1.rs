@@ -1,7 +1,7 @@
 use pathfinder_crypto::Felt;
 use primitive_types::H256;
 
-use crate::macros;
+use crate::{macros, BlockTimestamp, GasPrice};
 
 /// An Ethereum block number.
 #[derive(Copy, Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -108,4 +108,67 @@ impl AsRef<[u8]> for L1TransactionHash {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
     }
+}
+
+/// An Ethereum block hash.
+#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct L1BlockHash(H256);
+
+macros::fmt::thin_display!(L1BlockHash);
+macros::fmt::thin_debug!(L1BlockHash);
+
+impl L1BlockHash {
+    /// Creates a new `L1BlockHash` from a `H256`.
+    pub fn new(hash: H256) -> Self {
+        Self(hash)
+    }
+
+    /// Returns the raw bytes of the block hash.
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
+
+    /// Creates a new `L1BlockHash` from a slice of bytes.
+    ///
+    /// # Panics
+    ///
+    /// If the length of the byte slice is not 32.
+    pub fn from_slice(bytes: &[u8]) -> Self {
+        Self(H256::from_slice(bytes))
+    }
+}
+
+impl From<H256> for L1BlockHash {
+    fn from(hash: H256) -> Self {
+        Self(hash)
+    }
+}
+
+impl From<L1BlockHash> for H256 {
+    fn from(block_hash: L1BlockHash) -> Self {
+        block_hash.0
+    }
+}
+
+impl From<[u8; 32]> for L1BlockHash {
+    fn from(bytes: [u8; 32]) -> Self {
+        Self(H256::from(bytes))
+    }
+}
+
+impl AsRef<[u8]> for L1BlockHash {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+/// L1 block header with gas price information
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct L1BlockHeader {
+    pub number: L1BlockNumber,
+    pub timestamp: BlockTimestamp,
+    pub hash: L1BlockHash,
+    pub parent_hash: L1BlockHash,
+    pub base_fee_per_gas: GasPrice, // EIP-1559 base fee per gas (wei)
+    pub blob_fee: GasPrice,         // EIP-4844 blob fee per gas (wei)
 }

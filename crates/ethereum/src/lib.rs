@@ -2,14 +2,21 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::time::Duration;
 
-use alloy::eips::{BlockId, BlockNumberOrTag};
+use alloy::eips::eip4844::BLOB_TX_MIN_BLOB_GASPRICE;
+use alloy::eips::{eip4844, BlockId, BlockNumberOrTag};
 use alloy::primitives::{Address, TxHash};
 use alloy::providers::{Provider, ProviderBuilder, WsConnect};
 use alloy::rpc::types::{FilteredParams, Log};
 use anyhow::Context;
 use pathfinder_common::prelude::*;
 use pathfinder_common::transaction::L1HandlerTransaction;
-use pathfinder_common::{EthereumChain, L1BlockNumber, L1TransactionHash};
+use pathfinder_common::{
+    EthereumChain,
+    L1BlockHash,
+    L1BlockHeader,
+    L1BlockNumber,
+    L1TransactionHash,
+};
 use pathfinder_crypto::Felt;
 use primitive_types::{H160, U256};
 use reqwest::{IntoUrl, Url};
@@ -59,6 +66,10 @@ pub trait EthereumApi {
         address: &H160,
         tx_hash: &L1TransactionHash,
     ) -> impl Future<Output = anyhow::Result<Vec<L1HandlerTransaction>>>;
+    fn get_block_header(
+        &self,
+        block_number: L1BlockNumber,
+    ) -> impl Future<Output = anyhow::Result<Option<L1BlockHeader>>>;
     fn sync_and_listen<F, Fut>(
         &mut self,
         address: &H160,
@@ -343,5 +354,50 @@ impl EthereumApi for EthereumClient {
             x if x == U256::from(11155111u32) => EthereumChain::Sepolia,
             x => EthereumChain::Other(x),
         })
+    }
+
+    /// Fetches an L1 block header with gas price information
+    async fn get_block_header(
+        &self,
+        block_number: L1BlockNumber,
+    ) -> anyhow::Result<Option<L1BlockHeader>> {
+        let ws = WsConnect::new(self.url.clone());
+        let provider = ProviderBuilder::new()
+            .connect_ws(ws)
+            .await
+            .context("Failed to connect to Ethereum RPC")?;
+
+        let block = provider
+            .get_block_by_number(BlockNumberOrTag::Number(block_number.get()))
+            .await
+            .context("Failed to fetch block from Ethereum RPC")?;
+
+        let Some(block) = block else {
+            return Ok(None);
+        };
+
+        let header = &block.header.inner;
+
+        // Extract gas price fields from the inner header
+        let base_fee_per_gas = header.base_fee_per_gas.map(|fee| fee as u128).unwrap_or(0);
+
+        // EIP-4844 blob gas price calculation
+        let blob_fee = header
+            .excess_blob_gas
+            .map(eip4844::calc_blob_gasprice)
+            .unwrap_or(BLOB_TX_MIN_BLOB_GASPRICE);
+
+        // Convert B256 to L1BlockHash for hash fields
+        let hash_bytes: [u8; 32] = block.header.hash.into();
+        let parent_hash_bytes: [u8; 32] = header.parent_hash.into();
+
+        Ok(Some(L1BlockHeader {
+            number: L1BlockNumber::new_or_panic(header.number),
+            timestamp: BlockTimestamp::new_or_panic(header.timestamp),
+            hash: L1BlockHash::from_slice(&hash_bytes),
+            parent_hash: L1BlockHash::from_slice(&parent_hash_bytes),
+            base_fee_per_gas: GasPrice(base_fee_per_gas),
+            blob_fee: GasPrice(blob_fee),
+        }))
     }
 }
