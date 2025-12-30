@@ -70,6 +70,7 @@ pub trait EthereumApi {
         &self,
         block_number: L1BlockNumber,
     ) -> impl Future<Output = anyhow::Result<Option<L1BlockHeader>>>;
+    fn get_finalized_block_number(&self) -> impl Future<Output = anyhow::Result<L1BlockNumber>>;
     fn sync_and_listen<F, Fut>(
         &mut self,
         address: &H160,
@@ -103,19 +104,6 @@ impl EthereumClient {
         url.set_password(Some(password))
             .map_err(|_| anyhow::anyhow!("Setting password failed"))?;
         Self::new(url)
-    }
-
-    /// Returns the block number of the last finalized block
-    async fn get_finalized_block_number(&self) -> anyhow::Result<L1BlockNumber> {
-        // Create a WebSocket connection
-        let ws = WsConnect::new(self.url.clone());
-        let provider = ProviderBuilder::new().connect_ws(ws).await?;
-        // Fetch the finalized block number
-        provider
-            .get_block_by_number(BlockNumberOrTag::Finalized)
-            .await?
-            .map(|block| L1BlockNumber::new_or_panic(block.header.number))
-            .context("Failed to fetch finalized block hash")
     }
 }
 
@@ -399,5 +387,21 @@ impl EthereumApi for EthereumClient {
             base_fee_per_gas: GasPrice(base_fee_per_gas),
             blob_fee: GasPrice(blob_fee),
         }))
+    }
+
+    async fn get_finalized_block_number(&self) -> anyhow::Result<L1BlockNumber> {
+        // Create a WebSocket connection
+        let ws = WsConnect::new(self.url.clone());
+        let provider = ProviderBuilder::new()
+            .connect_ws(ws)
+            .await
+            .context("Failed to connect to Ethereum RPC")?;
+        // Fetch the finalized block number
+        provider
+            .get_block_by_number(BlockNumberOrTag::Finalized)
+            .await
+            .context("Failed to fetch finalized block")?
+            .map(|block| L1BlockNumber::new_or_panic(block.header.number))
+            .context("Finalized block not found")
     }
 }
