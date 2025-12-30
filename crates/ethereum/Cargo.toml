@@ -7,7 +7,7 @@ license = { workspace = true }
 rust-version = { workspace = true }
 
 [dependencies]
-alloy = { version = "1.0.9", default-features = false, features = [
+alloy = { version = "1.2", default-features = false, features = [
     "contract",
     "rpc-types",
     "provider-ws",
