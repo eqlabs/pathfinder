@@ -193,29 +193,56 @@ mod test {
         utils::log_elapsed(stopwatch);
 
         // Use channels to send and update the rpc port
-        let alice_client = wait_for_height(&alice, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
-        let bob_client = wait_for_height(&bob, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
-        let charlie_client = wait_for_height(&charlie, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
+        let alice_decided = wait_for_height(&alice, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
+        let bob_decided = wait_for_height(&bob, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
+        let charlie_decided = wait_for_height(&charlie, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
+        let alice_committed = wait_for_block_exists(&alice, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
+        let bob_committed = wait_for_block_exists(&bob, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
+        let charlie_committed =
+            wait_for_block_exists(&charlie, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
 
-        utils::wait_for_test_end(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT)
-            .await?;
+        utils::wait_for_test_end(
+            vec![
+                alice_decided,
+                bob_decided,
+                charlie_decided,
+                alice_committed,
+                bob_committed,
+                charlie_committed,
+            ],
+            TEST_TIMEOUT,
+        )
+        .await?;
 
         let dan_cfg = configs.next().unwrap().with_sync_enabled();
 
         let dan = PathfinderInstance::spawn(dan_cfg.clone())?;
         dan.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
 
-        let alice_client = wait_for_height(&alice, FINAL_HEIGHT, POLL_HEIGHT);
-        let bob_client = wait_for_height(&bob, FINAL_HEIGHT, POLL_HEIGHT);
-        let charlie_client = wait_for_height(&charlie, FINAL_HEIGHT, POLL_HEIGHT);
+        let alice_decided = wait_for_height(&alice, FINAL_HEIGHT, POLL_HEIGHT);
+        let bob_decided = wait_for_height(&bob, FINAL_HEIGHT, POLL_HEIGHT);
+        let charlie_decided = wait_for_height(&charlie, FINAL_HEIGHT, POLL_HEIGHT);
+        let alice_committed = wait_for_block_exists(&alice, FINAL_HEIGHT, POLL_HEIGHT);
+        let bob_committed = wait_for_block_exists(&bob, FINAL_HEIGHT, POLL_HEIGHT);
+        let charlie_committed = wait_for_block_exists(&charlie, FINAL_HEIGHT, POLL_HEIGHT);
 
         // Wait for a block that was decided before this node joined to be synced.
         // let dan_client = wait_for_block_exists(&dan, HEIGHT_TO_ADD_FOURTH_NODE - 2,
         // POLL_HEIGHT);
-        let dan_client = wait_for_height(&dan, FINAL_HEIGHT, POLL_HEIGHT);
+        let dan_decided = wait_for_height(&dan, FINAL_HEIGHT, POLL_HEIGHT);
+        let dan_committed = wait_for_block_exists(&dan, FINAL_HEIGHT, POLL_HEIGHT);
 
         utils::wait_for_test_end(
-            vec![alice_client, bob_client, charlie_client, dan_client],
+            vec![
+                alice_decided,
+                bob_decided,
+                charlie_decided,
+                dan_decided,
+                alice_committed,
+                bob_committed,
+                charlie_committed,
+                dan_committed,
+            ],
             TEST_TIMEOUT,
         )
         .await
