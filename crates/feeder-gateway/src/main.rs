@@ -380,15 +380,15 @@ async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyh
                                             block_number: block.block_number,
                                         };
 
-                                        Ok(warp::reply::json(&reply))
+                                        Ok(warp::reply::with_status(warp::reply::json(&reply), warp::http::StatusCode::OK))
                                     } else {
-                                        Ok(warp::reply::json(&block))
+                                        Ok(warp::reply::with_status(warp::reply::json(&block), warp::http::StatusCode::OK))
                                     }
                                 },
                                 Err(e) => {
                                     tracing::error!("Error fetching block: {:?}", e);
                                     let error = serde_json::json!({"code": "StarknetErrorCode.BLOCK_NOT_FOUND", "message": "Block number not found"});
-                                    Ok(warp::reply::json(&error))
+                                    Ok(warp::reply::with_status(warp::reply::json(&error), warp::http::StatusCode::BAD_REQUEST))
                                 }
                             }
                         },
@@ -420,12 +420,12 @@ async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyh
 
                             match signature {
                                 Ok(signature) => {
-                                        Ok(warp::reply::json(&signature))
+                                    Ok(warp::reply::with_status(warp::reply::json(&signature), warp::http::StatusCode::OK))
                                 },
                                 Err(e) => {
                                     tracing::error!("Error fetching signature: {:?}", e);
                                     let error = serde_json::json!({"code": "StarknetErrorCode.BLOCK_NOT_FOUND", "message": "Block number not found"});
-                                    Ok(warp::reply::json(&error))
+                                    Ok(warp::reply::with_status(warp::reply::json(&error), warp::http::StatusCode::BAD_REQUEST))
                                 }
                             }
                         },
@@ -530,7 +530,7 @@ async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyh
                         },
                         Err(_) => {
                             let error = r#"{"code": "StarknetErrorCode.UNDECLARED_CLASS", "message": "Class not found"}"#;
-                            let response = warp::http::Response::builder().status(500).body(error.as_bytes().to_owned()).unwrap();
+                            let response = warp::http::Response::builder().status(warp::http::StatusCode::BAD_REQUEST).body(error.as_bytes().to_owned()).unwrap();
                             Ok(response)
                         }
                     }
@@ -599,12 +599,7 @@ fn contract_addresses(chain: Chain) -> anyhow::Result<ContractAddresses> {
             core: parse("c662c410C0ECf747543f5bA90660f6ABeBD9C8c4"),
             gps: parse("47312450B3Ac8b5b8e247a6bB6d523e7605bDb60"),
         },
-        Chain::Custom => ContractAddresses {
-            // Formerly also Goerli integration
-            core: parse("d5c325D183C592C94998000C5e0EED9e6655c020"),
-            gps: parse("8f97970aC5a9aa8D130d35146F5b59c4aef57963"),
-        },
-        Chain::SepoliaTestnet => ContractAddresses {
+        Chain::SepoliaTestnet | Chain::Custom => ContractAddresses {
             core: parse("E2Bb56ee936fd6433DC0F6e7e3b8365C906AA057"),
             gps: parse("07ec0D28e50322Eb0C159B9090ecF3aeA8346DFe"),
         },
