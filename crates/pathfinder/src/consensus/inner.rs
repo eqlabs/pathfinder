@@ -126,9 +126,11 @@ enum P2PTaskEvent {
     CacheProposal(HeightAndRound, Vec<ProposalPart>, ConsensusFinalizedL2Block),
     /// Consensus requested that we gossip a message via the P2P network.
     GossipRequest(NetworkMessage<ConsensusValue, ContractAddress>),
-    /// Commit the given block and state update to the database. All proposals
-    /// for this height are removed from the cache.
-    CommitBlock(HeightAndRound, ConsensusValue),
+    /// Indicate that the given block and state update can be committed to the
+    /// database. All proposals for this height are removed from the cache. All
+    /// other consensus finalized blocks for lower rounds at this height are
+    /// discarded.
+    MarkBlockAsDecidedAndCleanUp(HeightAndRound, ConsensusValue),
 }
 
 #[derive(Copy, Clone, Debug)]
