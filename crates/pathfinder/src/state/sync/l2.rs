@@ -13,6 +13,7 @@ use starknet_gateway_types::reply::{Block, BlockSignature, Status};
 use tokio::sync::mpsc;
 use tracing::Instrument;
 
+use crate::consensus::ConsensusChannels;
 use crate::state::block_hash::{
     calculate_event_commitment,
     calculate_receipt_commitment,
@@ -101,13 +102,19 @@ pub async fn sync<GatewayClient>(
     context: L2SyncContext<GatewayClient>,
     mut head: Option<(BlockNumber, BlockHash, StateCommitment)>,
     mut blocks: BlockChain,
-    mut latest: tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+    mut latest: tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>,
 ) -> anyhow::Result<()>
 where
     GatewayClient: GatewayApi + Clone + Send + 'static,
 {
     // Phase 1: catch up to the latest block
-    let bulk_tail = latest.borrow().0;
+    let bulk_tail = latest
+        .borrow()
+        .expect(
+            "In feeder gateway sync, the watch is always initialized with a value fetched from \
+             the feeder gateway upon startup",
+        )
+        .0;
     bulk_sync(
         tx_event.clone(),
         context.clone(),
@@ -168,7 +175,13 @@ where
                 DownloadBlock::Wait => {
                     // Wait for the latest block to change.
                     if latest
-                        .wait_for(|(_, hash)| hash != &head.unwrap_or_default().1)
+                        .wait_for(|x| {
+                            x.expect(
+                                "In feeder gateway sync, the watch is always initialized with a \
+                                 value fetched from the feeder gateway upon startup",
+                            )
+                            .1 != head.unwrap_or_default().1
+                        })
                         .await
                         .is_err()
                     {
@@ -346,14 +359,14 @@ where
 /// Same as [sync] with the key differences being:
 ///   - has no bulk sync phase (PoC for consensus sync, keeping it as simple as
 ///     possible)
-///   - interacts with consensus via [SyncMessageToConsensus]
+///   - interacts with consensus via [ConsensusChannels]
 pub async fn consensus_sync<GatewayClient>(
     tx_event: mpsc::Sender<SyncEvent>,
-    sync_to_consensus_tx: Option<mpsc::Sender<SyncMessageToConsensus>>,
+    consensus_channels: Option<ConsensusChannels>,
     context: L2SyncContext<GatewayClient>,
     mut head: Option<(BlockNumber, BlockHash, StateCommitment)>,
     mut blocks: BlockChain,
-    mut latest: tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+    mut latest: tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>,
 ) -> anyhow::Result<()>
 where
     GatewayClient: GatewayApi + Clone + Send + 'static,
@@ -369,6 +382,14 @@ where
         fetch_casm_from_fgw,
     } = context;
 
+    tracing::trace!(?head, "YYYY Starting consensus-aware L2 sync");
+
+    let ConsensusChannels {
+        consensus_info_watch,
+        sync_to_consensus_tx,
+    } = consensus_channels
+        .expect("In consensus-aware L2 sync, consensus channels are always provided");
+
     // Start polling head of chain
     'outer: loop {
         // Get the next block from L2.
@@ -376,6 +397,10 @@ where
             Some(head) => (head.0 + 1, Some(head)),
             None => (BlockNumber::GENESIS, None),
         };
+
+        tracing::trace!("YYYY 001");
+
+        tracing::trace!("Getting block {next} from consensus");
 
         // Check if the Consensus engine has already committed this block
         // to avoid redundant downloads.
@@ -385,15 +410,17 @@ where
             reply: tx,
         };
         sync_to_consensus_tx
-            .as_ref()
-            .expect("Channel is always available in consensus-aware sync")
             .send(request)
             .await
             .context("Requesting committed block")?;
 
+        tracing::trace!("YYYY 002");
+
         let reply = rx
             .await
             .context("Receiving committed block from consensus")?;
+
+        tracing::trace!("YYYY 003");
 
         if let Some(l2_block) = reply {
             tracing::debug!("Block {next} already committed in consensus, skipping download");
@@ -407,15 +434,27 @@ where
                 })
                 .await
                 .context("Event channel closed")?;
+
+            tracing::trace!("YYYY 004");
+
             let (block_hash, state_commitment) = rx
                 .await
                 .context("Waiting for state tries to be updated in consumer")?;
+
+            tracing::trace!("YYYY 005");
 
             head = Some((next, block_hash, state_commitment));
             blocks.push(next, block_hash, state_commitment);
 
             continue 'outer;
+        } else {
+            tracing::trace!("YYYY 006");
+            tracing::debug!(
+                "Block {next} not yet committed in consensus, downloading from sequencer"
+            );
         }
+
+        tracing::trace!("YYYY 010");
 
         tracing::debug!("Downloading block {next} from sequencer");
 
@@ -430,6 +469,8 @@ where
                 Ok((result, t_signature))
             }
         });
+
+        tracing::trace!("YYYY 011");
 
         let t_block = std::time::Instant::now();
 
@@ -446,12 +487,22 @@ where
             .await?
             {
                 DownloadBlock::Block(block, commitments, state_update, state_diff_commitment) => {
-                    break (block, commitments, state_update, state_diff_commitment)
+                    tracing::trace!("YYYY 012");
+
+                    break (block, commitments, state_update, state_diff_commitment);
                 }
                 DownloadBlock::Wait => {
+                    tracing::trace!(
+                        "Block {next} not available yet from sequencer, back to consensus"
+                    );
+
+                    tracing::trace!("YYYY 013");
+
+                    continue 'outer;
+
                     // Wait for the latest block to change.
                     if latest
-                        .wait_for(|(_, hash)| hash != &head.unwrap_or_default().1)
+                        .wait_for(|x| x.is_some_and(|(_, hash)| hash != head.unwrap_or_default().1))
                         .await
                         .is_err()
                     {
@@ -459,8 +510,21 @@ where
                         return Ok(());
                     }
                 }
-                DownloadBlock::Retry => {}
+                DownloadBlock::Retry => {
+                    tracing::trace!(
+                        "Block {next} not available yet from sequencer, back to consensus"
+                    );
+
+                    tracing::trace!("YYYY 014");
+
+                    // Now try from consensus
+                    continue 'outer;
+                }
                 DownloadBlock::Reorg => {
+                    tracing::trace!("Handle reorg for block {next} requested by sequencer");
+
+                    tracing::trace!("YYYY 015");
+
                     head = match head {
                         Some(some_head) => reorg(
                             &some_head,
@@ -488,6 +552,8 @@ where
             }
         };
         let t_block = t_block.elapsed();
+
+        tracing::trace!(block_number=%block.block_number, "YYYY 020 downloaded block from sequencer");
 
         if let Some(some_head) = &head {
             if some_head.1 != block.parent_block_hash {
@@ -634,7 +700,7 @@ where
 pub async fn poll_latest(
     gateway: impl GatewayApi,
     interval: Duration,
-    sender: tokio::sync::watch::Sender<(BlockNumber, BlockHash)>,
+    sender: tokio::sync::watch::Sender<Option<(BlockNumber, BlockHash)>>,
 ) {
     let mut interval = tokio::time::interval(interval);
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -650,7 +716,7 @@ pub async fn poll_latest(
             continue;
         };
 
-        if sender.send(latest).is_err() {
+        if sender.send(Some(latest)).is_err() {
             tracing::debug!("Channel closed, exiting");
             break;
         }
@@ -775,9 +841,13 @@ async fn download_block(
     use rayon::prelude::*;
     use starknet_gateway_types::error::KnownStarknetErrorCode::BlockNotFound;
 
+    tracing::trace!("YYYY 020 Downloading block {block_number} from sequencer");
+
     match sequencer.state_update_with_block(block_number).await {
         Ok((block, state_update)) => {
             let block = Box::new(block);
+
+            tracing::trace!("YYYY 021 Downloaded block {block_number} from sequencer");
 
             // Verify that transaction hashes match transaction contents.
             // Block hash is verified using these transaction hashes so we have to make
@@ -855,11 +925,29 @@ async fn download_block(
             }
         }
         Err(SequencerError::StarknetError(err)) if err.code == BlockNotFound.into() => {
+            tracing::trace!("YYYY 022 Block {block_number} not found on sequencer, querying head");
+
             // We've queried past the head of the chain.
-            let (seq_head_number, seq_head_hash) = sequencer
-                .head()
-                .await
-                .context("Query sequencer for latest block")?;
+            // let (seq_head_number, seq_head_hash) = sequencer
+            //     .head()
+            //     .await
+            //     .context("Query sequencer for latest block")?;
+
+            let (seq_head_number, seq_head_hash) = match sequencer.head().await {
+                Ok(x) => x,
+                Err(SequencerError::StarknetError(err)) if err.code == BlockNotFound.into() => {
+                    tracing::trace!(
+                        "YYYY 023 Sequencer head is not available because genesis is not \
+                         available at fgw yet"
+                    );
+
+                    // TODO or maybe Retry, the deal is that the block is not there yet
+                    return Ok(DownloadBlock::Wait);
+                }
+                Err(e) => return Err(e).context("Query sequencer for latest block"),
+            };
+
+            tracing::trace!("YYYY 024 Sequencer head is at block {seq_head_number}");
 
             if seq_head_number >= block_number {
                 // We were ahead of the sequencer but in the meantime it has caught up to us. We
@@ -898,7 +986,13 @@ async fn download_block(
                 }
             }
         }
-        Err(other) => Err(other).context("Download block from sequencer"),
+        Err(other) => {
+            tracing::trace!(
+                "YYYY 023 Error downloading block from sequencer: {:?}",
+                other
+            );
+            Err(other).context("Download block from sequencer")
+        }
     }
 }
 
@@ -1668,7 +1762,7 @@ mod tests {
         fn spawn_sync_with_latest(
             tx_event: mpsc::Sender<SyncEvent>,
             sequencer: MockGatewayApi,
-            latest: tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+            latest: tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>,
         ) -> JoinHandle<anyhow::Result<()>> {
             let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
                 pathfinder_storage::TriePruneMode::Archive,
@@ -1682,7 +1776,7 @@ mod tests {
             tx_event: mpsc::Sender<SyncEvent>,
             sequencer: MockGatewayApi,
             storage: pathfinder_storage::Storage,
-            latest: tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+            latest: tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>,
         ) -> JoinHandle<anyhow::Result<()>> {
             let sequencer = std::sync::Arc::new(sequencer);
             let context = L2SyncContext {
@@ -2432,7 +2526,7 @@ mod tests {
 
                 // Make sure L2 sync "waits" on the new block to be published at the end of the
                 // test.
-                latest_tx.send((BLOCK2_NUMBER, BLOCK2_HASH)).unwrap();
+                latest_tx.send(Some((BLOCK2_NUMBER, BLOCK2_HASH))).unwrap();
 
                 assert_matches!(rx_event.recv().await.unwrap(),
                 SyncEvent::DownloadedBlock((block, _), state_update, _, _, _) => {
@@ -2823,7 +2917,7 @@ mod tests {
                 // Make sure L2 sync "waits" on the new block to be published at the end of the
                 // test.
                 latest_tx
-                    .send((block1_v2.block_number, block1_v2.block_hash))
+                    .send(Some((block1_v2.block_number, block1_v2.block_hash)))
                     .unwrap();
 
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::DownloadedBlock((block, _), state_update, _, _, _) => {
@@ -3158,7 +3252,9 @@ mod tests {
 
                 // Make sure L2 sync "waits" on the new block to be published at the end of the
                 // test.
-                latest_tx.send((BLOCK2_NUMBER, BLOCK2_HASH_V2)).unwrap();
+                latest_tx
+                    .send(Some((BLOCK2_NUMBER, BLOCK2_HASH_V2)))
+                    .unwrap();
 
                 // Reorg started from block #1
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Reorg(tail) => {
@@ -3382,7 +3478,9 @@ mod tests {
 
                 // Make sure L2 sync "waits" on the new block to be published at the end of the
                 // test.
-                latest_tx.send((BLOCK2_NUMBER, BLOCK2_HASH_V2)).unwrap();
+                latest_tx
+                    .send(Some((BLOCK2_NUMBER, BLOCK2_HASH_V2)))
+                    .unwrap();
 
                 // Reorg started from block #2
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Reorg(tail) => {

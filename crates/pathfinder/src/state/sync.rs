@@ -31,6 +31,7 @@ use starknet_gateway_types::reply::{
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::sync::watch::Sender as WatchSender;
 
+use crate::consensus::ConsensusChannels;
 use crate::state::block_hash;
 use crate::state::l1::L1SyncContext;
 use crate::state::l2::{BlockChain, L2SyncContext};
@@ -108,7 +109,6 @@ pub struct SyncContext<G, E> {
     pub l1_poll_interval: Duration,
     pub pending_data: WatchSender<PendingData>,
     pub submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker,
-    pub sync_to_consensus_tx: Option<mpsc::Sender<SyncMessageToConsensus>>,
     pub block_validation_mode: l2::BlockValidationMode,
     pub notifications: Notifications,
     pub block_cache_size: usize,
@@ -117,6 +117,7 @@ pub struct SyncContext<G, E> {
     pub sequencer_public_key: PublicKey,
     pub fetch_concurrency: std::num::NonZeroUsize,
     pub fetch_casm_from_fgw: bool,
+    // pub consensus_channels: Option<ConsensusChannels>,
 }
 
 impl<G, E> From<&SyncContext<G, E>> for L1SyncContext<E>
@@ -168,7 +169,7 @@ where
             L2SyncContext<SequencerClient>,
             Option<(BlockNumber, BlockHash, StateCommitment)>,
             BlockChain,
-            tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+            tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>,
         ) -> F2
         + Copy,
 {
@@ -187,7 +188,6 @@ where
         l1_poll_interval: _,
         pending_data,
         submitted_tx_tracker,
-        sync_to_consensus_tx,
         block_validation_mode: _,
         notifications,
         block_cache_size,
@@ -196,6 +196,7 @@ where
         sequencer_public_key: _,
         fetch_concurrency: _,
         fetch_casm_from_fgw,
+        // consensus_channels,
     } = context;
 
     let mut db_conn = storage
@@ -222,7 +223,7 @@ where
         .context("Fetching latest block from gateway")?;
 
     // Keep polling the sequencer for the latest block
-    let (tx_latest, rx_latest) = tokio::sync::watch::channel(gateway_latest);
+    let (tx_latest, rx_latest) = tokio::sync::watch::channel(Some(gateway_latest));
     let mut latest_handle = util::task::spawn(l2::poll_latest(
         sequencer.clone(),
         head_poll_interval,
@@ -273,7 +274,8 @@ where
         pending_data,
         verify_tree_hashes: context.verify_tree_hashes,
         notifications,
-        sync_to_consensus_tx,
+        // sync_to_consensus_tx,
+        sync_to_consensus_tx: None,
     };
     let mut consumer_handle =
         util::task::spawn(consumer(event_receiver, consumer_context, tx_current));
@@ -446,6 +448,7 @@ pub async fn consensus_sync<Ethereum, SequencerClient, F1, F2, L1Sync, L2Sync>(
     context: SyncContext<SequencerClient, Ethereum>,
     mut l1_sync: L1Sync,
     l2_sync: L2Sync,
+    consensus_channels: ConsensusChannels,
 ) -> anyhow::Result<()>
 where
     Ethereum: EthereumApi + Clone + Send + 'static,
@@ -455,14 +458,16 @@ where
     L1Sync: FnMut(mpsc::Sender<SyncEvent>, L1SyncContext<Ethereum>) -> F1,
     L2Sync: FnOnce(
             mpsc::Sender<SyncEvent>,
-            Option<mpsc::Sender<SyncMessageToConsensus>>,
+            Option<ConsensusChannels>,
             L2SyncContext<SequencerClient>,
             Option<(BlockNumber, BlockHash, StateCommitment)>,
             BlockChain,
-            tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+            tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>,
         ) -> F2
         + Copy,
 {
+    tracing::error!("ZZZZ 0020");
+
     let l1_context = L1SyncContext::from(&context);
     let l2_context = L2SyncContext::from(&context);
 
@@ -478,7 +483,6 @@ where
         l1_poll_interval: _,
         pending_data,
         submitted_tx_tracker,
-        sync_to_consensus_tx,
         block_validation_mode: _,
         notifications,
         block_cache_size,
@@ -487,6 +491,7 @@ where
         sequencer_public_key: _,
         fetch_concurrency: _,
         fetch_casm_from_fgw: _,
+        // consensus_channels,
     } = context;
 
     let mut db_conn = storage
@@ -494,6 +499,8 @@ where
         .context("Creating database connection")?;
 
     let (event_sender, event_receiver) = mpsc::channel(8);
+
+    tracing::error!("ZZZZ 0021");
 
     // Get the latest block from the database
     let l2_head = tokio::task::block_in_place(|| -> anyhow::Result<_> {
@@ -506,11 +513,38 @@ where
         Ok(l2_head)
     })?;
 
+    tracing::error!("ZZZZ 0022");
+
+    // Although this will not happen on mainnet, nor on testnet, we can imagine
+    // custom networks which start from genesis, where the genesis block is decided
+    // upon in consensus and not magically fetched from some feeder gateway. In such
+    // case we need to timeout, especially if this node is either a proposer or a
+    // validator that takes part in the voting process for that very first block.
+    let gateway_latest = match tokio::time::timeout(Duration::from_secs(5), sequencer.head()).await
+    {
+        Ok(Ok(gateway_latest)) => Some(gateway_latest),
+        // TODO the condition is too lax
+        Ok(Err(e)) => {
+            tracing::warn!(?e, "Fetching latest block from gateway failed");
+            // anyhow::bail!("Fetching latest block from gateway failed: {e}");
+            None
+        }
+        // TODO retry on timeout, the other way round than now, we want to only continue if we are
+        // sure (because the fgw has replied with propoer startkent error)
+        Err(_) => None,
+    };
+
+    // FIXME if Alice is the sole proposer, she will wait forever, because the fgw
+    // is supposed to be tracking her own advances in consensus. Add timeout and use
+    // Option.
+    //
     // Get the latest block from the sequencer
-    let gateway_latest = sequencer
-        .head()
-        .await
-        .context("Fetching latest block from gateway")?;
+    // let gateway_latest = sequencer
+    //     .head()
+    //     .await
+    //     .context("Fetching latest block from gateway")?;
+
+    tracing::error!("ZZZZ 0023");
 
     // Keep polling the sequencer for the latest block
     let (tx_latest, rx_latest) = tokio::sync::watch::channel(gateway_latest);
@@ -520,9 +554,13 @@ where
         tx_latest,
     ));
 
+    tracing::error!("ZZZZ 0024");
+
     // Start L1 producer task. Clone the event sender so that the channel remains
     // open even if the producer task fails.
     let mut l1_handle = util::task::spawn(l1_sync(event_sender.clone(), l1_context.clone()));
+
+    tracing::error!("ZZZZ 0025");
 
     // Fetch latest blocks from storage
     let latest_blocks = latest_n_blocks(&mut db_conn, block_cache_size)
@@ -530,16 +568,22 @@ where
         .context("Fetching latest blocks from storage")?;
     let block_chain = BlockChain::with_capacity(block_cache_size, latest_blocks);
 
+    tracing::error!("ZZZZ 0026");
+
+    let sync_to_consensus_tx = consensus_channels.sync_to_consensus_tx.clone();
+
     // Start L2 producer task. Clone the event sender so that the channel remains
     // open even if the producer task fails.
     let mut l2_handle = util::task::spawn(l2_sync(
         event_sender.clone(),
-        sync_to_consensus_tx.clone(),
+        Some(consensus_channels.clone()),
         l2_context.clone(),
         l2_head,
         block_chain,
         rx_latest.clone(),
     ));
+
+    tracing::error!("ZZZZ 0027");
 
     let (current_num, current_hash, _) = l2_head.unwrap_or_default();
     let (tx_current, _rx_current) = tokio::sync::watch::channel((current_num, current_hash));
@@ -550,10 +594,12 @@ where
         pending_data,
         verify_tree_hashes: context.verify_tree_hashes,
         notifications,
-        sync_to_consensus_tx: sync_to_consensus_tx.clone(),
+        sync_to_consensus_tx: Some(sync_to_consensus_tx.clone()),
     };
     let mut consumer_handle =
         util::task::spawn(consumer(event_receiver, consumer_context, tx_current));
+
+    tracing::error!("ZZZZ 0028");
 
     loop {
         tokio::select! {
@@ -611,7 +657,7 @@ where
                 let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
                 let fut = l2_sync(
                     event_sender.clone(),
-                    sync_to_consensus_tx.clone(),
+                    Some(consensus_channels.clone()),
                     l2_context.clone(),
                     l2_head,
                     block_chain,
@@ -1213,17 +1259,18 @@ async fn update_sync_status_latest(
     state: Arc<SyncState>,
     starting_block_hash: BlockHash,
     starting_block_num: BlockNumber,
-    mut latest: tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+    mut latest: tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>,
 ) {
     let starting = NumberedBlock::from((starting_block_hash, starting_block_num));
 
     let mut latest_hash = BlockHash::default();
     loop {
         let Ok((number, hash)) = latest
-            .wait_for(|(_, hash)| hash != &latest_hash)
+            .wait_for(|x| x.is_some_and(|(_, hash)| hash != latest_hash))
             .await
             .as_deref()
             .copied()
+            .map(|x| x.expect("We waited for a value that is Some"))
         else {
             break;
         };

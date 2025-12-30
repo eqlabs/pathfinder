@@ -404,11 +404,31 @@ where
 async fn parse_raw(response: reqwest::Response) -> Result<reqwest::Response, SequencerError> {
     use starknet_gateway_types::error::StarknetError;
 
+    tracing::trace!(status=%response.status(), "ZZZZ Parsing response from feeder gateway");
+
     // Starknet specific errors end with a 400 or 500 status code
     // but the body contains a JSON object with the error description
     if response.status() == reqwest::StatusCode::INTERNAL_SERVER_ERROR
         || response.status() == reqwest::StatusCode::BAD_REQUEST
     {
+        let resp_text = response.text().await.unwrap_or_default();
+        tracing::trace!(body=%resp_text, "ZZZZ Parsing error response from feeder gateway");
+
+        let result = serde_json::from_str::<StarknetError>(&resp_text);
+        match result {
+            Ok(e) => {
+                let error = SequencerError::StarknetError(e);
+                return Err(error);
+            }
+            Err(e) => {
+                tracing::error!(
+                    reason=?e,
+                    "Failed to decode Starknet error from feeder gateway response"
+                );
+                return Err(SequencerError::InvalidStarknetErrorVariant);
+            }
+        }
+
         let error = match response.json::<StarknetError>().await {
             Ok(e) => SequencerError::StarknetError(e),
             Err(e) if e.is_decode() => SequencerError::InvalidStarknetErrorVariant,

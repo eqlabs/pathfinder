@@ -365,7 +365,11 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         None => rpc_server,
     };
 
+    tracing::error!("ZZZZ 0001");
+
     let sync_handle = if config.is_sync_enabled {
+        tracing::error!("ZZZZ 0002");
+
         start_sync(
             sync_storage,
             pathfinder_context,
@@ -381,6 +385,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             config.verify_tree_hashes,
         )
     } else {
+        tracing::error!("ZZZZ 0003");
+
         tokio::task::spawn(futures::future::pending())
     };
 
@@ -546,7 +552,11 @@ fn start_sync(
     p2p_client: Option<P2PSyncClient>,
     verify_tree_hashes: bool,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+    tracing::error!("ZZZZ 0010");
+
     if config.sync_p2p.proxy {
+        tracing::error!("ZZZZ 0011");
+
         start_feeder_gateway_sync(
             storage,
             pathfinder_context,
@@ -558,7 +568,9 @@ fn start_sync(
             notifications,
             gateway_public_key,
         )
-    } else if let Some(cc) = consensus_channels {
+    } else if let Some(consensus_channels) = consensus_channels {
+        tracing::error!("ZZZZ 0012");
+
         start_consensus_aware_fgw_sync(
             storage,
             pathfinder_context,
@@ -567,11 +579,13 @@ fn start_sync(
             config,
             submitted_tx_tracker,
             tx_pending,
-            cc.sync_to_consensus_tx,
             notifications,
             gateway_public_key,
+            consensus_channels,
         )
     } else {
+        tracing::error!("ZZZZ 0013");
+
         let p2p_client = p2p_client.expect("P2P client is expected with the p2p feature enabled");
         start_p2p_sync(
             storage,
@@ -626,6 +640,8 @@ fn start_feeder_gateway_sync(
     notifications: Notifications,
     gateway_public_key: pathfinder_common::PublicKey,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+    tracing::error!("ZZZZ 0014");
+
     let sync_context = SyncContext {
         storage,
         ethereum: ethereum_client,
@@ -639,7 +655,7 @@ fn start_feeder_gateway_sync(
         pending_data: tx_pending,
         submitted_tx_tracker,
         // Only used in consensus-aware sync.
-        sync_to_consensus_tx: None,
+        // sync_to_consensus_tx: None,
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         notifications,
         block_cache_size: 10_000,
@@ -663,10 +679,12 @@ fn start_consensus_aware_fgw_sync(
     config: &config::Config,
     submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker,
     tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
-    sync_to_consensus_tx: tokio::sync::mpsc::Sender<pathfinder_lib::SyncMessageToConsensus>,
     notifications: Notifications,
     gateway_public_key: pathfinder_common::PublicKey,
+    consensus_channels: ConsensusChannels,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+    tracing::error!("ZZZZ 0015");
+
     let sync_context = SyncContext {
         storage,
         ethereum: ethereum_client,
@@ -679,7 +697,7 @@ fn start_consensus_aware_fgw_sync(
         l1_poll_interval: config.l1_poll_interval,
         pending_data: tx_pending,
         submitted_tx_tracker,
-        sync_to_consensus_tx: Some(sync_to_consensus_tx),
+        // sync_to_consensus_tx: Some(sync_to_consensus_tx),
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         notifications,
         block_cache_size: 10_000,
@@ -694,6 +712,7 @@ fn start_consensus_aware_fgw_sync(
         sync_context,
         state::l1::sync,
         state::l2::consensus_sync,
+        consensus_channels,
     ))
 }
 
