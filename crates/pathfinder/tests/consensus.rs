@@ -213,7 +213,8 @@ mod test {
                 bob_committed,
                 charlie_committed,
             ],
-            TEST_TIMEOUT,
+            //TEST_TIMEOUT,
+            Duration::from_secs(10),
         )
         .await?;
 
