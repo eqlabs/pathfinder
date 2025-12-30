@@ -127,6 +127,17 @@ impl<'tx> ConsensusProposals<'tx> {
         Ok(updated)
     }
 
+    /// Mark a consensus-finalized block as the decided upon block for its
+    /// height.
+    pub fn mark_consensus_finalized_block_as_decided(
+        &self,
+        height: u64,
+        round: u32,
+    ) -> Result<(), StorageError> {
+        self.tx
+            .mark_consensus_finalized_block_as_decided(height, round)
+    }
+
     /// Read a consensus-finalized block for a given height and round.
     pub fn read_consensus_finalized_block(
         &self,
@@ -141,17 +152,12 @@ impl<'tx> ConsensusProposals<'tx> {
         }
     }
 
-    /// Read a consensus-finalized block for a given height and highest round
-    /// available. In practice this should be the only round left in the DB
-    /// for that height.
-    pub fn read_consensus_finalized_block_for_last_round(
+    /// Read the decided finalized block for the given height.
+    pub fn read_consensus_finalized_and_decided_block(
         &self,
         height: u64,
     ) -> Result<Option<ConsensusFinalizedL2Block>, StorageError> {
-        if let Some(buf) = self
-            .tx
-            .read_consensus_finalized_block_for_last_round(height)?
-        {
+        if let Some(buf) = self.tx.read_consensus_finalized_and_decided_block(height)? {
             let block = Self::decode_finalized_block(&buf[..])?;
             Ok(Some(block))
         } else {
@@ -159,15 +165,13 @@ impl<'tx> ConsensusProposals<'tx> {
         }
     }
 
-    /// Remove all finalized blocks for the given height **except** the one from
-    /// `commit_round`.
-    pub fn remove_uncommitted_consensus_finalized_blocks(
+    /// Remove all finalized blocks for the given height **except** the one that
+    /// was decided upon (if any).
+    pub fn remove_undecided_consensus_finalized_blocks(
         &self,
         height: u64,
-        commit_round: u32,
     ) -> Result<(), StorageError> {
-        self.tx
-            .remove_uncommitted_consensus_finalized_blocks(height, commit_round)
+        self.tx.remove_undecided_consensus_finalized_blocks(height)
     }
 
     /// Remove all finalized blocks for a given height.

@@ -254,7 +254,10 @@ pub fn spawn(
                             let height_and_round = HeightAndRound::new(height, round);
 
                             tx_to_p2p
-                                .send(P2PTaskEvent::CommitBlock(height_and_round, value.clone()))
+                                .send(P2PTaskEvent::MarkBlockAsDecidedAndCleanUp(
+                                    height_and_round,
+                                    value.clone(),
+                                ))
                                 .await
                                 .expect("Commit block receiver not to be dropped");
 
