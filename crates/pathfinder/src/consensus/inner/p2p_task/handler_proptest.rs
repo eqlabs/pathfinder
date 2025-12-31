@@ -336,7 +336,7 @@ fn create_structurally_invalid_proposal(
     // If we were unfortunate enough to get an unmodified proposal, let's at least
     // force removing the init at the head, so that the proposal is invalid for
     // sure.
-    if config.maybe_valid() || well_ordered_proposal(&proposal_parts) {
+    if config.maybe_valid() || well_ordered_non_empty_proposal(&proposal_parts) {
         proposal_parts.remove(0);
     }
 
@@ -344,9 +344,9 @@ fn create_structurally_invalid_proposal(
     (proposal_parts, false)
 }
 
-fn well_ordered_proposal(proposal_parts: &[ProposalPart]) -> bool {
+fn well_ordered_non_empty_proposal(proposal_parts: &[ProposalPart]) -> bool {
     match proposal_parts {
-        [] => true,
+        [] => panic!("Proposal should not be empty"),
         [ProposalPart::Init(_)] => true,
         // Empty proposal
         [ProposalPart::Init(_), ProposalPart::Fin(_)] => true,
