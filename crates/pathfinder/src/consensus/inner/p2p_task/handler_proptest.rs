@@ -310,6 +310,8 @@ fn create_structurally_invalid_proposal(
         create_structurally_valid_non_empty_proposal(seed, execution_succeeds);
     let config: InvalidProposalConfig = fake::Faker.fake_with_rng(&mut rng);
 
+    let original_parts = proposal_parts.clone();
+
     if config.remove_all_txns {
         proposal_parts.retain(|x| !x.is_transaction_batch());
     }
@@ -333,9 +335,17 @@ fn create_structurally_invalid_proposal(
         proposal_parts.shuffle(&mut rng);
     }
 
-    // If we were unfortunate enough to get an unmodified proposal, let's at least
-    // force removing the init at the head, so that the proposal is invalid for
-    // sure.
+    // It's possible that all of the config flags were set to `Remove`, in which
+    // case the proposal will be empty. To avoid that, we revert to the
+    // original proposal, and later on the init at the head will be removed,
+    // resulting in a proposal which will indeed be invalid.
+    if proposal_parts.is_empty() {
+        proposal_parts = original_parts;
+    }
+
+    // If we were unfortunate enough to end up with an unmodified proposal, let's at
+    // least force removing the init at the head, so that the proposal is
+    // invalid for sure.
     if config.maybe_valid() || well_ordered_non_empty_proposal(&proposal_parts) {
         proposal_parts.remove(0);
     }
