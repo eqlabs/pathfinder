@@ -51,6 +51,7 @@ use super::fetch_validators::L2ValidatorSetProvider;
 use super::{integration_testing, ConsensusTaskEvent, ConsensusValue, HeightExt, P2PTaskEvent};
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
+use crate::state;
 use crate::validator::ValidatorBlockInfoStage;
 
 #[allow(clippy::too_many_arguments)]
@@ -435,6 +436,11 @@ pub(crate) fn create_empty_proposal(
     // The only version handled by consensus, so far
     let starknet_version = StarknetVersion::new(0, 14, 0, 0);
 
+    // let state_diff_commitment =
+    //     pathfinder_common::state_update::StateUpdateData::default().
+    // compute_state_diff_commitment();
+    let state_diff_commitment = StateDiffCommitment::ZERO;
+
     // Empty proposal is strictly defined in the spec:
     // https://github.com/starknet-io/starknet-p2p-specs/blob/main/p2p/proto/consensus/consensus.md#empty-proposals
     let proposal_commitment = ProposalCommitmentProto {
@@ -447,7 +453,7 @@ pub(crate) fn create_empty_proposal(
         old_state_root: Default::default(),
         // TODO required by the spec
         version_constant_commitment: Default::default(),
-        state_diff_commitment: Hash::ZERO,
+        state_diff_commitment: Hash(state_diff_commitment.0),
         transaction_commitment: Hash::ZERO,
         event_commitment: Hash::ZERO,
         receipt_commitment: Hash::ZERO,

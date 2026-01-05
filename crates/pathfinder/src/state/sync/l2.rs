@@ -899,6 +899,16 @@ async fn download_block(
                 let state_update = Box::new(state_update);
                 let state_diff_length = state_update.state_diff_length();
 
+                // Currently empty proposals used for consensus integration tests carry an empty
+                // state diff commitment.
+                #[cfg(all(feature = "consensus-integration-tests", feature = "p2p",))]
+                let state_diff_commitment =
+                    if block.state_diff_commitment == Some(StateDiffCommitment::ZERO) {
+                        StateDiffCommitment::ZERO
+                    } else {
+                        state_diff_commitment
+                    };
+
                 let block_number = block.block_number;
                 let verify_result = verify_gateway_block_commitments_and_hash(
                     &block,
