@@ -794,13 +794,13 @@ async fn consumer(
 
             let pruning_event = PruningEvent::from_sync_event(&event);
 
-            let notification = match event {
+            let (notification, sync_to_consensus_msg) = match event {
                 L1Update(update) => {
                     tracing::trace!("Updating L1 sync to block {}", update.block_number);
                     l1_update(&tx, &update)?;
                     tracing::info!("L1 sync updated to block {}", update.block_number);
 
-                    None
+                    (None, None)
                 }
                 DownloadedBlock(
                     (block, (tx_comm, ev_comm, rc_comm)),
@@ -897,7 +897,7 @@ async fn consumer(
                         }
                     }
 
-                    Some(Notification::L2Block(Arc::new(l2_block)))
+                    (Some(Notification::L2Block(Arc::new(l2_block))), None)
                 }
                 FinalizedConsensusBlock {
                     l2_block,
@@ -926,7 +926,14 @@ async fn consumer(
                              all sync related tasks, including this one, will be restarted.",
                         );
 
-                    Some(Notification::L2Block(Arc::new(l2_block)))
+                    // FIXME there should be another notification for blocks coming from consensus
+                    // that were finalized
+                    (
+                        Some(Notification::L2Block(Arc::new(l2_block))),
+                        Some(SyncMessageToConsensus::ConfirmFinalizedBlockCommitted {
+                            number: l2_block.header.number,
+                        }),
+                    )
                 }
                 Reorg(reorg_tail) => {
                     tracing::trace!("Reorg L2 state to block {}", reorg_tail);
@@ -947,7 +954,7 @@ async fn consumer(
                         None => tracing::info!("L2 reorg occurred, new L2 head is genesis"),
                     }
 
-                    Some(Notification::L2Reorg(reorg))
+                    (Some(Notification::L2Reorg(reorg)), None)
                 }
                 CairoClass { definition, hash } => {
                     tracing::trace!("Inserting new Cairo class with hash: {hash}");
@@ -956,7 +963,7 @@ async fn consumer(
 
                     tracing::debug!(%hash, "Inserted new Cairo class");
 
-                    None
+                    (None, None)
                 }
                 SierraClass {
                     sierra_definition,
@@ -976,7 +983,7 @@ async fn consumer(
 
                     tracing::debug!(sierra=%sierra_hash, casm=%casm_hash, "Inserted new Sierra class");
 
-                    None
+                    (None, None)
                 }
                 Pending((pending_block, pending_state_update)) => {
                     tracing::trace!("Updating pending data");
@@ -995,7 +1002,7 @@ async fn consumer(
                         tracing::debug!("Updated pending data");
                     }
 
-                    None
+                    (None, None)
                 }
                 PreConfirmed {
                     number,
@@ -1032,7 +1039,7 @@ async fn consumer(
                         }
                     }
 
-                    None
+                    (None, None)
                 }
             };
 
@@ -1058,7 +1065,6 @@ async fn consumer(
             if let Some(notification) = notification {
                 send_notification(notification, &mut notifications);
             }
-
             // TODO return the value of the committed l2 block
             commit_result.map(|_| maybe_committed_l2_block_number)
         })?;
@@ -1066,6 +1072,13 @@ async fn consumer(
         if let Some(committed_l2_block_number) = maybe_committed_l2_block_number {
             // Notify consensus that a new L2 block has been committed.
             if let Some(sync_to_consensus_tx) = sync_to_consensus_tx.clone() {
+                //
+                // FIXME
+                // BUG
+                // this notification should only be sent in a block that was taken from
+                // consensus was committed and not when a block that was downloaded from an FGW
+                // was committed BUG
+                //
                 sync_to_consensus_tx
                     .send(SyncMessageToConsensus::ConfirmFinalizedBlockCommitted {
                         number: committed_l2_block_number,

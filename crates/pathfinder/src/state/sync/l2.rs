@@ -425,6 +425,14 @@ where
             .await
             .context("Receiving committed block from consensus")?;
 
+        // IMPORTANT
+        // A race condition can occur in fast local networks:
+        // - Alice commits @H
+        // - FGw uses Alice's DB directly, so it also serves H immediately
+        // - Bob hasn't committed @H yet, even though he voted on it, so he asks for it
+        //   from FGw
+        // - Bob downloads @H from FGw, even though he will shortly have it ready for
+        //   committing localy from his own consensus engine
         if let Some(l2_block) = reply {
             let (state_tries_updated_tx, rx) = tokio::sync::oneshot::channel();
 
@@ -476,17 +484,37 @@ where
                     break (block, commitments, state_update, state_diff_commitment);
                 }
                 DownloadBlock::Wait => {
-                    // Now try from consensus
-                    continue 'outer;
+                    let fgw_fut = latest.wait_for(|x| {
+                        x.is_some_and(|(_, hash)| hash != head.unwrap_or_default().1)
+                    });
+                    let consensus_fut = consensus_info_watch.changed();
 
-                    // Wait for the latest block to change.
-                    if latest
-                        .wait_for(|x| x.is_some_and(|(_, hash)| hash != head.unwrap_or_default().1))
-                        .await
-                        .is_err()
-                    {
-                        tracing::debug!("Latest tracking channel closed, exiting");
-                        return Ok(());
+                    tokio::select! {
+                        biased;
+
+                        res = consensus_fut => {
+                            match res {
+                                Ok(_) => {
+                                    tracing::trace!("YYYY 013 Consensus info watch changed, trying to get the block from consensus {next}");
+                                    continue 'outer;
+                                }
+                                Err(_) => {
+                                    tracing::debug!("Consensus info watch closed, exiting");
+                                    return Ok(());
+                                }
+                            }
+                        }
+                        res = fgw_fut => {
+                            match res {
+                                Ok(_) => {
+                                    tracing::trace!("YYYY 013 Feeder gateway latest watch changed, retrying download for block {next}");
+                                }
+                                Err(_) => {
+                                    tracing::debug!("Feeder gateway latest watch closed, exiting");
+                                    return Ok(());
+                                }
+                            }
+                        }
                     }
                 }
                 DownloadBlock::Retry => {
