@@ -159,8 +159,8 @@ mod test {
         let (configs, stopwatch) = utils::setup(NUM_NODES)?;
 
         let alice_cfg = configs.first().unwrap();
-        let mut _fgw = FeederGateway::spawn(&alice_cfg)?;
-        _fgw.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
+        let mut fgw = FeederGateway::spawn(&alice_cfg)?;
+        fgw.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
 
         // We want everybody to have sync enabled so that not only Alice, Bob, and
         // Charlie decide upon the new blocks but also they are able to **commit the
@@ -172,10 +172,8 @@ mod test {
         // catches up with the other nodes, at which point he should be committing the
         // consensus-decided blocks to his own main DB, before actually sync is able to
         // get them from the FGw.
-        //
-        // TODO !!! not only wait for decided upon but also committed to main DB
         let mut configs = configs.into_iter().map(|cfg| {
-            cfg.with_local_feeder_gateway(_fgw.port())
+            cfg.with_local_feeder_gateway(fgw.port())
                 .with_sync_enabled()
         });
         let alice = PathfinderInstance::spawn(configs.next().unwrap())?;
@@ -200,9 +198,10 @@ mod test {
         let alice_decided = wait_for_height(&alice, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
         let bob_decided = wait_for_height(&bob, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
         let charlie_decided = wait_for_height(&charlie, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
-        let alice_committed = wait_for_block_exists(&alice, FINAL_HEIGHT, POLL_HEIGHT);
-        let bob_committed = wait_for_block_exists(&bob, FINAL_HEIGHT, POLL_HEIGHT);
-        let charlie_committed = wait_for_block_exists(&charlie, FINAL_HEIGHT, POLL_HEIGHT);
+        let alice_committed = wait_for_block_exists(&alice, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
+        let bob_committed = wait_for_block_exists(&bob, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
+        let charlie_committed =
+            wait_for_block_exists(&charlie, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
 
         utils::join_all(
             vec![
@@ -213,8 +212,7 @@ mod test {
                 bob_committed,
                 charlie_committed,
             ],
-            // TEST_TIMEOUT,
-            Duration::from_secs(10),
+            TEST_TIMEOUT,
         )
         .await?;
 
@@ -226,14 +224,10 @@ mod test {
         let alice_decided = wait_for_height(&alice, FINAL_HEIGHT, POLL_HEIGHT);
         let bob_decided = wait_for_height(&bob, FINAL_HEIGHT, POLL_HEIGHT);
         let charlie_decided = wait_for_height(&charlie, FINAL_HEIGHT, POLL_HEIGHT);
+        let dan_decided = wait_for_height(&dan, FINAL_HEIGHT, POLL_HEIGHT);
         let alice_committed = wait_for_block_exists(&alice, FINAL_HEIGHT, POLL_HEIGHT);
         let bob_committed = wait_for_block_exists(&bob, FINAL_HEIGHT, POLL_HEIGHT);
         let charlie_committed = wait_for_block_exists(&charlie, FINAL_HEIGHT, POLL_HEIGHT);
-
-        // Wait for a block that was decided before this node joined to be synced.
-        // let dan_client = wait_for_block_exists(&dan, HEIGHT_TO_ADD_FOURTH_NODE - 2,
-        // POLL_HEIGHT);
-        let dan_decided = wait_for_height(&dan, FINAL_HEIGHT, POLL_HEIGHT);
         let dan_committed = wait_for_block_exists(&dan, FINAL_HEIGHT, POLL_HEIGHT);
 
         utils::join_all(
