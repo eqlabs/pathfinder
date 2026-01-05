@@ -787,7 +787,7 @@ async fn consumer(
             }
         }
 
-        let maybe_committed_l2_block_number = tokio::task::block_in_place(|| {
+        let sync_to_consensus_msg = tokio::task::block_in_place(|| {
             let tx = db_conn
                 .transaction_with_behavior(TransactionBehavior::Immediate)
                 .context("Create database transaction")?;
@@ -926,13 +926,13 @@ async fn consumer(
                              all sync related tasks, including this one, will be restarted.",
                         );
 
+                    let number = l2_block.header.number;
+
                     // FIXME there should be another notification for blocks coming from consensus
                     // that were finalized
                     (
                         Some(Notification::L2Block(Arc::new(l2_block))),
-                        Some(SyncMessageToConsensus::ConfirmFinalizedBlockCommitted {
-                            number: l2_block.header.number,
-                        }),
+                        Some(SyncMessageToConsensus::ConfirmFinalizedBlockCommitted { number }),
                     )
                 }
                 Reorg(reorg_tail) => {
@@ -1048,16 +1048,6 @@ async fn consumer(
             }
             let commit_result = tx.commit().context("Committing database transaction");
 
-            // Consensus may have deferred execution for the next block until this one is
-            // committed, so we must now send notification to consensus to unblock any
-            // deferred execution.
-            let maybe_committed_l2_block_number =
-                if let Some(Notification::L2Block(l2_block)) = notification.as_ref() {
-                    Some(l2_block.header.number)
-                } else {
-                    None
-                };
-
             // Now that the changes have been committed to storage we can send out the
             // notification. It is important that this is only ever done _after_
             // the commit otherwise clients could potentially see inconsistent
@@ -1065,27 +1055,17 @@ async fn consumer(
             if let Some(notification) = notification {
                 send_notification(notification, &mut notifications);
             }
-            // TODO return the value of the committed l2 block
-            commit_result.map(|_| maybe_committed_l2_block_number)
+
+            commit_result.map(|_| sync_to_consensus_msg)
         })?;
 
-        if let Some(committed_l2_block_number) = maybe_committed_l2_block_number {
-            // Notify consensus that a new L2 block has been committed.
-            if let Some(sync_to_consensus_tx) = sync_to_consensus_tx.clone() {
-                //
-                // FIXME
-                // BUG
-                // this notification should only be sent in a block that was taken from
-                // consensus was committed and not when a block that was downloaded from an FGW
-                // was committed BUG
-                //
-                sync_to_consensus_tx
-                    .send(SyncMessageToConsensus::ConfirmFinalizedBlockCommitted {
-                        number: committed_l2_block_number,
-                    })
-                    .await
-                    .context("Sending L2 block committed message to consensus")?;
-            }
+        if let (Some(sync_to_consensus_tx), Some(sync_to_consensus_msg)) =
+            (sync_to_consensus_tx.clone(), sync_to_consensus_msg)
+        {
+            sync_to_consensus_tx
+                .send(sync_to_consensus_msg)
+                .await
+                .context("Sending L2 block committed message to consensus")?;
         }
     }
 
