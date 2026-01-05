@@ -14,7 +14,6 @@ anyhow = { workspace = true }
 base64 = { workspace = true }
 bincode = { workspace = true, features = ["serde"] }
 bitvec = { workspace = true }
-bloomfilter = { workspace = true }
 cached = { workspace = true }
 const_format = { workspace = true }
 fake = { workspace = true }
