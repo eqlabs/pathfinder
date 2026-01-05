@@ -478,7 +478,7 @@ fn compile_or_fetch_impl<SequencerClient: GatewayApi + Clone + Send + 'static>(
     let definition = match definition {
         ClassDefinition::Cairo(c) => CompiledClassDefinition::Cairo(c),
         ClassDefinition::Sierra(sierra_definition) => {
-            let casm_definition = pathfinder_compiler::compile_to_casm(&sierra_definition)
+            let casm_definition = pathfinder_compiler::compile_to_casm_ser(&sierra_definition)
                 .context("Compiling Sierra class");
 
             let casm_definition = match casm_definition {

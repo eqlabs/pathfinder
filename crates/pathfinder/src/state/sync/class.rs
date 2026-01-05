@@ -75,7 +75,7 @@ pub async fn download_class<SequencerClient: GatewayApi>(
                 let (send, recv) = tokio::sync::oneshot::channel();
                 rayon::spawn(move || {
                     let _span = span.entered();
-                    let compile_result = pathfinder_compiler::compile_to_casm(&definition)
+                    let compile_result = pathfinder_compiler::compile_to_casm_ser(&definition)
                         .context("Compiling Sierra class");
 
                     let _ = send.send((compile_result, definition));

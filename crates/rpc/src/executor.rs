@@ -116,12 +116,9 @@ pub(crate) fn map_broadcasted_transaction(
             )?)
         }
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(tx)) => {
-            let casm_contract_definition = pathfinder_compiler::compile_to_casm(
-                &tx.contract_class
-                    .serialize_to_json()
-                    .context("Serializing Sierra class definition")?,
-            )
-            .context("Compiling Sierra class definition to CASM")?;
+            let casm_contract_definition =
+                pathfinder_compiler::compile_to_casm_deser(tx.contract_class.clone().into())
+                    .context("Compiling Sierra class definition to CASM")?;
             let sierra_version =
                 SierraVersion::extract_from_program(&tx.contract_class.sierra_program)?;
 
@@ -138,12 +135,9 @@ pub(crate) fn map_broadcasted_transaction(
             )?)
         }
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V3(tx)) => {
-            let casm_contract_definition = pathfinder_compiler::compile_to_casm(
-                &tx.contract_class
-                    .serialize_to_json()
-                    .context("Serializing Sierra class definition")?,
-            )
-            .context("Compiling Sierra class definition to CASM")?;
+            let casm_contract_definition =
+                pathfinder_compiler::compile_to_casm_deser(tx.contract_class.clone().into())
+                    .context("Compiling Sierra class definition to CASM")?;
             let sierra_version =
                 SierraVersion::extract_from_program(&tx.contract_class.sierra_program)?;
 

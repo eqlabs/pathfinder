@@ -885,7 +885,7 @@ fn class_info(class: Cairo1Class) -> anyhow::Result<ClassInfo> {
         starknet_api::contract_class::SierraVersion::from_str(&contract_class_version)
             .context("Getting sierra version")?;
 
-    let class_definition = class_definition::Sierra {
+    let definition = class_definition::Sierra {
         abi: abi.into(),
         sierra_program: program,
         contract_class_version: contract_class_version.into(),
@@ -916,13 +916,7 @@ fn class_info(class: Cairo1Class) -> anyhow::Result<ClassInfo> {
                 .collect(),
         },
     };
-    // TODO(validator) this is suboptimal, the same surplus serialization happens in
-    // the broadcasted transactions case
-    let class_definition =
-        serde_json::to_vec(&class_definition).context("Serializing Sierra class definition")?;
-    // TODO(validator) compile_to_casm should also accept a deserialized class
-    // definition
-    let casm_contract_definition = pathfinder_compiler::compile_to_casm(&class_definition)
+    let casm_contract_definition = pathfinder_compiler::compile_to_casm_deser(definition)
         .context("Compiling Sierra class definition to CASM")?;
 
     let casm_contract_definition = pathfinder_executor::parse_casm_definition(

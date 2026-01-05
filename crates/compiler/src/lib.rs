@@ -1,21 +1,29 @@
-use std::borrow::Cow;
-
 use anyhow::Context;
-use pathfinder_common::{felt, CasmHash};
+use pathfinder_common::{class_definition, felt, CasmHash};
 use pathfinder_crypto::Felt;
 
-/// Compile a Sierra class definition into CASM.
+/// Compile a serialized Sierra class definition into CASM.
 ///
 /// The class representation expected by the compiler doesn't match the
 /// representation used by the feeder gateway for Sierra classes, so we have to
 /// convert the JSON to something that can be parsed into the expected input
 /// format for the compiler.
-pub fn compile_to_casm(sierra_definition: &[u8]) -> anyhow::Result<Vec<u8>> {
-    let definition = serde_json::from_slice::<FeederGatewayContractClass<'_>>(sierra_definition)
-        .context("Parsing Sierra class")?;
+pub fn compile_to_casm_ser(sierra_definition: &[u8]) -> anyhow::Result<Vec<u8>> {
+    serde_json::from_slice::<class_definition::Sierra<'_>>(sierra_definition)
+        .context("Parsing Sierra class")
+        .map(compile_to_casm_deser)?
+        .context("Compiling to CASM")
+}
 
+/// Compile a deserialized Sierra class definition into CASM.
+///
+/// The class representation expected by the compiler doesn't match the
+/// representation used by the feeder gateway for Sierra classes, so we have to
+/// convert the JSON to something that can be parsed into the expected input
+/// format for the compiler.
+pub fn compile_to_casm_deser(definition: class_definition::Sierra) -> anyhow::Result<Vec<u8>> {
     let sierra_version =
-        parse_sierra_version(definition.sierra_program).context("Parsing Sierra version")?;
+        parse_sierra_version(&definition.sierra_program).context("Parsing Sierra version")?;
 
     let started_at = std::time::Instant::now();
 
@@ -44,20 +52,17 @@ fn panic_error(e: Box<dyn std::any::Any>) -> anyhow::Error {
 #[derive(Debug, PartialEq)]
 struct SierraVersion(u64, u64, u64);
 
-/// Parse Sierra version from the JSON representation of the program.
+/// Parse Sierra version from a [Felt] slice representation of the program.
 ///
 /// Sierra programs contain the version number in two possible formats.
 /// For pre-1.0-rc0 Cairo versions the program contains the Sierra version
 /// "0.1.0" as a shortstring in its first Felt (0x302e312e30 = "0.1.0").
 /// For all subsequent versions the version number is the first three felts
 /// representing the three parts of a semantic version number.
-fn parse_sierra_version(program: &serde_json::value::RawValue) -> anyhow::Result<SierraVersion> {
-    let felts: Vec<Felt> =
-        serde_json::from_str(program.get()).context("Deserializing Sierra program felts")?;
-
+fn parse_sierra_version(program: &[Felt]) -> anyhow::Result<SierraVersion> {
     const VERSION_0_1_0_AS_SHORTSTRING: Felt = felt!("0x302e312e30");
 
-    match felts.as_slice() {
+    match program {
         [VERSION_0_1_0_AS_SHORTSTRING, ..] => Ok(SierraVersion(0, 1, 0)),
         [a, b, c, ..] => {
             let (a, b, c) = ((*a).try_into()?, (*b).try_into()?, (*c).try_into()?);
@@ -83,26 +88,22 @@ mod v1_0_0_alpha6 {
     };
     use casm_compiler_v1_0_0_alpha6::casm_contract_class::CasmContractClass;
     use casm_compiler_v1_0_0_alpha6::contract_class::ContractClass;
+    use pathfinder_common::class_definition;
 
-    use super::FeederGatewayContractClass;
-
-    impl<'a> TryFrom<FeederGatewayContractClass<'a>> for ContractClass {
-        type Error = serde_json::Error;
-
-        fn try_from(value: FeederGatewayContractClass<'a>) -> Result<Self, Self::Error> {
-            let json = serde_json::json!({
-                "abi": [],
-                "sierra_program": value.sierra_program,
-                "contract_class_version": value.contract_class_version,
-                "entry_points_by_type": value.entry_points_by_type,
-            });
-            serde_json::from_value::<ContractClass>(json)
-        }
+    pub(super) fn pathfinder_to_starknet_contract_class(
+        definition: class_definition::Sierra,
+    ) -> Result<ContractClass, serde_json::Error> {
+        let json = serde_json::json!({
+            "abi": [],
+            "sierra_program": definition.sierra_program,
+            "contract_class_version": definition.contract_class_version,
+            "entry_points_by_type": definition.entry_points_by_type,
+        });
+        serde_json::from_value::<ContractClass>(json)
     }
 
-    pub(super) fn compile(definition: FeederGatewayContractClass<'_>) -> anyhow::Result<Vec<u8>> {
-        let sierra_class: ContractClass = definition
-            .try_into()
+    pub(super) fn compile(definition: class_definition::Sierra) -> anyhow::Result<Vec<u8>> {
+        let sierra_class: ContractClass = pathfinder_to_starknet_contract_class(definition)
             .context("Converting to Sierra class")?;
 
         validate_compatible_sierra_version(
@@ -130,26 +131,22 @@ mod v1_0_0_rc0 {
     };
     use casm_compiler_v1_0_0_rc0::casm_contract_class::CasmContractClass;
     use casm_compiler_v1_0_0_rc0::contract_class::ContractClass;
+    use pathfinder_common::class_definition;
 
-    use super::FeederGatewayContractClass;
-
-    impl<'a> TryFrom<FeederGatewayContractClass<'a>> for ContractClass {
-        type Error = serde_json::Error;
-
-        fn try_from(value: FeederGatewayContractClass<'a>) -> Result<Self, Self::Error> {
-            let json = serde_json::json!({
-                "abi": [],
-                "sierra_program": value.sierra_program,
-                "contract_class_version": value.contract_class_version,
-                "entry_points_by_type": value.entry_points_by_type,
-            });
-            serde_json::from_value::<ContractClass>(json)
-        }
+    pub(super) fn pathfinder_to_starknet_contract_class(
+        definition: class_definition::Sierra,
+    ) -> Result<ContractClass, serde_json::Error> {
+        let json = serde_json::json!({
+            "abi": [],
+            "sierra_program": definition.sierra_program,
+            "contract_class_version": definition.contract_class_version,
+            "entry_points_by_type": definition.entry_points_by_type,
+        });
+        serde_json::from_value::<ContractClass>(json)
     }
 
-    pub(super) fn compile(definition: FeederGatewayContractClass<'_>) -> anyhow::Result<Vec<u8>> {
-        let sierra_class: ContractClass = definition
-            .try_into()
+    pub(super) fn compile(definition: class_definition::Sierra) -> anyhow::Result<Vec<u8>> {
+        let sierra_class: ContractClass = pathfinder_to_starknet_contract_class(definition)
             .context("Converting to Sierra class")?;
 
         validate_compatible_sierra_version(
@@ -177,26 +174,22 @@ mod v1_1_1 {
     };
     use casm_compiler_v1_1_1::casm_contract_class::CasmContractClass;
     use casm_compiler_v1_1_1::contract_class::ContractClass;
+    use pathfinder_common::class_definition;
 
-    use super::FeederGatewayContractClass;
-
-    impl<'a> TryFrom<FeederGatewayContractClass<'a>> for ContractClass {
-        type Error = serde_json::Error;
-
-        fn try_from(value: FeederGatewayContractClass<'a>) -> Result<Self, Self::Error> {
-            let json = serde_json::json!({
-                "abi": [],
-                "sierra_program": value.sierra_program,
-                "contract_class_version": value.contract_class_version,
-                "entry_points_by_type": value.entry_points_by_type,
-            });
-            serde_json::from_value::<ContractClass>(json)
-        }
+    pub(super) fn pathfinder_to_starknet_contract_class(
+        definition: class_definition::Sierra,
+    ) -> Result<ContractClass, serde_json::Error> {
+        let json = serde_json::json!({
+            "abi": [],
+            "sierra_program": definition.sierra_program,
+            "contract_class_version": definition.contract_class_version,
+            "entry_points_by_type": definition.entry_points_by_type,
+        });
+        serde_json::from_value::<ContractClass>(json)
     }
 
-    pub(super) fn compile(definition: FeederGatewayContractClass<'_>) -> anyhow::Result<Vec<u8>> {
-        let sierra_class: ContractClass = definition
-            .try_into()
+    pub(super) fn compile(definition: class_definition::Sierra) -> anyhow::Result<Vec<u8>> {
+        let sierra_class: ContractClass = pathfinder_to_starknet_contract_class(definition)
             .context("Converting to Sierra class")?;
 
         validate_compatible_sierra_version(
@@ -222,25 +215,22 @@ mod v2 {
     use cairo_lang_starknet_classes::casm_contract_class::CasmContractClass;
     use cairo_lang_starknet_classes::contract_class::ContractClass;
 
-    use super::{CasmHash, FeederGatewayContractClass};
+    use super::CasmHash;
 
-    impl<'a> TryFrom<FeederGatewayContractClass<'a>> for ContractClass {
-        type Error = serde_json::Error;
-
-        fn try_from(value: FeederGatewayContractClass<'a>) -> Result<Self, Self::Error> {
-            let json = serde_json::json!({
-                "abi": [],
-                "sierra_program": value.sierra_program,
-                "contract_class_version": value.contract_class_version,
-                "entry_points_by_type": value.entry_points_by_type,
-            });
-            serde_json::from_value::<ContractClass>(json)
-        }
+    pub(super) fn pathfinder_to_starknet_contract_class(
+        definition: crate::class_definition::Sierra,
+    ) -> Result<ContractClass, serde_json::Error> {
+        let json = serde_json::json!({
+            "abi": [],
+            "sierra_program": definition.sierra_program,
+            "contract_class_version": definition.contract_class_version,
+            "entry_points_by_type": definition.entry_points_by_type,
+        });
+        serde_json::from_value::<ContractClass>(json)
     }
 
-    pub(super) fn compile(definition: FeederGatewayContractClass<'_>) -> anyhow::Result<Vec<u8>> {
-        let sierra_class: ContractClass = definition
-            .try_into()
+    pub(super) fn compile(definition: crate::class_definition::Sierra) -> anyhow::Result<Vec<u8>> {
+        let sierra_class: ContractClass = pathfinder_to_starknet_contract_class(definition)
             .context("Converting to Sierra class")?;
 
         sierra_class
@@ -279,27 +269,12 @@ mod v2 {
     }
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
-#[serde(deny_unknown_fields)]
-struct FeederGatewayContractClass<'a> {
-    #[serde(borrow)]
-    pub abi: Cow<'a, str>,
-
-    #[serde(borrow)]
-    pub sierra_program: &'a serde_json::value::RawValue,
-
-    #[serde(borrow)]
-    pub contract_class_version: &'a serde_json::value::RawValue,
-
-    #[serde(borrow)]
-    pub entry_points_by_type: &'a serde_json::value::RawValue,
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{compile_to_casm, FeederGatewayContractClass};
+    use super::compile_to_casm_ser;
 
     mod parse_version {
+        use pathfinder_common::class_definition;
         use rstest::rstest;
         use starknet_gateway_test_fixtures::class_definitions::{
             CAIRO_1_0_0_ALPHA5_SIERRA,
@@ -308,7 +283,7 @@ mod tests {
             CAIRO_2_0_0_STACK_OVERFLOW,
         };
 
-        use super::super::{parse_sierra_version, FeederGatewayContractClass, SierraVersion};
+        use super::super::{parse_sierra_version, SierraVersion};
 
         #[rstest]
         #[case(CAIRO_1_0_0_ALPHA5_SIERRA, SierraVersion(0, 1, 0))]
@@ -316,82 +291,85 @@ mod tests {
         #[case(CAIRO_1_1_0_RC0_SIERRA, SierraVersion(1, 1, 0))]
         #[case(CAIRO_2_0_0_STACK_OVERFLOW, SierraVersion(1, 2, 0))]
         fn parse_version(#[case] sierra_json: &[u8], #[case] expected_version: SierraVersion) {
-            let sierra =
-                serde_json::from_slice::<FeederGatewayContractClass<'_>>(sierra_json).unwrap();
-            let sierra_version = parse_sierra_version(sierra.sierra_program).unwrap();
+            let sierra = serde_json::from_slice::<class_definition::Sierra>(sierra_json).unwrap();
+            let sierra_version = parse_sierra_version(&sierra.sierra_program).unwrap();
             assert_eq!(sierra_version, expected_version);
         }
     }
 
     mod starknet_v0_11_0 {
+        use pathfinder_common::class_definition;
         use starknet_gateway_test_fixtures::class_definitions::CAIRO_1_0_0_ALPHA5_SIERRA;
 
         use super::*;
+        use crate::v1_0_0_rc0::pathfinder_to_starknet_contract_class;
 
         #[test]
         fn test_feeder_gateway_contract_conversion() {
             let class =
-                serde_json::from_slice::<FeederGatewayContractClass<'_>>(CAIRO_1_0_0_ALPHA5_SIERRA)
+                serde_json::from_slice::<class_definition::Sierra>(CAIRO_1_0_0_ALPHA5_SIERRA)
                     .unwrap();
 
             let _: casm_compiler_v1_0_0_rc0::contract_class::ContractClass =
-                class.try_into().unwrap();
+                pathfinder_to_starknet_contract_class(class).unwrap();
         }
 
         #[test]
-        fn test_compile() {
-            compile_to_casm(CAIRO_1_0_0_ALPHA5_SIERRA).unwrap();
+        fn test_compile_ser() {
+            compile_to_casm_ser(CAIRO_1_0_0_ALPHA5_SIERRA).unwrap();
         }
     }
 
     mod starknet_v0_11_1 {
+        use pathfinder_common::class_definition;
         use starknet_gateway_test_fixtures::class_definitions::CAIRO_1_0_0_RC0_SIERRA;
 
         use super::*;
+        use crate::v1_0_0_rc0::pathfinder_to_starknet_contract_class;
 
         #[test]
         fn test_feeder_gateway_contract_conversion() {
             let class =
-                serde_json::from_slice::<FeederGatewayContractClass<'_>>(CAIRO_1_0_0_RC0_SIERRA)
-                    .unwrap();
+                serde_json::from_slice::<class_definition::Sierra>(CAIRO_1_0_0_RC0_SIERRA).unwrap();
 
             let _: casm_compiler_v1_0_0_rc0::contract_class::ContractClass =
-                class.try_into().unwrap();
+                pathfinder_to_starknet_contract_class(class).unwrap();
         }
 
         #[test]
-        fn test_compile() {
-            compile_to_casm(CAIRO_1_0_0_RC0_SIERRA).unwrap();
+        fn test_compile_ser() {
+            compile_to_casm_ser(CAIRO_1_0_0_RC0_SIERRA).unwrap();
         }
     }
 
     mod starknet_v0_11_2_onwards {
+        use pathfinder_common::class_definition;
         use starknet_gateway_test_fixtures::class_definitions::{
             CAIRO_1_1_0_RC0_SIERRA,
             CAIRO_2_0_0_STACK_OVERFLOW,
         };
 
         use super::*;
+        use crate::v2::pathfinder_to_starknet_contract_class;
 
         #[test]
         fn test_feeder_gateway_contract_conversion() {
             let class =
-                serde_json::from_slice::<FeederGatewayContractClass<'_>>(CAIRO_1_1_0_RC0_SIERRA)
-                    .unwrap();
+                serde_json::from_slice::<class_definition::Sierra>(CAIRO_1_1_0_RC0_SIERRA).unwrap();
 
             let _: cairo_lang_starknet_classes::contract_class::ContractClass =
-                class.try_into().unwrap();
+                pathfinder_to_starknet_contract_class(class).unwrap();
         }
 
         #[test]
-        fn test_compile() {
-            compile_to_casm(CAIRO_1_1_0_RC0_SIERRA).unwrap();
+        fn test_compile_ser() {
+            compile_to_casm_ser(CAIRO_1_1_0_RC0_SIERRA).unwrap();
         }
 
         #[test]
         fn regression_stack_overflow() {
             // This class caused a stack-overflow in v2 compilers <= v2.0.1
-            compile_to_casm(CAIRO_2_0_0_STACK_OVERFLOW).unwrap();
+            compile_to_casm_ser(CAIRO_2_0_0_STACK_OVERFLOW).unwrap();
         }
     }
 }
