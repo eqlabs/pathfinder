@@ -1,10 +1,20 @@
 use std::collections::BTreeMap;
 use std::future::Future;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use alloy::eips::{BlockId, BlockNumberOrTag};
+use alloy::network::Ethereum;
 use alloy::primitives::{Address, TxHash};
-use alloy::providers::{Provider, ProviderBuilder, WsConnect};
+use alloy::providers::fillers::{
+    BlobGasFiller,
+    ChainIdFiller,
+    FillProvider,
+    GasFiller,
+    JoinFill,
+    NonceFiller,
+};
+use alloy::providers::{Identity, Provider, ProviderBuilder, RootProvider, WsConnect};
 use alloy::rpc::types::{FilteredParams, Log};
 use anyhow::Context;
 use pathfinder_common::prelude::*;
@@ -21,6 +31,16 @@ use crate::utils::*;
 
 mod starknet;
 mod utils;
+
+/// Type alias for the WebSocket provider returned by alloy when calling
+/// `ProviderBuilder::new().connect_ws()`
+type WsProvider = FillProvider<
+    JoinFill<
+        Identity,
+        JoinFill<GasFiller, JoinFill<BlobGasFiller, JoinFill<NonceFiller, ChainIdFiller>>>,
+    >,
+    RootProvider<Ethereum>,
+>;
 
 /// Starknet core contract addresses
 pub mod core_addr {
@@ -71,10 +91,24 @@ pub trait EthereumApi {
 }
 
 /// Ethereum client
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct EthereumClient {
     url: Url,
+    /// Lazily initialized WebSocket connection for query methods (get_chain,
+    /// get_starknet_state, etc.). Note: `sync_and_listen` uses its own
+    /// dedicated connection for subscriptions.
+    provider: Arc<RwLock<Option<WsProvider>>>,
     pending_state_updates: BTreeMap<L1BlockNumber, EthereumStateUpdate>,
+}
+
+impl std::fmt::Debug for EthereumClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EthereumClient")
+            .field("url", &self.url)
+            .field("provider", &"<WsProvider>")
+            .field("pending_state_updates", &self.pending_state_updates)
+            .finish()
+    }
 }
 
 impl EthereumClient {
@@ -82,6 +116,7 @@ impl EthereumClient {
     pub fn new<U: IntoUrl>(url: U) -> anyhow::Result<Self> {
         Ok(Self {
             url: url.into_url()?,
+            provider: Arc::new(RwLock::new(None)),
             pending_state_updates: BTreeMap::new(),
         })
     }
@@ -94,12 +129,31 @@ impl EthereumClient {
         Self::new(url)
     }
 
+    /// Gets or creates the shared WebSocket provider for query methods.
+    async fn provider(&self) -> anyhow::Result<WsProvider> {
+        {
+            let lock = self.provider.read().unwrap();
+            // If a provider exists, return it
+            if let Some(provider) = lock.as_ref() {
+                return Ok(provider.clone());
+            }
+        }
+
+        // Create a new WebSocket provider
+        let ws = WsConnect::new(self.url.clone());
+        let new_provider = ProviderBuilder::new()
+            .connect_ws(ws)
+            .await
+            .context("Failed to establish WebSocket connection to Ethereum node")?;
+
+        let mut lock = self.provider.write().unwrap();
+        *lock = Some(new_provider.clone());
+        Ok(new_provider)
+    }
+
     /// Returns the block number of the last finalized block
     async fn get_finalized_block_number(&self) -> anyhow::Result<L1BlockNumber> {
-        // Create a WebSocket connection
-        let ws = WsConnect::new(self.url.clone());
-        let provider = ProviderBuilder::new().connect_ws(ws).await?;
-        // Fetch the finalized block number
+        let provider = self.provider().await?;
         provider
             .get_block_by_number(BlockNumberOrTag::Finalized)
             .await?
@@ -122,7 +176,12 @@ impl EthereumApi for EthereumClient {
         F: Fn(EthereumStateUpdate) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
-        // Create a WebSocket connection
+        // This method maintains its own dedicated WebSocket connection for
+        // subscriptions. We keep it separate from the shared query connection
+        // because:
+        // 1. Subscriptions are long-lived and stream events continuously
+        // 2. Isolates subscription failures from query failures
+        // 3. Simplifies reconnection logic (no need to re-establish subscriptions)
         let ws = WsConnect::new(self.url.clone());
         let provider = ProviderBuilder::new().connect_ws(ws).await?;
 
@@ -237,9 +296,7 @@ impl EthereumApi for EthereumClient {
         address: &H160,
         tx_hash: &L1TransactionHash,
     ) -> anyhow::Result<Vec<L1HandlerTransaction>> {
-        // Create a WebSocket connection
-        let ws = WsConnect::new(self.url.clone());
-        let provider = ProviderBuilder::new().connect_ws(ws).await?;
+        let provider = self.provider().await?;
 
         let core_address = Address::new((*address).into());
         let core_contract = StarknetCoreContract::new(core_address, provider.clone());
@@ -302,9 +359,7 @@ impl EthereumApi for EthereumClient {
 
     /// Get the Starknet state
     async fn get_starknet_state(&self, address: &H160) -> anyhow::Result<EthereumStateUpdate> {
-        // Create a WebSocket connection
-        let ws = WsConnect::new(self.url.clone());
-        let provider = ProviderBuilder::new().connect_ws(ws).await?;
+        let provider = self.provider().await?;
 
         // Create the StarknetCoreContract instance
         let address = Address::new((*address).into());
@@ -329,11 +384,7 @@ impl EthereumApi for EthereumClient {
 
     /// Get the Ethereum chain
     async fn get_chain(&self) -> anyhow::Result<EthereumChain> {
-        // Create a WebSocket connection
-        let ws = WsConnect::new(self.url.clone());
-        let provider = ProviderBuilder::new().connect_ws(ws).await?;
-
-        // Get the chain ID
+        let provider = self.provider().await?;
         let chain_id = provider.get_chain_id().await?;
         let chain_id = U256::from(chain_id);
 
