@@ -155,8 +155,8 @@ mod test {
         let (configs, stopwatch) = utils::setup(NUM_NODES)?;
 
         let alice_cfg = configs.first().unwrap();
-        let mut _fgw = FeederGateway::spawn(&alice_cfg)?;
-        _fgw.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
+        let mut fgw = FeederGateway::spawn(&alice_cfg)?;
+        fgw.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
 
         // We want everybody to have sync enabled so that not only Alice, Bob, and
         // Charlie decide upon the new blocks but also they are able to **commit the
@@ -168,10 +168,8 @@ mod test {
         // catches up with the other nodes, at which point he should be committing the
         // consensus-decided blocks to his own main DB, before actually sync is able to
         // get them from the FGw.
-        //
-        // TODO !!! not only wait for decided upon but also committed to main DB
         let mut configs = configs.into_iter().map(|cfg| {
-            cfg.with_local_feeder_gateway(_fgw.port())
+            cfg.with_local_feeder_gateway(fgw.port())
                 .with_sync_enabled()
         });
         let alice = PathfinderInstance::spawn(configs.next().unwrap())?;
