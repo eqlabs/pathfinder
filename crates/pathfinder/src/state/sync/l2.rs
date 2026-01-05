@@ -443,6 +443,14 @@ where
 
         tracing::trace!(?reply, "YYYY 003 Received committed block from consensus");
 
+        // IMPORTANT
+        // A race condition has been observed:
+        // - Alice commits @H
+        // - FGw uses Alice's DB directly, so it also serves H immediately
+        // - Bob hasn't committed @H yet, even though he voted on it, so he asks for it
+        //   from FGw
+        // - Bob downloads @H from FGw, even though will shortly have it ready for
+        //   committing localy from his own consensus engine
         if let Some(l2_block) = reply {
             tracing::debug!(
                 "YYYY 004 Block {next} already committed in consensus, skipping download"
@@ -517,19 +525,52 @@ where
                 DownloadBlock::Wait => {
                     tracing::trace!(
                         "YYYY 013 DownloadBlock::Wait Block {next} not available yet from \
-                         sequencer, back to consensus"
+                         sequencer, waiting for fgw head to change or consensus info update"
                     );
 
-                    continue 'outer;
+                    // continue 'outer;
 
                     // Wait for the latest block to change.
-                    if latest
-                        .wait_for(|x| x.is_some_and(|(_, hash)| hash != head.unwrap_or_default().1))
-                        .await
-                        .is_err()
-                    {
-                        tracing::debug!("Latest tracking channel closed, exiting");
-                        return Ok(());
+                    // if latest
+                    //     .wait_for(|x| x.is_some_and(|(_, hash)| hash !=
+                    // head.unwrap_or_default().1))     .await
+                    //     .is_err()
+                    // {
+                    //     tracing::debug!("Latest tracking channel closed, exiting");
+                    //     return Ok(());
+                    // }
+
+                    let fgw_fut = latest.wait_for(|x| {
+                        x.is_some_and(|(_, hash)| hash != head.unwrap_or_default().1)
+                    });
+                    let consensus_fut = consensus_info_watch.changed();
+
+                    tokio::select! {
+                        biased;
+
+                        res = consensus_fut => {
+                            match res {
+                                Ok(_) => {
+                                    tracing::trace!("YYYY 013 Consensus info watch changed, trying to get the block from consensus {next}");
+                                    continue 'outer;
+                                }
+                                Err(_) => {
+                                    tracing::debug!("Consensus info watch closed, exiting");
+                                    return Ok(());
+                                }
+                            }
+                        }
+                        res = fgw_fut => {
+                            match res {
+                                Ok(_) => {
+                                    tracing::trace!("YYYY 013 Feeder gateway latest watch changed, retrying download for block {next}");
+                                }
+                                Err(_) => {
+                                    tracing::debug!("Feeder gateway latest watch closed, exiting");
+                                    return Ok(());
+                                }
+                            }
+                        }
                     }
                 }
                 DownloadBlock::Retry => {
