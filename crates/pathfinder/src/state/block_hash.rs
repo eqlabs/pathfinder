@@ -170,6 +170,9 @@ pub fn verify_block_hash(
         }
     } else {
         let computed_hash = compute_final_hash(&header);
+
+        tracing::trace!(%computed_hash, got_hash=%header.hash, "YYYY VERIFY HASH END");
+
         computed_hash == header.hash
     };
 

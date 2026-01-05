@@ -385,10 +385,33 @@ where
     tracing::trace!(?head, "YYYY Starting consensus-aware L2 sync");
 
     let ConsensusChannels {
-        consensus_info_watch,
+        mut consensus_info_watch,
         sync_to_consensus_tx,
     } = consensus_channels
         .expect("In consensus-aware L2 sync, consensus channels are always provided");
+
+    // let consensus_head = consensus_info_watch
+    //     .borrow()
+    //     .highest_decision
+    //     .map(|(h, _)| h);
+    // let fgw_head = latest.borrow().map(|(h, _)| h);
+
+    // In case of a freshly bootstapped network both watched will initially yield
+    // None, so we wait for either to yield a value to avoid busy-looping in the
+    // loop below.
+    let consensus_watch_fut = consensus_info_watch.wait_for(|info| info.highest_decision.is_some());
+    let fgw_watch_fut = latest.wait_for(|fgw_head| fgw_head.is_some());
+
+    tokio::select! {
+        biased;
+
+        info = consensus_watch_fut => {
+            tracing::trace!(?info, "YYYY Consensus info watch yielded a highest decision");
+        }
+        fgw_head = fgw_watch_fut => {
+            tracing::trace!(?fgw_head, "YYYY Feeder gateway latest watch yielded a head");
+        }
+    }
 
     // Start polling head of chain
     'outer: loop {
@@ -398,9 +421,7 @@ where
             None => (BlockNumber::GENESIS, None),
         };
 
-        tracing::trace!("YYYY 001");
-
-        tracing::trace!("Getting block {next} from consensus");
+        tracing::trace!("YYYY 001 Getting block {next} from consensus");
 
         // Check if the Consensus engine has already committed this block
         // to avoid redundant downloads.
@@ -420,10 +441,12 @@ where
             .await
             .context("Receiving committed block from consensus")?;
 
-        tracing::trace!("YYYY 003");
+        tracing::trace!(?reply, "YYYY 003 Received committed block from consensus");
 
         if let Some(l2_block) = reply {
-            tracing::debug!("Block {next} already committed in consensus, skipping download");
+            tracing::debug!(
+                "YYYY 004 Block {next} already committed in consensus, skipping download"
+            );
 
             let (state_tries_updated_tx, rx) = tokio::sync::oneshot::channel();
 
@@ -435,28 +458,28 @@ where
                 .await
                 .context("Event channel closed")?;
 
-            tracing::trace!("YYYY 004");
+            tracing::trace!(
+                "YYYY 005 Finalized consensus block event sent, waiting for state tries to be \
+                 updated in consumer"
+            );
 
             let (block_hash, state_commitment) = rx
                 .await
                 .context("Waiting for state tries to be updated in consumer")?;
 
-            tracing::trace!("YYYY 005");
+            tracing::trace!("YYYY 006 State tries updated for finalized consensus block");
 
             head = Some((next, block_hash, state_commitment));
             blocks.push(next, block_hash, state_commitment);
 
             continue 'outer;
         } else {
-            tracing::trace!("YYYY 006");
-            tracing::debug!(
-                "Block {next} not yet committed in consensus, downloading from sequencer"
+            tracing::trace!(
+                "YYYY 007 Block {next} not yet committed in consensus, downloading from sequencer"
             );
         }
 
-        tracing::trace!("YYYY 010");
-
-        tracing::debug!("Downloading block {next} from sequencer");
+        tracing::trace!("YYYY 010 Downloading block {next} from sequencer");
 
         // We start downloading the signature for the block
         let signature_handle = util::task::spawn({
@@ -470,7 +493,7 @@ where
             }
         });
 
-        tracing::trace!("YYYY 011");
+        tracing::trace!("YYYY 011 started downloading signature for block {next} from sequencer");
 
         let t_block = std::time::Instant::now();
 
@@ -487,16 +510,15 @@ where
             .await?
             {
                 DownloadBlock::Block(block, commitments, state_update, state_diff_commitment) => {
-                    tracing::trace!("YYYY 012");
+                    tracing::trace!("YYYY 012 downloaded block {next} from sequencer");
 
                     break (block, commitments, state_update, state_diff_commitment);
                 }
                 DownloadBlock::Wait => {
                     tracing::trace!(
-                        "Block {next} not available yet from sequencer, back to consensus"
+                        "YYYY 013 DownloadBlock::Wait Block {next} not available yet from \
+                         sequencer, back to consensus"
                     );
-
-                    tracing::trace!("YYYY 013");
 
                     continue 'outer;
 
@@ -512,18 +534,17 @@ where
                 }
                 DownloadBlock::Retry => {
                     tracing::trace!(
-                        "Block {next} not available yet from sequencer, back to consensus"
+                        "YYYY 014 DownloadBlock::Retry Block {next} not available yet from \
+                         sequencer, back to consensus"
                     );
-
-                    tracing::trace!("YYYY 014");
 
                     // Now try from consensus
                     continue 'outer;
                 }
                 DownloadBlock::Reorg => {
-                    tracing::trace!("Handle reorg for block {next} requested by sequencer");
-
-                    tracing::trace!("YYYY 015");
+                    tracing::trace!(
+                        "YYYY 015 Handle reorg for block {next} requested by sequencer"
+                    );
 
                     head = match head {
                         Some(some_head) => reorg(
@@ -1439,8 +1460,14 @@ fn verify_gateway_block_commitments_and_hash(
 ) -> anyhow::Result<VerifyResult> {
     let mut header = header_from_gateway_block(block, state_diff_commitment, state_diff_length)?;
 
+    tracing::trace!(?block, "YYYY VERIFY HASH 0");
+
+    tracing::trace!(?state_diff_commitment, "YYYY VERIFY HASH 0A");
+
     let computed_transaction_commitment =
         calculate_transaction_commitment(&block.transactions, block.starknet_version)?;
+
+    tracing::trace!(?computed_transaction_commitment, "YYYY VERIFY HASH 1");
 
     // Older blocks on mainnet don't carry a precalculated transaction commitment.
     if block.transaction_commitment == TransactionCommitment::ZERO {
@@ -1458,6 +1485,8 @@ fn verify_gateway_block_commitments_and_hash(
         .map(|(r, _)| r.clone())
         .collect::<Vec<_>>();
     let computed_receipt_commitment = calculate_receipt_commitment(receipts.as_slice())?;
+
+    tracing::trace!(?computed_receipt_commitment, "YYYY VERIFY HASH 2");
 
     // Older blocks on mainnet don't carry a precalculated receipt commitment.
     if let Some(receipt_commitment) = block.receipt_commitment {
@@ -1478,6 +1507,8 @@ fn verify_gateway_block_commitments_and_hash(
         .collect::<Vec<_>>();
     let event_commitment =
         calculate_event_commitment(&events_with_tx_hashes, block.starknet_version)?;
+
+    tracing::trace!(?event_commitment, "YYYY VERIFY HASH 3");
 
     // Older blocks on mainnet don't carry a precalculated event
     // commitment.

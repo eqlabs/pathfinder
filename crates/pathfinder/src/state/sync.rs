@@ -933,13 +933,23 @@ async fn consumer(
                     l2_block,
                     state_tries_updated_tx,
                 } => {
+                    tracing::trace!(
+                        "YYYY CONSUMER Got finalized consensus block {}",
+                        l2_block.header.number
+                    );
+
                     if l2_block.header.number < next_number {
                         tracing::debug!(
-                            "Ignoring duplicate finalized block {}",
+                            "YYYY Ignoring duplicate finalized block {}",
                             l2_block.header.number
                         );
                         return anyhow::Ok(None);
                     }
+
+                    tracing::trace!(
+                        "YYYY CONSUMER updating starknet state at height {}",
+                        l2_block.header.number
+                    );
 
                     let l2_block = l2_update(
                         &tx,
@@ -948,6 +958,11 @@ async fn consumer(
                         verify_tree_hashes,
                         storage.clone(),
                     )?;
+
+                    tracing::trace!(
+                        "YYYY CONSUMER SUCCESS starknet state updated at height {}",
+                        l2_block.header.number
+                    );
 
                     state_tries_updated_tx
                         .send((l2_block.header.hash, l2_block.header.state_commitment))
