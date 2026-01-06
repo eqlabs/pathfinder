@@ -673,15 +673,20 @@ pub mod sierra {
         }
     }
 
-    impl SierraContractClass {
-        pub fn serialize_to_json(&self) -> anyhow::Result<Vec<u8>> {
-            let json = serde_json::to_vec(self)?;
-
-            Ok(json)
+    impl<'a> From<SierraContractClass> for pathfinder_common::class_definition::Sierra<'a> {
+        fn from(value: SierraContractClass) -> Self {
+            Self {
+                abi: value.abi.into(),
+                sierra_program: value.sierra_program,
+                contract_class_version: value.contract_class_version.into(),
+                entry_points_by_type: value.entry_points_by_type.into(),
+            }
         }
+    }
 
+    impl SierraContractClass {
         pub fn class_hash(&self) -> anyhow::Result<ComputedClassHash> {
-            let definition = self.serialize_to_json()?;
+            let definition = serde_json::to_vec(self)?;
             compute_class_hash(&definition)
         }
     }
@@ -693,6 +698,21 @@ pub mod sierra {
         pub constructor: Vec<SierraEntryPoint>,
         pub external: Vec<SierraEntryPoint>,
         pub l1_handler: Vec<SierraEntryPoint>,
+    }
+
+    impl From<SierraEntryPoints> for pathfinder_common::class_definition::SierraEntryPoints {
+        fn from(value: SierraEntryPoints) -> Self {
+            let SierraEntryPoints {
+                external,
+                l1_handler,
+                constructor,
+            } = value;
+            Self {
+                external: external.into_iter().map(Into::into).collect(),
+                l1_handler: l1_handler.into_iter().map(Into::into).collect(),
+                constructor: constructor.into_iter().map(Into::into).collect(),
+            }
+        }
     }
 
     #[serde_with::serde_as]
