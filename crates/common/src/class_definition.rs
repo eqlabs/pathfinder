@@ -18,7 +18,7 @@ pub enum ClassDefinition<'a> {
     Cairo(Cairo<'a>),
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Sierra<'a> {
     /// Contract ABI.
