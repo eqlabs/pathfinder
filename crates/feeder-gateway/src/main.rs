@@ -341,7 +341,7 @@ async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyh
                                 let tx = connection.transaction().unwrap();
 
                                 resolve_block(&tx, block_id, &reorg_config, reorged)
-                            }).await.context("Joining blocking task").flatten();
+                            }).await.context("Joining blocking task").and_then(|res| res);
 
                             match block {
                                 Ok(block) => {
@@ -393,7 +393,7 @@ async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyh
                                 let tx = connection.transaction().unwrap();
 
                                 resolve_signature(&tx, block_id)
-                            }).await.context("Joining blocking task").flatten();
+                            }).await.context("Joining blocking task").and_then(|res| res);
 
                             match signature {
                                 Ok(signature) => {
@@ -437,7 +437,7 @@ async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyh
                                 let tx = connection.transaction().unwrap();
 
                                 resolve_state_update(&tx, block_id, &reorg_config, reorged.clone()).and_then(|state_update| resolve_block(&tx, block_id, &reorg_config, reorged).map(|block| (block, state_update)))
-                            }).await.context("Joining blocking task").flatten();
+                            }).await.context("Joining blocking task").and_then(|res| res);
 
                             match block_and_state_update {
                                 Ok((block, state_update)) => {
@@ -498,7 +498,7 @@ async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyh
                         let tx = connection.transaction().unwrap();
 
                         resolve_class(&tx, class_hash.class_hash)
-                    }).await.context("Joining blocking task").flatten();
+                    }).await.context("Joining blocking task").and_then(|res| res);
 
                     match class {
                         Ok(class) => {

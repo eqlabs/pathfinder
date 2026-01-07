@@ -99,7 +99,6 @@ async fn wait_for_block_exists_fut(
     #[derive(Deserialize)]
     struct Block {
         block_number: u64,
-        // block_hash: String,
     }
 
     async fn get_latest_block_with_receipts(
@@ -107,25 +106,25 @@ async fn wait_for_block_exists_fut(
     ) -> anyhow::Result<JsonRpcReply<Option<Block>>> {
         let reply = reqwest::Client::new()
             .post(format!("http://127.0.0.1:{rpc_port}"))
-            .body(format!(
-                r#"{{
+            .body(
+                r#"{
                     "jsonrpc": "2.0",
                     "id": 0,
                     "method": "starknet_getBlockWithReceipts",
-                    "params": {{
+                    "params": {
                         "block_id": "latest"
-                    }}
-                }}"#,
-            ))
+                    }
+                }"#,
+            )
             .header("Content-Type", "application/json")
             .send()
             .await
-            .context(format!("Sending JSON-RPC request to get latest block"))?;
+            .context("Sending JSON-RPC request to get latest block")?;
 
         let parsed = reply
             .json::<JsonRpcReply<Option<Block>>>()
             .await
-            .context(format!("Sending JSON-RPC request to get latest block"))?;
+            .context("Sending JSON-RPC request to get latest block")?;
 
         Ok(parsed)
     }

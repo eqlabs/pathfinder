@@ -155,7 +155,7 @@ mod test {
         let (configs, stopwatch) = utils::setup(NUM_NODES)?;
 
         let alice_cfg = configs.first().unwrap();
-        let mut fgw = FeederGateway::spawn(&alice_cfg)?;
+        let mut fgw = FeederGateway::spawn(alice_cfg)?;
         fgw.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
 
         // We want everybody to have sync enabled so that not only Alice, Bob, and
