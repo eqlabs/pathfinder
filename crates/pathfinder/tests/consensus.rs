@@ -76,7 +76,7 @@ mod test {
     #[case::fail_on_proposal_decided(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalDecided }))]
     #[case::fail_on_proposal_committed(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalCommitted }))]
     #[tokio::test]
-    async fn consensus_3_nodes(
+    async fn consensus_3_nodes_with_failures(
         #[case] inject_failure: Option<InjectFailureConfig>,
     ) -> anyhow::Result<()> {
         const NUM_NODES: usize = 3;
