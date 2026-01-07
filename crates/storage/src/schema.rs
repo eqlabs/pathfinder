@@ -91,4 +91,6 @@ const MIGRATIONS: &'static [MigrationFn] = &[
     revision_0076::migrate,
 ];
 
-pub(crate) const CURRENT_SCHEMA_REVISION: usize = BASE_SCHEMA_REVISION + MIGRATIONS.len();
+// The target version is the number of null migrations which have been replaced
+// by the base schema + the new migrations built on top of that.
+pub(crate) const LATEST_SCHEMA_REVISION: usize = BASE_SCHEMA_REVISION + MIGRATIONS.len();
