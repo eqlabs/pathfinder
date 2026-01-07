@@ -29,7 +29,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
-use clap::{Args, Parser};
+use clap::{ArgAction, Args, Parser};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use pathfinder_common::integration_testing::debug_create_port_marker_file;
@@ -76,7 +76,8 @@ struct Cli {
                      gateway will keep retrying until a timeout occurs. Additionally CUSTOM chain \
                      is assumed and the feeder gateway will exit with an error if a mismatch \
                      occurs.",
-        default_value = "false"
+        default_value = "false",
+        action=ArgAction::Set
     )]
     pub wait_for_custom_db_ready: bool,
     #[command(flatten)]
