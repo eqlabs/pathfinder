@@ -165,7 +165,7 @@ mod test {
         // off of Alice's DB which means it'll always be lagging behind the
         // nodes that achieve consensus. However in reality, the FGw, will be sometimes
         // able to provide some blocks to Bob or Charlie faster than they themselves
-        // acquire a positive decision from their conensus engines.
+        // acquire a positive decision from their consensus engines.
         //
         // This means that initially Dan will be actually syncing from the FGw until he
         // catches up with the other nodes, at which point he should be committing the

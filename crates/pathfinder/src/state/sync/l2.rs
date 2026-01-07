@@ -388,7 +388,7 @@ where
     } = consensus_channels
         .expect("In consensus-aware L2 sync, consensus channels are always provided");
 
-    // In case of a freshly bootstapped network both watched values will not be
+    // In case of a freshly bootstrapped network both watched values will not be
     // available, so we wait for either to yield a value to avoid busy-looping
     // in the loop below.
     let consensus_watch_fut = consensus_info_watch.wait_for(|info| info.highest_decision.is_some());
@@ -432,7 +432,7 @@ where
         // - Bob hasn't committed @H yet, even though he voted on it, so he asks for it
         //   from FGw
         // - Bob downloads @H from FGw, even though he will shortly have it ready for
-        //   committing localy from his own consensus engine
+        //   committing locally from his own consensus engine
         if let Some(l2_block) = reply {
             let (state_tries_updated_tx, rx) = tokio::sync::oneshot::channel();
 
