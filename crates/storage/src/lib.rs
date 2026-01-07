@@ -641,6 +641,15 @@ impl Storage {
     pub fn path(&self) -> &Path {
         &self.0.database_path
     }
+
+    pub fn is_migrated(&self) -> Result<bool, StorageError> {
+        let mut connection = self.connection()?;
+        let tx = connection.transaction()?;
+
+        let user_version = tx.user_version()?;
+
+        Ok(user_version == schema::LATEST_SCHEMA_REVISION as i64)
+    }
 }
 
 fn setup_journal_mode(
@@ -700,10 +709,6 @@ fn migrate_database(connection: &mut rusqlite::Connection) -> anyhow::Result<()>
     let mut current_revision = schema_version(connection)?;
     let migrations = schema::migrations();
 
-    // The target version is the number of null migrations which have been replaced
-    // by the base schema + the new migrations built on top of that.
-    let latest_revision = schema::BASE_SCHEMA_REVISION + migrations.len();
-
     // Apply the base schema if the database is new.
     if current_revision == 0 {
         let tx = connection
@@ -718,7 +723,7 @@ fn migrate_database(connection: &mut rusqlite::Connection) -> anyhow::Result<()>
     }
 
     // Skip migration if we already at latest.
-    if current_revision == latest_revision {
+    if current_revision == schema::LATEST_SCHEMA_REVISION {
         tracing::info!(%current_revision, "No database migrations required");
         return Ok(());
     }
@@ -733,20 +738,20 @@ fn migrate_database(connection: &mut rusqlite::Connection) -> anyhow::Result<()>
         anyhow::bail!("Database version {current_revision} too old to migrate");
     }
 
-    if current_revision > latest_revision {
+    if current_revision > schema::LATEST_SCHEMA_REVISION {
         tracing::error!(
             version=%current_revision,
-            limit=%latest_revision,
+            limit=%schema::LATEST_SCHEMA_REVISION,
             "Database version is from a newer than this application expected"
         );
         anyhow::bail!(
-            "Database version {current_revision} is newer than this application expected \
-             {latest_revision}",
+            "Database version {current_revision} is newer than this application expected {}",
+            schema::LATEST_SCHEMA_REVISION
         );
     }
 
-    let amount = latest_revision - current_revision;
-    tracing::info!(%current_revision, %latest_revision, migrations=%amount, "Performing database migrations");
+    let amount = schema::LATEST_SCHEMA_REVISION - current_revision;
+    tracing::info!(%current_revision, latest_revision=%schema::LATEST_SCHEMA_REVISION, migrations=%amount, "Performing database migrations");
 
     // Sequentially apply each missing migration.
     migrations
