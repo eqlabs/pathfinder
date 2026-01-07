@@ -323,7 +323,7 @@ pub fn spawn(
                                     %number, "🖧  📥 {validator_address} get consensus finalized and decided upon block"
                                 );
                                 // If we're the proposer we could have a false positive here.
-                                // Luckily the block has to additionally be marked as decided too,
+                                // Luckily the block is additionally be marked as decided too,
                                 // because if we're proposing, we're also caching a finalized block
                                 // that has not been decided yet.
                                 let resp = proposals_db
