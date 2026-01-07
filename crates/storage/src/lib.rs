@@ -641,6 +641,15 @@ impl Storage {
     pub fn path(&self) -> &Path {
         &self.0.database_path
     }
+
+    pub fn is_migrated(&self) -> Result<bool, StorageError> {
+        let mut connection = self.connection()?;
+        let tx = connection.transaction()?;
+
+        let user_version = tx.user_version()?;
+
+        Ok(user_version == schema::CURRENT_SCHEMA_REVISION as i64)
+    }
 }
 
 fn setup_journal_mode(
