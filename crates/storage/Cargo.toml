@@ -14,7 +14,6 @@ anyhow = { workspace = true }
 base64 = { workspace = true }
 bincode = { workspace = true, features = ["serde"] }
 bitvec = { workspace = true }
-bloomfilter = { workspace = true }
 cached = { workspace = true }
 const_format = { workspace = true }
 fake = { workspace = true }
@@ -44,6 +43,7 @@ serde_json = { workspace = true, features = [
 ] }
 serde_with = { workspace = true }
 sha3 = { workspace = true }
+siphasher = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }

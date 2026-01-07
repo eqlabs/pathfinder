@@ -82,7 +82,7 @@ fn migrate_event_filters(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
             // `starknet_events_filters` table.
             .unwrap_or(BloomFilter::new());
 
-        aggregate.insert(&bloom_filter, block_number);
+        aggregate.insert(bloom_filter, block_number);
 
         if block_number == aggregate.to_block {
             insert_aggregate_stmt

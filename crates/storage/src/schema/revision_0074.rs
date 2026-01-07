@@ -214,7 +214,7 @@ fn rebuild_event_filter(
             break;
         };
 
-        rebuilt_aggregate_filter.insert(&bloom, block_number);
+        rebuilt_aggregate_filter.insert(bloom, block_number);
     }
 
     Ok(rebuilt_aggregate_filter)
