@@ -82,8 +82,6 @@ impl PathfinderInstance {
             )
             .arg("--ethereum.url=https://ethereum-sepolia-rpc.publicnode.com");
 
-        // TODO add option to the FGW to wait for the DB to show up, FGW is spawned
-        // before Alice and then Alice can read the port from the marker file.
         if let Some(port) = config.local_feeder_gateway_port {
             command.args([
                 "--network=custom",
@@ -160,8 +158,6 @@ impl PathfinderInstance {
         // an instance is terminated and then respawned.
         let rpc_port_watch_tx2 = rpc_port_watch_tx.clone();
         _ = Box::leak(Box::new(rpc_port_watch_tx2));
-
-        // If Self == Alice spawn the feeder gateway process that'd feed on Alice's DB.
 
         Ok(Self {
             process,

@@ -928,8 +928,6 @@ async fn consumer(
 
                     let number = l2_block.header.number;
 
-                    // FIXME there should be another notification for blocks coming from consensus
-                    // that were finalized
                     (
                         Some(Notification::L2Block(Arc::new(l2_block))),
                         Some(SyncMessageToConsensus::ConfirmFinalizedBlockCommitted { number }),

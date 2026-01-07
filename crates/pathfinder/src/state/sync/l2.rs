@@ -434,6 +434,8 @@ where
         // - Bob downloads @H from FGw, even though he will shortly have it ready for
         //   committing locally from his own consensus engine
         if let Some(l2_block) = reply {
+            tracing::debug!("Block {next} already committed in consensus, skipping download");
+
             let (state_tries_updated_tx, rx) = tokio::sync::oneshot::channel();
 
             tx_event
@@ -453,6 +455,8 @@ where
 
             continue 'outer;
         }
+
+        tracing::debug!("Downloading block {next} from sequencer");
 
         // We start downloading the signature for the block
         let signature_handle = util::task::spawn({
@@ -481,7 +485,7 @@ where
             .await?
             {
                 DownloadBlock::Block(block, commitments, state_update, state_diff_commitment) => {
-                    break (block, commitments, state_update, state_diff_commitment);
+                    break (block, commitments, state_update, state_diff_commitment)
                 }
                 DownloadBlock::Wait => {
                     let fgw_fut = latest.wait_for(|x| {
@@ -494,10 +498,7 @@ where
 
                         res = consensus_fut => {
                             match res {
-                                Ok(_) => {
-                                    tracing::trace!("YYYY 013 Consensus info watch changed, trying to get the block from consensus {next}");
-                                    continue 'outer;
-                                }
+                                Ok(_) => continue 'outer,
                                 Err(_) => {
                                     tracing::debug!("Consensus info watch closed, exiting");
                                     return Ok(());
@@ -505,15 +506,11 @@ where
                             }
                         }
                         res = fgw_fut => {
-                            match res {
-                                Ok(_) => {
-                                    tracing::trace!("YYYY 013 Feeder gateway latest watch changed, retrying download for block {next}");
-                                }
-                                Err(_) => {
-                                    tracing::debug!("Feeder gateway latest watch closed, exiting");
-                                    return Ok(());
-                                }
+                            if res.is_err() {
+                                tracing::debug!("Feeder gateway latest watch closed, exiting");
+                                return Ok(());
                             }
+                            // Otherwise we just retry downloading the block
                         }
                     }
                 }
@@ -977,13 +974,7 @@ async fn download_block(
                 }
             }
         }
-        Err(other) => {
-            tracing::trace!(
-                "YYYY 023 Error downloading block from sequencer: {:?}",
-                other
-            );
-            Err(other).context("Download block from sequencer")
-        }
+        Err(other) => Err(other).context("Download block from sequencer"),
     }
 }
 
