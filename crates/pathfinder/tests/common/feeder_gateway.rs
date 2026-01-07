@@ -32,7 +32,7 @@ impl FeederGateway {
         let process = Command::new(feeder_bin)
             .args([
                 "--port=0",
-                "--expected-version=76",
+                "--wait-for-custom-db-ready=true",
                 db_dir.join("custom.sqlite").to_str().expect("Valid utf8"),
             ])
             .stdout(stdout_file)

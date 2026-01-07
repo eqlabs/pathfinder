@@ -71,21 +71,12 @@ struct Cli {
     pub port: u16,
     #[arg(
         long,
-        long_help = "If set, the process will wait for the database file to become available with \
-                     this version. WARNING! If the database is not immediately available, the \
-                     feeder gateway will keep retrying until a timeout occurs. Additionally \
-                     CUSTOM chain is assumed until the database is available and the chain is \
-                     read from it."
-    )]
-    pub expected_version: Option<i64>,
-    #[arg(
-        long,
-        long_help = "If set, the process will wait for the database file to become available. A \
-                     marker file named ADD_MARKER_FILENAME_HERE should be created next to the DB \
-                     file to indicate that the DB file has been properly migrated and is ready \
-                     for usage. If the database is not immediately available, the feeder gateway \
-                     will keep retrying until a timeout occurs. Additionally CUSTOM chain is \
-                     assumed and the feeder gateway will panic if a mismatch occurs."
+        long_help = "If set, the process will wait for the database file to become available and \
+                     fully migrated. If the database is not immediately available, the feeder \
+                     gateway will keep retrying until a timeout occurs. Additionally CUSTOM chain \
+                     is assumed and the feeder gateway will exit with an error if a mismatch \
+                     occurs.",
+        default_value = "false"
     )]
     pub wait_for_custom_db_ready: bool,
     #[command(flatten)]
@@ -119,9 +110,7 @@ async fn main() -> anyhow::Result<()> {
 
     let db_path = cli.database_path.clone();
 
-    // If no expected version is set, attempt to connect to the database
-    // immediately.
-    if cli.expected_version.is_none() {
+    if !cli.wait_for_custom_db_ready {
         let storage = pathfinder_storage::StorageBuilder::file(db_path.clone())
             .readonly()?
             .create_read_only_pool(NonZeroU32::new(10).unwrap())?;
@@ -135,7 +124,7 @@ async fn main() -> anyhow::Result<()> {
 
     tokio::select! {
         storage_err = wait_for_storage(
-            cli.expected_version,
+            cli.wait_for_custom_db_ready,
             &db_path,
             storage_tx,
             Duration::from_millis(500),
@@ -155,22 +144,21 @@ struct ReorgConfig {
     pub reorg_to_block: BlockNumber,
 }
 
-/// Waits for the storage to become available at a given version. This is to
-/// ensure that any migrations performed by the process that is creating the
-/// database have been finished. The task **does not join** if the storage
-/// becomes available or `expected_version` is `None` (which means the databases
-/// file is expected to be available immediately), it just **keeps running**.
-/// The task only returns if an error is encountered, including a timeout.
+/// Waits for the storage to become available and fully migrated. The task
+/// **does not join** if the storage becomes available or the `enable` flag
+/// is `false` (which means the databases file is expected to be available
+/// immediately), it just returns **a pending future**. The task only returns if
+/// an error is encountered, including a timeout.
 fn wait_for_storage(
-    expected_version: Option<i64>,
+    enable: bool,
     path: &Path,
     storage_tx: Sender<Option<(Storage, Chain)>>,
     poll_interval: Duration,
     timeout: Duration,
 ) -> impl Future<Output = anyhow::Error> {
-    let Some(expected_version) = expected_version else {
+    if !enable {
         return futures::future::pending().boxed();
-    };
+    }
 
     let path = path.to_path_buf();
     let jh = tokio::task::spawn_blocking(move || {
@@ -204,23 +192,12 @@ fn wait_for_storage(
                     };
 
                     let chain = {
-                        let mut connection = storage.connection()?;
-                        let tx = connection.transaction()?;
-
-                        let user_version = tx.user_version()?;
-                        if user_version != expected_version {
+                        if !storage.is_migrated()? {
                             tracing::info!("Database not yet migrated, retrying...");
                             std::thread::sleep(poll_interval);
                             continue;
                         }
 
-                        // FIXME use a marker file in pathfinder to show that the DB is ready and
-                        // migrated change the cli flag to
-                        // --wait-for-custom-db-ready which forces CUSTOM chain and enables waiting
-                        // for the database file to be ready and when it's ready read the chain from
-                        // it and panic if it's not CUSTOM
-                        //
-                        // TODO how to detect that the DB is ready, ie migrated????
                         Chain::Custom
                     };
                     tracing::info!("Database is now available");
