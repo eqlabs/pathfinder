@@ -160,9 +160,12 @@ mod test {
 
         // We want everybody to have sync enabled so that not only Alice, Bob, and
         // Charlie decide upon the new blocks but also they are able to **commit the
-        // blocks to their main DBs**. The trick is that the FGw will not provide any
-        // meaningful data to the 3 nodes because it's feeding off of Alice's DB which
-        // means it'll always be lagging behind the nodes that achieve consensus.
+        // blocks to their main DBs**. The trick is that MOST OF THE TIME the FGw will
+        // not provide any meaningful data to the 3 nodes because it's feeding
+        // off of Alice's DB which means it'll always be lagging behind the
+        // nodes that achieve consensus. However in reality, the FGw, will be sometimes
+        // able to provide some blocks to Bob or Charlie faster than they themselves
+        // acquire a positive decision from their conensus engines.
         //
         // This means that initially Dan will be actually syncing from the FGw until he
         // catches up with the other nodes, at which point he should be committing the
