@@ -99,36 +99,32 @@ async fn wait_for_block_exists_fut(
     #[derive(Deserialize)]
     struct Block {
         block_number: u64,
-        block_hash: String,
     }
 
-    async fn get_block_with_receipts(
+    async fn get_latest_block_with_receipts(
         rpc_port: u16,
-        block_height: u64,
     ) -> anyhow::Result<JsonRpcReply<Option<Block>>> {
         let reply = reqwest::Client::new()
             .post(format!("http://127.0.0.1:{rpc_port}"))
-            .body(format!(
-                r#"{{
+            .body(
+                r#"{
                     "jsonrpc": "2.0",
                     "id": 0,
                     "method": "starknet_getBlockWithReceipts",
-                    "params": {{
-                        "block_id": {{
-                            "block_number": {block_height}
-                        }}
-                    }}
-                }}"#,
-            ))
+                    "params": {
+                        "block_id": "latest"
+                    }
+                }"#,
+            )
             .header("Content-Type", "application/json")
             .send()
             .await
-            .with_context(|| format!("Sending JSON-RPC request to get block {block_height}"))?;
+            .context("Sending JSON-RPC request to get latest block")?;
 
         let parsed = reply
             .json::<JsonRpcReply<Option<Block>>>()
             .await
-            .with_context(|| format!("Parsing JSON-RPC response for block {block_height}"))?;
+            .context("Sending JSON-RPC request to get latest block")?;
 
         Ok(parsed)
     }
@@ -149,7 +145,7 @@ async fn wait_for_block_exists_fut(
                 continue;
             };
 
-        let Ok(reply) = get_block_with_receipts(rpc_port, block_height).await else {
+        let Ok(reply) = get_latest_block_with_receipts(rpc_port).await else {
             println!(
                 "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} not responding yet"
             );
@@ -157,11 +153,16 @@ async fn wait_for_block_exists_fut(
         };
 
         if let Some(b) = reply.result {
-            if b.block_number == block_height {
+            if b.block_number < block_height {
+                println!(
+                    "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} has block {} < \
+                     {block_height}",
+                    b.block_number
+                );
+            } else {
                 println!(
                     "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} has block \
-                     {block_height} with hash {}",
-                    b.block_hash
+                     {block_height}",
                 );
                 return;
             }

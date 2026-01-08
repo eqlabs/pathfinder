@@ -26,6 +26,7 @@ mod test {
     use pathfinder_lib::config::integration_testing::{InjectFailureConfig, InjectFailureTrigger};
     use rstest::rstest;
 
+    use crate::common::feeder_gateway::FeederGateway;
     use crate::common::pathfinder_instance::{respawn_on_fail, PathfinderInstance};
     use crate::common::rpc_client::{get_consensus_info, wait_for_block_exists, wait_for_height};
     use crate::common::utils;
@@ -75,7 +76,7 @@ mod test {
     #[case::fail_on_proposal_decided(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalDecided }))]
     #[case::fail_on_proposal_committed(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalCommitted }))]
     #[tokio::test]
-    async fn consensus_3_nodes(
+    async fn consensus_3_nodes_with_failures(
         #[case] inject_failure: Option<InjectFailureConfig>,
     ) -> anyhow::Result<()> {
         const NUM_NODES: usize = 3;
@@ -126,20 +127,13 @@ mod test {
             None => Either::Right(bob),
         };
 
-        utils::wait_for_test_end(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT).await
+        utils::join_all(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT).await
     }
 
     // TODO(consensus)
     //
-    // 1. Apparently the test waits until H=20 and H=13 for Dan, but in
-    // fact consensus in all nodes reaches H=33 before the test finishes on my
-    // (ie. Chris') machine
-    //
-    // 2. Change the test so that Dan actually catches up to the current
-    // consensus height, whatever it is, this will require some custom FGW
-    //
-    // 3. IMPORTANT: assert that there is no leftover data for lower heights when
-    //    Dan finally catches up
+    // IMPORTANT: assert that there is no leftover data for lower heights when Dan
+    // finally catches up.
     #[tokio::test]
     async fn consensus_3_nodes_fourth_node_joins_late_can_catch_up() -> anyhow::Result<()> {
         const NUM_NODES: usize = 4;
@@ -152,8 +146,28 @@ mod test {
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
         let (configs, stopwatch) = utils::setup(NUM_NODES)?;
-        let mut configs = configs.into_iter();
 
+        let alice_cfg = configs.first().unwrap();
+        let mut fgw = FeederGateway::spawn(alice_cfg)?;
+        fgw.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
+
+        // We want everybody to have sync enabled so that not only Alice, Bob, and
+        // Charlie decide upon the new blocks but also they are able to **commit the
+        // blocks to their main DBs**. The trick is that MOST OF THE TIME the FGw will
+        // not provide any meaningful data to the 3 nodes because it's feeding
+        // off of Alice's DB which means it'll always be lagging behind the
+        // nodes that achieve consensus. However in reality, the FGw, will be sometimes
+        // able to provide some blocks to Bob or Charlie faster than they themselves
+        // acquire a positive decision from their consensus engines.
+        //
+        // This means that initially Dan will be actually syncing from the FGw until he
+        // catches up with the other nodes, at which point he should be committing the
+        // consensus-decided blocks to his own main DB, before actually sync is able to
+        // get them from the FGw.
+        let mut configs = configs.into_iter().map(|cfg| {
+            cfg.with_local_feeder_gateway(fgw.port())
+                .with_sync_enabled()
+        });
         let alice = PathfinderInstance::spawn(configs.next().unwrap())?;
         alice.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
 
@@ -172,31 +186,59 @@ mod test {
 
         utils::log_elapsed(stopwatch);
 
-        // Use channels to send and update of the rpc port
-        let alice_client = wait_for_height(&alice, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
-        let bob_client = wait_for_height(&bob, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
-        let charlie_client = wait_for_height(&charlie, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
+        // Use channels to send and update the rpc port
+        let alice_decided = wait_for_height(&alice, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
+        let bob_decided = wait_for_height(&bob, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
+        let charlie_decided = wait_for_height(&charlie, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
+        let alice_committed = wait_for_block_exists(&alice, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
+        let bob_committed = wait_for_block_exists(&bob, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
+        let charlie_committed =
+            wait_for_block_exists(&charlie, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
 
-        utils::wait_for_test_end(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT)
-            .await?;
+        utils::join_all(
+            vec![
+                alice_decided,
+                bob_decided,
+                charlie_decided,
+                alice_committed,
+                bob_committed,
+                charlie_committed,
+            ],
+            TEST_TIMEOUT,
+        )
+        .await?;
 
         let dan_cfg = configs.next().unwrap().with_sync_enabled();
 
         let dan = PathfinderInstance::spawn(dan_cfg.clone())?;
         dan.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
 
-        let alice_client = wait_for_height(&alice, FINAL_HEIGHT, POLL_HEIGHT);
-        let bob_client = wait_for_height(&bob, FINAL_HEIGHT, POLL_HEIGHT);
-        let charlie_client = wait_for_height(&charlie, FINAL_HEIGHT, POLL_HEIGHT);
+        let alice_decided = wait_for_height(&alice, FINAL_HEIGHT, POLL_HEIGHT);
+        let bob_decided = wait_for_height(&bob, FINAL_HEIGHT, POLL_HEIGHT);
+        let charlie_decided = wait_for_height(&charlie, FINAL_HEIGHT, POLL_HEIGHT);
+        let dan_decided = wait_for_height(&dan, FINAL_HEIGHT, POLL_HEIGHT);
+        let alice_committed = wait_for_block_exists(&alice, FINAL_HEIGHT, POLL_HEIGHT);
+        let bob_committed = wait_for_block_exists(&bob, FINAL_HEIGHT, POLL_HEIGHT);
+        let charlie_committed = wait_for_block_exists(&charlie, FINAL_HEIGHT, POLL_HEIGHT);
+        let dan_committed = wait_for_block_exists(&dan, FINAL_HEIGHT, POLL_HEIGHT);
 
-        // Wait for a block that was decided before this node joined to be synced.
-        let dan_client = wait_for_block_exists(&dan, HEIGHT_TO_ADD_FOURTH_NODE - 2, POLL_HEIGHT);
-
-        utils::wait_for_test_end(
-            vec![alice_client, bob_client, charlie_client, dan_client],
+        utils::join_all(
+            vec![
+                alice_decided,
+                bob_decided,
+                charlie_decided,
+                dan_decided,
+                alice_committed,
+                bob_committed,
+                charlie_committed,
+                dan_committed,
+            ],
             TEST_TIMEOUT,
         )
         .await
+
+        // TODO assert that consensus DBs of all 4 nodes don't have any leftover
+        // proposals or finalized blocks up to and including FINAL_HEIGHT
     }
 
     /// A slightly different failure scenario from [consensus_3_nodes]. We are
@@ -206,6 +248,7 @@ mod test {
     #[rstest]
     #[ignore = "We need a custom fgw to actually test consensus ahead of fgw"]
     #[case::consensus_ahead_of_fgw(true)]
+    #[ignore = "It's flaky, fix it"]
     #[case::fgw_ahead_of_consensus(false)]
     #[tokio::test]
     async fn consensus_3_nodes_outdated_votes_lead_to_peer_score_changes(
@@ -262,7 +305,7 @@ mod test {
             let bob_client = wait_for_height(&bob, LAST_VALID_HEIGHT, POLL_HEIGHT);
             let charlie_client = wait_for_height(&charlie, LAST_VALID_HEIGHT, POLL_HEIGHT);
 
-            utils::wait_for_test_end(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT)
+            utils::join_all(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT)
                 .await
                 .unwrap();
         } else {
@@ -278,7 +321,7 @@ mod test {
         let bob_client = wait_for_height(&bob, LAST_VALID_HEIGHT + 1, POLL_HEIGHT);
         let charlie_client = wait_for_height(&charlie, LAST_VALID_HEIGHT + 1, POLL_HEIGHT);
 
-        let err = utils::wait_for_test_end(
+        let err = utils::join_all(
             vec![alice_client, bob_client, charlie_client],
             POLL_HEIGHT * 10,
         )

@@ -84,6 +84,8 @@ pub struct StorageManager {
     blockchain_history_mode: BlockchainHistoryMode,
 }
 
+pub struct ReadOnlyStorageManager(StorageManager);
+
 impl std::fmt::Debug for StorageManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("StorageManager")
@@ -127,6 +129,12 @@ impl StorageManager {
             | OpenFlags::SQLITE_OPEN_NO_MUTEX
             | OpenFlags::SQLITE_OPEN_URI;
         self.create_pool_with_flags(capacity, flags)
+    }
+}
+
+impl ReadOnlyStorageManager {
+    pub fn create_read_only_pool(&self, capacity: NonZeroU32) -> anyhow::Result<Storage> {
+        self.0.create_read_only_pool(capacity)
     }
 }
 
@@ -367,6 +375,74 @@ impl StorageBuilder {
         })
     }
 
+    /// Does not perform any migrations, just loads the database in read-only
+    /// mode. This is useful for tools which only need to read from the
+    /// database, especially when a Pathfinder instance is writing to the
+    /// database at the same time.
+    pub fn readonly(self) -> anyhow::Result<ReadOnlyStorageManager> {
+        let Self {
+            database_path,
+            journal_mode,
+            event_filter_cache_size,
+            ..
+        } = self;
+
+        let mut open_flags = OpenFlags::default();
+        open_flags.remove(OpenFlags::SQLITE_OPEN_CREATE);
+        let mut connection = rusqlite::Connection::open_with_flags(&database_path, open_flags)
+            .context("Opening DB to load running event filter")?;
+
+        let init_num_blocks_kept = connection
+            .query_row(
+                "SELECT value FROM storage_options WHERE option = 'prune_blockchain'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        let blockchain_history_mode = {
+            if let Some(num_blocks_kept) = init_num_blocks_kept {
+                BlockchainHistoryMode::Prune { num_blocks_kept }
+            } else {
+                BlockchainHistoryMode::Archive
+            }
+        };
+
+        let prune_flag_is_set = connection
+            .query_row(
+                "SELECT 1 FROM storage_options WHERE option = 'prune_tries'",
+                [],
+                |_| Ok(()),
+            )
+            .optional()
+            .map(|x| x.is_some())?;
+
+        let trie_prune_mode = if prune_flag_is_set {
+            TriePruneMode::Prune {
+                num_blocks_kept: 20,
+            }
+        } else {
+            TriePruneMode::Archive
+        };
+
+        let running_event_filter = event::RunningEventFilter::load(&connection.transaction()?)
+            .context("Loading running event filter")?;
+
+        connection
+            .close()
+            .map_err(|(_connection, error)| error)
+            .context("Closing DB after loading running event filter")?;
+
+        Ok(ReadOnlyStorageManager(StorageManager {
+            database_path,
+            journal_mode,
+            event_filter_cache: Arc::new(AggregateBloomCache::with_size(event_filter_cache_size)),
+            running_event_filter: Arc::new(Mutex::new(running_event_filter)),
+            trie_prune_mode,
+            blockchain_history_mode,
+        }))
+    }
+
     /// - If there is no explicitly requested configuration, assumes the user
     ///   wants to archive. If this doesn't match the database setting, errors.
     /// - If there's an explicitly requested setting: uses it if matches DB
@@ -565,6 +641,15 @@ impl Storage {
     pub fn path(&self) -> &Path {
         &self.0.database_path
     }
+
+    pub fn is_migrated(&self) -> Result<bool, StorageError> {
+        let mut connection = self.connection()?;
+        let tx = connection.transaction()?;
+
+        let user_version = tx.user_version()?;
+
+        Ok(user_version == schema::LATEST_SCHEMA_REVISION as i64)
+    }
 }
 
 fn setup_journal_mode(
@@ -624,10 +709,6 @@ fn migrate_database(connection: &mut rusqlite::Connection) -> anyhow::Result<()>
     let mut current_revision = schema_version(connection)?;
     let migrations = schema::migrations();
 
-    // The target version is the number of null migrations which have been replaced
-    // by the base schema + the new migrations built on top of that.
-    let latest_revision = schema::BASE_SCHEMA_REVISION + migrations.len();
-
     // Apply the base schema if the database is new.
     if current_revision == 0 {
         let tx = connection
@@ -642,7 +723,7 @@ fn migrate_database(connection: &mut rusqlite::Connection) -> anyhow::Result<()>
     }
 
     // Skip migration if we already at latest.
-    if current_revision == latest_revision {
+    if current_revision == schema::LATEST_SCHEMA_REVISION {
         tracing::info!(%current_revision, "No database migrations required");
         return Ok(());
     }
@@ -657,20 +738,20 @@ fn migrate_database(connection: &mut rusqlite::Connection) -> anyhow::Result<()>
         anyhow::bail!("Database version {current_revision} too old to migrate");
     }
 
-    if current_revision > latest_revision {
+    if current_revision > schema::LATEST_SCHEMA_REVISION {
         tracing::error!(
             version=%current_revision,
-            limit=%latest_revision,
+            limit=%schema::LATEST_SCHEMA_REVISION,
             "Database version is from a newer than this application expected"
         );
         anyhow::bail!(
-            "Database version {current_revision} is newer than this application expected \
-             {latest_revision}",
+            "Database version {current_revision} is newer than this application expected {}",
+            schema::LATEST_SCHEMA_REVISION
         );
     }
 
-    let amount = latest_revision - current_revision;
-    tracing::info!(%current_revision, %latest_revision, migrations=%amount, "Performing database migrations");
+    let amount = schema::LATEST_SCHEMA_REVISION - current_revision;
+    tracing::info!(%current_revision, latest_revision=%schema::LATEST_SCHEMA_REVISION, migrations=%amount, "Performing database migrations");
 
     // Sequentially apply each missing migration.
     migrations

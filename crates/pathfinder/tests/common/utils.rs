@@ -1,6 +1,9 @@
 //! Test utilities for Pathfinder integration tests.
 
-use std::path::PathBuf;
+use std::fs::{File, OpenOptions};
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
@@ -57,9 +60,9 @@ pub fn log_elapsed(stopwatch: Instant) {
     );
 }
 
-/// Waits for either all RPC client tasks to complete, the test timeout to
-/// elapse, or for the user to interrupt the test with Ctrl-C.
-pub async fn wait_for_test_end(
+/// Waits for either all RPC client tasks to complete, the timeout to elapse, or
+/// for the user to interrupt with Ctrl-C.
+pub async fn join_all(
     rpc_client_handles: Vec<JoinHandle<()>>,
     test_timeout: Duration,
 ) -> anyhow::Result<()> {
@@ -88,15 +91,18 @@ fn pathfinder_bin() -> PathBuf {
     assert!(path.pop());
     assert!(path.pop());
     path.push("target");
-    #[cfg(debug_assertions)]
-    {
-        path.push("debug");
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        path.push("release");
-    }
+    path.push("debug");
     path.push("pathfinder");
+    path
+}
+
+pub fn feeder_gateway_bin() -> PathBuf {
+    let mut path = manifest_dir_path();
+    assert!(path.pop());
+    assert!(path.pop());
+    path.push("target");
+    path.push("debug");
+    path.push("feeder-gateway");
     path
 }
 
@@ -109,4 +115,100 @@ fn fixture_dir() -> PathBuf {
 
 fn manifest_dir_path() -> PathBuf {
     PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
+}
+
+pub fn create_log_file(
+    process_name: impl AsRef<str>,
+    stdout_path: &Path,
+) -> Result<File, anyhow::Error> {
+    let stdout_file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(stdout_path)
+        .context(format!(
+            "Creating log file {} for {}",
+            stdout_path.display(),
+            process_name.as_ref()
+        ))?;
+    Ok(stdout_file)
+}
+
+/// Terminates a child process gracefully using SIGTERM, and forcefully kills it
+/// if necessary.
+pub fn terminate(process: &mut Child, name: impl AsRef<str>) {
+    let name = name.as_ref();
+    println!("{name} (pid: {}) terminating...", process.id());
+
+    _ = Command::new("kill")
+        // It's supposed to be the default signal in `kill`, but let's be explicit.
+        .arg("-TERM")
+        .arg(process.id().to_string())
+        .status();
+
+    // See if SIGTERM worked.
+    match process.try_wait() {
+        Ok(Some(status)) => {
+            println!(
+                "{name} (pid: {}) terminated with status: {status}",
+                process.id()
+            );
+        }
+        Ok(None) => match process.wait() {
+            Ok(status) => {
+                println!(
+                    "{name} (pid: {}) terminated with status: {status}",
+                    process.id()
+                );
+            }
+            Err(e) => {
+                eprintln!(
+                    "Error waiting for {name} (pid: {}) to terminate: {e}",
+                    process.id()
+                );
+                if let Err(error) = process.kill() {
+                    eprintln!("Error killing {name} (pid: {}): {error}", process.id(),);
+                }
+            }
+        },
+        Err(e) => {
+            eprintln!("Error terminating {name} (pid: {}): {e}", process.id());
+            if let Err(error) = process.kill() {
+                eprintln!("Error killing {name} (pid: {}): {error}", process.id(),);
+            }
+        }
+    }
+}
+
+/// Waits for the port marker file to appear and reads the port from it.
+/// Polls every `poll_interval`.
+pub async fn wait_for_port(
+    pid: u32,
+    port_name: &str,
+    db_dir: &Path,
+    poll_interval: Duration,
+) -> anyhow::Result<u16> {
+    let port_file = db_dir.join(format!("pid_{pid}_{port_name}_port"));
+
+    loop {
+        match tokio::fs::read_to_string(&port_file).await {
+            Ok(port_str) => {
+                let port = port_str
+                    .trim()
+                    .parse::<u16>()
+                    .context(format!("Parsing port value in {}", port_file.display()))?;
+                return Ok(port);
+            }
+            Err(e) if e.kind() == ErrorKind::NotFound => {
+                // File not found yet, continue polling.
+            }
+            Err(e) => {
+                return Err(anyhow::anyhow!(
+                    "Error reading port file {}: {e}",
+                    port_file.display()
+                ));
+            }
+        }
+
+        sleep(poll_interval).await;
+    }
 }

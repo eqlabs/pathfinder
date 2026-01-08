@@ -274,6 +274,7 @@ impl ConsensusTransaction<'_> {
                     height      INTEGER NOT NULL,
                     round       INTEGER NOT NULL,
                     block       BLOB NOT NULL,
+                    is_decided  INTEGER NOT NULL DEFAULT 0,
                     UNIQUE(height, round)
             )",
             [],
@@ -334,6 +335,27 @@ impl ConsensusTransaction<'_> {
         Ok(count > 0)
     }
 
+    pub fn mark_consensus_finalized_block_as_decided(
+        &self,
+        height: u64,
+        round: u32,
+    ) -> Result<(), StorageError> {
+        self.0
+            .inner()
+            .execute(
+                r"
+                UPDATE consensus_finalized_blocks
+                SET is_decided = 1
+                WHERE height = :height AND round = :round",
+                named_params! {
+                    ":height": &height,
+                    ":round": &round,
+                },
+            )
+            .map(|updated_rows| assert_eq!(updated_rows, 1))
+            .map_err(StorageError::from)
+    }
+
     pub fn read_consensus_finalized_block(
         &self,
         height: u64,
@@ -355,9 +377,8 @@ impl ConsensusTransaction<'_> {
             .map_err(StorageError::from)
     }
 
-    /// Read the finalized block for the given height with the highest round. In
-    /// practice this should be the only round left in the DB for that height.
-    pub fn read_consensus_finalized_block_for_last_round(
+    /// Read the decided finalized block for the given height.
+    pub fn read_consensus_finalized_and_decided_block(
         &self,
         height: u64,
     ) -> Result<Option<Vec<u8>>, StorageError> {
@@ -366,7 +387,7 @@ impl ConsensusTransaction<'_> {
             .query_row(
                 r"SELECT block
                 FROM consensus_finalized_blocks
-                WHERE height = :height
+                WHERE height = :height AND is_decided = 1
                 ORDER BY round DESC
                 LIMIT 1",
                 named_params! {
@@ -398,44 +419,21 @@ impl ConsensusTransaction<'_> {
 
     /// Remove all finalized blocks for the given height **except** the one from
     /// `commit_round`.
-    pub fn remove_uncommitted_consensus_finalized_blocks(
+    pub fn remove_undecided_consensus_finalized_blocks(
         &self,
         height: u64,
-        commit_round: u32,
     ) -> Result<(), StorageError> {
         self.0
             .inner()
             .execute(
                 r"
                 DELETE FROM consensus_finalized_blocks
-                WHERE height = :height AND round <> :commit_round",
+                WHERE height = :height AND is_decided <> 1",
                 named_params! {
                     ":height": &height,
-                    ":commit_round": &commit_round,
                 },
             )
             .context("Deleting consensus finalized blocks which will not be committed to the DB")?;
-        Ok(())
-    }
-
-    /// Remove a finalized block for the given height and round.
-    pub fn remove_consensus_finalized_block(
-        &self,
-        height: u64,
-        round: u32,
-    ) -> Result<(), StorageError> {
-        self.0
-            .inner()
-            .execute(
-                r"
-                DELETE FROM consensus_finalized_blocks
-                WHERE height = :height AND round = :round",
-                named_params! {
-                    ":height": &height,
-                    ":round": &round,
-                },
-            )
-            .context("Deleting consensus finalized block")?;
         Ok(())
     }
 

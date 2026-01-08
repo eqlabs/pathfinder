@@ -21,13 +21,18 @@
 /// ./testnet-sepolia.sqlite --reorg-at-block 50 --reorg-to-block 40`
 use std::collections::HashMap;
 use std::convert::Infallible;
+use std::future::Future;
 use std::num::NonZeroU32;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context;
-use clap::{Args, Parser};
+use clap::{ArgAction, Args, Parser};
+use futures::future::BoxFuture;
+use futures::FutureExt;
+use pathfinder_common::integration_testing::debug_create_port_marker_file;
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::ContractClassUpdate;
 use pathfinder_common::{BlockId, Chain};
@@ -36,6 +41,7 @@ use pathfinder_lib::state::block_hash::{
     calculate_receipt_commitment,
     calculate_transaction_commitment,
 };
+use pathfinder_storage::Storage;
 use primitive_types::H160;
 use serde::{Deserialize, Serialize};
 use starknet_gateway_types::reply::state_update::{
@@ -46,6 +52,8 @@ use starknet_gateway_types::reply::state_update::{
     StorageDiff,
 };
 use starknet_gateway_types::reply::{GasPrices, Status};
+use tokio::sync::watch::{Receiver, Sender};
+use tracing::Instrument;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
 use warp::Filter;
@@ -53,8 +61,24 @@ use warp::Filter;
 #[derive(Parser)]
 #[command(version)]
 struct Cli {
-    #[arg(long_help = "Database path")]
+    #[arg(long_help = "Database path.")]
     pub database_path: PathBuf,
+    #[arg(
+        long,
+        long_help = "Port to listen on, 0 means random OS assigned value",
+        default_value = "8080"
+    )]
+    pub port: u16,
+    #[arg(
+        long,
+        long_help = "If set, the process will wait for the database file to become available and \
+                     fully migrated. If the database is not immediately available, the feeder \
+                     gateway will keep retrying until a timeout occurs. WARNING: CUSTOM chain is \
+                     assumed regardless of the database contents.",
+        default_value = "false",
+        action=ArgAction::Set
+    )]
+    pub wait_for_custom_db_ready: bool,
     #[command(flatten)]
     pub reorg: ReorgCli,
 }
@@ -77,12 +101,41 @@ fn parse_block_number(s: &str) -> Result<BlockNumber, String> {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    let (storage_tx, storage_rx) = tokio::sync::watch::channel(None);
 
     tracing_subscriber::registry()
         .with(fmt::layer())
         .with(EnvFilter::from_default_env())
         .init();
-    serve(cli).await
+
+    let db_path = cli.database_path.clone();
+
+    if !cli.wait_for_custom_db_ready {
+        let storage = pathfinder_storage::StorageBuilder::file(db_path.clone())
+            .readonly()?
+            .create_read_only_pool(NonZeroU32::new(10).unwrap())?;
+        let chain = {
+            let mut connection = storage.connection()?;
+            let tx = connection.transaction()?;
+            get_chain(&tx)?
+        };
+        storage_tx.send(Some((storage, chain)))?;
+    }
+
+    tokio::select! {
+        storage_err = wait_for_storage(
+            cli.wait_for_custom_db_ready,
+            &db_path,
+            storage_tx,
+            Duration::from_millis(500),
+            Duration::from_secs(30),
+        ) => {
+            Err(storage_err)
+        },
+        res = serve(cli, storage_rx) => {
+            res
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -91,19 +144,105 @@ struct ReorgConfig {
     pub reorg_to_block: BlockNumber,
 }
 
-async fn serve(cli: Cli) -> anyhow::Result<()> {
-    let database_path = std::env::args().nth(1).unwrap();
-    let storage = pathfinder_storage::StorageBuilder::file(database_path.into())
-        .migrate()?
-        .create_pool(NonZeroU32::new(10).unwrap())
-        .unwrap();
+/// Waits for the storage to become available and fully migrated. The task
+/// **does not join** if the storage becomes available or the `enable` flag
+/// is `false` (which means the databases file is expected to be available
+/// immediately), it just returns **a pending future**. The task only returns if
+/// an error is encountered, including a timeout.
+fn wait_for_storage(
+    enable: bool,
+    path: &Path,
+    storage_tx: Sender<Option<(Storage, Chain)>>,
+    poll_interval: Duration,
+    timeout: Duration,
+) -> impl Future<Output = anyhow::Error> {
+    if !enable {
+        return futures::future::pending().boxed();
+    }
 
-    let chain = {
-        let mut connection = storage.connection()?;
-        let tx = connection.transaction()?;
-        get_chain(&tx)?
-    };
+    let path = path.to_path_buf();
+    let jh = tokio::task::spawn_blocking(move || {
+        let stopwatch = std::time::Instant::now();
+        loop {
+            // All kinds of *exists() APIs are prone to TOCTOU issues
+            match std::fs::File::open(path.clone()) {
+                Ok(file) => {
+                    drop(file);
+                    tracing::info!("Database file found, attempting to connect...");
 
+                    let Ok(storage_manager) =
+                        pathfinder_storage::StorageBuilder::file(path.clone()).readonly()
+                    else {
+                        tracing::info!(
+                            "Creating read only storage manager failed, database is not ready, \
+                             retrying..."
+                        );
+                        std::thread::sleep(poll_interval);
+                        continue;
+                    };
+
+                    let Ok(storage) =
+                        storage_manager.create_read_only_pool(NonZeroU32::new(10).unwrap())
+                    else {
+                        tracing::info!(
+                            "Creating connection pool failed, database is not ready, retrying..."
+                        );
+                        std::thread::sleep(poll_interval);
+                        continue;
+                    };
+
+                    let chain = {
+                        if !storage.is_migrated()? {
+                            tracing::info!("Database not yet migrated, retrying...");
+                            std::thread::sleep(poll_interval);
+                            continue;
+                        }
+
+                        Chain::Custom
+                    };
+                    tracing::info!("Database is now available");
+                    return anyhow::Ok((storage, chain));
+                }
+                Err(_) => {
+                    tracing::info!("Database file not yet available, retrying...");
+                    std::thread::sleep(poll_interval);
+                }
+            }
+
+            if stopwatch.elapsed() > timeout {
+                return Err(anyhow::anyhow!(
+                    "Timed out waiting for the DB to become available."
+                ));
+            }
+        }
+    });
+
+    fn err(e: anyhow::Error) -> BoxFuture<'static, anyhow::Error> {
+        std::future::ready(e).boxed()
+    }
+
+    let storage_tx = storage_tx.clone();
+    jh.then(
+        move |join_result| match join_result.context("Joining blocking task") {
+            Ok(task_result) => match task_result {
+                Ok(storage_n_chain) => {
+                    match storage_tx
+                        .send(Some(storage_n_chain))
+                        .context("Sending storage instance")
+                    {
+                        Ok(_) => std::future::pending().boxed(),
+                        Err(e) => err(e),
+                    }
+                }
+                Err(e) => err(e),
+            },
+            Err(e) => err(e),
+        },
+    )
+    .boxed()
+}
+
+async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyhow::Result<()> {
     let reorg_config = cli.reorg.reorg_at_block.and_then(|reorg_at_block| {
         cli.reorg.reorg_to_block.map(|reorg_to_block| ReorgConfig {
             reorg_at_block,
@@ -112,7 +251,32 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
     });
     let reorged = Arc::new(AtomicBool::new(false));
 
+    fn maybe_chain(storage_rx: Receiver<Option<(Storage, Chain)>>) -> Option<Chain> {
+        storage_rx.borrow().clone().map(|(_, chain)| chain)
+    }
+
+    fn maybe_storage(storage_rx: Receiver<Option<(Storage, Chain)>>) -> Option<Storage> {
+        storage_rx.borrow().clone().map(|(storage, _)| storage)
+    }
+
+    fn storage_unavailable_response() -> warp::http::Response<Vec<u8>> {
+        warp::http::Response::builder()
+            .status(500)
+            .body(r"Storage unavailable".as_bytes().to_owned())
+            .unwrap()
+    }
+
+    #[derive(Debug)]
+    struct StorageUnavailable;
+    impl warp::reject::Reject for StorageUnavailable {}
+
+    fn storage_unavailable_rejection() -> warp::reject::Rejection {
+        warp::reject::custom(StorageUnavailable)
+    }
+
+    let storage_rx_clone = storage_rx.clone();
     let get_contract_addresses = warp::path("get_contract_addresses").map(move || {
+        let chain = maybe_chain(storage_rx_clone.clone()).unwrap_or(Chain::Custom);
         let addresses = contract_addresses(chain).unwrap();
         let reply =
             serde_json::json!({"GpsStatementVerifier": addresses.gps, "Starknet": addresses.core});
@@ -154,12 +318,12 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
     let get_block = warp::path("get_block")
         .and(warp::query::<BlockIdParam>())
         .and_then({
-            let storage = storage.clone();
+            let storage_rx = storage_rx.clone();
             let reorg_config = reorg_config.clone();
             let reorged = reorged.clone();
 
             move |block_id: BlockIdParam| {
-                let storage = storage.clone();
+                let storage_rx = storage_rx.clone();
                 let reorg_config = reorg_config.clone();
                 let reorged = reorged.clone();
 
@@ -168,12 +332,16 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
 
                     match block_id.try_into() {
                         Ok(block_id) => {
+                            let Some(storage) = maybe_storage(storage_rx) else {
+                                return Err(storage_unavailable_rejection());
+                            };
+
                             let block = tokio::task::spawn_blocking(move || {
                                 let mut connection = storage.connection().unwrap();
                                 let tx = connection.transaction().unwrap();
 
                                 resolve_block(&tx, block_id, &reorg_config, reorged)
-                            }).await.unwrap();
+                            }).await.context("Joining blocking task").and_then(|res| res);
 
                             match block {
                                 Ok(block) => {
@@ -189,15 +357,15 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
                                             block_number: block.block_number,
                                         };
 
-                                        Ok(warp::reply::json(&reply))
+                                        Ok(warp::reply::with_status(warp::reply::json(&reply), warp::http::StatusCode::OK))
                                     } else {
-                                        Ok(warp::reply::json(&block))
+                                        Ok(warp::reply::with_status(warp::reply::json(&block), warp::http::StatusCode::OK))
                                     }
                                 },
                                 Err(e) => {
                                     tracing::error!("Error fetching block: {:?}", e);
                                     let error = serde_json::json!({"code": "StarknetErrorCode.BLOCK_NOT_FOUND", "message": "Block number not found"});
-                                    Ok(warp::reply::json(&error))
+                                    Ok(warp::reply::with_status(warp::reply::json(&error), warp::http::StatusCode::BAD_REQUEST))
                                 }
                             }
                         },
@@ -210,27 +378,31 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
     let get_signature = warp::path("get_signature")
         .and(warp::query::<BlockIdParam>())
         .and_then({
-            let storage = storage.clone();
+            let storage_rx = storage_rx.clone();
             move |block_id: BlockIdParam| {
-                let storage = storage.clone();
+                let storage_rx = storage_rx.clone();
                 async move {
                     match block_id.try_into() {
                         Ok(block_id) => {
+                            let Some(storage) = maybe_storage(storage_rx) else {
+                                return Err(storage_unavailable_rejection());
+                            };
+
                             let signature = tokio::task::spawn_blocking(move || {
                                 let mut connection = storage.connection().unwrap();
                                 let tx = connection.transaction().unwrap();
 
                                 resolve_signature(&tx, block_id)
-                            }).await.unwrap();
+                            }).await.context("Joining blocking task").and_then(|res| res);
 
                             match signature {
                                 Ok(signature) => {
-                                        Ok(warp::reply::json(&signature))
+                                    Ok(warp::reply::with_status(warp::reply::json(&signature), warp::http::StatusCode::OK))
                                 },
                                 Err(e) => {
                                     tracing::error!("Error fetching signature: {:?}", e);
                                     let error = serde_json::json!({"code": "StarknetErrorCode.BLOCK_NOT_FOUND", "message": "Block number not found"});
-                                    Ok(warp::reply::json(&error))
+                                    Ok(warp::reply::with_status(warp::reply::json(&error), warp::http::StatusCode::BAD_REQUEST))
                                 }
                             }
                         },
@@ -243,12 +415,12 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
     let get_state_update = warp::path("get_state_update")
         .and(warp::query::<BlockIdParam>())
         .and_then({
-            let storage = storage.clone();
+            let storage_rx = storage_rx.clone();
             let reorg_config = reorg_config.clone();
             let reorged = reorged.clone();
 
             move |block_id: BlockIdParam| {
-                let storage = storage.clone();
+                let storage_rx = storage_rx.clone();
                 let reorg_config = reorg_config.clone();
                 let reorged = reorged.clone();
                 async move {
@@ -256,12 +428,16 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
 
                     match block_id.try_into() {
                         Ok(block_id) => {
+                            let Some(storage) = maybe_storage(storage_rx) else {
+                                return Err(storage_unavailable_rejection());
+                            };
+
                             let block_and_state_update = tokio::task::spawn_blocking(move || {
                                 let mut connection = storage.connection().unwrap();
                                 let tx = connection.transaction().unwrap();
 
                                 resolve_state_update(&tx, block_id, &reorg_config, reorged.clone()).and_then(|state_update| resolve_block(&tx, block_id, &reorg_config, reorged).map(|block| (block, state_update)))
-                            }).await.unwrap();
+                            }).await.context("Joining blocking task").and_then(|res| res);
 
                             match block_and_state_update {
                                 Ok((block, state_update)) => {
@@ -309,16 +485,20 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
     let get_class_by_hash = warp::path("get_class_by_hash")
         .and(warp::query::<ClassHashParam>())
         .then({
-            let storage = storage.clone();
+            let storage_rx = storage_rx.clone();
             move |class_hash: ClassHashParam| {
-                let storage = storage.clone();
+                let storage_rx = storage_rx.clone();
                 async move {
+                    let Some(storage) = maybe_storage(storage_rx) else {
+                        return Ok(storage_unavailable_response());
+                    };
+
                     let class = tokio::task::spawn_blocking(move || {
                         let mut connection = storage.connection().unwrap();
                         let tx = connection.transaction().unwrap();
 
                         resolve_class(&tx, class_hash.class_hash)
-                    }).await.unwrap();
+                    }).await.context("Joining blocking task").and_then(|res| res);
 
                     match class {
                         Ok(class) => {
@@ -327,7 +507,7 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
                         },
                         Err(_) => {
                             let error = r#"{"code": "StarknetErrorCode.UNDECLARED_CLASS", "message": "Class not found"}"#;
-                            let response = warp::http::Response::builder().status(500).body(error.as_bytes().to_owned()).unwrap();
+                            let response = warp::http::Response::builder().status(warp::http::StatusCode::BAD_REQUEST).body(error.as_bytes().to_owned()).unwrap();
                             Ok(response)
                         }
                     }
@@ -347,7 +527,18 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
         )
         .with(warp::filters::trace::request());
 
-    warp::serve(handler).run(([127, 0, 0, 1], 8080)).await;
+    let (socket_addr, server_fut) = warp::serve(handler).bind_ephemeral(([127, 0, 0, 1], cli.port));
+    let span = tracing::info_span!("Server::run", ?socket_addr);
+    tracing::info!(parent: &span, "listening on http://{}", socket_addr);
+
+    let data_directory = cli
+        .database_path
+        .parent()
+        .context("Getting database parent directory")?;
+
+    debug_create_port_marker_file("feeder_gateway", socket_addr.port(), data_directory);
+
+    server_fut.instrument(span).await;
 
     Ok(())
 }
@@ -385,12 +576,7 @@ fn contract_addresses(chain: Chain) -> anyhow::Result<ContractAddresses> {
             core: parse("c662c410C0ECf747543f5bA90660f6ABeBD9C8c4"),
             gps: parse("47312450B3Ac8b5b8e247a6bB6d523e7605bDb60"),
         },
-        Chain::Custom => ContractAddresses {
-            // Formerly also Goerli integration
-            core: parse("d5c325D183C592C94998000C5e0EED9e6655c020"),
-            gps: parse("8f97970aC5a9aa8D130d35146F5b59c4aef57963"),
-        },
-        Chain::SepoliaTestnet => ContractAddresses {
+        Chain::SepoliaTestnet | Chain::Custom => ContractAddresses {
             core: parse("E2Bb56ee936fd6433DC0F6e7e3b8365C906AA057"),
             gps: parse("07ec0D28e50322Eb0C159B9090ecF3aeA8346DFe"),
         },

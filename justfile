@@ -11,8 +11,8 @@ test-all-features $RUST_BACKTRACE="1" *args="": build-pathfinder-release
     -E 'not (test(/^p2p_network::sync::sync_handlers::tests::prop/) | test(/^consensus::inner::p2p_task::handler_proptest/) | test(/^test::consensus_3_nodes/))' \
     {{args}}
 
-test-consensus $RUST_BACKTRACE="1" *args="": build-pathfinder-release
-    PATHFINDER_TEST_ENABLE_PORT_MARKER_FILES=1 cargo nextest run --test consensus -p pathfinder --retries 2 --features p2p,consensus-integration-tests --locked \
+test-consensus $RUST_BACKTRACE="1" *args="": build-pathfinder build-feeder-gateway
+    PATHFINDER_TEST_ENABLE_PORT_MARKER_FILES=1 cargo nextest run --test consensus -p pathfinder --retries 0 --features p2p,consensus-integration-tests --locked \
     {{args}}
 
 proptest-sync-handlers $RUST_BACKTRACE="1" *args="":
@@ -34,6 +34,12 @@ build-all-features:
 # This target is used in `integration_testing_cli` test.
 build-pathfinder-release:
     cargo build --release -p pathfinder --bin pathfinder -F p2p,consensus-integration-tests
+
+build-pathfinder:
+    cargo build -p pathfinder --bin pathfinder -F p2p,consensus-integration-tests
+
+build-feeder-gateway:
+    cargo build -p feeder-gateway --bin feeder-gateway
 
 check:
     cargo check --workspace --all-targets
