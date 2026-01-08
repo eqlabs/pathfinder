@@ -537,7 +537,7 @@ mod tests {
             .expect_pending_block()
             .returning(|| Ok((PENDING_BLOCK.clone(), PENDING_UPDATE.clone())));
 
-        let (_, latest) = watch::channel(Default::default());
+        let (_, latest) = watch::channel(Some(Default::default()));
         let (_, current) = watch::channel(Default::default());
 
         let sequencer = Arc::new(sequencer);
@@ -612,7 +612,7 @@ mod tests {
         });
 
         let sequencer = Arc::new(sequencer);
-        let (_, rx_latest) = watch::channel(Default::default());
+        let (_, rx_latest) = watch::channel(Some(Default::default()));
         let (_, rx_current) = watch::channel(Default::default());
         let _jh = tokio::spawn(async move {
             poll_pending(
@@ -666,7 +666,7 @@ mod tests {
             .returning(move |_| Ok(PRE_CONFIRMED_BLOCK.clone()));
 
         let sequencer = Arc::new(sequencer);
-        let (_, rx_latest) = watch::channel(Default::default());
+        let (_, rx_latest) = watch::channel(Some(Default::default()));
         let (_, rx_current) = watch::channel(Default::default());
         let _jh = tokio::spawn(async move {
             poll_pending(

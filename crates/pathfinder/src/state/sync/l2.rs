@@ -1730,7 +1730,7 @@ mod tests {
                 fetch_casm_from_fgw: false,
             };
 
-            let latest = tokio::sync::watch::channel(Default::default());
+            let latest = tokio::sync::watch::channel(Some(Default::default()));
 
             tokio::spawn(sync(
                 tx_event,
@@ -2310,7 +2310,7 @@ mod tests {
                     fetch_concurrency: std::num::NonZeroUsize::new(1).unwrap(),
                     fetch_casm_from_fgw: false,
                 };
-                let latest_track = tokio::sync::watch::channel(Default::default());
+                let latest_track = tokio::sync::watch::channel(Some(Default::default()));
 
                 let _jh = tokio::spawn(sync(
                     tx_event,
@@ -2484,7 +2484,7 @@ mod tests {
                     Ok((BLOCK2.block_number, BLOCK2.block_hash)),
                 );
 
-                let (latest_tx, latest_rx) = tokio::sync::watch::channel(Default::default());
+                let (latest_tx, latest_rx) = tokio::sync::watch::channel(Some(Default::default()));
 
                 // Run the UUT.
                 let _jh = spawn_sync_with_latest(tx_event, mock, latest_rx);
@@ -2854,7 +2854,7 @@ mod tests {
                     NonZeroU32::new(5).unwrap(),
                 )
                 .unwrap();
-                let (latest_tx, latest_rx) = tokio::sync::watch::channel(Default::default());
+                let (latest_tx, latest_rx) = tokio::sync::watch::channel(Some(Default::default()));
 
                 // Let's run the UUT
                 let _jh =
@@ -3197,7 +3197,7 @@ mod tests {
                     NonZeroU32::new(5).unwrap(),
                 )
                 .unwrap();
-                let (latest_tx, latest_rx) = tokio::sync::watch::channel(Default::default());
+                let (latest_tx, latest_rx) = tokio::sync::watch::channel(Some(Default::default()));
 
                 // Run the UUT
                 let _jh =
@@ -3432,7 +3432,7 @@ mod tests {
                     Ok((block2_v2.block_number, block2_v2.block_hash)),
                 );
 
-                let (latest_tx, latest_rx) = tokio::sync::watch::channel(Default::default());
+                let (latest_tx, latest_rx) = tokio::sync::watch::channel(Some(Default::default()));
 
                 // Run the UUT
                 let _jh = spawn_sync_with_latest(tx_event, mock, latest_rx);
