@@ -37,6 +37,7 @@ use tokio::sync::{mpsc, watch};
 use super::{ConsensusChannels, ConsensusTaskHandles};
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
+use crate::state::l1_gas_price::L1GasPriceProvider;
 use crate::SyncMessageToConsensus;
 
 #[allow(clippy::too_many_arguments)]
@@ -49,6 +50,7 @@ pub fn start(
     wal_directory: PathBuf,
     data_directory: &Path,
     verify_tree_hashes: bool,
+    gas_price_provider: Option<L1GasPriceProvider>,
     inject_failure_config: Option<InjectFailureConfig>,
 ) -> ConsensusTaskHandles {
     // Events that are produced by the P2P task and consumed by the consensus task.
@@ -78,6 +80,7 @@ pub fn start(
         consensus_storage.clone(),
         data_directory,
         verify_tree_hashes,
+        gas_price_provider,
         inject_failure_config,
     );
 

@@ -111,6 +111,7 @@ impl TestEnvironment {
             &PathBuf::default(),
             true,
             None,
+            None,
         );
 
         Self {
