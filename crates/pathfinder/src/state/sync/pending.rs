@@ -14,7 +14,7 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
     sequencer: S,
     poll_interval: std::time::Duration,
     storage: Storage,
-    latest: watch::Receiver<Option<(BlockNumber, BlockHash)>>,
+    latest: watch::Receiver<(BlockNumber, BlockHash)>,
     current: watch::Receiver<(BlockNumber, BlockHash)>,
     fetch_casm_from_fgw: bool,
 ) {
@@ -48,7 +48,7 @@ pub async fn poll_pre_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
     sequencer: &S,
     poll_interval: std::time::Duration,
     storage: &Storage,
-    latest: &watch::Receiver<Option<(BlockNumber, BlockHash)>>,
+    latest: &watch::Receiver<(BlockNumber, BlockHash)>,
     current: &watch::Receiver<(BlockNumber, BlockHash)>,
     fetch_casm_from_fgw: bool,
 ) {
@@ -58,12 +58,7 @@ pub async fn poll_pre_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
     loop {
         let t_fetch = Instant::now();
 
-        let Some(latest) = latest.borrow().map(|(latest, _)| latest.get()) else {
-            tracing::debug!("Latest block is not known yet; skipping pending block download");
-            tokio::time::sleep_until(t_fetch + poll_interval).await;
-            continue;
-        };
-
+        let latest = latest.borrow().0.get();
         let current = current.borrow().0.get();
 
         if latest.abs_diff(current) > 6 {
@@ -145,7 +140,7 @@ pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
     sequencer: &S,
     poll_interval: std::time::Duration,
     storage: &Storage,
-    latest: &watch::Receiver<Option<(BlockNumber, BlockHash)>>,
+    latest: &watch::Receiver<(BlockNumber, BlockHash)>,
     current: &watch::Receiver<(BlockNumber, BlockHash)>,
     fetch_casm_from_fgw: bool,
 ) {
@@ -190,12 +185,7 @@ pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
     loop {
         let t_fetch = Instant::now();
 
-        let Some((latest_number, latest_hash)) = *latest.borrow() else {
-            tracing::debug!("Latest block is not known yet; skipping pre-confirmed block download");
-            tokio::time::sleep_until(t_fetch + poll_interval).await;
-            continue;
-        };
-
+        let (latest_number, latest_hash) = *latest.borrow();
         let current_number = current.borrow().0.get();
 
         if latest_number.get().abs_diff(current_number) > IN_SYNC_THRESHOLD {
@@ -537,7 +527,7 @@ mod tests {
             .expect_pending_block()
             .returning(|| Ok((PENDING_BLOCK.clone(), PENDING_UPDATE.clone())));
 
-        let (_, latest) = watch::channel(Some(Default::default()));
+        let (_, latest) = watch::channel(Default::default());
         let (_, current) = watch::channel(Default::default());
 
         let sequencer = Arc::new(sequencer);
@@ -612,7 +602,7 @@ mod tests {
         });
 
         let sequencer = Arc::new(sequencer);
-        let (_, rx_latest) = watch::channel(Some(Default::default()));
+        let (_, rx_latest) = watch::channel(Default::default());
         let (_, rx_current) = watch::channel(Default::default());
         let _jh = tokio::spawn(async move {
             poll_pending(
@@ -666,7 +656,7 @@ mod tests {
             .returning(move |_| Ok(PRE_CONFIRMED_BLOCK.clone()));
 
         let sequencer = Arc::new(sequencer);
-        let (_, rx_latest) = watch::channel(Some(Default::default()));
+        let (_, rx_latest) = watch::channel(Default::default());
         let (_, rx_current) = watch::channel(Default::default());
         let _jh = tokio::spawn(async move {
             poll_pending(
@@ -763,7 +753,7 @@ mod tests {
 
         let latest_block_number = BlockNumber::new_or_panic(10);
 
-        let (_, rx_latest) = watch::channel(Some((latest_block_number, our_latest_hash)));
+        let (_, rx_latest) = watch::channel((latest_block_number, our_latest_hash));
         let (_, rx_current) = watch::channel((latest_block_number, our_latest_hash));
 
         let sequencer = Arc::new(sequencer);
@@ -848,7 +838,7 @@ mod tests {
 
         let latest_block_number = BlockNumber::new_or_panic(10);
 
-        let (_, rx_latest) = watch::channel(Some((latest_block_number, our_latest_hash)));
+        let (_, rx_latest) = watch::channel((latest_block_number, our_latest_hash));
         let (_, rx_current) = watch::channel((latest_block_number, our_latest_hash));
 
         let sequencer = Arc::new(sequencer);
@@ -937,7 +927,7 @@ mod tests {
 
         let latest_block_number = BlockNumber::new_or_panic(10);
 
-        let (_, rx_latest) = watch::channel(Some((latest_block_number, our_latest_hash)));
+        let (_, rx_latest) = watch::channel((latest_block_number, our_latest_hash));
         let (_, rx_current) = watch::channel((latest_block_number, our_latest_hash));
 
         let sequencer = Arc::new(sequencer);

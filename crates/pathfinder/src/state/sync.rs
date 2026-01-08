@@ -30,7 +30,7 @@ use starknet_gateway_types::reply::{
     PreLatestBlock,
 };
 use tokio::sync::mpsc::{self, Receiver};
-use tokio::sync::watch::Sender as WatchSender;
+use tokio::sync::watch::{self, Sender as WatchSender};
 
 use crate::consensus::ConsensusChannels;
 use crate::state::block_hash;
@@ -169,7 +169,7 @@ where
             L2SyncContext<SequencerClient>,
             Option<(BlockNumber, BlockHash, StateCommitment)>,
             BlockChain,
-            tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>,
+            watch::Receiver<(BlockNumber, BlockHash)>,
         ) -> F2
         + Copy,
 {
@@ -222,7 +222,7 @@ where
         .context("Fetching latest block from gateway")?;
 
     // Keep polling the sequencer for the latest block
-    let (tx_latest, rx_latest) = tokio::sync::watch::channel(Some(gateway_latest));
+    let (tx_latest, rx_latest) = tokio::sync::watch::channel(gateway_latest);
     let mut latest_handle = util::task::spawn(l2::poll_latest(
         sequencer.clone(),
         head_poll_interval,
@@ -460,7 +460,7 @@ where
             L2SyncContext<SequencerClient>,
             Option<(BlockNumber, BlockHash, StateCommitment)>,
             BlockChain,
-            tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>,
+            watch::Receiver<(BlockNumber, BlockHash)>,
         ) -> F2
         + Copy,
 {
@@ -512,11 +512,14 @@ where
     // consensus and it will not not be available at a feeder gateway until >=3
     // network participants actually decide upon the genesis block.
     let gateway_latest = match sequencer.head().await {
-        Ok(gateway_latest) => Some(gateway_latest),
+        Ok(gateway_latest) => gateway_latest,
         Err(SequencerError::StarknetError(e))
             if e.code == KnownStarknetErrorCode::BlockNotFound.into() =>
         {
-            None
+            // Use some invalid initial values, the reason is that the API is common for
+            // production sync and we don't want to introduce a runtime check that could
+            // fail.
+            (BlockNumber::GENESIS, BlockHash::ZERO)
         }
         // head() retries on non starknet errors so any other starknet error code indicates
         // a problem with the feeder gateway
@@ -1220,18 +1223,17 @@ async fn update_sync_status_latest(
     state: Arc<SyncState>,
     starting_block_hash: BlockHash,
     starting_block_num: BlockNumber,
-    mut latest: tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>,
+    mut latest: watch::Receiver<(BlockNumber, BlockHash)>,
 ) {
     let starting = NumberedBlock::from((starting_block_hash, starting_block_num));
 
     let mut latest_hash = BlockHash::default();
     loop {
         let Ok((number, hash)) = latest
-            .wait_for(|x| x.is_some_and(|(_, hash)| hash != latest_hash))
+            .wait_for(|(_, hash)| hash != &latest_hash)
             .await
             .as_deref()
             .copied()
-            .map(|x| x.expect("We waited for a value that is Some"))
         else {
             break;
         };
