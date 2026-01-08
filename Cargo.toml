@@ -49,7 +49,7 @@ axum = "0.8.4"
 base64 = "0.22.1"
 bincode = "2.0.1"
 bitvec = "1.0.1"
-blockifier = { version = "0.16.0-rc.2", features = ["node_api", "reexecution"] }
+blockifier = { version = "0.16.0-rc.3", features = ["node_api", "reexecution"] }
 bytes = "1.4.0"
 cached = "0.44.0"
 # This one needs to match the version used by blockifier
@@ -125,7 +125,7 @@ smallvec = "1.15.1"
 # This one needs to match the version used by blockifier
 starknet-types-core = "=0.2.4"
 # This one needs to match the version used by blockifier
-starknet_api = "0.16.0-rc.2"
+starknet_api = "0.16.0-rc.3"
 syn = "1.0"
 tempfile = "3.8"
 test-log = { version = "0.2.12", features = ["trace"] }
