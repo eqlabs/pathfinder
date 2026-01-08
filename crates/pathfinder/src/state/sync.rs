@@ -517,8 +517,8 @@ where
             if e.code == KnownStarknetErrorCode::BlockNotFound.into() =>
         {
             // Use some invalid initial values, the reason is that the API is common for
-            // production sync and we don't want to introduce a runtime check that could
-            // fail.
+            // production sync and we don't want to introduce an Option-based runtime check
+            // that could fail.
             (BlockNumber::GENESIS, BlockHash::ZERO)
         }
         // head() retries on non starknet errors so any other starknet error code indicates
@@ -1066,7 +1066,10 @@ async fn consumer(
             sync_to_consensus_tx
                 .send(sync_to_consensus_msg)
                 .await
-                .context("Sending L2 block committed message to consensus")?;
+                .context(
+                    "Sending L2 consensus finalized and decided upon block committed message to \
+                     consensus",
+                )?;
         }
     }
 

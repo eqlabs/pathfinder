@@ -73,7 +73,7 @@ struct Cli {
         long,
         long_help = "If set, the process will wait for the database file to become available and \
                      fully migrated. If the database is not immediately available, the feeder \
-                     gateway will keep retrying until a timeout occurs. WARNING:CUSTOM chain is \
+                     gateway will keep retrying until a timeout occurs. WARNING: CUSTOM chain is \
                      assumed regardless of the database contents.",
         default_value = "false",
         action=ArgAction::Set

@@ -322,10 +322,9 @@ pub fn spawn(
                                 tracing::trace!(
                                     %number, "🖧  📥 {validator_address} get consensus finalized and decided upon block"
                                 );
-                                // If we're the proposer we could have a false positive here.
-                                // Luckily the block is additionally be marked as decided too,
-                                // because if we're proposing, we're also caching a finalized block
-                                // that has not been decided yet.
+                                // If we're the proposer we could have a false positive here, which
+                                // we avoid by having the decided block marked, so we only return
+                                // a block that is both finalized and decided upon or nothing.
                                 let resp = proposals_db
                                     .read_consensus_finalized_and_decided_block(number.get())?
                                     .map(Box::new);
@@ -549,11 +548,12 @@ pub fn spawn(
                     // execution needs to be finalized and the resulting block has to be committed
                     // to the main database.
                     P2PTaskEvent::MarkBlockAsDecidedAndCleanUp(height_and_round, value) => {
-                        // TODO: We do not have to commit these blocks to the main database
+                        // We do not have to commit these blocks to the main database
                         // anymore because they are being stored by the sync task (if enabled).
-                        // Once we are ready to get rid of fake proposals, consider storing
-                        // recently decided-upon blocks in memory (instead of a database) and
-                        // swapping out the notion of "committed" for something like "decided".
+                        //
+                        // TODO: Once we are ready to get rid of fake proposals, consider storing
+                        // recently decided-upon blocks in memory (instead of a database) as
+                        // "decided".
                         //
                         // NOTE: The main database still gets the state updates via consensus,
                         // which is the only reason why we still need the main database here at
@@ -626,9 +626,9 @@ pub fn spawn(
 
                         // Remove all finalized blocks for previous rounds at this height
                         // because they will not be committed to the main DB. Do not remove the
-                        // block, which has just been marked as decided upon, that will be
-                        // committed by the sync task until it is confirmed that it was indeed
-                        // committed.
+                        // block, which has just been marked as decided upon, and will be
+                        // committed by the sync task until it is confirmed that the block was
+                        // indeed committed.
                         proposals_db.remove_undecided_consensus_finalized_blocks(
                             height_and_round.height(),
                         )?;

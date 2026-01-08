@@ -375,10 +375,10 @@ impl StorageBuilder {
         })
     }
 
-    /// Does not perform any migration, just loads the database in read-only
+    /// Does not perform any migrations, just loads the database in read-only
     /// mode. This is useful for tools which only need to read from the
-    /// database, especially when a Pathfinder instance is writing to it at the
-    /// same time.
+    /// database, especially when a Pathfinder instance is writing to the
+    /// database at the same time.
     pub fn readonly(self) -> anyhow::Result<ReadOnlyStorageManager> {
         let Self {
             database_path,

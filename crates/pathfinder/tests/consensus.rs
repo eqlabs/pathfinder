@@ -130,6 +130,10 @@ mod test {
         utils::join_all(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT).await
     }
 
+    // TODO(consensus)
+    //
+    // IMPORTANT: assert that there is no leftover data for lower heights when Dan
+    // finally catches up.
     #[tokio::test]
     async fn consensus_3_nodes_fourth_node_joins_late_can_catch_up() -> anyhow::Result<()> {
         const NUM_NODES: usize = 4;
@@ -232,6 +236,9 @@ mod test {
             TEST_TIMEOUT,
         )
         .await
+
+        // TODO assert that consensus DBs of all 4 nodes don't have any leftover
+        // proposals or finalized blocks up to and including FINAL_HEIGHT
     }
 
     /// A slightly different failure scenario from [consensus_3_nodes]. We are

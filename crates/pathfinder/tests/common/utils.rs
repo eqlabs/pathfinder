@@ -61,7 +61,7 @@ pub fn log_elapsed(stopwatch: Instant) {
 }
 
 /// Waits for either all RPC client tasks to complete, the timeout to elapse, or
-/// for the user to interrupt the with Ctrl-C.
+/// for the user to interrupt with Ctrl-C.
 pub async fn join_all(
     rpc_client_handles: Vec<JoinHandle<()>>,
     test_timeout: Duration,

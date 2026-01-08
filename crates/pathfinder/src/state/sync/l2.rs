@@ -385,7 +385,7 @@ where
         // avoid runtime checks in production sync (which is FGw only at the moment and
         // assumes that the watch is always initialized with a valid value).
         if number == &BlockNumber::GENESIS {
-            // Indicates an uninitialized watch
+            // Zero hash indicates an uninitialized watch
             hash != &BlockHash::ZERO
         } else {
             true
@@ -425,12 +425,13 @@ where
 
         // IMPORTANT
         // A race condition can occur in fast local networks:
-        // - Alice commits @H
+        // - Alice (the proposer) commits H
         // - FGw uses Alice's DB directly, so it also serves H immediately
-        // - Bob hasn't committed @H yet, even though he voted on it, so he asks for it
-        //   from FGw
-        // - Bob downloads @H from FGw, even though he will shortly have it ready for
-        //   committing locally from his own consensus engine
+        // - Bob hasn't committed H yet, he executed the proposal at H and voted on it,
+        //   but his internal consensus engine hasn't communicated the positive decision
+        //   yet, so he asks for the block from FGw
+        // - Bob downloads H from FGw, even though he will shortly have a confirmation
+        //   that he can commit the locally executed proposal at H.
         if let Some(l2_block) = reply {
             tracing::debug!("Block {next} already committed in consensus, skipping download");
 
@@ -862,9 +863,13 @@ async fn download_block(
                 let state_update = Box::new(state_update);
                 let state_diff_length = state_update.state_diff_length();
 
-                // Currently empty proposals used for consensus integration tests carry an empty
-                // state diff commitment.
-                #[cfg(all(feature = "consensus-integration-tests", feature = "p2p",))]
+                // TODO Currently empty proposals used for consensus integration tests carry an
+                // empty state diff commitment.
+                #[cfg(all(
+                    feature = "p2p",
+                    feature = "consensus-integration-tests",
+                    debug_assertions
+                ))]
                 let state_diff_commitment =
                     if block.state_diff_commitment == Some(StateDiffCommitment::ZERO) {
                         StateDiffCommitment::ZERO

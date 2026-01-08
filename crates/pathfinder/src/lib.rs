@@ -9,7 +9,7 @@ pub mod sync;
 pub mod validator;
 
 pub enum SyncMessageToConsensus {
-    /// Ask consensus for the finalized and decided upon block with given
+    /// Ask consensus for the finalized and **decided upon** block with given
     /// number. The only difference from a committed block is that the state
     /// tries are not updated yet, so the state commitment is not computed
     /// and hence the block hash cannot be computed yet.
