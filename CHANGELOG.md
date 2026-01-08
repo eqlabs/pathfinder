@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for gzip-compressed responses from the feeder gateway.
 - The new `--rpc.native-execution-force-use-for-incompatible-classes` CLI option can be used to force use of native execution even for pre-1.7.0 Sierra classes (where fee calculation is known to be inaccurate). Use this flag at your own risk.
 
+### Changed
+
+- `blockifier` has been upgraded to 0.16.0-rc.3.
+
 ## [0.21.3] - 2025-12-03
 
 ### Added
