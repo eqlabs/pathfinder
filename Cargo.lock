@@ -768,9 +768,9 @@ checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
 
 [[package]]
 name = "apollo_compilation_utils"
-version = "0.16.0-rc.2"
+version = "0.16.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26d44318ea282868a7fba0521d73de73f468d827032033a7194e78b55e313597"
+checksum = "b860e444fc3047527163ec7e0171323bd831f22c8e89a98e607715f3c50dcf9c"
 dependencies = [
  "apollo_infra_utils",
  "cairo-lang-sierra 2.12.3",
@@ -787,9 +787,9 @@ dependencies = [
 
 [[package]]
 name = "apollo_compile_to_native"
-version = "0.16.0-rc.2"
+version = "0.16.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16e4db350730b286d3da64a4d8b0645a36b022d0c4609bad50ea5b5a66ad6505"
+checksum = "9f1c875c600127ce06d89c4283bdefdecfe92ea953d52a4847398c29a342bad6"
 dependencies = [
  "apollo_compilation_utils",
  "apollo_compile_to_native_types",
@@ -801,9 +801,9 @@ dependencies = [
 
 [[package]]
 name = "apollo_compile_to_native_types"
-version = "0.16.0-rc.2"
+version = "0.16.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2719749a3668fb1025647509e7553d0df3b15c7ad619db2de099c8e508e02c45"
+checksum = "04abf08b9a1c958f16307c9ff48ed1fb5dfe0e90f10f78bcc21c055f051209e4"
 dependencies = [
  "apollo_config",
  "serde",
@@ -812,9 +812,9 @@ dependencies = [
 
 [[package]]
 name = "apollo_config"
-version = "0.16.0-rc.2"
+version = "0.16.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02549a6e6b8e27748040ef18351c92109706a38cd9ba6ad9d9b925b25d504195"
+checksum = "3fb39734ba7a0596776fa1e4e4c4d2d32117b927c2b0b526bfe14c4c73743361"
 dependencies = [
  "apollo_infra_utils",
  "clap",
@@ -831,9 +831,9 @@ dependencies = [
 
 [[package]]
 name = "apollo_infra_utils"
-version = "0.16.0-rc.2"
+version = "0.16.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8428007470bfde6d3dccc92f58960d4167179db27481c03ba447f4b9381f1bb6"
+checksum = "ef50783135b0289f491e738fb3ea57ffccde51e68b12be4d96b8a74db252532c"
 dependencies = [
  "apollo_proc_macros",
  "assert-json-diff",
@@ -843,17 +843,19 @@ dependencies = [
  "serde_json",
  "socket2 0.5.10",
  "strum 0.25.0",
+ "strum_macros 0.25.3",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
+ "url",
 ]
 
 [[package]]
 name = "apollo_metrics"
-version = "0.16.0-rc.2"
+version = "0.16.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0804d323819b94d4cfe61751c5fdbddcf57fad086f84bd279aa375c58230f323"
+checksum = "a2a070146c18fea3fb7e42931ddb52828baf8e64cabc9873ea8f978f118c4fbe"
 dependencies = [
  "indexmap 2.12.0",
  "metrics",
@@ -864,9 +866,9 @@ dependencies = [
 
 [[package]]
 name = "apollo_proc_macros"
-version = "0.16.0-rc.2"
+version = "0.16.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e0b8c23e53cbc77c5ad5565ed676224a5327bf18a3bd868128781a3170befc2"
+checksum = "4b177fec2f66debebbe1d39bf5e4c8680037f58f877c9527fb9a1885f7300135"
 dependencies = [
  "lazy_static",
  "proc-macro2",
@@ -876,9 +878,9 @@ dependencies = [
 
 [[package]]
 name = "apollo_sizeof"
-version = "0.16.0-rc.2"
+version = "0.16.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76a9282eac49a97d460007ae4e99b075031d8de9124d574577772b64720a7635"
+checksum = "2b230dd6ebc0c6cfe7ef87c9c3bbf760063b40b6b7b469b43fb216994033569f"
 dependencies = [
  "apollo_sizeof_macros",
  "starknet-types-core",
@@ -886,9 +888,9 @@ dependencies = [
 
 [[package]]
 name = "apollo_sizeof_macros"
-version = "0.16.0-rc.2"
+version = "0.16.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82202b25a12c790f23622231a25eb18276b5b7213823ba5f341858981bfb17f8"
+checksum = "b6b83d9b1feea5e65bccc822427caf564f5fc85cdcae116b2a87b72f1fd606c6"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1929,9 +1931,9 @@ dependencies = [
 
 [[package]]
 name = "blockifier"
-version = "0.16.0-rc.2"
+version = "0.16.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e030216ab0c0404f7cfcda20b08655bc0a731b2a99fc66df9e39f2478196f442"
+checksum = "b550a0722401d283cd20b6b778d81d784d7efe3dedc3a2417f5366275b30a0fa"
 dependencies = [
  "anyhow",
  "apollo_compilation_utils",
@@ -1978,9 +1980,9 @@ dependencies = [
 
 [[package]]
 name = "blockifier_test_utils"
-version = "0.16.0-rc.2"
+version = "0.16.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8335d2d1c5b0cd17683c5a7ebc90c18b27757c426e5b31910db457e033f1195"
+checksum = "2e6d81a301fcbef9e69e13949d22505ec9116c20cbb763b3c242eda560340946"
 dependencies = [
  "apollo_infra_utils",
  "cairo-lang-starknet-classes",
@@ -3830,9 +3832,9 @@ dependencies = [
 
 [[package]]
 name = "cairo-native"
-version = "0.7.2"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19404b3af952f1f8f1fcb68c58eafc06d5255002dc7a7c81c800676a0779004a"
+checksum = "8ce3a73f176cbb920f729bc528a152a3c717d46e0d4f1023d56096b6aad1186b"
 dependencies = [
  "aquamarine",
  "ark-ec 0.5.0",
@@ -4101,7 +4103,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4110,7 +4112,7 @@ version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fde0e0ec90c9dfb3b4b1a0891a7dcd0e2bffde2f7efed5fe7c9bb00e5bfb915e"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4645,7 +4647,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d162beedaa69905488a8da94f5ac3edb4dd4788b732fadb7bd120b2625c1976"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
+ "syn 2.0.110",
 ]
 
 [[package]]
@@ -6127,7 +6129,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.1",
  "tokio",
  "tower-service",
  "tracing",
@@ -9417,7 +9419,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.1.1",
  "rustls",
- "socket2 0.5.10",
+ "socket2 0.6.1",
  "thiserror 2.0.17",
  "tokio",
  "tracing",
@@ -9454,7 +9456,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.1",
  "tracing",
  "windows-sys 0.60.2",
 ]
@@ -10389,6 +10391,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_json_pythonic"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62212da9872ca2a0cad0093191ee33753eddff9266cbbc1b4a602d13a3a768db"
+dependencies = [
+ "itoa",
+ "ryu",
+ "serde",
+]
+
+[[package]]
 name = "serde_path_to_error"
 version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10738,6 +10751,40 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
+name = "starknet-core"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "efb7212226769766c1c7d79b70f9242ffbd213290a41604ecc7e78faa0ed0deb"
+dependencies = [
+ "base64 0.21.7",
+ "crypto-bigint",
+ "flate2",
+ "foldhash 0.1.5",
+ "hex",
+ "indexmap 2.12.0",
+ "num-traits",
+ "serde",
+ "serde_json",
+ "serde_json_pythonic",
+ "serde_with",
+ "sha3",
+ "starknet-core-derive",
+ "starknet-crypto",
+ "starknet-types-core",
+]
+
+[[package]]
+name = "starknet-core-derive"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b08520b7d80eda7bf1a223e8db4f9bb5779a12846f15ebf8f8d76667eca7f5ad"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.110",
+]
+
+[[package]]
 name = "starknet-crypto"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10850,9 +10897,9 @@ dependencies = [
 
 [[package]]
 name = "starknet_api"
-version = "0.16.0-rc.2"
+version = "0.16.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bcd8ac3f97082bae477bc130a485725143d7fcbd026274571a939f9bc0910465"
+checksum = "8d1b32bfe0c7d92604633fe2a6beafc732e6517e07203f0c5c3be1ec06d90d99"
 dependencies = [
  "apollo_infra_utils",
  "apollo_sizeof",
@@ -10878,6 +10925,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha3",
+ "starknet-core",
  "starknet-crypto",
  "starknet-types-core",
  "strum 0.25.0",
@@ -12335,7 +12383,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
