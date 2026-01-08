@@ -7,7 +7,7 @@ on:
   pull_request:
   # Daily cron job used to clear and rebuild cache (https://github.com/Swatinem/rust-cache/issues/181).
   schedule:
-    - cron: '0 0 * * *'
+    - cron: "0 0 * * *"
 
 # Limits workflow concurrency to only the latest commit in the PR.
 concurrency:
@@ -53,14 +53,10 @@ jobs:
           rm -rf ~/.cargo/git
       - name: Compile pathfinder binary in release mode to check if integration testing cli is unavailable
         run: cargo build --release -p pathfinder --bin pathfinder -F p2p
-      - name: Compile pathfinder binary for the consensus integration tests
-        run: cargo build -p pathfinder -F p2p -F consensus-integration-tests --bin pathfinder
       - name: Compile unit tests with all features enabled
         run: cargo nextest run --cargo-profile ci-dev --all-targets --all-features --workspace --locked --no-run --timings
       - name: Run unit tests with all features enabled excluding consensus integration tests
         run: timeout 10m cargo nextest run --cargo-profile ci-dev --no-fail-fast --all-targets --all-features --workspace --locked -E 'not test(/^test::consensus_3_nodes/)' --retries 2
-      - name: Run consensus integration tests
-        run: PATHFINDER_CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL=1 PATHFINDER_TEST_ENABLE_PORT_MARKER_FILES=1 timeout 10m cargo nextest run --test consensus -p pathfinder --features p2p,consensus-integration-tests --locked --retries 2
       - name: Store timings with all features enabled
         uses: actions/upload-artifact@v4
         with:
@@ -68,6 +64,35 @@ jobs:
           path: target/cargo-timings/
           if-no-files-found: warn
 
+  test-consensus:
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@v10
+        with:
+          root-reserve-mb: "3072"
+          temp-reserve-mb: "3072"
+      - uses: actions/checkout@v4
+      - uses: rui314/setup-mold@v1
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule' }}
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: taiki-e/install-action@nextest
+      - name: Clear cache
+        if: github.event_name == 'schedule'
+        run: |
+          cargo clean
+          rm -rf ~/.cargo/registry
+          rm -rf ~/.cargo/git
+      - name: Compile pathfinder binary for consensus integration tests
+        run: cargo build -p pathfinder -F p2p -F consensus-integration-tests --bin pathfinder
+      - name: Run consensus integration tests
+        run: PATHFINDER_CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL=1 PATHFINDER_TEST_ENABLE_PORT_MARKER_FILES=1 timeout 10m cargo nextest run --test consensus -p pathfinder --features p2p,consensus-integration-tests --locked --retries 2
   test-default-features:
     runs-on: ubuntu-24.04
     env:
@@ -103,7 +128,7 @@ jobs:
           name: timings-default-features
           path: target/cargo-timings/
           if-no-files-found: warn
-  
+
   clippy:
     runs-on: ubuntu-24.04
     env:
@@ -136,7 +161,6 @@ jobs:
           cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D rust_2018_idioms
           cargo clippy --workspace --all-targets --locked -- -D warnings -D rust_2018_idioms
           cargo clippy --workspace --all-targets --all-features --locked --manifest-path crates/load-test/Cargo.toml -- -D warnings -D rust_2018_idioms
-
 
   rustfmt:
     runs-on: ubuntu-24.04
