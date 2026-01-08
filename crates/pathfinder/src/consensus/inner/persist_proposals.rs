@@ -202,6 +202,48 @@ impl<'tx> ConsensusProposals<'tx> {
         let dto::PersistentConsensusFinalizedBlock::V0(dto_block) = persistent_block;
         Ok(dto_block.into_model())
     }
+
+    /// Retrieve all proposal parts for a given height. Returns a vector of
+    /// tuples of (round, proposer address, proposal parts).
+    #[cfg(all(
+        feature = "p2p",
+        feature = "consensus-integration-tests",
+        debug_assertions
+    ))]
+    pub fn parts(
+        &self,
+        height: u64,
+    ) -> Result<Vec<(u32, ContractAddress, Vec<ProposalPart>)>, StorageError> {
+        self.tx
+            .consensus_proposal_parts(height)?
+            .into_iter()
+            .map(|(round, proposer, buf)| {
+                let parts = Self::decode_proposal_parts(&buf[..])?;
+                Ok((round, proposer, parts))
+            })
+            .collect()
+    }
+
+    /// Read all consensus-finalized blocks for a given height. Returns a
+    /// vector of tuples of (round, is_decided, finalized block).
+    #[cfg(all(
+        feature = "p2p",
+        feature = "consensus-integration-tests",
+        debug_assertions
+    ))]
+    pub fn consensus_finalized_blocks(
+        &self,
+        height: u64,
+    ) -> Result<Vec<(u32, bool, ConsensusFinalizedL2Block)>, StorageError> {
+        self.tx
+            .consensus_finalized_blocks(height)?
+            .into_iter()
+            .map(|(round, is_decided, buf)| {
+                let block = Self::decode_finalized_block(&buf[..])?;
+                Ok((round, is_decided, block))
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]

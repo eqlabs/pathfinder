@@ -1,5 +1,6 @@
 //! Utilities for spawning and managing Pathfinder instances.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
@@ -305,6 +306,18 @@ impl PathfinderInstance {
 
     pub fn enable_log_dump(enable: bool) {
         DUMP_LOGS_ON_DROP.store(enable, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Retrieve consensus database artifacts up to and including
+    /// `up_to_height`.
+    pub fn consensus_db_artifacts(&self, up_to_height: u64) -> BTreeMap<u64, ()> {
+        let mut artifacts = BTreeMap::new();
+
+        for height in 0..=up_to_height {
+            artifacts.insert(height, ());
+        }
+
+        artifacts
     }
 }
 

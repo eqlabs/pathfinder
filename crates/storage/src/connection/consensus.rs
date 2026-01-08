@@ -452,4 +452,64 @@ impl ConsensusTransaction<'_> {
             .context("Deleting consensus finalized blocks")?;
         Ok(())
     }
+
+    pub fn consensus_proposal_parts(
+        &self,
+        height: u64,
+    ) -> Result<Vec<(u32, ContractAddress, Vec<u8>)>, StorageError> {
+        let mut stmt = self.0.inner().prepare(
+            r"SELECT round, proposer, parts
+            FROM consensus_proposals
+            WHERE height = :height",
+        )?;
+
+        let row_iter = stmt.query_map(
+            named_params! {
+                ":height": &height,
+            },
+            |row| {
+                let round: u32 = row.get_i64(0).map(|x| x as u32)?;
+                let proposer: ContractAddress = row.get_contract_address(1)?;
+                let parts_blob: Vec<u8> = row.get_blob(2)?.to_vec();
+                Ok((round, proposer, parts_blob))
+            },
+        )?;
+
+        let mut results = Vec::new();
+        for row_result in row_iter {
+            results.push(row_result?);
+        }
+
+        Ok(results)
+    }
+
+    pub fn consensus_finalized_blocks(
+        &self,
+        height: u64,
+    ) -> Result<Vec<(u32, bool, Vec<u8>)>, StorageError> {
+        let mut stmt = self.0.inner().prepare(
+            r"SELECT round, is_decided, block
+            FROM consensus_finalized_blocks
+            WHERE height = :height",
+        )?;
+
+        let row_iter = stmt.query_map(
+            named_params! {
+                ":height": &height,
+            },
+            |row| {
+                let round: u32 = row.get_i64(0).map(|x| x as u32)?;
+                let is_decided: bool = row.get_i64(1).map(|x| x != 0)?;
+                let block_blob: Vec<u8> = row.get_blob(2)?.to_vec();
+                Ok((round, is_decided, block_blob))
+            },
+        )?;
+
+        let mut results = Vec::new();
+        for row_result in row_iter {
+            results.push(row_result?);
+        }
+
+        Ok(results)
+    }
 }
