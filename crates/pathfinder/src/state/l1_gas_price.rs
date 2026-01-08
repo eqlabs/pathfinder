@@ -11,7 +11,7 @@
 //! - Proposed prices are validated against the rolling average with a tolerance
 
 use std::collections::VecDeque;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use pathfinder_common::L1BlockNumber;
 use pathfinder_ethereum::L1GasPriceData;
@@ -109,17 +109,22 @@ pub enum L1GasPriceValidationResult {
 ///
 /// Uses ring buffer to store historical gas price samples and computes rolling
 /// averages for validation.
+#[derive(Clone)]
 pub struct L1GasPriceProvider {
+    inner: Arc<L1GasPriceProviderInner>,
+}
+
+struct L1GasPriceProviderInner {
     buffer: RwLock<VecDeque<L1GasPriceData>>,
     config: L1GasPriceConfig,
 }
 
 impl std::fmt::Debug for L1GasPriceProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let buffer = self.buffer.read().unwrap();
+        let buffer = self.inner.buffer.read().unwrap();
         f.debug_struct("L1GasPriceProvider")
             .field("sample_count", &buffer.len())
-            .field("config", &self.config)
+            .field("config", &self.inner.config)
             .finish()
     }
 }
@@ -128,14 +133,16 @@ impl L1GasPriceProvider {
     /// Creates a new L1 gas price provider with the given configuration.
     pub fn new(config: L1GasPriceConfig) -> Self {
         Self {
-            buffer: RwLock::new(VecDeque::with_capacity(config.storage_limit)),
-            config,
+            inner: Arc::new(L1GasPriceProviderInner {
+                buffer: RwLock::new(VecDeque::with_capacity(config.storage_limit)),
+                config,
+            }),
         }
     }
 
     /// Returns the number of samples currently stored.
     pub fn sample_count(&self) -> usize {
-        self.buffer.read().unwrap().len()
+        self.inner.buffer.read().unwrap().len()
     }
 
     /// Returns whether there is enough data to perform validation.
@@ -145,7 +152,12 @@ impl L1GasPriceProvider {
 
     /// Returns the latest block number stored, if any.
     pub fn latest_block_number(&self) -> Option<L1BlockNumber> {
-        self.buffer.read().unwrap().back().map(|d| d.block_number)
+        self.inner
+            .buffer
+            .read()
+            .unwrap()
+            .back()
+            .map(|d| d.block_number)
     }
 
     /// Adds a new gas price sample to the buffer.
@@ -154,7 +166,7 @@ impl L1GasPriceProvider {
     ///
     /// Returns an error if the block number is not sequential.
     pub fn add_sample(&self, data: L1GasPriceData) -> Result<(), anyhow::Error> {
-        let mut buffer = self.buffer.write().unwrap();
+        let mut buffer = self.inner.buffer.write().unwrap();
 
         // Verify sequential block ordering
         if let Some(last) = buffer.back() {
@@ -169,7 +181,7 @@ impl L1GasPriceProvider {
         }
 
         // Remove oldest if at capacity
-        if buffer.len() >= self.config.storage_limit {
+        if buffer.len() >= self.inner.config.storage_limit {
             buffer.pop_front();
         }
 
@@ -200,28 +212,28 @@ impl L1GasPriceProvider {
         &self,
         timestamp: u64,
     ) -> Result<(u128, u128), L1GasPriceValidationError> {
-        let buffer = self.buffer.read().unwrap();
+        let buffer = self.inner.buffer.read().unwrap();
 
         if buffer.is_empty() {
             return Err(L1GasPriceValidationError::NoDataAvailable {
                 timestamp,
-                lag_seconds: self.config.lag_margin_seconds,
+                lag_seconds: self.inner.config.lag_margin_seconds,
             });
         }
 
         let latest = buffer.back().unwrap();
 
         // Check for stale data
-        if timestamp > latest.timestamp + self.config.max_time_gap_seconds {
+        if timestamp > latest.timestamp + self.inner.config.max_time_gap_seconds {
             return Err(L1GasPriceValidationError::StaleData {
                 latest_timestamp: latest.timestamp,
                 requested_timestamp: timestamp,
-                max_gap: self.config.max_time_gap_seconds,
+                max_gap: self.inner.config.max_time_gap_seconds,
             });
         }
 
         // Apply lag margin
-        let target_timestamp = timestamp.saturating_sub(self.config.lag_margin_seconds);
+        let target_timestamp = timestamp.saturating_sub(self.inner.config.lag_margin_seconds);
 
         // Find the last block with timestamp <= target_timestamp (searching backwards)
         let last_index = buffer
@@ -233,28 +245,28 @@ impl L1GasPriceProvider {
             None => {
                 return Err(L1GasPriceValidationError::NoDataAvailable {
                     timestamp,
-                    lag_seconds: self.config.lag_margin_seconds,
+                    lag_seconds: self.inner.config.lag_margin_seconds,
                 });
             }
         };
 
         // Determine the first index for the rolling average
-        let first_index = last_index.saturating_sub(self.config.blocks_for_mean);
+        let first_index = last_index.saturating_sub(self.inner.config.blocks_for_mean);
         let actual_count = last_index - first_index;
 
         if actual_count == 0 {
             return Err(L1GasPriceValidationError::NoDataAvailable {
                 timestamp,
-                lag_seconds: self.config.lag_margin_seconds,
+                lag_seconds: self.inner.config.lag_margin_seconds,
             });
         }
 
         // Log if using fewer blocks than configured
-        if actual_count < self.config.blocks_for_mean {
+        if actual_count < self.inner.config.blocks_for_mean {
             tracing::debug!(
                 "Using {} blocks for average (configured: {})",
                 actual_count,
-                self.config.blocks_for_mean
+                self.inner.config.blocks_for_mean
             );
         }
 
@@ -302,26 +314,26 @@ impl L1GasPriceProvider {
 
         // Check base fee deviation
         let base_fee_deviation = deviation_pcnt(proposed_base_fee, avg_base_fee);
-        if base_fee_deviation > self.config.tolerance {
+        if base_fee_deviation > self.inner.config.tolerance {
             return L1GasPriceValidationResult::Invalid(
                 L1GasPriceValidationError::BaseFeeDeviation {
                     proposed: proposed_base_fee,
                     expected: avg_base_fee,
                     deviation_pct: base_fee_deviation * 100.0,
-                    tolerance_pct: self.config.tolerance * 100.0,
+                    tolerance_pct: self.inner.config.tolerance * 100.0,
                 },
             );
         }
 
         // Check blob fee deviation
         let blob_fee_deviation = deviation_pcnt(proposed_blob_fee, avg_blob_fee);
-        if blob_fee_deviation > self.config.tolerance {
+        if blob_fee_deviation > self.inner.config.tolerance {
             return L1GasPriceValidationResult::Invalid(
                 L1GasPriceValidationError::BlobFeeDeviation {
                     proposed: proposed_blob_fee,
                     expected: avg_blob_fee,
                     deviation_pct: blob_fee_deviation * 100.0,
-                    tolerance_pct: self.config.tolerance * 100.0,
+                    tolerance_pct: self.inner.config.tolerance * 100.0,
                 },
             );
         }
