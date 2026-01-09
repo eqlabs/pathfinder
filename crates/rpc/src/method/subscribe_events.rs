@@ -50,6 +50,15 @@ impl Params {
             true
         }
     }
+
+    fn get_addresses(&self) -> Vec<ContractAddress> {
+        let mut addresses = Vec::new();
+        if let Some(address) = self.from_address {
+            addresses.push(address);
+        }
+
+        addresses
+    }
 }
 
 impl crate::dto::DeserializeForVersion for Option<Params> {
@@ -199,7 +208,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                 .events_in_range(
                     from,
                     to,
-                    params.from_address,
+                    params.get_addresses(),
                     params.keys.unwrap_or_default(),
                 )
                 .map_err(RpcError::InternalError)?;
