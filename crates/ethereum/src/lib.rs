@@ -67,6 +67,26 @@ pub struct EthereumStateUpdate {
     pub block_hash: BlockHash,
 }
 
+/// Gas price data extracted from an L1 block header.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct L1GasPriceData {
+    /// The L1 block number
+    pub block_number: L1BlockNumber,
+    /// Unix timestamp of the block
+    pub timestamp: u64,
+    /// EIP-1559 base fee per gas (wei)
+    pub base_fee_per_gas: u128,
+    /// EIP-4844 blob fee per gas (wei)
+    pub blob_fee: u128,
+}
+
+/// Computes the blob fee from excess_blob_gas
+fn compute_blob_fee(excess_blob_gas: Option<u64>) -> u128 {
+    excess_blob_gas
+        .map(alloy::eips::eip4844::calc_blob_gasprice)
+        .unwrap_or(alloy::eips::eip4844::BLOB_TX_MIN_BLOB_GASPRICE)
+}
+
 /// Ethereum API trait
 pub trait EthereumApi {
     fn get_starknet_state(
@@ -152,13 +172,100 @@ impl EthereumClient {
     }
 
     /// Returns the block number of the last finalized block
-    async fn get_finalized_block_number(&self) -> anyhow::Result<L1BlockNumber> {
+    pub async fn get_finalized_block_number(&self) -> anyhow::Result<L1BlockNumber> {
         let provider = self.provider().await?;
         provider
             .get_block_by_number(BlockNumberOrTag::Finalized)
             .await?
             .map(|block| L1BlockNumber::new_or_panic(block.header.number))
             .context("Failed to fetch finalized block hash")
+    }
+
+    /// Fetches gas price data from a specific L1 block header.
+    pub async fn get_gas_price_data(
+        &self,
+        block_number: L1BlockNumber,
+    ) -> anyhow::Result<L1GasPriceData> {
+        let provider = self.provider().await?;
+        let block = provider
+            .get_block_by_number(BlockNumberOrTag::Number(block_number.get()))
+            .await?
+            .context("Block not found")?;
+
+        let base_fee_per_gas = block.header.base_fee_per_gas.unwrap_or(0) as u128;
+        let blob_fee = compute_blob_fee(block.header.excess_blob_gas);
+
+        Ok(L1GasPriceData {
+            block_number,
+            timestamp: block.header.timestamp,
+            base_fee_per_gas,
+            blob_fee,
+        })
+    }
+
+    /// Fetches gas price data for a range of blocks (inclusive).
+    ///
+    /// We use this to initialize our gas price buffer. After initialization we
+    /// subscribe to latest updates via subscribe_block_headers.
+    pub async fn get_gas_price_data_range(
+        &self,
+        start: L1BlockNumber,
+        end: L1BlockNumber,
+    ) -> anyhow::Result<Vec<L1GasPriceData>> {
+        let mut results = Vec::with_capacity((end.get() - start.get() + 1) as usize);
+
+        for block_num in start.get()..=end.get() {
+            let block_number = L1BlockNumber::new_or_panic(block_num);
+            match self.get_gas_price_data(block_number).await {
+                Ok(data) => results.push(data),
+                Err(e) => {
+                    tracing::warn!(
+                        block_number = block_num,
+                        error = %e,
+                        "Failed to fetch gas price data for block"
+                    );
+                    // Continue with other blocks
+                }
+            }
+        }
+
+        Ok(results)
+    }
+
+    /// Subscribes to new block headers and calls the callback with gas price
+    /// data for each block as it arrives.
+    ///
+    /// This uses a dedicated WebSocket connection for the subscription stream.
+    /// Re-subscribes automatically if the stream ends due to errors.
+    pub async fn subscribe_block_headers<F, Fut>(&self, callback: F) -> anyhow::Result<()>
+    where
+        F: Fn(L1GasPriceData) -> Fut + Send + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        // Create a dedicated WebSocket connection for subscriptions
+        let ws = WsConnect::new(self.url.clone());
+        let provider = ProviderBuilder::new().connect_ws(ws).await?;
+
+        // Subscribe to new block headers
+        let mut block_stream = provider.subscribe_blocks().await?;
+
+        loop {
+            match block_stream.recv().await {
+                Ok(header) => {
+                    let data = L1GasPriceData {
+                        block_number: L1BlockNumber::new_or_panic(header.number),
+                        timestamp: header.timestamp,
+                        base_fee_per_gas: header.base_fee_per_gas.unwrap_or(0) as u128,
+                        blob_fee: compute_blob_fee(header.excess_blob_gas),
+                    };
+                    callback(data).await;
+                }
+                Err(e) => {
+                    tracing::debug!(error = %e, "Block subscription ended, re-subscribing");
+                    block_stream = provider.subscribe_blocks().await?;
+                }
+            }
+        }
     }
 }
 

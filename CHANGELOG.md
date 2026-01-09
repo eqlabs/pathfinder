@@ -7,6 +7,13 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Changed
+
+- The `--ethereum.url` option now requires a WebSocket URL (`ws://` or `wss://`). HTTP/HTTPS URLs are no longer automatically converted to WebSocket and will result in an error.
+
+
 ## [0.21.4] - 2026-01-08
 
 ### Added

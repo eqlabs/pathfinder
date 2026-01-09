@@ -9,6 +9,7 @@ rust-version = { workspace = true }
 [dependencies]
 alloy = { version = "1.0.9", default-features = false, features = [
     "contract",
+    "eips",
     "rpc-types",
     "provider-ws",
     "reqwest-rustls-tls",

@@ -53,6 +53,7 @@ use crate::consensus::inner::batch_execution::{
 };
 use crate::consensus::inner::create_empty_block;
 use crate::consensus::{ProposalError, ProposalHandlingError};
+use crate::state::l1_gas_price::L1GasPriceProvider;
 use crate::validator::{
     ProdTransactionMapper,
     TransactionExt,
@@ -101,6 +102,7 @@ pub fn spawn(
     consensus_storage: ConsensusStorage,
     data_directory: &Path,
     verify_tree_hashes: bool,
+    gas_price_provider: Option<L1GasPriceProvider>,
     // Does nothing in production builds. Used for integration testing only.
     inject_failure: Option<InjectFailureConfig>,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
@@ -229,6 +231,7 @@ pub fn spawn(
                                     &proposals_db,
                                     &mut batch_execution_manager,
                                     &data_directory,
+                                    gas_price_provider.clone(),
                                     inject_failure,
                                 );
                                 match result {
@@ -992,6 +995,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
     proposals_db: &ConsensusProposals<'_>,
     batch_execution_manager: &mut BatchExecutionManager,
     data_directory: &Path,
+    gas_price_provider: Option<L1GasPriceProvider>,
     inject_failure_config: Option<InjectFailureConfig>,
 ) -> Result<Option<ProposalCommitmentWithOrigin>, ProposalHandlingError> {
     let mut parts_for_height_and_round = proposals_db
@@ -1080,8 +1084,11 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                 &mut parts_for_height_and_round,
             )?;
 
-            let new_validator =
-                validator.validate_consensus_block_info(block_info, main_readonly_storage)?;
+            let new_validator = validator.validate_consensus_block_info(
+                block_info,
+                main_readonly_storage,
+                gas_price_provider,
+            )?;
             validator_cache.insert(
                 height_and_round,
                 ValidatorStage::TransactionBatch(Box::new(new_validator)),
