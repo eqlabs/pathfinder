@@ -1022,7 +1022,7 @@ mod tests {
         let constraints = EventConstraints {
             from_block: None,
             to_block: Some(to_block),
-            contract_address: None,
+            contract_addresses: vec![],
             keys: vec![],
             page_size: 1024,
             offset: 0,
