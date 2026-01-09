@@ -17,6 +17,7 @@ pub mod request {
     use serde_with::serde_as;
 
     use crate::dto::U64Hex;
+    use crate::RpcVersion;
 
     /// A way of identifying a block in a JSON-RPC request.
     #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -1199,8 +1200,10 @@ pub mod request {
             )?;
             serializer.serialize_field("sender_address", &self.sender_address)?;
             serializer.serialize_field("calldata", &self.calldata)?;
-            if !self.proof_facts.is_empty() {
-                serializer.serialize_field("proof_facts", &self.proof_facts)?;
+            if serializer.version >= RpcVersion::V10 {
+                if !self.proof_facts.is_empty() {
+                    serializer.serialize_field("proof_facts", &self.proof_facts)?;
+                }
             }
             serializer.end()
         }
@@ -1231,9 +1234,11 @@ pub mod request {
                     calldata: value.deserialize_array("calldata", |value| {
                         value.deserialize().map(CallParam)
                     })?,
-                    proof_facts: value.deserialize_array("proof_facts", |value| {
-                        value.deserialize().map(ProofFactElem)
-                    })?,
+                    proof_facts: value
+                        .deserialize_optional_array("proof_facts", |value| {
+                            value.deserialize().map(ProofFactElem)
+                        })?
+                        .unwrap_or_default(),
                 })
             })
         }
