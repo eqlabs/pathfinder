@@ -80,6 +80,8 @@ pub struct InvokeV3 {
     pub nonce_data_availability_mode: VolitionDomain,
     pub fee_data_availability_mode: VolitionDomain,
     pub nonce: Felt,
+    pub proof_facts: Vec<Felt>,
+    pub proof: Vec<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]

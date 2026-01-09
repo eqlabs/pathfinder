@@ -11,12 +11,13 @@ pub mod request {
     use anyhow::Context;
     use pathfinder_common::prelude::*;
     use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBounds};
-    use pathfinder_common::TipHex;
+    use pathfinder_common::{ProofFactElem, TipHex};
     use serde::de::Error;
     use serde::Deserialize;
     use serde_with::serde_as;
 
     use crate::dto::U64Hex;
+    use crate::RpcVersion;
 
     /// A way of identifying a block in a JSON-RPC request.
     #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -1031,6 +1032,11 @@ pub mod request {
                     fee_data_availability_mode: value.deserialize("fee_data_availability_mode")?,
                     sender_address: value.deserialize("sender_address").map(ContractAddress)?,
                     calldata,
+                    proof_facts: value
+                        .deserialize_optional_array("proof_facts", |value| {
+                            value.deserialize().map(ProofFactElem)
+                        })?
+                        .unwrap_or_default(),
                 })),
                 _ => Err(serde_json::Error::custom("unknown transaction version")),
             }
@@ -1167,6 +1173,8 @@ pub mod request {
 
         pub sender_address: ContractAddress,
         pub calldata: Vec<CallParam>,
+
+        pub proof_facts: Vec<ProofFactElem>,
     }
 
     impl crate::dto::SerializeForVersion for BroadcastedInvokeTransactionV3 {
@@ -1192,6 +1200,13 @@ pub mod request {
             )?;
             serializer.serialize_field("sender_address", &self.sender_address)?;
             serializer.serialize_field("calldata", &self.calldata)?;
+
+            if serializer.version >= RpcVersion::V10 {
+                if !self.proof_facts.is_empty() {
+                    serializer.serialize_field("proof_facts", &self.proof_facts)?;
+                }
+            }
+
             serializer.end()
         }
     }
@@ -1221,6 +1236,11 @@ pub mod request {
                     calldata: value.deserialize_array("calldata", |value| {
                         value.deserialize().map(CallParam)
                     })?,
+                    proof_facts: value
+                        .deserialize_optional_array("proof_facts", |value| {
+                            value.deserialize().map(ProofFactElem)
+                        })?
+                        .unwrap_or_default(),
                 })
             })
         }
@@ -1340,6 +1360,7 @@ pub mod request {
                         paymaster_data: invoke.paymaster_data,
                         calldata: invoke.calldata,
                         account_deployment_data: invoke.account_deployment_data,
+                        proof_facts: invoke.proof_facts,
                     })
                 }
             };
@@ -1480,7 +1501,10 @@ pub mod request {
                                     max_amount: ResourceAmount(0),
                                     max_price_per_unit: ResourcePricePerUnit(0),
                                 },
-                                l1_data_gas: None,
+                                l1_data_gas: Some(ResourceBound {
+                                    max_amount: ResourceAmount(0),
+                                    max_price_per_unit: ResourcePricePerUnit(0),
+                                }),
                             },
                             tip: Tip(0x1234),
                             paymaster_data: vec![
@@ -1550,7 +1574,10 @@ pub mod request {
                                     max_amount: ResourceAmount(0),
                                     max_price_per_unit: ResourcePricePerUnit(0),
                                 },
-                                l1_data_gas: None,
+                                l1_data_gas: Some(ResourceBound {
+                                    max_amount: ResourceAmount(0),
+                                    max_price_per_unit: ResourcePricePerUnit(0),
+                                }),
                             },
                             tip: Tip(0x1234),
                             paymaster_data: vec![
@@ -1565,6 +1592,7 @@ pub mod request {
                             fee_data_availability_mode: DataAvailabilityMode::L2,
                             sender_address: contract_address!("0xaaa"),
                             calldata: vec![call_param!("0xff")],
+                            proof_facts: vec![proof_fact_elem!("0xabc"), proof_fact_elem!("0xdef")],
                         },
                     )),
                     BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction::V3(
@@ -1581,7 +1609,10 @@ pub mod request {
                                     max_amount: ResourceAmount(0),
                                     max_price_per_unit: ResourcePricePerUnit(0),
                                 },
-                                l1_data_gas: None,
+                                l1_data_gas: Some(ResourceBound {
+                                    max_amount: ResourceAmount(0),
+                                    max_price_per_unit: ResourcePricePerUnit(0),
+                                }),
                             },
                             tip: Tip(0x1234),
                             paymaster_data: vec![
@@ -1598,17 +1629,17 @@ pub mod request {
                 ];
 
                 let json_fixture_str =
-                    include_str!(concat!("../fixtures/0.6.0/broadcasted_transactions.json"));
+                    include_str!(concat!("../fixtures/0.10.0/broadcasted_transactions.json"));
                 let json_fixture: serde_json::Value =
                     serde_json::from_str(json_fixture_str).unwrap();
 
-                let serializer = crate::dto::Serializer::new(crate::RpcVersion::V07);
+                let serializer = crate::dto::Serializer::new(crate::RpcVersion::V10);
                 let serialized = serializer
                     .serialize_iter(txs.len(), &mut txs.clone().into_iter())
                     .unwrap();
                 assert_eq!(serialized, json_fixture);
                 assert_eq!(
-                    crate::dto::Value::new(json_fixture, crate::RpcVersion::V07)
+                    crate::dto::Value::new(json_fixture, crate::RpcVersion::V10)
                         .deserialize_array(
                             <BroadcastedTransaction as DeserializeForVersion>::deserialize
                         )

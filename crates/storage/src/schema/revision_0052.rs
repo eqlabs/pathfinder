@@ -951,6 +951,9 @@ mod dto {
                     account_deployment_data,
                     calldata,
                     sender_address,
+                    // There can be _no_ proof_facts in storage for invoke transactions before this
+                    // migration has been performed.
+                    proof_facts: _,
                 }) => Self::V0 {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::InvokeV3(self::InvokeTransactionV3 {
@@ -1310,6 +1313,7 @@ mod dto {
                             .collect(),
                         calldata: calldata.into_iter().map(|x| CallParam(x.into())).collect(),
                         sender_address: ContractAddress::new_or_panic(sender_address.into()),
+                        proof_facts: vec![],
                     },
                 ),
                 Transaction::V0 {
@@ -2154,6 +2158,9 @@ pub(crate) mod old_dto {
                     account_deployment_data,
                     calldata,
                     sender_address,
+                    // There can be _no_ proof_facts in storage for invoke transactions before this
+                    // migration has been performed.
+                    proof_facts: _,
                 }) => Self::Invoke(InvokeTransaction::V3(self::InvokeTransactionV3 {
                     nonce,
                     nonce_data_availability_mode: nonce_data_availability_mode.into(),
@@ -2420,6 +2427,7 @@ pub(crate) mod old_dto {
                         account_deployment_data,
                         calldata,
                         sender_address,
+                        proof_facts: vec![],
                     },
                 ),
                 Transaction::L1Handler(L1HandlerTransaction {

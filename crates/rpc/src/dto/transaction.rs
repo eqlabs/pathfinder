@@ -330,6 +330,15 @@ impl crate::dto::SerializeForVersion for Vec<pathfinder_common::PaymasterDataEle
     }
 }
 
+impl crate::dto::SerializeForVersion for Vec<pathfinder_common::ProofFactElem> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.len(), &mut self.iter())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use pathfinder_common::transaction::{ResourceBound, ResourceBounds};
@@ -754,6 +763,7 @@ mod tests {
                 tip: Tip(5),
                 paymaster_data: vec![],
                 account_deployment_data: vec![],
+                proof_facts: vec![],
             }
             .into();
             let uut = &Transaction {

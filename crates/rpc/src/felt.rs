@@ -22,6 +22,7 @@
 //! ```
 
 use pathfinder_common::prelude::*;
+use pathfinder_common::ProofFactElem;
 use pathfinder_crypto::Felt;
 
 /// An RPC specific wrapper around [Felt] which implements
@@ -188,6 +189,7 @@ rpc_felt_serde!(
     TransactionSignatureElem,
     PaymasterDataElem,
     AccountDeploymentDataElem,
+    ProofFactElem,
 );
 
 rpc_felt_251_serde!(ContractAddress, StorageAddress);

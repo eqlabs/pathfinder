@@ -1,10 +1,10 @@
 use pathfinder_storage::{
     DeclareTransactionV4,
     DeployAccountTransactionV4,
-    InvokeTransactionV4,
+    InvokeTransactionV5,
     L1HandlerTransactionV0,
     MinimalFelt,
-    TransactionV2,
+    TransactionV3,
 };
 use serde::{Deserialize, Serialize};
 
@@ -57,7 +57,7 @@ pub struct TransactionWithClass {
 pub enum TransactionVariantWithClass {
     Declare(DeclareTransactionWithClass),
     DeployAccount(DeployAccountTransactionV4),
-    Invoke(InvokeTransactionV4),
+    Invoke(InvokeTransactionV5),
     L1Handler(L1HandlerTransactionV0),
 }
 
@@ -97,7 +97,7 @@ pub enum PersistentConsensusFinalizedBlock {
 pub struct ConsensusFinalizedBlock {
     pub header: ConsensusFinalizedBlockHeader,
     pub state_update: StateUpdateData,
-    pub transactions_and_receipts: Vec<(TransactionV2, Receipt)>,
+    pub transactions_and_receipts: Vec<(TransactionV3, Receipt)>,
     pub events: Vec<Vec<pathfinder_common::event::Event>>,
 }
 
