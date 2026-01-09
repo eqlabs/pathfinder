@@ -560,9 +560,6 @@ pub fn spawn(
                         // all. I could get it to work with only the consensus database in all
                         // scenarios except for when the node is chosen as a proposer and needs
                         // to cache the proposal for later.
-                        //
-                        // TODO(consensus) consult sistemd about the above comments and align them
-                        // accordingly.
                         tracing::info!(
                             "🖧  💾 {validator_address} Finalizing and committing block at \
                              {height_and_round} to the database ...",
@@ -677,10 +674,10 @@ pub fn spawn(
                                 block_number,
                             )?;
 
-                            return Ok(success);
+                            Ok(success)
+                        } else {
+                            Ok(ComputationSuccess::Continue)
                         }
-
-                        Ok(ComputationSuccess::Continue)
                     }
                 }?;
 

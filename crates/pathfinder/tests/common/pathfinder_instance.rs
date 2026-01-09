@@ -1,6 +1,5 @@
 //! Utilities for spawning and managing Pathfinder instances.
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
@@ -8,7 +7,11 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
 use http::StatusCode;
+use p2p_proto::consensus::ProposalPart;
+use pathfinder_common::{ConsensusFinalizedL2Block, ContractAddress};
 use pathfinder_lib::config::integration_testing::InjectFailureConfig;
+use pathfinder_lib::consensus::ConsensusProposals;
+use pathfinder_storage::consensus::{open_consensus_storage, open_consensus_storage_readonly};
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -310,11 +313,32 @@ impl PathfinderInstance {
 
     /// Retrieve consensus database artifacts up to and including
     /// `up_to_height`.
-    pub fn consensus_db_artifacts(&self, up_to_height: u64) -> BTreeMap<u64, ()> {
-        let mut artifacts = BTreeMap::new();
+    pub fn consensus_db_artifacts(
+        &self,
+        up_to_height: u64,
+    ) -> Vec<(
+        u64,
+        (
+            Vec<(u32, ContractAddress, Vec<ProposalPart>)>,
+            Vec<(u32, bool, ConsensusFinalizedL2Block)>,
+        ),
+    )> {
+        let consensus_storage = open_consensus_storage_readonly(&self.db_dir).unwrap();
+        let mut conn = consensus_storage.connection().unwrap();
+        let tx = conn.transaction().unwrap();
+        let consensus_storage = ConsensusProposals::new(tx);
+
+        let mut artifacts = Vec::new();
 
         for height in 0..=up_to_height {
-            artifacts.insert(height, ());
+            let parts = consensus_storage.parts(height).unwrap();
+            let blocks = consensus_storage
+                .consensus_finalized_blocks(height)
+                .unwrap();
+
+            if !parts.is_empty() || !blocks.is_empty() {
+                artifacts.push((height, (parts, blocks)));
+            }
         }
 
         artifacts

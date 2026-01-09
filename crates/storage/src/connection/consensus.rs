@@ -55,6 +55,13 @@ pub fn open_consensus_storage(data_directory: &Path) -> anyhow::Result<Consensus
     Ok(consensus_storage)
 }
 
+pub fn open_consensus_storage_readonly(data_directory: &Path) -> anyhow::Result<ConsensusStorage> {
+    let storage_manager =
+        StorageBuilder::file(data_directory.join("consensus.sqlite")).readonly()?;
+    let consensus_storage = storage_manager.create_read_only_pool(NonZeroU32::new(5).unwrap())?;
+    Ok(ConsensusStorage(consensus_storage))
+}
+
 impl ConsensusStorage {
     pub fn in_tempdir() -> anyhow::Result<ConsensusStorage> {
         let storage = StorageBuilder::in_tempdir()?;
