@@ -56,15 +56,13 @@ where
 #[derive(Debug, Clone)]
 pub struct L1GasPriceSyncConfig {
     /// Number of historical blocks to fetch on startup.
-    /// Default: 100
+    /// Default: 10
     pub startup_blocks: u64,
 }
 
 impl Default for L1GasPriceSyncConfig {
     fn default() -> Self {
-        Self {
-            startup_blocks: 100,
-        }
+        Self { startup_blocks: 10 }
     }
 }
 
