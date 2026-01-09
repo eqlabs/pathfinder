@@ -4,11 +4,11 @@ use pathfinder_storage::{
     DataAvailabilityMode,
     DeclareTransactionV4,
     DeployAccountTransactionV4,
-    InvokeTransactionV4,
+    InvokeTransactionV5,
     L1HandlerTransactionV0,
     ResourceBound,
     ResourceBoundsV1,
-    TransactionV2,
+    TransactionV3,
 };
 
 use crate::consensus::inner::dto;
@@ -136,7 +136,7 @@ impl IntoModel<p2p_proto::transaction::DeployAccountV3> for DeployAccountTransac
     }
 }
 
-impl IntoModel<p2p_proto::transaction::InvokeV3> for InvokeTransactionV4 {
+impl IntoModel<p2p_proto::transaction::InvokeV3> for InvokeTransactionV5 {
     fn into_model(self) -> p2p_proto::transaction::InvokeV3 {
         p2p_proto::transaction::InvokeV3 {
             sender: p2p_proto::common::Address(self.sender_address.into()),
@@ -155,6 +155,9 @@ impl IntoModel<p2p_proto::transaction::InvokeV3> for InvokeTransactionV4 {
             nonce_data_availability_mode: self.nonce_data_availability_mode.into_model(),
             fee_data_availability_mode: self.fee_data_availability_mode.into_model(),
             nonce: self.nonce.into(),
+            proof_facts: self.proof_facts.into_iter().map(|e| e.into()).collect(),
+            // Proof is not stored in persistent storage.
+            proof: Default::default(),
         }
     }
 }
@@ -327,7 +330,7 @@ impl TryIntoDto<proto::TransactionVariant> for dto::TransactionVariantWithClass 
                 )
             }
             proto::TransactionVariant::InvokeV3(inv) => {
-                dto::TransactionVariantWithClass::Invoke(InvokeTransactionV4::try_into_dto(inv)?)
+                dto::TransactionVariantWithClass::Invoke(InvokeTransactionV5::try_into_dto(inv)?)
             }
             proto::TransactionVariant::L1HandlerV0(h) => {
                 dto::TransactionVariantWithClass::L1Handler(L1HandlerTransactionV0::try_into_dto(
@@ -393,9 +396,9 @@ impl TryIntoDto<p2p_proto::transaction::DeployAccountV3> for DeployAccountTransa
     }
 }
 
-impl TryIntoDto<p2p_proto::transaction::InvokeV3> for InvokeTransactionV4 {
-    fn try_into_dto(inv: p2p_proto::transaction::InvokeV3) -> anyhow::Result<InvokeTransactionV4> {
-        let res = InvokeTransactionV4 {
+impl TryIntoDto<p2p_proto::transaction::InvokeV3> for InvokeTransactionV5 {
+    fn try_into_dto(inv: p2p_proto::transaction::InvokeV3) -> anyhow::Result<InvokeTransactionV5> {
+        let res = InvokeTransactionV5 {
             signature: inv.signature.parts.into_iter().map(|e| e.into()).collect(),
             nonce: inv.nonce.into(),
             nonce_data_availability_mode: DataAvailabilityMode::try_into_dto(
@@ -414,6 +417,7 @@ impl TryIntoDto<p2p_proto::transaction::InvokeV3> for InvokeTransactionV4 {
                 .collect(),
             calldata: inv.calldata.into_iter().map(|e| e.into()).collect(),
             sender_address: inv.sender.0.into(),
+            proof_facts: inv.proof_facts.into_iter().map(|e| e.into()).collect(),
         };
         Ok(res)
     }
@@ -812,11 +816,11 @@ impl TryIntoDto<ConsensusFinalizedL2Block> for dto::ConsensusFinalizedBlock {
             transactions_and_receipts: transactions_and_receipts
                 .into_iter()
                 .map(|(tx, rcpt)| {
-                    let dtx = TransactionV2::from(&tx);
+                    let dtx = TransactionV3::from(&tx);
                     let drcpt = dto::Receipt::try_into_dto(rcpt)?;
                     anyhow::Ok((dtx, drcpt))
                 })
-                .collect::<Result<Vec<(TransactionV2, dto::Receipt)>, _>>()?,
+                .collect::<Result<Vec<(TransactionV3, dto::Receipt)>, _>>()?,
             events,
         };
         Ok(res)

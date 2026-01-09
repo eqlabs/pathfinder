@@ -56,6 +56,7 @@ use pathfinder_common::transaction::{
     Transaction,
     TransactionVariant,
 };
+use pathfinder_common::ProofFactElem;
 use pathfinder_crypto::Felt;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
@@ -286,6 +287,10 @@ impl ToDto<p2p_proto::sync::transaction::TransactionVariant> for TransactionVari
                     nonce_data_availability_mode: x.nonce_data_availability_mode.to_dto(),
                     fee_data_availability_mode: x.fee_data_availability_mode.to_dto(),
                     nonce: x.nonce.0,
+                    proof_facts: x.proof_facts.into_iter().map(|p| p.0).collect(),
+                    // Proofs are present only when adding new invoke v3 transactions, but are then
+                    // not stored as part of the chain.
+                    proof: vec![],
                 },
             ),
             L1Handler(x) => p2p_proto::sync::transaction::TransactionVariant::L1HandlerV0(
@@ -683,6 +688,7 @@ impl TryFromDto<p2p_proto::sync::transaction::TransactionVariant> for Transactio
                     .collect(),
                 calldata: x.calldata.into_iter().map(CallParam).collect(),
                 sender_address: ContractAddress(x.sender.0),
+                proof_facts: x.proof_facts.into_iter().map(ProofFactElem).collect(),
             }),
             L1HandlerV0(x) => Self::L1Handler(L1HandlerTransaction {
                 contract_address: ContractAddress(x.address.0),

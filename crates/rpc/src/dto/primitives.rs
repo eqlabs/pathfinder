@@ -808,6 +808,12 @@ mod pathfinder_common_types {
             serializer.serialize_str(&hex_str::bytes_to_hex_str_stripped(self.0.as_be_bytes()))
         }
     }
+
+    impl SerializeForVersion for &pathfinder_common::ProofFactElem {
+        fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
+            serializer.serialize_str(&hex_str::bytes_to_hex_str_stripped(self.0.as_be_bytes()))
+        }
+    }
 }
 
 #[cfg(test)]

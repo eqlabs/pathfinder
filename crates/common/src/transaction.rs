@@ -8,6 +8,7 @@ use crate::{
     felt_bytes,
     AccountDeploymentDataElem,
     PaymasterDataElem,
+    ProofFactElem,
     ResourceAmount,
     ResourcePricePerUnit,
     Tip,
@@ -372,6 +373,7 @@ pub struct InvokeTransactionV3 {
     pub account_deployment_data: Vec<AccountDeploymentDataElem>,
     pub calldata: Vec<CallParam>,
     pub sender_address: ContractAddress,
+    pub proof_facts: Vec<ProofFactElem>,
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Eq, Dummy)]

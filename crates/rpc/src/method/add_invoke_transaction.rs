@@ -90,6 +90,7 @@ impl Input {
                     fee_data_availability_mode: Default::default(),
                     sender_address: Default::default(),
                     calldata: Default::default(),
+                    proof_facts: Default::default(),
                 },
             )),
         }
@@ -297,6 +298,7 @@ pub(crate) async fn add_invoke_transaction_impl(
                 account_deployment_data: tx.account_deployment_data,
                 calldata: tx.calldata,
                 sender_address: tx.sender_address,
+                proof_facts: tx.proof_facts,
             };
             (
                 response.transaction_hash,
@@ -559,6 +561,7 @@ mod tests {
                 call_param!("0x276faadb842bfcbba834f3af948386a2eb694f7006e118ad6c80305791d3247"),
                 call_param!("0x613816405e6334ab420e53d4b38a0451cb2ebca2755171315958c87d303cf6"),
             ],
+            proof_facts: vec![],
         };
 
         let input = Input {
