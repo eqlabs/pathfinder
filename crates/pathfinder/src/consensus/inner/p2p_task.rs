@@ -354,14 +354,13 @@ pub fn spawn(
                                 //    following call will actually remove the finalized block for
                                 //    the last round at the height and run any deferred executions
                                 //    for the next height.
-                                // 2. An abnormal scenario where the FGw is ahead of consensus and
-                                //    somehow magically produces valid blocks. In this case the call
-                                //    has no effect. Why do we take this absurd scenario into
-                                //    account? Because consistency of our storage is more important
-                                //    than whatever irrational scenarios that reality can surprise
-                                //    us with. In this case consistency means not piling up useless
-                                //    data in the consensus db that we then don't ever purge. See
-                                //    how P2PTaskEvent::CommitBlock is handled for more details.
+                                // 2. A rare but still possible scenario where the FGw is ahead of
+                                //    consensus for some nodes due to low network latency and their
+                                //    consensus engines not notifying those nodes internally fast
+                                //    enough that the executed proposal has been decided upon. In
+                                //    such case the sync algo will choose to download the block from
+                                //    the FGw because supposedly the proposal has not been decided
+                                //    upon.
                                 let success = on_finalized_block_committed(
                                     validator_address,
                                     &validator_cache,
