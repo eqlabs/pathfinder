@@ -341,9 +341,9 @@ pub fn spawn(
 
                                 Ok(ComputationSuccess::Continue)
                             }
-                            // Sync confirms that the finalized block at given height has been
-                            // committed to storage.
-                            SyncMessageToConsensus::ConfirmFinalizedBlockCommitted { number } => {
+                            // Sync confirms that the block at given height has been committed to
+                            // storage.
+                            SyncMessageToConsensus::ConfirmBlockCommitted { number } => {
                                 tracing::trace!(
                                     %number, "🖧  📥 {validator_address} confirm finalized block committed"
                                 );
@@ -566,28 +566,29 @@ pub fn spawn(
                         );
                         let stopwatch = std::time::Instant::now();
 
-                        let block = proposals_db
-                            .read_consensus_finalized_block(
+                        let block: Option<pathfinder_common::ConsensusFinalizedL2Block> =
+                            proposals_db.read_consensus_finalized_block(
                                 height_and_round.height(),
                                 height_and_round.round(),
-                            )?
-                            // This will cause the p2p_task to exit which will in turn cause the
-                            // entire process to exit.
-                            .context(format!(
-                                "Consensus finalized block at {height_and_round} that is about to \
-                                 be committed should always be waiting in the consensus DB - \
-                                 logic error",
-                            ))?;
+                            )?;
 
-                        assert_eq!(
-                            value.0 .0, block.header.state_diff_commitment.0,
-                            "Proposal commitment mismatch"
-                        );
+                        // The block will not be in the consensus DB if it has already been
+                        // downloaded from the feeder gateway and committed to the main DB by the
+                        // sync task. This can happen in fast local testnets where the FGw is
+                        // sometimes serving blocks from the proposers faster than the consensus
+                        // engine internally notifies Pathfinder about a positive decision on the
+                        // executed proposal.
+                        if let Some(block) = block {
+                            assert_eq!(
+                                value.0 .0, block.header.state_diff_commitment.0,
+                                "Proposal commitment mismatch"
+                            );
 
-                        proposals_db.mark_consensus_finalized_block_as_decided(
-                            height_and_round.height(),
-                            height_and_round.round(),
-                        )?;
+                            proposals_db.mark_consensus_finalized_block_as_decided(
+                                height_and_round.height(),
+                                height_and_round.round(),
+                            )?;
+                        }
 
                         info_watch_tx.send_if_modified(|info| {
                             let do_update = match info.highest_decision {

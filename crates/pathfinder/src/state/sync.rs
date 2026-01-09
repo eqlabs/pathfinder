@@ -900,7 +900,12 @@ async fn consumer(
                         }
                     }
 
-                    (Some(Notification::L2Block(Arc::new(l2_block))), None)
+                    (
+                        Some(Notification::L2Block(Arc::new(l2_block))),
+                        Some(SyncMessageToConsensus::ConfirmBlockCommitted {
+                            number: block_number,
+                        }),
+                    )
                 }
                 FinalizedConsensusBlock {
                     l2_block,
@@ -933,7 +938,7 @@ async fn consumer(
 
                     (
                         Some(Notification::L2Block(Arc::new(l2_block))),
-                        Some(SyncMessageToConsensus::ConfirmFinalizedBlockCommitted { number }),
+                        Some(SyncMessageToConsensus::ConfirmBlockCommitted { number }),
                     )
                 }
                 Reorg(reorg_tail) => {
