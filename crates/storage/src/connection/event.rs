@@ -23,7 +23,7 @@ pub const PAGE_SIZE_LIMIT: usize = 1_024;
 pub struct EventConstraints {
     pub from_block: Option<BlockNumber>,
     pub to_block: Option<BlockNumber>,
-    pub contract_address: Option<ContractAddress>,
+    pub contract_addresses: Vec<ContractAddress>,
     pub keys: Vec<Vec<EventKey>>,
     pub page_size: usize,
     pub offset: usize,
@@ -156,7 +156,7 @@ impl Transaction<'_> {
         &self,
         from_block: BlockNumber,
         to_block: BlockNumber,
-        contract_address: Option<ContractAddress>,
+        contract_addresses: Vec<ContractAddress>,
         mut keys: Vec<Vec<EventKey>>,
     ) -> anyhow::Result<(Vec<EmittedEvent>, Option<BlockNumber>)> {
         let Some(latest_block) = self.block_number(BlockId::Latest)? else {
@@ -174,7 +174,7 @@ impl Transaction<'_> {
         }
 
         let constraints = EventConstraints {
-            contract_address,
+            contract_addresses,
             keys,
             page_size: usize::MAX - 1,
             ..Default::default()
@@ -214,9 +214,12 @@ impl Transaction<'_> {
                         .into_iter()
                         .zip(std::iter::repeat(tx_info).enumerate())
                 })
-                .filter(|(event, _)| match constraints.contract_address {
-                    Some(address) => event.from_address == address,
-                    None => true,
+                .filter(|(event, _)| {
+                    if constraints.contract_addresses.is_empty() {
+                        true
+                    } else {
+                        constraints.contract_addresses.contains(&event.from_address)
+                    }
                 })
                 .filter(|(event, _)| {
                     if no_key_constraints {
@@ -348,9 +351,12 @@ impl Transaction<'_> {
                         .into_iter()
                         .zip(std::iter::repeat(tx_info).enumerate())
                 })
-                .filter(|(event, _)| match constraints.contract_address {
-                    Some(address) => event.from_address == address,
-                    None => true,
+                .filter(|(event, _)| {
+                    if constraints.contract_addresses.is_empty() {
+                        true
+                    } else {
+                        constraints.contract_addresses.contains(&event.from_address)
+                    }
                 })
                 .filter(|(event, _)| {
                     if no_key_constraints {
@@ -528,7 +534,7 @@ impl Transaction<'_> {
 impl AggregateBloom {
     /// Returns the block numbers that match the given constraints.
     pub fn check(&self, constraints: &EventConstraints) -> Vec<BlockNumber> {
-        let addr_blocks = self.check_address(constraints.contract_address);
+        let addr_blocks = self.check_addresses(&constraints.contract_addresses);
         let keys_blocks = self.check_keys(&constraints.keys);
 
         let block_matches = addr_blocks & keys_blocks;
@@ -539,10 +545,13 @@ impl AggregateBloom {
             .collect()
     }
 
-    fn check_address(&self, address: Option<ContractAddress>) -> BlockRange {
-        match address {
-            Some(addr) => self.blocks_for_keys(&[addr.0]),
-            None => BlockRange::FULL,
+    fn check_addresses(&self, addresses: &[ContractAddress]) -> BlockRange {
+        if addresses.is_empty() {
+            BlockRange::FULL
+        } else {
+            let contracts: Vec<pathfinder_crypto::Felt> =
+                addresses.iter().map(|addr| addr.0).collect();
+            self.blocks_for_keys(&contracts)
         }
     }
 
@@ -843,6 +852,11 @@ mod tests {
 
         use super::*;
 
+        fn make_contract_address_constraint(addr: &str) -> Vec<ContractAddress> {
+            let f = Felt::from_hex_str(addr).expect("test address to be valid");
+            vec![ContractAddress(f)]
+        }
+
         #[test]
         fn matching_constraints() {
             let mut aggregate = AggregateBloom::new(BlockNumber::GENESIS);
@@ -856,7 +870,34 @@ mod tests {
             let constraints = EventConstraints {
                 from_block: None,
                 to_block: None,
-                contract_address: Some(contract_address!("0x1234")),
+                contract_addresses: make_contract_address_constraint("0x1234"),
+                keys: vec![vec![event_key!("0xdeadbeef")]],
+                page_size: 1024,
+                offset: 0,
+            };
+
+            assert_eq!(
+                aggregate.check(&constraints),
+                vec![BlockNumber::GENESIS, BlockNumber::GENESIS + 1]
+            );
+        }
+
+        #[test]
+        fn extra_address() {
+            let mut aggregate = AggregateBloom::new(BlockNumber::GENESIS);
+
+            let mut filter = BloomFilter::new();
+            filter.set_keys(&[event_key!("0xdeadbeef")]);
+            filter.set_address(&contract_address!("0x1234"));
+
+            aggregate.insert(filter.clone(), BlockNumber::GENESIS);
+            aggregate.insert(filter, BlockNumber::GENESIS + 1);
+            let contract_addresses =
+                vec![contract_address!("0x123456"), contract_address!("0x1234")];
+            let constraints = EventConstraints {
+                from_block: None,
+                to_block: None,
+                contract_addresses,
                 keys: vec![vec![event_key!("0xdeadbeef")]],
                 page_size: 1024,
                 offset: 0,
@@ -881,7 +922,7 @@ mod tests {
             let constraints = EventConstraints {
                 from_block: None,
                 to_block: None,
-                contract_address: Some(contract_address!("0x4321")),
+                contract_addresses: make_contract_address_constraint("0x4321"),
                 keys: vec![vec![event_key!("0xdeadbeef")]],
                 page_size: 1024,
                 offset: 0,
@@ -903,7 +944,7 @@ mod tests {
             let constraints = EventConstraints {
                 from_block: None,
                 to_block: None,
-                contract_address: Some(contract_address!("0x1234")),
+                contract_addresses: make_contract_address_constraint("0x1234"),
                 keys: vec![vec![event_key!("0xfeebdaed"), event_key!("0x4321")]],
                 page_size: 1024,
                 offset: 0,
@@ -925,7 +966,7 @@ mod tests {
             let constraints = EventConstraints {
                 from_block: None,
                 to_block: None,
-                contract_address: None,
+                contract_addresses: vec![],
                 keys: vec![
                     // Key present in both blocks as the first key.
                     vec![event_key!("0xdeadbeef")],
@@ -958,7 +999,7 @@ mod tests {
             let constraints = EventConstraints {
                 from_block: None,
                 to_block: None,
-                contract_address: None,
+                contract_addresses: vec![],
                 keys: vec![],
                 page_size: 1024,
                 offset: 0,
@@ -979,7 +1020,7 @@ mod tests {
         let constraints = EventConstraints {
             from_block: Some(expected_event.block_number),
             to_block: Some(expected_event.block_number),
-            contract_address: Some(expected_event.from_address),
+            contract_addresses: vec![expected_event.from_address],
             // We're using a key which is present in _all_ events as the 2nd key.
             keys: vec![vec![], vec![event_key!("0xdeadbeef")]],
             page_size: test_utils::NUM_EVENTS,
@@ -1085,7 +1126,7 @@ mod tests {
                 &EventConstraints {
                     from_block: None,
                     to_block: None,
-                    contract_address: None,
+                    contract_addresses: vec![],
                     keys: vec![],
                     page_size: 1024,
                     offset: 0,
@@ -1117,7 +1158,7 @@ mod tests {
         let constraints = EventConstraints {
             from_block: Some(BlockNumber::new_or_panic(BLOCK_NUMBER as u64)),
             to_block: Some(BlockNumber::new_or_panic(BLOCK_NUMBER as u64)),
-            contract_address: None,
+            contract_addresses: vec![],
             keys: vec![],
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
@@ -1148,7 +1189,7 @@ mod tests {
         let constraints = EventConstraints {
             from_block: None,
             to_block: Some(BlockNumber::new_or_panic(UNTIL_BLOCK_NUMBER as u64)),
-            contract_address: None,
+            contract_addresses: vec![],
             keys: vec![],
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
@@ -1178,7 +1219,7 @@ mod tests {
         let constraints = EventConstraints {
             from_block: None,
             to_block: Some(BlockNumber::new_or_panic(1)),
-            contract_address: None,
+            contract_addresses: vec![],
             keys: vec![],
             page_size: test_utils::EVENTS_PER_BLOCK + 1,
             offset: 0,
@@ -1203,7 +1244,7 @@ mod tests {
         let constraints = EventConstraints {
             from_block: Some(events.continuation_token.unwrap().block_number),
             to_block: Some(BlockNumber::new_or_panic(1)),
-            contract_address: None,
+            contract_addresses: vec![],
             keys: vec![],
             page_size: test_utils::EVENTS_PER_BLOCK + 1,
             offset: events.continuation_token.unwrap().offset,
@@ -1234,7 +1275,7 @@ mod tests {
         let constraints = EventConstraints {
             from_block: Some(BlockNumber::new_or_panic(FROM_BLOCK_NUMBER as u64)),
             to_block: None,
-            contract_address: None,
+            contract_addresses: vec![],
             keys: vec![],
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
@@ -1265,7 +1306,7 @@ mod tests {
         let constraints = EventConstraints {
             from_block: None,
             to_block: None,
-            contract_address: Some(expected_event.from_address),
+            contract_addresses: vec![expected_event.from_address],
             keys: vec![],
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
@@ -1294,7 +1335,7 @@ mod tests {
         let constraints = EventConstraints {
             from_block: None,
             to_block: None,
-            contract_address: None,
+            contract_addresses: vec![],
             keys: vec![vec![expected_event.keys[0]], vec![expected_event.keys[1]]],
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
@@ -1339,7 +1380,7 @@ mod tests {
         let constraints = EventConstraints {
             from_block: None,
             to_block: None,
-            contract_address: None,
+            contract_addresses: vec![],
             keys: vec![],
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
@@ -1367,7 +1408,7 @@ mod tests {
         let constraints = EventConstraints {
             from_block: None,
             to_block: None,
-            contract_address: None,
+            contract_addresses: vec![],
             keys: vec![],
             page_size: 10,
             offset: 0,
@@ -1390,7 +1431,7 @@ mod tests {
         let constraints = EventConstraints {
             from_block: None,
             to_block: None,
-            contract_address: None,
+            contract_addresses: vec![],
             keys: vec![],
             page_size: 10,
             offset: 10,
@@ -1413,7 +1454,7 @@ mod tests {
         let constraints = EventConstraints {
             from_block: None,
             to_block: None,
-            contract_address: None,
+            contract_addresses: vec![],
             keys: vec![],
             page_size: 10,
             offset: 30,
@@ -1441,7 +1482,7 @@ mod tests {
         let constraints = EventConstraints {
             from_block: None,
             to_block: None,
-            contract_address: None,
+            contract_addresses: vec![],
             keys: vec![],
             page_size: PAGE_SIZE,
             // _after_ the last one
@@ -1476,7 +1517,7 @@ mod tests {
         let constraints = EventConstraints {
             from_block: None,
             to_block: None,
-            contract_address: None,
+            contract_addresses: vec![],
             keys: keys_for_expected_events.clone(),
             page_size: 2,
             offset: 0,
@@ -1500,7 +1541,7 @@ mod tests {
         let constraints: EventConstraints = EventConstraints {
             from_block: None,
             to_block: None,
-            contract_address: None,
+            contract_addresses: vec![],
             keys: keys_for_expected_events.clone(),
             page_size: 2,
             offset: 2,
@@ -1524,7 +1565,7 @@ mod tests {
         let constraints: EventConstraints = EventConstraints {
             from_block: Some(BlockNumber::new_or_panic(0)),
             to_block: None,
-            contract_address: None,
+            contract_addresses: vec![],
             keys: keys_for_expected_events.clone(),
             page_size: 2,
             offset: 2,
@@ -1548,7 +1589,7 @@ mod tests {
         let constraints = EventConstraints {
             from_block: None,
             to_block: None,
-            contract_address: None,
+            contract_addresses: vec![],
             keys: keys_for_expected_events.clone(),
             page_size: 2,
             offset: 4,
@@ -1569,7 +1610,7 @@ mod tests {
         let constraints = EventConstraints {
             from_block: Some(BlockNumber::new_or_panic(3)),
             to_block: None,
-            contract_address: None,
+            contract_addresses: vec![],
             keys: keys_for_expected_events,
             page_size: 2,
             offset: 1,
@@ -1618,7 +1659,7 @@ mod tests {
         let constraints = EventConstraints {
             from_block: None,
             to_block: None,
-            contract_address: None,
+            contract_addresses: vec![],
             // We're using a key which is present in _all_ events as the 2nd key.
             keys: vec![vec![], vec![event_key!("0xdeadbeef")]],
             page_size: emitted_events.len(),
@@ -1652,7 +1693,7 @@ mod tests {
         let constraints = EventConstraints {
             from_block: None,
             to_block: None,
-            contract_address: None,
+            contract_addresses: vec![],
             // We're using a key which is present in _all_ events as the 2nd key...
             keys: vec![vec![], vec![event_key!("0xdeadbeef")]],
             page_size: emitted_events.len(),
@@ -1678,7 +1719,7 @@ mod tests {
             // Use the provided continuation token.
             from_block: Some(events.continuation_token.unwrap().block_number),
             to_block: None,
-            contract_address: None,
+            contract_addresses: vec![],
             // We're using a key which is present in _all_ events as the 2nd key...
             keys: vec![vec![], vec![event_key!("0xdeadbeef")]],
             page_size: emitted_events.len(),
@@ -1754,7 +1795,7 @@ mod tests {
         let constraints = EventConstraints {
             from_block: Some(BlockNumber::new_or_panic(u64::try_from(from_block).unwrap())),
             to_block: Some(BlockNumber::new_or_panic(u64::try_from(to_block).unwrap())),
-            contract_address: None,
+            contract_addresses: vec![],
             keys: vec![],
             page_size: emitted_events.len(),
             offset: 0,

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::str::FromStr;
 
 use anyhow::Context;
@@ -65,20 +66,41 @@ impl crate::dto::DeserializeForVersion for GetEventsInput {
 pub struct EventFilter {
     pub from_block: Option<BlockId>,
     pub to_block: Option<BlockId>,
-    pub address: Option<ContractAddress>,
+    pub addresses: HashSet<ContractAddress>,
     pub keys: Vec<Vec<EventKey>>,
     pub chunk_size: usize,
     /// Offset, measured in events, which points to the requested chunk
     pub continuation_token: Option<String>,
 }
 
+impl EventFilter {
+    fn get_addresses(&self) -> Vec<ContractAddress> {
+        self.addresses.iter().cloned().collect()
+    }
+}
+
 impl crate::dto::DeserializeForVersion for EventFilter {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let version = value.version;
         value.deserialize_map(|value| {
+            let raw_addresses = if version >= RpcVersion::V10 {
+                match value.deserialize_optional_array("address", |v| v.deserialize()) {
+                    Ok(opt_addresses) => opt_addresses.unwrap_or_default(),
+                    Err(_) => vec![value.deserialize("address")?],
+                }
+            } else {
+                let mut opt_address = vec![];
+                if let Some(addr) = value.deserialize_optional("address")? {
+                    opt_address.push(addr);
+                }
+
+                opt_address
+            };
+
             Ok(Self {
                 from_block: value.deserialize_optional("from_block")?,
                 to_block: value.deserialize_optional("to_block")?,
-                address: value.deserialize_optional("address")?.map(ContractAddress),
+                addresses: HashSet::from_iter(raw_addresses.into_iter().map(ContractAddress)),
                 keys: value
                     .deserialize_optional_array("keys", |value| {
                         value.deserialize_array(|value| value.deserialize().map(EventKey))
@@ -184,7 +206,7 @@ pub async fn get_events(
                         &pending,
                         request.chunk_size,
                         &request.keys,
-                        &request.address,
+                        &request.addresses,
                         request_ct,
                     )?;
                     return Ok(GetEventsResult {
@@ -235,7 +257,7 @@ pub async fn get_events(
         let constraints = pathfinder_storage::EventConstraints {
             from_block,
             to_block,
-            contract_address: request.address,
+            contract_addresses: request.get_addresses(),
             keys: request.keys.clone(),
             page_size: request.chunk_size,
             offset: requested_offset,
@@ -268,7 +290,7 @@ pub async fn get_events(
                     &pending,
                     amount_to_take_from_pending,
                     &request.keys,
-                    &request.address,
+                    &request.addresses,
                     request_ct,
                 )?;
                 events.extend(pending_events);
@@ -309,7 +331,7 @@ fn get_pending_events(
     pending: &PendingData,
     max_amount: usize,
     keys: &[Vec<EventKey>],
-    address: &Option<ContractAddress>,
+    addresses: &HashSet<ContractAddress>,
     continuation_token: Option<ContinuationToken>,
 ) -> Result<(Vec<EmittedEvent>, Option<ContinuationToken>), GetEventsError> {
     let keys: Vec<std::collections::HashSet<_>> = keys
@@ -346,7 +368,7 @@ fn get_pending_events(
                 start_offset,
                 max_amount,
                 &keys,
-                address,
+                addresses,
             );
 
             let taken_from_pre_latest = events.len();
@@ -380,7 +402,7 @@ fn get_pending_events(
                 0,
                 amount_to_take,
                 &keys,
-                address,
+                addresses,
             );
 
             if pending_events_exhausted {
@@ -403,7 +425,7 @@ fn get_pending_events(
                 start_offset,
                 max_amount,
                 &keys,
-                address,
+                addresses,
             );
 
             if pending_events_exhausted {
@@ -512,7 +534,7 @@ fn match_and_fill_events(
     skip: usize,
     max_amount: usize,
     keys: &[std::collections::HashSet<EventKey>],
-    address: &Option<ContractAddress>,
+    addresses: &HashSet<ContractAddress>,
 ) -> bool {
     let original_len = dst.len();
 
@@ -526,9 +548,12 @@ fn match_and_fill_events(
                     .enumerate(),
             )
         })
-        .filter(|(event, _)| match address {
-            Some(address) => &event.from_address == address,
-            None => true,
+        .filter(|(event, _)| {
+            if addresses.is_empty() {
+                true
+            } else {
+                addresses.contains(&event.from_address)
+            }
         })
         .filter(|(event, _)| {
             if key_filter_is_empty {
@@ -688,6 +713,7 @@ impl SerializeForVersion for GetEventsResult {
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_crypto::Felt;
     use pathfinder_storage::test_utils;
     use pretty_assertions_sorted::assert_eq;
     use serde_json::json;
@@ -695,6 +721,17 @@ mod tests {
     use super::{EmittedEvent, GetEventsResult, *};
     use crate::dto::DeserializeForVersion;
     use crate::RpcVersion;
+
+    fn make_contract_address_filter(addr: &str) -> HashSet<ContractAddress> {
+        let f = Felt::from_hex_str(addr).expect("test address to be valid");
+        wrap_contract_address_filter(ContractAddress(f))
+    }
+
+    fn wrap_contract_address_filter(addr: ContractAddress) -> HashSet<ContractAddress> {
+        let mut hs = HashSet::new();
+        hs.insert(addr);
+        hs
+    }
 
     #[rstest::rstest]
     #[case::positional_with_optionals(json!([{
@@ -719,7 +756,7 @@ mod tests {
             EventFilter {
                 from_block: Some(BlockId::Number(BlockNumber::new_or_panic(0))),
                 to_block: Some(BlockId::Latest),
-                address: Some(contract_address!("0x1")),
+                addresses: make_contract_address_filter("0x1"),
                 keys: vec![vec![event_key!("0x2")], vec![]],
                 chunk_size: 3,
                 continuation_token: Some("4".to_string()),
@@ -734,6 +771,31 @@ mod tests {
 
         let input =
             GetEventsInput::deserialize(crate::dto::Value::new(input, RpcVersion::V07)).unwrap();
+        assert_eq!(input, expected);
+    }
+
+    #[rstest::rstest]
+    #[case::positional(json!([{
+        "address": ["0x10", "0x20"],
+        "chunk_size": 5
+    }]))]
+    #[case::named(json!({"filter":{
+        "address": ["0x20", "0x10"],
+        "chunk_size": 5
+    }}))]
+    fn parsing_multiple_addresses(#[case] input: serde_json::Value) {
+        let mut addresses = HashSet::new();
+        addresses.insert(contract_address!("0x10"));
+        addresses.insert(contract_address!("0x20"));
+        let filter = EventFilter {
+            addresses,
+            chunk_size: 5,
+            ..Default::default()
+        };
+        let expected = GetEventsInput { filter };
+
+        let input =
+            GetEventsInput::deserialize(crate::dto::Value::new(input, RpcVersion::V10)).unwrap();
         assert_eq!(input, expected);
     }
 
@@ -824,7 +886,7 @@ mod tests {
             filter: EventFilter {
                 from_block: Some(expected_event.block_number.unwrap().into()),
                 to_block: Some(expected_event.block_number.unwrap().into()),
-                address: Some(expected_event.from_address),
+                addresses: wrap_contract_address_filter(expected_event.from_address),
                 // we're using a key which is present in _all_ events
                 keys: vec![vec![], vec![event_key!("0xdeadbeef")]],
                 chunk_size: test_utils::NUM_EVENTS,
@@ -1317,7 +1379,7 @@ mod tests {
                 filter: EventFilter {
                     from_block: None,
                     to_block: Some(BlockId::Pending),
-                    address: None,
+                    addresses: HashSet::new(),
                     keys: vec![vec![
                         event_key_bytes!(b"event 0 key"),
                         event_key_bytes!(b"pending key 2"),
@@ -1350,7 +1412,7 @@ mod tests {
                 filter: EventFilter {
                     from_block: Some(BlockId::Pending),
                     to_block: Some(BlockId::Pending),
-                    address: None,
+                    addresses: HashSet::new(),
                     keys: vec![],
                     chunk_size: 1024,
                     continuation_token: None,
