@@ -1200,11 +1200,13 @@ pub mod request {
             )?;
             serializer.serialize_field("sender_address", &self.sender_address)?;
             serializer.serialize_field("calldata", &self.calldata)?;
+
             if serializer.version >= RpcVersion::V10 {
                 if !self.proof_facts.is_empty() {
                     serializer.serialize_field("proof_facts", &self.proof_facts)?;
                 }
             }
+
             serializer.end()
         }
     }
@@ -1499,7 +1501,10 @@ pub mod request {
                                     max_amount: ResourceAmount(0),
                                     max_price_per_unit: ResourcePricePerUnit(0),
                                 },
-                                l1_data_gas: None,
+                                l1_data_gas: Some(ResourceBound {
+                                    max_amount: ResourceAmount(0),
+                                    max_price_per_unit: ResourcePricePerUnit(0),
+                                }),
                             },
                             tip: Tip(0x1234),
                             paymaster_data: vec![
@@ -1569,7 +1574,10 @@ pub mod request {
                                     max_amount: ResourceAmount(0),
                                     max_price_per_unit: ResourcePricePerUnit(0),
                                 },
-                                l1_data_gas: None,
+                                l1_data_gas: Some(ResourceBound {
+                                    max_amount: ResourceAmount(0),
+                                    max_price_per_unit: ResourcePricePerUnit(0),
+                                }),
                             },
                             tip: Tip(0x1234),
                             paymaster_data: vec![
@@ -1601,7 +1609,10 @@ pub mod request {
                                     max_amount: ResourceAmount(0),
                                     max_price_per_unit: ResourcePricePerUnit(0),
                                 },
-                                l1_data_gas: None,
+                                l1_data_gas: Some(ResourceBound {
+                                    max_amount: ResourceAmount(0),
+                                    max_price_per_unit: ResourcePricePerUnit(0),
+                                }),
                             },
                             tip: Tip(0x1234),
                             paymaster_data: vec![
@@ -1618,17 +1629,17 @@ pub mod request {
                 ];
 
                 let json_fixture_str =
-                    include_str!(concat!("../fixtures/0.6.0/broadcasted_transactions.json"));
+                    include_str!(concat!("../fixtures/0.10.0/broadcasted_transactions.json"));
                 let json_fixture: serde_json::Value =
                     serde_json::from_str(json_fixture_str).unwrap();
 
-                let serializer = crate::dto::Serializer::new(crate::RpcVersion::V07);
+                let serializer = crate::dto::Serializer::new(crate::RpcVersion::V10);
                 let serialized = serializer
                     .serialize_iter(txs.len(), &mut txs.clone().into_iter())
                     .unwrap();
                 assert_eq!(serialized, json_fixture);
                 assert_eq!(
-                    crate::dto::Value::new(json_fixture, crate::RpcVersion::V07)
+                    crate::dto::Value::new(json_fixture, crate::RpcVersion::V10)
                         .deserialize_array(
                             <BroadcastedTransaction as DeserializeForVersion>::deserialize
                         )

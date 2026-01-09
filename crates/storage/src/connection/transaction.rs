@@ -3335,7 +3335,7 @@ mod tests {
                     tip: pathfinder_common::Tip(0xdeadbeefu64),
                     paymaster_data: vec![paymaster_data_elem_bytes!(b"invoke v3 paymaster data 0")],
                     account_deployment_data: vec![account_deployment_data_elem_bytes!(
-                        b"invoke v3 account deployment data 0"
+                        b"invoke v3 account deployment 0"
                     )],
                     proof_facts: vec![
                         proof_fact_elem_bytes!(b"invoke v3 proof fact 0"),

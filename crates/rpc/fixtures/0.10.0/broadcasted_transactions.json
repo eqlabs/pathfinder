@@ -65,6 +65,10 @@
         ],
         "nonce": "0x81",
         "resource_bounds": {
+            "l1_data_gas": {
+                "max_amount": "0x0",
+                "max_price_per_unit": "0x0"
+            },
             "l1_gas": {
                 "max_amount": "0x1111",
                 "max_price_per_unit": "0x2222"
@@ -150,6 +154,10 @@
         ],
         "nonce": "0x8",
         "resource_bounds": {
+            "l1_data_gas": {
+                "max_amount": "0x0",
+                "max_price_per_unit": "0x0"
+            },
             "l1_gas": {
                 "max_amount": "0x1111",
                 "max_price_per_unit": "0x2222"
@@ -173,6 +181,10 @@
         "sender_address": "0xaaa",
         "calldata": [
             "0xff"
+        ],
+        "proof_facts": [
+            "0xabc",
+            "0xdef"
         ]
     },
     {
@@ -183,6 +195,10 @@
         ],
         "nonce": "0x8",
         "resource_bounds": {
+            "l1_data_gas": {
+                "max_amount": "0x0",
+                "max_price_per_unit": "0x0"
+            },
             "l1_gas": {
                 "max_amount": "0x1111",
                 "max_price_per_unit": "0x2222"
