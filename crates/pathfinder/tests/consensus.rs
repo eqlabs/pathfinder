@@ -260,19 +260,12 @@ mod test {
         join_result
     }
 
-    /// A slightly different failure scenario from [consensus_3_nodes]. We are
-    /// not causing the process to exit but instead forcing nodes to send
-    /// outdated votes which leads to them being punished by their peers
-    /// (via peer score penalties).
-    #[rstest]
-    #[ignore = "We need a custom fgw to actually test consensus ahead of fgw"]
-    #[case::consensus_ahead_of_fgw(true)]
-    #[ignore = "It's flaky, fix it"]
-    #[case::fgw_ahead_of_consensus(false)]
+    /// A slightly different failure scenario from
+    /// [consensus_3_nodes_with_failures]. We are not causing the process to
+    /// exit but instead forcing nodes to send outdated votes which leads to
+    /// them being punished by their peers (via peer score penalties).
     #[tokio::test]
-    async fn consensus_3_nodes_outdated_votes_lead_to_peer_score_changes(
-        #[case] consensus_ahead_of_fgw: bool,
-    ) {
+    async fn consensus_3_nodes_outdated_votes_lead_to_peer_score_changes() {
         const NUM_NODES: usize = 3;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
         const TEST_TIMEOUT: Duration = Duration::from_secs(60);
@@ -282,6 +275,10 @@ mod test {
         const LAST_VALID_HEIGHT: u64 = 6;
 
         let (configs, stopwatch) = utils::setup(NUM_NODES).unwrap();
+
+        let alice_cfg = configs.first().unwrap();
+        let mut fgw = FeederGateway::spawn(alice_cfg).unwrap();
+        fgw.wait_for_ready(POLL_READY, READY_TIMEOUT).await.unwrap();
 
         let inject_failure = InjectFailureConfig {
             // Starting from this height..
@@ -293,6 +290,7 @@ mod test {
         // at LAST_VALID_HEIGHT + 1 and the other two will be the sabotaging nodes.
         let mut configs = configs.into_iter().map(|cfg| {
             cfg.with_inject_failure(Some(inject_failure))
+                .with_local_feeder_gateway(fgw.port())
                 .with_sync_enabled()
         });
 
@@ -318,30 +316,37 @@ mod test {
 
         utils::log_elapsed(stopwatch);
 
-        if consensus_ahead_of_fgw {
-            // Wait until all three nodes reach `LAST_VALID_HEIGHT`..
-            let alice_client = wait_for_height(&alice, LAST_VALID_HEIGHT, POLL_HEIGHT);
-            let bob_client = wait_for_height(&bob, LAST_VALID_HEIGHT, POLL_HEIGHT);
-            let charlie_client = wait_for_height(&charlie, LAST_VALID_HEIGHT, POLL_HEIGHT);
+        // Wait until all three nodes reach `LAST_VALID_HEIGHT`..
+        let alice_decided = wait_for_height(&alice, LAST_VALID_HEIGHT, POLL_HEIGHT);
+        let bob_decided = wait_for_height(&bob, LAST_VALID_HEIGHT, POLL_HEIGHT);
+        let charlie_decided = wait_for_height(&charlie, LAST_VALID_HEIGHT, POLL_HEIGHT);
+        let alice_committed = wait_for_block_exists(&alice, LAST_VALID_HEIGHT, POLL_HEIGHT);
+        let bob_committed = wait_for_block_exists(&bob, LAST_VALID_HEIGHT, POLL_HEIGHT);
+        let charlie_committed = wait_for_block_exists(&charlie, LAST_VALID_HEIGHT, POLL_HEIGHT);
 
-            utils::join_all(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT)
-                .await
-                .unwrap();
-        } else {
-            // Sync will keep on downloading blocks from sepolia and consensus
-            // will just stall at H=0, which we don't really care about as much
-            // as we care about one of the nodes getting a penalty.
-        }
+        utils::join_all(
+            vec![
+                alice_decided,
+                bob_decided,
+                charlie_decided,
+                alice_committed,
+                bob_committed,
+                charlie_committed,
+            ],
+            TEST_TIMEOUT,
+        )
+        .await
+        .unwrap();
 
         // ..then wait a bit more for the next height, which should never become decided
         // upon because one of the nodes is sabotaging the consensus network (sending
         // outdated votes) and getting punished by the other two nodes.
-        let alice_client = wait_for_height(&alice, LAST_VALID_HEIGHT + 1, POLL_HEIGHT);
-        let bob_client = wait_for_height(&bob, LAST_VALID_HEIGHT + 1, POLL_HEIGHT);
-        let charlie_client = wait_for_height(&charlie, LAST_VALID_HEIGHT + 1, POLL_HEIGHT);
+        let alice_decided = wait_for_height(&alice, LAST_VALID_HEIGHT + 1, POLL_HEIGHT);
+        let bob_decided = wait_for_height(&bob, LAST_VALID_HEIGHT + 1, POLL_HEIGHT);
+        let charlie_decided = wait_for_height(&charlie, LAST_VALID_HEIGHT + 1, POLL_HEIGHT);
 
         let err = utils::join_all(
-            vec![alice_client, bob_client, charlie_client],
+            vec![alice_decided, bob_decided, charlie_decided],
             POLL_HEIGHT * 10,
         )
         .await
