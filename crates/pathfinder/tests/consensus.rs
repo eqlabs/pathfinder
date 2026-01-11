@@ -363,6 +363,24 @@ mod test {
                 || charlie_peer_score_changes > 0,
             "At least one node should have changed peer scores after punishing the sabotaging node"
         );
+
+        let alice_artifacts = alice.consensus_db_artifacts(LAST_VALID_HEIGHT);
+        assert!(
+            alice_artifacts.is_empty(),
+            "Alice should not have leftover consensus data: {alice_artifacts:#?}"
+        );
+
+        let bob_artifacts = bob.consensus_db_artifacts(LAST_VALID_HEIGHT);
+        assert!(
+            bob_artifacts.is_empty(),
+            "Bob should not have leftover consensus data: {bob_artifacts:#?}"
+        );
+
+        let charlie_artifacts = charlie.consensus_db_artifacts(LAST_VALID_HEIGHT);
+        assert!(
+            charlie_artifacts.is_empty(),
+            "Charlie should not have leftover consensus data: {charlie_artifacts:#?}"
+        );
     }
 
     async fn get_peer_score_changes(instance: &PathfinderInstance) -> anyhow::Result<u64> {
