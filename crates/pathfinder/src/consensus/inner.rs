@@ -9,6 +9,13 @@ mod integration_testing;
 mod p2p_task;
 mod persist_proposals;
 
+#[cfg(all(
+    feature = "p2p",
+    feature = "consensus-integration-tests",
+    debug_assertions
+))]
+pub use persist_proposals::ConsensusProposals;
+
 #[cfg(test)]
 mod test_helpers;
 

@@ -633,7 +633,7 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
         // for H=1, and then confirms committing the block with
         // SyncMessageToConsensus::ConfirmFinalizedBlockCommitted
         env.tx_sync_to_consensus
-            .send(SyncMessageToConsensus::ConfirmFinalizedBlockCommitted {
+            .send(SyncMessageToConsensus::ConfirmBlockCommitted {
                 number: BlockNumber::new_or_panic(1),
             })
             .await
