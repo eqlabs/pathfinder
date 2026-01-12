@@ -397,6 +397,7 @@ mod tests {
                 nonce_data_availability_mode: DataAvailabilityMode::L1,
                 fee_data_availability_mode: DataAvailabilityMode::L1,
                 proof_facts: vec![],
+                proof: vec![],
             },
         ))
     }
@@ -702,6 +703,7 @@ mod tests {
                     call_param!("0x0"),
                 ],
                 proof_facts: vec![],
+                proof: vec![],
             },
         ))
     }
@@ -752,6 +754,7 @@ mod tests {
                 nonce_data_availability_mode: DataAvailabilityMode::L2,
                 fee_data_availability_mode: DataAvailabilityMode::L2,
                 proof_facts: vec![],
+                proof: vec![],
             },
         ))
     }
@@ -968,6 +971,7 @@ mod tests {
                 nonce_data_availability_mode: DataAvailabilityMode::L2,
                 fee_data_availability_mode: DataAvailabilityMode::L2,
                 proof_facts: vec![],
+                proof: vec![],
             },
         ))
     }
@@ -1275,6 +1279,7 @@ mod tests {
                 fee_data_availability_mode: DataAvailabilityMode::L1,
                 sender_address: contract_address!("0xdeadbeef"),
                 proof_facts: vec![],
+                proof: vec![],
             },
         );
 
@@ -1314,6 +1319,7 @@ mod tests {
                 sender_address: contract_address!("0xdeadbeef"),
                 calldata: vec![],
                 proof_facts: vec![],
+                proof: vec![],
             },
         );
 

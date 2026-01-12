@@ -91,6 +91,7 @@ impl Input {
                     sender_address: Default::default(),
                     calldata: Default::default(),
                     proof_facts: Default::default(),
+                    proof: Default::default(),
                 },
             )),
         }
@@ -562,6 +563,7 @@ mod tests {
                 call_param!("0x613816405e6334ab420e53d4b38a0451cb2ebca2755171315958c87d303cf6"),
             ],
             proof_facts: vec![],
+            proof: vec![],
         };
 
         let input = Input {

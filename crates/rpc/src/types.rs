@@ -11,7 +11,7 @@ pub mod request {
     use anyhow::Context;
     use pathfinder_common::prelude::*;
     use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBounds};
-    use pathfinder_common::{ProofFactElem, TipHex};
+    use pathfinder_common::{ProofElem, ProofFactElem, TipHex};
     use serde::de::Error;
     use serde::Deserialize;
     use serde_with::serde_as;
@@ -1037,6 +1037,11 @@ pub mod request {
                             value.deserialize().map(ProofFactElem)
                         })?
                         .unwrap_or_default(),
+                    proof: value
+                        .deserialize_optional_array("proof", |value| {
+                            value.deserialize().map(ProofElem)
+                        })?
+                        .unwrap_or_default(),
                 })),
                 _ => Err(serde_json::Error::custom("unknown transaction version")),
             }
@@ -1175,6 +1180,7 @@ pub mod request {
         pub calldata: Vec<CallParam>,
 
         pub proof_facts: Vec<ProofFactElem>,
+        pub proof: Vec<ProofElem>,
     }
 
     impl crate::dto::SerializeForVersion for BroadcastedInvokeTransactionV3 {
@@ -1204,6 +1210,9 @@ pub mod request {
             if serializer.version >= RpcVersion::V10 {
                 if !self.proof_facts.is_empty() {
                     serializer.serialize_field("proof_facts", &self.proof_facts)?;
+                }
+                if !self.proof.is_empty() {
+                    serializer.serialize_field("proof", &self.proof)?;
                 }
             }
 
@@ -1239,6 +1248,11 @@ pub mod request {
                     proof_facts: value
                         .deserialize_optional_array("proof_facts", |value| {
                             value.deserialize().map(ProofFactElem)
+                        })?
+                        .unwrap_or_default(),
+                    proof: value
+                        .deserialize_optional_array("proof", |value| {
+                            value.deserialize().map(ProofElem)
                         })?
                         .unwrap_or_default(),
                 })
@@ -1593,6 +1607,7 @@ pub mod request {
                             sender_address: contract_address!("0xaaa"),
                             calldata: vec![call_param!("0xff")],
                             proof_facts: vec![proof_fact_elem!("0xabc"), proof_fact_elem!("0xdef")],
+                            proof: vec![ProofElem(11), ProofElem(22)],
                         },
                     )),
                     BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction::V3(

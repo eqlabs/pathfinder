@@ -185,6 +185,10 @@
         "proof_facts": [
             "0xabc",
             "0xdef"
+        ],
+        "proof": [
+            11,
+            22
         ]
     },
     {

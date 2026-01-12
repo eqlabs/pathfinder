@@ -339,6 +339,15 @@ impl crate::dto::SerializeForVersion for Vec<pathfinder_common::ProofFactElem> {
     }
 }
 
+impl crate::dto::SerializeForVersion for Vec<pathfinder_common::ProofElem> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.len(), &mut self.iter())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use pathfinder_common::transaction::{ResourceBound, ResourceBounds};

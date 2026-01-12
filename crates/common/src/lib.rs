@@ -690,6 +690,10 @@ pub struct DecisionInfo {
     pub value: ProposalCommitment,
 }
 
+/// A SNOS stwo proof element.
+#[derive(Copy, Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ProofElem(pub u32);
+
 #[cfg(test)]
 mod tests {
     use crate::{felt, CallParam, ClassHash, ContractAddress, ContractAddressSalt};
