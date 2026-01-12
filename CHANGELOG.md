@@ -7,6 +7,16 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- Support for `deflate`-compressed responses from the feeder gateway.
+
+### Fixed
+
+- Pathfinder stops syncing on networks where response compression has been enabled on the feeder gateway.
+
 ## [0.21.4] - 2026-01-08
 
 ### Added

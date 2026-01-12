@@ -316,6 +316,7 @@ impl Client {
                 .timeout(timeout)
                 .user_agent(pathfinder_version::USER_AGENT)
                 .gzip(true)
+                .deflate(true)
                 .build()?,
             gateway,
             feeder_gateway,
