@@ -77,7 +77,7 @@ impl PathfinderInstance {
                  informalsystems_malachitebft_core_consensus=trace",
             )
             .args([
-                "--ethereum.url=https://ethereum-sepolia-rpc.publicnode.com",
+                "--ethereum.url=wss://ethereum-sepolia-rpc.publicnode.com",
                 "--network=sepolia-testnet",
                 format!("--data-directory={}", db_dir.display()).as_str(),
                 "--debug.pretty-log=true",
