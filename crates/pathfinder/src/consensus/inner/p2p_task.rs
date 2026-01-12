@@ -25,6 +25,7 @@ use pathfinder_common::{
     ChainId,
     ConsensusInfo,
     ContractAddress,
+    DecisionInfo,
     ProposalCommitment,
 };
 use pathfinder_consensus::{
@@ -592,17 +593,21 @@ pub fn spawn(
                         info_watch_tx.send_if_modified(|info| {
                             let do_update = match info.highest_decision {
                                 None => true,
-                                Some((highest_decided_height, highest_decided_value)) => {
+                                Some(decision) => {
                                     let new_height =
-                                        height_and_round.height() > highest_decided_height.get();
-                                    let new_value = value.0 != highest_decided_value;
+                                        height_and_round.height() > decision.height.get();
+                                    let new_value = value.0 != decision.value;
                                     new_height || new_value
                                 }
                             };
                             if do_update {
                                 let height = BlockNumber::new_or_panic(height_and_round.height());
                                 *info = ConsensusInfo {
-                                    highest_decision: Some((height, value.0)),
+                                    highest_decision: Some(DecisionInfo {
+                                        height,
+                                        round: height_and_round.round(),
+                                        value: value.0,
+                                    }),
                                     ..*info
                                 };
                             }
