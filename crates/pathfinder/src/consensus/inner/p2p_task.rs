@@ -322,12 +322,21 @@ pub fn spawn(
                                 number,
                                 reply,
                             } => {
-                                // In practice the last round means the only round left in the
-                                // consensus DB for that height, because lower rounds were already
-                                // removed when the proposal was decided upon in that last round.
+                                tracing::trace!(
+                                    %number, "🖧  📥 {validator_address} get consensus finalized and decided upon block"
+                                );
+                                // If we're the proposer we could have a false positive here, which
+                                // we avoid by having the decided block marked, so we only return
+                                // a block that is both finalized and decided upon or nothing.
                                 let resp = proposals_db
-                                    .read_consensus_finalized_block_for_last_round(number.get())?
+                                    .read_consensus_finalized_and_decided_block(number.get())?
                                     .map(Box::new);
+
+                                if resp.is_none() {
+                                    tracing::trace!(
+                                        %number, "🖧  ❌ {validator_address} no finalized and decided upon block found"
+                                    );
+                                }
 
                                 reply
                                     .send(resp)
@@ -338,6 +347,9 @@ pub fn spawn(
                             // Sync confirms that the finalized block at given height has been
                             // committed to storage.
                             SyncMessageToConsensus::ConfirmFinalizedBlockCommitted { number } => {
+                                tracing::trace!(
+                                    %number, "🖧  📥 {validator_address} confirm finalized block committed"
+                                );
                                 // There are 2 scenarios here:
                                 // 1. The normal scenario where consensus is used by sync to get the
                                 //    tip because the FGw is naturally lagging behind sync as it's
@@ -538,12 +550,13 @@ pub fn spawn(
                     // Consensus has reached a positive decision on this proposal so the proposal's
                     // execution needs to be finalized and the resulting block has to be committed
                     // to the main database.
-                    P2PTaskEvent::CommitBlock(height_and_round, value) => {
-                        // TODO: We do not have to commit these blocks to the main database
+                    P2PTaskEvent::MarkBlockAsDecidedAndCleanUp(height_and_round, value) => {
+                        // We do not have to commit these blocks to the main database
                         // anymore because they are being stored by the sync task (if enabled).
-                        // Once we are ready to get rid of fake proposals, consider storing
-                        // recently decided-upon blocks in memory (instead of a database) and
-                        // swapping out the notion of "committed" for something like "decided".
+                        //
+                        // TODO: Once we are ready to get rid of fake proposals, consider storing
+                        // recently decided-upon blocks in memory (instead of a database) as
+                        // "decided".
                         //
                         // NOTE: The main database still gets the state updates via consensus,
                         // which is the only reason why we still need the main database here at
@@ -576,6 +589,11 @@ pub fn spawn(
                             value.0 .0, block.header.state_diff_commitment.0,
                             "Proposal commitment mismatch"
                         );
+
+                        proposals_db.mark_consensus_finalized_block_as_decided(
+                            height_and_round.height(),
+                            height_and_round.round(),
+                        )?;
 
                         info_watch_tx.send_if_modified(|info| {
                             let do_update = match info.highest_decision {
@@ -611,15 +629,15 @@ pub fn spawn(
 
                         // Remove all finalized blocks for previous rounds at this height
                         // because they will not be committed to the main DB. Do not remove the
-                        // block that will be committed by the sync task until it is confirmed
-                        // that it was committed.
-                        proposals_db.remove_uncommitted_consensus_finalized_blocks(
+                        // block, which has just been marked as decided upon, and will be
+                        // committed by the sync task until it is confirmed that the block was
+                        // indeed committed.
+                        proposals_db.remove_undecided_consensus_finalized_blocks(
                             height_and_round.height(),
-                            height_and_round.round(),
                         )?;
                         tracing::debug!(
-                            "🖧  🗑️ {validator_address} removed my uncommitted finalized blocks \
-                             for height {}",
+                            "🖧  🗑️ {validator_address} removed my undecided finalized blocks for \
+                             height {}",
                             height_and_round.height()
                         );
 
@@ -649,7 +667,11 @@ pub fn spawn(
                         let is_already_committed =
                             main_db_tx.block_exists(BlockId::Number(block_number))?;
                         if is_already_committed {
-                            on_finalized_block_committed(
+                            tracing::trace!(
+                                number=%block_number, "🖧  📥 {validator_address} finalized block is already committed"
+                            );
+
+                            let success = on_finalized_block_committed(
                                 validator_address,
                                 &validator_cache,
                                 deferred_executions.clone(),
@@ -657,6 +679,8 @@ pub fn spawn(
                                 &proposals_db,
                                 block_number,
                             )?;
+
+                            return Ok(success);
                         }
 
                         Ok(ComputationSuccess::Continue)
@@ -728,9 +752,9 @@ fn on_finalized_block_committed(
     proposals_db: &ConsensusProposals<'_>,
     number: pathfinder_common::BlockNumber,
 ) -> Result<ComputationSuccess, anyhow::Error> {
-    // In practice this should remove the finalized block for the last round at the
-    // height, because lower rounds were already removed when the proposal was
-    // decided upon in that last round.
+    // In practice this should only remove the finalized block for the last round at
+    // the height, because lower rounds were already removed when the proposal
+    // was decided upon in that last round.
     proposals_db.remove_consensus_finalized_blocks(number.get())?;
 
     tracing::debug!(

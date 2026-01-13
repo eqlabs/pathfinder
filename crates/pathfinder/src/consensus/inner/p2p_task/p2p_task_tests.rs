@@ -614,10 +614,12 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
 
     // Step 6: Send CommitBlock for parent block (should trigger finalization)
     env.tx_to_p2p
-        .send(crate::consensus::inner::P2PTaskEvent::CommitBlock(
-            HeightAndRound::new(1, 0),
-            ConsensusValue(ProposalCommitment(Felt::ONE)),
-        ))
+        .send(
+            crate::consensus::inner::P2PTaskEvent::MarkBlockAsDecidedAndCleanUp(
+                HeightAndRound::new(1, 0),
+                ConsensusValue(ProposalCommitment(Felt::ONE)),
+            ),
+        )
         .await
         .expect("Failed to send CommitBlock");
     env.verify_task_alive().await;
