@@ -130,10 +130,6 @@ mod test {
         utils::join_all(vec![alice_client, bob_client, charlie_client], TEST_TIMEOUT).await
     }
 
-    // TODO(consensus)
-    //
-    // IMPORTANT: assert that there is no leftover data for lower heights when Dan
-    // finally catches up.
     #[tokio::test]
     async fn consensus_3_nodes_fourth_node_joins_late_can_catch_up() -> anyhow::Result<()> {
         const NUM_NODES: usize = 4;
@@ -222,7 +218,7 @@ mod test {
         let charlie_committed = wait_for_block_exists(&charlie, FINAL_HEIGHT, POLL_HEIGHT);
         let dan_committed = wait_for_block_exists(&dan, FINAL_HEIGHT, POLL_HEIGHT);
 
-        utils::join_all(
+        let join_result = utils::join_all(
             vec![
                 alice_decided,
                 bob_decided,
@@ -235,10 +231,33 @@ mod test {
             ],
             TEST_TIMEOUT,
         )
-        .await
+        .await;
 
-        // TODO assert that consensus DBs of all 4 nodes don't have any leftover
-        // proposals or finalized blocks up to and including FINAL_HEIGHT
+        let alice_artifacts = alice.consensus_db_artifacts(FINAL_HEIGHT);
+        assert!(
+            alice_artifacts.is_empty(),
+            "Alice should not have leftover consensus data: {alice_artifacts:#?}"
+        );
+
+        let bob_artifacts = bob.consensus_db_artifacts(FINAL_HEIGHT);
+        assert!(
+            bob_artifacts.is_empty(),
+            "Bob should not have leftover consensus data: {bob_artifacts:#?}"
+        );
+
+        let charlie_artifacts = charlie.consensus_db_artifacts(FINAL_HEIGHT);
+        assert!(
+            charlie_artifacts.is_empty(),
+            "Charlie should not have leftover consensus data: {charlie_artifacts:#?}"
+        );
+
+        let dan_artifacts = dan.consensus_db_artifacts(FINAL_HEIGHT);
+        assert!(
+            dan_artifacts.is_empty(),
+            "Dan should not have leftover consensus data: {dan_artifacts:#?}"
+        );
+
+        join_result
     }
 
     /// A slightly different failure scenario from [consensus_3_nodes]. We are

@@ -344,9 +344,9 @@ pub fn spawn(
 
                                 Ok(ComputationSuccess::Continue)
                             }
-                            // Sync confirms that the finalized block at given height has been
-                            // committed to storage.
-                            SyncMessageToConsensus::ConfirmFinalizedBlockCommitted { number } => {
+                            // Sync confirms that the block at given height has been committed to
+                            // storage.
+                            SyncMessageToConsensus::ConfirmBlockCommitted { number } => {
                                 tracing::trace!(
                                     %number, "🖧  📥 {validator_address} confirm finalized block committed"
                                 );
@@ -357,14 +357,13 @@ pub fn spawn(
                                 //    following call will actually remove the finalized block for
                                 //    the last round at the height and run any deferred executions
                                 //    for the next height.
-                                // 2. An abnormal scenario where the FGw is ahead of consensus and
-                                //    somehow magically produces valid blocks. In this case the call
-                                //    has no effect. Why do we take this absurd scenario into
-                                //    account? Because consistency of our storage is more important
-                                //    than whatever irrational scenarios that reality can surprise
-                                //    us with. In this case consistency means not piling up useless
-                                //    data in the consensus db that we then don't ever purge. See
-                                //    how P2PTaskEvent::CommitBlock is handled for more details.
+                                // 2. A rare but still possible scenario where the FGw is ahead of
+                                //    consensus for some nodes due to low network latency and their
+                                //    consensus engines not notifying those nodes internally fast
+                                //    enough that the executed proposal has been decided upon. In
+                                //    such case the sync algo will choose to download the block from
+                                //    the FGw because supposedly the proposal has not been decided
+                                //    upon.
                                 let success = on_finalized_block_committed(
                                     validator_address,
                                     &validator_cache,
@@ -563,37 +562,35 @@ pub fn spawn(
                         // all. I could get it to work with only the consensus database in all
                         // scenarios except for when the node is chosen as a proposer and needs
                         // to cache the proposal for later.
-                        //
-                        // TODO(consensus) consult sistemd about the above comments and align them
-                        // accordingly.
                         tracing::info!(
                             "🖧  💾 {validator_address} Finalizing and committing block at \
                              {height_and_round} to the database ...",
                         );
                         let stopwatch = std::time::Instant::now();
 
-                        let block = proposals_db
-                            .read_consensus_finalized_block(
+                        let block: Option<pathfinder_common::ConsensusFinalizedL2Block> =
+                            proposals_db.read_consensus_finalized_block(
                                 height_and_round.height(),
                                 height_and_round.round(),
-                            )?
-                            // This will cause the p2p_task to exit which will in turn cause the
-                            // entire process to exit.
-                            .context(format!(
-                                "Consensus finalized block at {height_and_round} that is about to \
-                                 be committed should always be waiting in the consensus DB - \
-                                 logic error",
-                            ))?;
+                            )?;
 
-                        assert_eq!(
-                            value.0 .0, block.header.state_diff_commitment.0,
-                            "Proposal commitment mismatch"
-                        );
+                        // The block will not be in the consensus DB if it has already been
+                        // downloaded from the feeder gateway and committed to the main DB by the
+                        // sync task. This can happen in fast local testnets where the FGw is
+                        // sometimes serving blocks from the proposers faster than the consensus
+                        // engine internally notifies Pathfinder about a positive decision on the
+                        // executed proposal.
+                        if let Some(block) = block {
+                            assert_eq!(
+                                value.0 .0, block.header.state_diff_commitment.0,
+                                "Proposal commitment mismatch"
+                            );
 
-                        proposals_db.mark_consensus_finalized_block_as_decided(
-                            height_and_round.height(),
-                            height_and_round.round(),
-                        )?;
+                            proposals_db.mark_consensus_finalized_block_as_decided(
+                                height_and_round.height(),
+                                height_and_round.round(),
+                            )?;
+                        }
 
                         info_watch_tx.send_if_modified(|info| {
                             let do_update = match info.highest_decision {
@@ -680,10 +677,10 @@ pub fn spawn(
                                 block_number,
                             )?;
 
-                            return Ok(success);
+                            Ok(success)
+                        } else {
+                            Ok(ComputationSuccess::Continue)
                         }
-
-                        Ok(ComputationSuccess::Continue)
                     }
                 }?;
 

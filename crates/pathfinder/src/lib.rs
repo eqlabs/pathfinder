@@ -17,8 +17,10 @@ pub enum SyncMessageToConsensus {
         number: pathfinder_common::BlockNumber,
         reply: ConsensusFinalizedBlockReply,
     },
-    /// Notify consensus that a finalized block has been committed to storage.
-    ConfirmFinalizedBlockCommitted {
+    /// Notify consensus that a block has been committed to storage. This can be
+    /// either a block that was downloaded from the feeder gateway or a block
+    /// that was produced locally by the consensus engine.
+    ConfirmBlockCommitted {
         number: pathfinder_common::BlockNumber,
     },
     ValidateBlock {
