@@ -105,6 +105,7 @@ proptest! {
                     // Utilized by failure injection which is not happening in this test, so we can
                     // safely use an empty path
                     &PathBuf::new(),
+                    None,
                     // No failure injection in this test
                     None,
                 );

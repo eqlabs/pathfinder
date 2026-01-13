@@ -7,6 +7,7 @@ use tokio::sync::{mpsc, watch};
 
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
+use crate::state::l1_gas_price::L1GasPriceProvider;
 use crate::SyncMessageToConsensus;
 
 mod error;
@@ -52,6 +53,7 @@ pub fn start(
     wal_directory: PathBuf,
     data_directory: &Path,
     verify_tree_hashes: bool,
+    gas_price_provider: Option<L1GasPriceProvider>,
     // Does nothing in production builds. Used for integration testing only.
     inject_failure_config: Option<InjectFailureConfig>,
 ) -> ConsensusTaskHandles {
@@ -64,6 +66,7 @@ pub fn start(
         wal_directory,
         data_directory,
         verify_tree_hashes,
+        gas_price_provider,
         inject_failure_config,
     )
 }
@@ -82,6 +85,7 @@ mod inner {
         _: PathBuf,
         _: &Path,
         _: bool,
+        _: Option<L1GasPriceProvider>,
         _: Option<InjectFailureConfig>,
     ) -> ConsensusTaskHandles {
         ConsensusTaskHandles::pending()

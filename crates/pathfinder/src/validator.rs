@@ -40,6 +40,7 @@ use crate::state::block_hash::{
     calculate_receipt_commitment,
     calculate_transaction_commitment,
 };
+use crate::state::l1_gas_price::{L1GasPriceProvider, L1GasPriceValidationResult};
 
 /// TODO: Use this type as validation result.
 pub enum ValidationResult {
@@ -81,6 +82,7 @@ impl ValidatorBlockInfoStage {
         self,
         block_info: BlockInfo,
         main_storage: Storage,
+        gas_price_provider: Option<L1GasPriceProvider>,
     ) -> Result<ValidatorTransactionBatchStage<E>, ProposalHandlingError> {
         let _span = tracing::debug_span!(
             "Validator::validate_block_info",
@@ -104,7 +106,17 @@ impl ValidatorBlockInfoStage {
 
         validate_block_info_timestamp(block_info.height, block_info.timestamp, &main_storage)?;
 
-        // TODO(validator) validate gas prices
+        // Validate L1 gas prices if a provider is available
+        if let Some(ref provider) = gas_price_provider {
+            validate_l1_gas_prices(
+                block_info.timestamp,
+                block_info.l1_gas_price_wei,
+                block_info.l1_data_gas_price_wei,
+                provider,
+            )?;
+        }
+
+        // TODO(validator) validate L2 gas prices
 
         let BlockInfo {
             height,
@@ -198,6 +210,40 @@ fn validate_block_info_timestamp(
     }
 
     Ok(())
+}
+
+/// Validates L1 gas prices in the proposal.
+///
+/// Note: During cold start when the provider doesn't have enough data,
+/// proposals are allowed with a warning.
+fn validate_l1_gas_prices(
+    proposal_timestamp: u64,
+    l1_gas_price_wei: u128,
+    l1_data_gas_price_wei: u128,
+    provider: &L1GasPriceProvider,
+) -> Result<(), ProposalHandlingError> {
+    match provider.validate(proposal_timestamp, l1_gas_price_wei, l1_data_gas_price_wei) {
+        L1GasPriceValidationResult::Valid => Ok(()),
+        L1GasPriceValidationResult::Invalid(error) => {
+            tracing::warn!(
+                l1_gas_price_wei,
+                l1_data_gas_price_wei,
+                error = %error,
+                "L1 gas price validation failed"
+            );
+            Err(ProposalHandlingError::recoverable_msg(format!(
+                "L1 gas price validation failed: {error}"
+            )))
+        }
+        L1GasPriceValidationResult::InsufficientData => {
+            tracing::debug!(
+                l1_gas_price_wei,
+                l1_data_gas_price_wei,
+                "L1 gas price validation skipped: insufficient data (cold start)"
+            );
+            Ok(())
+        }
+    }
 }
 
 /// Executes transactions and manages the block execution state.
@@ -1420,7 +1466,7 @@ mod tests {
             .expect("Failed to create ValidatorBlockInfoStage");
 
         let validator_transaction_batch = validator_block_info
-            .validate_consensus_block_info::<BlockExecutor>(block_info, main_storage.clone())
+            .validate_consensus_block_info::<BlockExecutor>(block_info, main_storage.clone(), None)
             .expect("Failed to validate block info");
 
         // Verify the validator is in the expected empty state
@@ -1534,8 +1580,11 @@ mod tests {
             l1_data_gas_price_wei: 1,
             eth_to_fri_rate: 1_000_000_000,
         };
-        let result = validator_block_info1
-            .validate_consensus_block_info::<BlockExecutor>(block_info1, storage);
+        let result = validator_block_info1.validate_consensus_block_info::<BlockExecutor>(
+            block_info1,
+            storage,
+            None,
+        );
 
         if let Some(expected_error_message) = expected_error_message {
             let err = result.unwrap_err();
@@ -1587,13 +1636,13 @@ mod tests {
             // parent.
             assert!(
                 validator_block_info
-                    .validate_consensus_block_info::<BlockExecutor>(block_info, storage)
+                    .validate_consensus_block_info::<BlockExecutor>(block_info, storage, None)
                     .is_ok(),
                 "Genesis block timestamp validation should pass even without parent"
             );
         } else {
             let err = validator_block_info
-                .validate_consensus_block_info::<BlockExecutor>(block_info, storage)
+                .validate_consensus_block_info::<BlockExecutor>(block_info, storage, None)
                 .unwrap_err();
             let expected_err_message = format!(
                 "Parent block header not found for height {}",

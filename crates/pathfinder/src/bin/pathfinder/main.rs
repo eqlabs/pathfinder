@@ -14,7 +14,8 @@ use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_common::{BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
 use pathfinder_lib::consensus::{ConsensusChannels, ConsensusTaskHandles};
-use pathfinder_lib::state::SyncContext;
+use pathfinder_lib::state::l1_gas_price::{L1GasPriceConfig, L1GasPriceProvider};
+use pathfinder_lib::state::{sync_gas_prices, L1GasPriceSyncConfig, SyncContext};
 use pathfinder_lib::{config, consensus, monitoring, p2p_network, state};
 use pathfinder_rpc::context::{EthContractAddresses, WebsocketContext};
 use pathfinder_rpc::{Notifications, SyncState};
@@ -309,6 +310,32 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     .await;
 
     let integration_testing_config = config.integration_testing;
+
+    // Create L1 gas price provider and sync task if consensus is enabled
+    let gas_price_provider = if config.consensus.is_some() {
+        // TODO: Hardcoding default config for now
+        let provider = L1GasPriceProvider::new(L1GasPriceConfig::default());
+
+        // Spawn the L1 gas price sync task
+        let sync_provider = provider.clone();
+        let ethereum_client = ethereum.client.clone();
+        util::task::spawn(async move {
+            if let Err(e) = sync_gas_prices(
+                ethereum_client,
+                sync_provider,
+                L1GasPriceSyncConfig::default(),
+            )
+            .await
+            {
+                tracing::error!(error = %e, "L1 gas price sync task failed");
+            }
+        });
+
+        Some(provider)
+    } else {
+        None
+    };
+
     let ConsensusTaskHandles {
         consensus_p2p_event_processing_handle,
         consensus_engine_handle,
@@ -332,6 +359,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
                 wal_directory,
                 &config.data_directory,
                 config.verify_tree_hashes,
+                gas_price_provider.clone(),
                 // Does nothing in production builds. Used for integration testing only.
                 integration_testing_config.inject_failure_config(),
             )
@@ -787,7 +815,7 @@ impl EthereumContext {
 
         let chain = client.get_chain().await.context(
             r"Determining Ethereum chain.
-                            
+
 Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         )?;
 
