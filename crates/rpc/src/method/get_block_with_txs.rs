@@ -5,21 +5,36 @@ use pathfinder_common::transaction::Transaction;
 use pathfinder_common::BlockHeader;
 
 use crate::context::RpcContext;
+use crate::dto::TransactionResponseFlags;
 use crate::pending::PendingBlockVariant;
 use crate::types::BlockId;
 use crate::RpcVersion;
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound);
 
+#[derive(Debug, PartialEq)]
 pub struct Input {
-    pub block_id: BlockId,
+    block_id: BlockId,
+    response_flags: TransactionResponseFlags,
 }
 
 impl crate::dto::DeserializeForVersion for Input {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let rpc_version = value.version;
+
         value.deserialize_map(|value| {
+            let block_id = value.deserialize("block_id")?;
+            let response_flags = if rpc_version >= RpcVersion::V10 {
+                value
+                    .deserialize_optional("response_flags")?
+                    .unwrap_or_default()
+            } else {
+                TransactionResponseFlags::default()
+            };
+
             Ok(Self {
-                block_id: value.deserialize("block_id")?,
+                block_id,
+                response_flags,
             })
         })
     }
@@ -31,11 +46,13 @@ pub enum Output {
         header: Arc<PendingBlockVariant>,
         block_number: pathfinder_common::BlockNumber,
         transactions: Vec<Transaction>,
+        include_proof_facts: bool,
     },
     Full {
         header: Box<BlockHeader>,
         transactions: Vec<Transaction>,
         l1_accepted: bool,
+        include_proof_facts: bool,
     },
 }
 
@@ -48,6 +65,13 @@ pub async fn get_block_with_txs(
     let span = tracing::Span::current();
     util::task::spawn_blocking(move |_| {
         let _g = span.enter();
+
+        let include_proof_facts = input
+            .response_flags
+            .0
+            .iter()
+            .any(|flag| flag == &crate::dto::TransactionResponseFlag::IncludeProofFacts);
+
         let mut connection = context
             .storage
             .connection()
@@ -70,6 +94,7 @@ pub async fn get_block_with_txs(
                     header: pending.pending_block(),
                     block_number: pending.pending_block_number(),
                     transactions,
+                    include_proof_facts,
                 });
             }
             other => other
@@ -95,6 +120,7 @@ pub async fn get_block_with_txs(
             header: Box::new(header),
             l1_accepted,
             transactions,
+            include_proof_facts,
         })
     })
     .await
@@ -111,13 +137,19 @@ impl crate::dto::SerializeForVersion for Output {
                 header,
                 block_number,
                 transactions,
+                include_proof_facts,
             } => {
                 let mut serializer = serializer.serialize_struct()?;
                 serializer.flatten(&(*block_number, header.as_ref()))?;
                 serializer.serialize_iter(
                     "transactions",
                     transactions.len(),
-                    &mut transactions.iter().map(crate::dto::TransactionWithHash),
+                    &mut transactions
+                        .iter()
+                        .map(|transaction| crate::dto::TransactionWithHash {
+                            transaction,
+                            include_proof_facts: *include_proof_facts,
+                        }),
                 )?;
                 serializer.end()
             }
@@ -125,13 +157,19 @@ impl crate::dto::SerializeForVersion for Output {
                 header,
                 transactions,
                 l1_accepted,
+                include_proof_facts,
             } => {
                 let mut serializer = serializer.serialize_struct()?;
                 serializer.flatten(header.as_ref())?;
                 serializer.serialize_iter(
                     "transactions",
                     transactions.len(),
-                    &mut transactions.iter().map(crate::dto::TransactionWithHash),
+                    &mut transactions
+                        .iter()
+                        .map(|transaction| crate::dto::TransactionWithHash {
+                            transaction,
+                            include_proof_facts: *include_proof_facts,
+                        }),
                 )?;
                 serializer.serialize_field(
                     "status",
@@ -150,8 +188,59 @@ impl crate::dto::SerializeForVersion for Output {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dto::{SerializeForVersion, Serializer};
+    use crate::dto::{SerializeForVersion, Serializer, TransactionResponseFlag};
     use crate::RpcVersion;
+
+    mod input {
+        use super::*;
+
+        #[test]
+        fn deserialize_v10_with_response_flags() {
+            use crate::dto::DeserializeForVersion;
+
+            let json = r#"{
+                "block_id": "latest",
+                "response_flags": ["INCLUDE_PROOF_FACTS"]
+            }"#;
+            let value = crate::dto::Value::new(
+                serde_json::from_str::<serde_json::Value>(json).unwrap(),
+                RpcVersion::V10,
+            );
+            let input = Input::deserialize(value).unwrap();
+
+            assert_eq!(
+                input,
+                Input {
+                    block_id: BlockId::Latest,
+                    response_flags: TransactionResponseFlags(vec![
+                        crate::dto::TransactionResponseFlag::IncludeProofFacts
+                    ]),
+                }
+            );
+        }
+
+        #[test]
+        fn deserialize_v10_without_response_flags() {
+            use crate::dto::DeserializeForVersion;
+
+            let json = r#"{
+                "block_id": "latest"
+            }"#;
+            let value = crate::dto::Value::new(
+                serde_json::from_str::<serde_json::Value>(json).unwrap(),
+                RpcVersion::V10,
+            );
+            let input = Input::deserialize(value).unwrap();
+
+            assert_eq!(
+                input,
+                Input {
+                    block_id: BlockId::Latest,
+                    response_flags: TransactionResponseFlags::default(),
+                }
+            );
+        }
+    }
 
     #[rstest::rstest]
     #[case::v06(RpcVersion::V06)]
@@ -165,6 +254,7 @@ mod tests {
 
         let input = Input {
             block_id: BlockId::Pending,
+            response_flags: Default::default(),
         };
 
         let output = get_block_with_txs(context, input, version).await.unwrap();
@@ -185,6 +275,7 @@ mod tests {
 
         let input = Input {
             block_id: BlockId::Pending,
+            response_flags: Default::default(),
         };
 
         let output = get_block_with_txs(context, input, version).await.unwrap();
@@ -209,11 +300,35 @@ mod tests {
 
         let input = Input {
             block_id: BlockId::Latest,
+            response_flags: TransactionResponseFlags::default(),
         };
 
         let output = get_block_with_txs(context, input, version).await.unwrap();
         let output_json = output.serialize(Serializer { version }).unwrap();
 
         crate::assert_json_matches_fixture!(output_json, version, "blocks/latest_with_txs.json");
+    }
+
+    #[tokio::test]
+    async fn latest_with_proof_facts() {
+        let context = RpcContext::for_tests_with_pending().await;
+        let version = RpcVersion::V10;
+
+        let input = Input {
+            block_id: BlockId::Latest,
+            response_flags: TransactionResponseFlags(vec![
+                TransactionResponseFlag::IncludeProofFacts,
+            ]),
+        };
+
+        let output = get_block_with_txs(context, input, version).await.unwrap();
+        let output_json = output.serialize(Serializer { version }).unwrap();
+
+        let expected_json: serde_json::Value = serde_json::from_str(include_str!(
+            "../../fixtures/0.10.0/blocks/latest_with_txs_including_proof_facts.json"
+        ))
+        .unwrap();
+
+        pretty_assertions_sorted::assert_eq!(output_json, expected_json);
     }
 }

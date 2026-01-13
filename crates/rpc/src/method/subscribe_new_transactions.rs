@@ -147,7 +147,10 @@ impl crate::dto::SerializeForVersion for TransactionWithFinality {
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.flatten(&TransactionWithHash(&self.transaction))?;
+        serializer.flatten(&TransactionWithHash {
+            transaction: &self.transaction,
+            include_proof_facts: false,
+        })?;
         serializer.serialize_field("finality_status", &self.finality)?;
         serializer.end()
     }

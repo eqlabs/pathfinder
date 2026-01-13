@@ -6,12 +6,41 @@ use super::{DeserializeForVersion, U128Hex, U64Hex};
 use crate::dto::{SerializeForVersion, Serializer};
 use crate::{dto, RpcVersion};
 
-pub struct TransactionWithHash<'a>(pub &'a pathfinder_common::transaction::Transaction);
+#[derive(Debug, Default, Eq, PartialEq)]
+pub struct TransactionResponseFlags(pub Vec<TransactionResponseFlag>);
 
-impl SerializeForVersion for &pathfinder_common::transaction::Transaction {
+#[derive(Debug, Eq, PartialEq)]
+pub enum TransactionResponseFlag {
+    IncludeProofFacts,
+}
+
+impl crate::dto::DeserializeForVersion for TransactionResponseFlag {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let value: String = value.deserialize()?;
+        match value.as_str() {
+            "INCLUDE_PROOF_FACTS" => Ok(Self::IncludeProofFacts),
+            _ => Err(serde_json::Error::custom("Invalid response flag")),
+        }
+    }
+}
+
+impl crate::dto::DeserializeForVersion for TransactionResponseFlags {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let array = value.deserialize_array(TransactionResponseFlag::deserialize)?;
+        Ok(Self(array))
+    }
+}
+
+pub struct TransactionWithHash<'a> {
+    pub transaction: &'a pathfinder_common::transaction::Transaction,
+    pub include_proof_facts: bool,
+}
+
+impl SerializeForVersion for (&pathfinder_common::transaction::Transaction, bool) {
     fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let (tx, include_proof_facts) = *self;
         let mut s = serializer.serialize_struct()?;
-        match &self.variant {
+        match &tx.variant {
             TransactionVariant::DeclareV0(tx) => {
                 s.serialize_field("type", &"DECLARE")?;
                 s.serialize_field("sender_address", &tx.sender_address)?;
@@ -168,6 +197,10 @@ impl SerializeForVersion for &pathfinder_common::transaction::Transaction {
                     &tx.nonce_data_availability_mode,
                 )?;
                 s.serialize_field("fee_data_availability_mode", &tx.fee_data_availability_mode)?;
+
+                if include_proof_facts && serializer.version >= RpcVersion::V10 {
+                    s.serialize_field("proof_facts", &tx.proof_facts)?;
+                }
             }
             TransactionVariant::L1Handler(tx) => {
                 s.serialize_field("version", &"0x0")?;
@@ -185,8 +218,8 @@ impl SerializeForVersion for &pathfinder_common::transaction::Transaction {
 impl SerializeForVersion for TransactionWithHash<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
-        s.serialize_field("transaction_hash", &self.0.hash)?;
-        s.flatten(&self.0)?;
+        s.serialize_field("transaction_hash", &self.transaction.hash)?;
+        s.flatten(&(self.transaction, self.include_proof_facts))?;
         s.end()
     }
 }
@@ -395,7 +428,7 @@ mod tests {
                 "signature": ["0xa1b1", "0x1a1b"],
                 "class_hash": "0x123",
             });
-            let result = uut
+            let result = (uut, false)
                 .serialize(Serializer {
                     version: RpcVersion::V07,
                 })
@@ -430,7 +463,7 @@ mod tests {
                 "class_hash": "0x123",
                 "nonce": "0xaabbcc",
             });
-            let result = uut
+            let result = (uut, false)
                 .serialize(Serializer {
                     version: RpcVersion::V07,
                 })
@@ -468,7 +501,7 @@ mod tests {
                 "nonce": "0xaabbcc",
                 "compiled_class_hash": "0xbbbbb",
             });
-            let result = uut
+            let result = (uut, false)
                 .serialize(Serializer {
                     version: RpcVersion::V07,
                 })
@@ -532,7 +565,7 @@ mod tests {
                 "paymaster_data": [],
                 "account_deployment_data": [],
             });
-            let result = uut
+            let result = (uut, false)
                 .serialize(Serializer {
                     version: RpcVersion::V07,
                 })
@@ -565,7 +598,7 @@ mod tests {
                 "constructor_calldata": ["0xbbb0","0xbbb1"],
                 "version": "0x0",
             });
-            let result = uut
+            let result = (uut, false)
                 .serialize(Serializer {
                     version: RpcVersion::V07,
                 })
@@ -604,7 +637,7 @@ mod tests {
                 "constructor_calldata": ["0xbbb0","0xbbb1"],
                 "class_hash": "0x123",
             });
-            let result = uut
+            let result = (uut, false)
                 .serialize(Serializer {
                     version: RpcVersion::V07,
                 })
@@ -667,7 +700,7 @@ mod tests {
                 "tip": "0x5",
                 "paymaster_data": [],
             });
-            let result = uut
+            let result = (uut, false)
                 .serialize(Serializer {
                     version: RpcVersion::V07,
                 })
@@ -704,7 +737,7 @@ mod tests {
                 "max_fee": "0x1111",
                 "signature": ["0xa1b1", "0x1a1b"],
             });
-            let result = uut
+            let result = (uut, false)
                 .serialize(Serializer {
                     version: RpcVersion::V07,
                 })
@@ -740,7 +773,7 @@ mod tests {
                 "signature": ["0xa1b1", "0x1a1b"],
                 "nonce": "0xaabbcc",
             });
-            let result = uut
+            let result = (uut, false)
                 .serialize(Serializer {
                     version: RpcVersion::V07,
                 })
@@ -803,7 +836,7 @@ mod tests {
                 "paymaster_data": [],
                 "account_deployment_data": [],
             });
-            let result = uut
+            let result = (uut, false)
                 .serialize(Serializer {
                     version: RpcVersion::V07,
                 })
@@ -834,7 +867,7 @@ mod tests {
                 "calldata": ["0xfff1","0xfff0"],
                 "version": "0x0",
             });
-            let result = uut
+            let result = (uut, false)
                 .serialize(Serializer {
                     version: RpcVersion::V07,
                 })
