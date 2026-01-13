@@ -25,6 +25,7 @@ use pathfinder_common::{
     ChainId,
     ConsensusInfo,
     ContractAddress,
+    DecisionInfo,
     ProposalCommitment,
 };
 use pathfinder_consensus::{
@@ -53,6 +54,7 @@ use crate::consensus::inner::batch_execution::{
 };
 use crate::consensus::inner::create_empty_block;
 use crate::consensus::{ProposalError, ProposalHandlingError};
+use crate::state::l1_gas_price::L1GasPriceProvider;
 use crate::validator::{
     ProdTransactionMapper,
     TransactionExt,
@@ -101,6 +103,7 @@ pub fn spawn(
     consensus_storage: ConsensusStorage,
     data_directory: &Path,
     verify_tree_hashes: bool,
+    gas_price_provider: Option<L1GasPriceProvider>,
     // Does nothing in production builds. Used for integration testing only.
     inject_failure: Option<InjectFailureConfig>,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
@@ -229,6 +232,7 @@ pub fn spawn(
                                     &proposals_db,
                                     &mut batch_execution_manager,
                                     &data_directory,
+                                    gas_price_provider.clone(),
                                     inject_failure,
                                 );
                                 match result {
@@ -319,12 +323,21 @@ pub fn spawn(
                                 number,
                                 reply,
                             } => {
-                                // In practice the last round means the only round left in the
-                                // consensus DB for that height, because lower rounds were already
-                                // removed when the proposal was decided upon in that last round.
+                                tracing::trace!(
+                                    %number, "🖧  📥 {validator_address} get consensus finalized and decided upon block"
+                                );
+                                // If we're the proposer we could have a false positive here, which
+                                // we avoid by having the decided block marked, so we only return
+                                // a block that is both finalized and decided upon or nothing.
                                 let resp = proposals_db
-                                    .read_consensus_finalized_block_for_last_round(number.get())?
+                                    .read_consensus_finalized_and_decided_block(number.get())?
                                     .map(Box::new);
+
+                                if resp.is_none() {
+                                    tracing::trace!(
+                                        %number, "🖧  ❌ {validator_address} no finalized and decided upon block found"
+                                    );
+                                }
 
                                 reply
                                     .send(resp)
@@ -332,9 +345,12 @@ pub fn spawn(
 
                                 Ok(ComputationSuccess::Continue)
                             }
-                            // Sync confirms that the finalized block at given height has been
-                            // committed to storage.
-                            SyncMessageToConsensus::ConfirmFinalizedBlockCommitted { number } => {
+                            // Sync confirms that the block at given height has been committed to
+                            // storage.
+                            SyncMessageToConsensus::ConfirmBlockCommitted { number } => {
+                                tracing::trace!(
+                                    %number, "🖧  📥 {validator_address} confirm finalized block committed"
+                                );
                                 // There are 2 scenarios here:
                                 // 1. The normal scenario where consensus is used by sync to get the
                                 //    tip because the FGw is naturally lagging behind sync as it's
@@ -342,14 +358,13 @@ pub fn spawn(
                                 //    following call will actually remove the finalized block for
                                 //    the last round at the height and run any deferred executions
                                 //    for the next height.
-                                // 2. An abnormal scenario where the FGw is ahead of consensus and
-                                //    somehow magically produces valid blocks. In this case the call
-                                //    has no effect. Why do we take this absurd scenario into
-                                //    account? Because consistency of our storage is more important
-                                //    than whatever irrational scenarios that reality can surprise
-                                //    us with. In this case consistency means not piling up useless
-                                //    data in the consensus db that we then don't ever purge. See
-                                //    how P2PTaskEvent::CommitBlock is handled for more details.
+                                // 2. A rare but still possible scenario where the FGw is ahead of
+                                //    consensus for some nodes due to low network latency and their
+                                //    consensus engines not notifying those nodes internally fast
+                                //    enough that the executed proposal has been decided upon. In
+                                //    such case the sync algo will choose to download the block from
+                                //    the FGw because supposedly the proposal has not been decided
+                                //    upon.
                                 let success = on_finalized_block_committed(
                                     validator_address,
                                     &validator_cache,
@@ -535,59 +550,67 @@ pub fn spawn(
                     // Consensus has reached a positive decision on this proposal so the proposal's
                     // execution needs to be finalized and the resulting block has to be committed
                     // to the main database.
-                    P2PTaskEvent::CommitBlock(height_and_round, value) => {
-                        // TODO: We do not have to commit these blocks to the main database
+                    P2PTaskEvent::MarkBlockAsDecidedAndCleanUp(height_and_round, value) => {
+                        // We do not have to commit these blocks to the main database
                         // anymore because they are being stored by the sync task (if enabled).
-                        // Once we are ready to get rid of fake proposals, consider storing
-                        // recently decided-upon blocks in memory (instead of a database) and
-                        // swapping out the notion of "committed" for something like "decided".
+                        //
+                        // TODO: Once we are ready to get rid of fake proposals, consider storing
+                        // recently decided-upon blocks in memory (instead of a database) as
+                        // "decided".
                         //
                         // NOTE: The main database still gets the state updates via consensus,
                         // which is the only reason why we still need the main database here at
                         // all. I could get it to work with only the consensus database in all
                         // scenarios except for when the node is chosen as a proposer and needs
                         // to cache the proposal for later.
-                        //
-                        // TODO(consensus) consult sistemd about the above comments and align them
-                        // accordingly.
                         tracing::info!(
                             "🖧  💾 {validator_address} Finalizing and committing block at \
                              {height_and_round} to the database ...",
                         );
                         let stopwatch = std::time::Instant::now();
 
-                        let block = proposals_db
-                            .read_consensus_finalized_block(
+                        let block: Option<pathfinder_common::ConsensusFinalizedL2Block> =
+                            proposals_db.read_consensus_finalized_block(
                                 height_and_round.height(),
                                 height_and_round.round(),
-                            )?
-                            // This will cause the p2p_task to exit which will in turn cause the
-                            // entire process to exit.
-                            .context(format!(
-                                "Consensus finalized block at {height_and_round} that is about to \
-                                 be committed should always be waiting in the consensus DB - \
-                                 logic error",
-                            ))?;
+                            )?;
 
-                        assert_eq!(
-                            value.0 .0, block.header.state_diff_commitment.0,
-                            "Proposal commitment mismatch"
-                        );
+                        // The block will not be in the consensus DB if it has already been
+                        // downloaded from the feeder gateway and committed to the main DB by the
+                        // sync task. This can happen in fast local testnets where the FGw is
+                        // sometimes serving blocks from the proposers faster than the consensus
+                        // engine internally notifies Pathfinder about a positive decision on the
+                        // executed proposal.
+                        if let Some(block) = block {
+                            assert_eq!(
+                                value.0 .0, block.header.state_diff_commitment.0,
+                                "Proposal commitment mismatch"
+                            );
+
+                            proposals_db.mark_consensus_finalized_block_as_decided(
+                                height_and_round.height(),
+                                height_and_round.round(),
+                            )?;
+                        }
 
                         info_watch_tx.send_if_modified(|info| {
                             let do_update = match info.highest_decision {
                                 None => true,
-                                Some((highest_decided_height, highest_decided_value)) => {
+                                Some(decision) => {
                                     let new_height =
-                                        height_and_round.height() > highest_decided_height.get();
-                                    let new_value = value.0 != highest_decided_value;
+                                        height_and_round.height() > decision.height.get();
+                                    let new_value = value.0 != decision.value;
                                     new_height || new_value
                                 }
                             };
                             if do_update {
                                 let height = BlockNumber::new_or_panic(height_and_round.height());
                                 *info = ConsensusInfo {
-                                    highest_decision: Some((height, value.0)),
+                                    highest_decision: Some(DecisionInfo {
+                                        height,
+                                        round: height_and_round.round(),
+                                        value: value.0,
+                                    }),
                                     ..*info
                                 };
                             }
@@ -608,15 +631,15 @@ pub fn spawn(
 
                         // Remove all finalized blocks for previous rounds at this height
                         // because they will not be committed to the main DB. Do not remove the
-                        // block that will be committed by the sync task until it is confirmed
-                        // that it was committed.
-                        proposals_db.remove_uncommitted_consensus_finalized_blocks(
+                        // block, which has just been marked as decided upon, and will be
+                        // committed by the sync task until it is confirmed that the block was
+                        // indeed committed.
+                        proposals_db.remove_undecided_consensus_finalized_blocks(
                             height_and_round.height(),
-                            height_and_round.round(),
                         )?;
                         tracing::debug!(
-                            "🖧  🗑️ {validator_address} removed my uncommitted finalized blocks \
-                             for height {}",
+                            "🖧  🗑️ {validator_address} removed my undecided finalized blocks for \
+                             height {}",
                             height_and_round.height()
                         );
 
@@ -646,7 +669,11 @@ pub fn spawn(
                         let is_already_committed =
                             main_db_tx.block_exists(BlockId::Number(block_number))?;
                         if is_already_committed {
-                            on_finalized_block_committed(
+                            tracing::trace!(
+                                number=%block_number, "🖧  📥 {validator_address} finalized block is already committed"
+                            );
+
+                            let success = on_finalized_block_committed(
                                 validator_address,
                                 &validator_cache,
                                 deferred_executions.clone(),
@@ -654,9 +681,11 @@ pub fn spawn(
                                 &proposals_db,
                                 block_number,
                             )?;
-                        }
 
-                        Ok(ComputationSuccess::Continue)
+                            Ok(success)
+                        } else {
+                            Ok(ComputationSuccess::Continue)
+                        }
                     }
                 }?;
 
@@ -725,9 +754,9 @@ fn on_finalized_block_committed(
     proposals_db: &ConsensusProposals<'_>,
     number: pathfinder_common::BlockNumber,
 ) -> Result<ComputationSuccess, anyhow::Error> {
-    // In practice this should remove the finalized block for the last round at the
-    // height, because lower rounds were already removed when the proposal was
-    // decided upon in that last round.
+    // In practice this should only remove the finalized block for the last round at
+    // the height, because lower rounds were already removed when the proposal
+    // was decided upon in that last round.
     proposals_db.remove_consensus_finalized_blocks(number.get())?;
 
     tracing::debug!(
@@ -992,6 +1021,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
     proposals_db: &ConsensusProposals<'_>,
     batch_execution_manager: &mut BatchExecutionManager,
     data_directory: &Path,
+    gas_price_provider: Option<L1GasPriceProvider>,
     inject_failure_config: Option<InjectFailureConfig>,
 ) -> Result<Option<ProposalCommitmentWithOrigin>, ProposalHandlingError> {
     let mut parts_for_height_and_round = proposals_db
@@ -1080,8 +1110,11 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                 &mut parts_for_height_and_round,
             )?;
 
-            let new_validator =
-                validator.validate_consensus_block_info(block_info, main_readonly_storage)?;
+            let new_validator = validator.validate_consensus_block_info(
+                block_info,
+                main_readonly_storage,
+                gas_price_provider,
+            )?;
             validator_cache.insert(
                 height_and_round,
                 ValidatorStage::TransactionBatch(Box::new(new_validator)),

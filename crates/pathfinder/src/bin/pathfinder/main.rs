@@ -14,7 +14,8 @@ use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_common::{BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
 use pathfinder_lib::consensus::{ConsensusChannels, ConsensusTaskHandles};
-use pathfinder_lib::state::SyncContext;
+use pathfinder_lib::state::l1_gas_price::{L1GasPriceConfig, L1GasPriceProvider};
+use pathfinder_lib::state::{sync_gas_prices, L1GasPriceSyncConfig, SyncContext};
 use pathfinder_lib::{config, consensus, monitoring, p2p_network, state};
 use pathfinder_rpc::context::{EthContractAddresses, WebsocketContext};
 use pathfinder_rpc::{Notifications, SyncState};
@@ -309,6 +310,32 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     .await;
 
     let integration_testing_config = config.integration_testing;
+
+    // Create L1 gas price provider and sync task if consensus is enabled
+    let gas_price_provider = if config.consensus.is_some() {
+        // TODO: Hardcoding default config for now
+        let provider = L1GasPriceProvider::new(L1GasPriceConfig::default());
+
+        // Spawn the L1 gas price sync task
+        let sync_provider = provider.clone();
+        let ethereum_client = ethereum.client.clone();
+        util::task::spawn(async move {
+            if let Err(e) = sync_gas_prices(
+                ethereum_client,
+                sync_provider,
+                L1GasPriceSyncConfig::default(),
+            )
+            .await
+            {
+                tracing::error!(error = %e, "L1 gas price sync task failed");
+            }
+        });
+
+        Some(provider)
+    } else {
+        None
+    };
+
     let ConsensusTaskHandles {
         consensus_p2p_event_processing_handle,
         consensus_engine_handle,
@@ -332,6 +359,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
                 wal_directory,
                 &config.data_directory,
                 config.verify_tree_hashes,
+                gas_price_provider.clone(),
                 // Does nothing in production builds. Used for integration testing only.
                 integration_testing_config.inject_failure_config(),
             )
@@ -558,7 +586,7 @@ fn start_sync(
             notifications,
             gateway_public_key,
         )
-    } else if let Some(cc) = consensus_channels {
+    } else if let Some(consensus_channels) = consensus_channels {
         start_consensus_aware_fgw_sync(
             storage,
             pathfinder_context,
@@ -567,9 +595,9 @@ fn start_sync(
             config,
             submitted_tx_tracker,
             tx_pending,
-            cc.sync_to_consensus_tx,
             notifications,
             gateway_public_key,
+            consensus_channels,
         )
     } else {
         let p2p_client = p2p_client.expect("P2P client is expected with the p2p feature enabled");
@@ -638,8 +666,6 @@ fn start_feeder_gateway_sync(
         l1_poll_interval: config.l1_poll_interval,
         pending_data: tx_pending,
         submitted_tx_tracker,
-        // Only used in consensus-aware sync.
-        sync_to_consensus_tx: None,
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         notifications,
         block_cache_size: 10_000,
@@ -663,9 +689,9 @@ fn start_consensus_aware_fgw_sync(
     config: &config::Config,
     submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker,
     tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
-    sync_to_consensus_tx: tokio::sync::mpsc::Sender<pathfinder_lib::SyncMessageToConsensus>,
     notifications: Notifications,
     gateway_public_key: pathfinder_common::PublicKey,
+    consensus_channels: ConsensusChannels,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     let sync_context = SyncContext {
         storage,
@@ -679,7 +705,6 @@ fn start_consensus_aware_fgw_sync(
         l1_poll_interval: config.l1_poll_interval,
         pending_data: tx_pending,
         submitted_tx_tracker,
-        sync_to_consensus_tx: Some(sync_to_consensus_tx),
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         notifications,
         block_cache_size: 10_000,
@@ -694,6 +719,7 @@ fn start_consensus_aware_fgw_sync(
         sync_context,
         state::l1::sync,
         state::l2::consensus_sync,
+        consensus_channels,
     ))
 }
 
@@ -787,7 +813,7 @@ impl EthereumContext {
 
         let chain = client.get_chain().await.context(
             r"Determining Ethereum chain.
-                            
+
 Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         )?;
 

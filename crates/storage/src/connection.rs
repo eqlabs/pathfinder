@@ -30,7 +30,8 @@ pub use rusqlite::TransactionBehavior;
 pub use trie::{Node, NodeRef, RootIndexUpdate, StoredNode, TrieStorageIndex, TrieUpdate};
 
 use crate::bloom::AggregateBloomCache;
-use crate::StorageError;
+use crate::params::RowExt;
+use crate::{StorageError, VERSION_KEY};
 
 type PooledConnection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
 
@@ -151,5 +152,12 @@ impl Transaction<'_> {
     pub fn reset_in_memory_state(&self, head: BlockNumber) -> anyhow::Result<()> {
         self.event_filter_cache.reset();
         self.rebuild_running_event_filter(head)
+    }
+
+    pub fn user_version(&self) -> anyhow::Result<i64> {
+        let user_version = self
+            .transaction
+            .pragma_query_value(None, VERSION_KEY, |row| row.get_i64(0))?;
+        Ok(user_version)
     }
 }

@@ -9,16 +9,18 @@ pub mod sync;
 pub mod validator;
 
 pub enum SyncMessageToConsensus {
-    /// Ask consensus for the finalized block with given number. The only
-    /// difference from a committed block is that the state tries are not
-    /// updated yet, so the state commitment is not computed and hence the block
-    /// hash cannot be computed yet.
+    /// Ask consensus for the finalized and **decided upon** block with given
+    /// number. The only difference from a committed block is that the state
+    /// tries are not updated yet, so the state commitment is not computed
+    /// and hence the block hash cannot be computed yet.
     GetConsensusFinalizedBlock {
         number: pathfinder_common::BlockNumber,
         reply: ConsensusFinalizedBlockReply,
     },
-    /// Notify consensus that a finalized block has been committed to storage.
-    ConfirmFinalizedBlockCommitted {
+    /// Notify consensus that a block has been committed to storage. This can be
+    /// either a block that was downloaded from the feeder gateway or a block
+    /// that was produced locally by the consensus engine.
+    ConfirmBlockCommitted {
         number: pathfinder_common::BlockNumber,
     },
     ValidateBlock {

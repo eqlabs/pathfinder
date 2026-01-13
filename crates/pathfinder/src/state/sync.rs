@@ -21,6 +21,7 @@ use pathfinder_storage::pruning::BlockchainHistoryMode;
 use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
+use starknet_gateway_types::error::{KnownStarknetErrorCode, SequencerError};
 use starknet_gateway_types::reply::{
     Block,
     GasPrices,
@@ -29,8 +30,9 @@ use starknet_gateway_types::reply::{
     PreLatestBlock,
 };
 use tokio::sync::mpsc::{self, Receiver};
-use tokio::sync::watch::Sender as WatchSender;
+use tokio::sync::watch::{self, Sender as WatchSender};
 
+use crate::consensus::ConsensusChannels;
 use crate::state::block_hash;
 use crate::state::l1::L1SyncContext;
 use crate::state::l2::{BlockChain, L2SyncContext};
@@ -108,7 +110,6 @@ pub struct SyncContext<G, E> {
     pub l1_poll_interval: Duration,
     pub pending_data: WatchSender<PendingData>,
     pub submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker,
-    pub sync_to_consensus_tx: Option<mpsc::Sender<SyncMessageToConsensus>>,
     pub block_validation_mode: l2::BlockValidationMode,
     pub notifications: Notifications,
     pub block_cache_size: usize,
@@ -168,7 +169,7 @@ where
             L2SyncContext<SequencerClient>,
             Option<(BlockNumber, BlockHash, StateCommitment)>,
             BlockChain,
-            tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+            watch::Receiver<(BlockNumber, BlockHash)>,
         ) -> F2
         + Copy,
 {
@@ -187,7 +188,6 @@ where
         l1_poll_interval: _,
         pending_data,
         submitted_tx_tracker,
-        sync_to_consensus_tx,
         block_validation_mode: _,
         notifications,
         block_cache_size,
@@ -273,7 +273,7 @@ where
         pending_data,
         verify_tree_hashes: context.verify_tree_hashes,
         notifications,
-        sync_to_consensus_tx,
+        sync_to_consensus_tx: None,
     };
     let mut consumer_handle =
         util::task::spawn(consumer(event_receiver, consumer_context, tx_current));
@@ -446,6 +446,7 @@ pub async fn consensus_sync<Ethereum, SequencerClient, F1, F2, L1Sync, L2Sync>(
     context: SyncContext<SequencerClient, Ethereum>,
     mut l1_sync: L1Sync,
     l2_sync: L2Sync,
+    consensus_channels: ConsensusChannels,
 ) -> anyhow::Result<()>
 where
     Ethereum: EthereumApi + Clone + Send + 'static,
@@ -455,11 +456,11 @@ where
     L1Sync: FnMut(mpsc::Sender<SyncEvent>, L1SyncContext<Ethereum>) -> F1,
     L2Sync: FnOnce(
             mpsc::Sender<SyncEvent>,
-            Option<mpsc::Sender<SyncMessageToConsensus>>,
+            Option<ConsensusChannels>,
             L2SyncContext<SequencerClient>,
             Option<(BlockNumber, BlockHash, StateCommitment)>,
             BlockChain,
-            tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+            watch::Receiver<(BlockNumber, BlockHash)>,
         ) -> F2
         + Copy,
 {
@@ -478,7 +479,6 @@ where
         l1_poll_interval: _,
         pending_data,
         submitted_tx_tracker,
-        sync_to_consensus_tx,
         block_validation_mode: _,
         notifications,
         block_cache_size,
@@ -506,11 +506,28 @@ where
         Ok(l2_head)
     })?;
 
-    // Get the latest block from the sequencer
-    let gateway_latest = sequencer
-        .head()
-        .await
-        .context("Fetching latest block from gateway")?;
+    // (Jan 2026) Although this will not happen on mainnet, nor on testnet, we can
+    // imagine custom networks (in particular ad-hoc integration test networks)
+    // which start from genesis, where the genesis block is decided upon in
+    // consensus and it will not not be available at a feeder gateway until >=3
+    // network participants actually decide upon the genesis block.
+    let gateway_latest = match sequencer.head().await {
+        Ok(gateway_latest) => gateway_latest,
+        Err(SequencerError::StarknetError(e))
+            if e.code == KnownStarknetErrorCode::BlockNotFound.into() =>
+        {
+            // Use some invalid initial values, the reason is that the API is common for
+            // production sync and we don't want to introduce an Option-based runtime check
+            // that could fail.
+            (BlockNumber::GENESIS, BlockHash::ZERO)
+        }
+        // head() retries on non starknet errors so any other starknet error code indicates
+        // a problem with the feeder gateway
+        Err(error) => {
+            tracing::error!(%error, "Error fetching latest block from gateway");
+            Err(error).context("Fetching latest block from gateway")?
+        }
+    };
 
     // Keep polling the sequencer for the latest block
     let (tx_latest, rx_latest) = tokio::sync::watch::channel(gateway_latest);
@@ -530,11 +547,13 @@ where
         .context("Fetching latest blocks from storage")?;
     let block_chain = BlockChain::with_capacity(block_cache_size, latest_blocks);
 
+    let sync_to_consensus_tx = consensus_channels.sync_to_consensus_tx.clone();
+
     // Start L2 producer task. Clone the event sender so that the channel remains
     // open even if the producer task fails.
     let mut l2_handle = util::task::spawn(l2_sync(
         event_sender.clone(),
-        sync_to_consensus_tx.clone(),
+        Some(consensus_channels.clone()),
         l2_context.clone(),
         l2_head,
         block_chain,
@@ -550,7 +569,7 @@ where
         pending_data,
         verify_tree_hashes: context.verify_tree_hashes,
         notifications,
-        sync_to_consensus_tx: sync_to_consensus_tx.clone(),
+        sync_to_consensus_tx: Some(sync_to_consensus_tx.clone()),
     };
     let mut consumer_handle =
         util::task::spawn(consumer(event_receiver, consumer_context, tx_current));
@@ -611,7 +630,7 @@ where
                 let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
                 let fut = l2_sync(
                     event_sender.clone(),
-                    sync_to_consensus_tx.clone(),
+                    Some(consensus_channels.clone()),
                     l2_context.clone(),
                     l2_head,
                     block_chain,
@@ -771,20 +790,20 @@ async fn consumer(
             }
         }
 
-        let maybe_committed_l2_block_number = tokio::task::block_in_place(|| {
+        let sync_to_consensus_msg = tokio::task::block_in_place(|| {
             let tx = db_conn
                 .transaction_with_behavior(TransactionBehavior::Immediate)
                 .context("Create database transaction")?;
 
             let pruning_event = PruningEvent::from_sync_event(&event);
 
-            let notification = match event {
+            let (notification, sync_to_consensus_msg) = match event {
                 L1Update(update) => {
                     tracing::trace!("Updating L1 sync to block {}", update.block_number);
                     l1_update(&tx, &update)?;
                     tracing::info!("L1 sync updated to block {}", update.block_number);
 
-                    None
+                    (None, None)
                 }
                 DownloadedBlock(
                     (block, (tx_comm, ev_comm, rc_comm)),
@@ -881,7 +900,12 @@ async fn consumer(
                         }
                     }
 
-                    Some(Notification::L2Block(Arc::new(l2_block)))
+                    (
+                        Some(Notification::L2Block(Arc::new(l2_block))),
+                        Some(SyncMessageToConsensus::ConfirmBlockCommitted {
+                            number: block_number,
+                        }),
+                    )
                 }
                 FinalizedConsensusBlock {
                     l2_block,
@@ -910,7 +934,12 @@ async fn consumer(
                              all sync related tasks, including this one, will be restarted.",
                         );
 
-                    Some(Notification::L2Block(Arc::new(l2_block)))
+                    let number = l2_block.header.number;
+
+                    (
+                        Some(Notification::L2Block(Arc::new(l2_block))),
+                        Some(SyncMessageToConsensus::ConfirmBlockCommitted { number }),
+                    )
                 }
                 Reorg(reorg_tail) => {
                     tracing::trace!("Reorg L2 state to block {}", reorg_tail);
@@ -931,7 +960,7 @@ async fn consumer(
                         None => tracing::info!("L2 reorg occurred, new L2 head is genesis"),
                     }
 
-                    Some(Notification::L2Reorg(reorg))
+                    (Some(Notification::L2Reorg(reorg)), None)
                 }
                 CairoClass { definition, hash } => {
                     tracing::trace!("Inserting new Cairo class with hash: {hash}");
@@ -940,7 +969,7 @@ async fn consumer(
 
                     tracing::debug!(%hash, "Inserted new Cairo class");
 
-                    None
+                    (None, None)
                 }
                 SierraClass {
                     sierra_definition,
@@ -960,7 +989,7 @@ async fn consumer(
 
                     tracing::debug!(sierra=%sierra_hash, casm=%casm_hash, "Inserted new Sierra class");
 
-                    None
+                    (None, None)
                 }
                 Pending((pending_block, pending_state_update)) => {
                     tracing::trace!("Updating pending data");
@@ -979,7 +1008,7 @@ async fn consumer(
                         tracing::debug!("Updated pending data");
                     }
 
-                    None
+                    (None, None)
                 }
                 PreConfirmed {
                     number,
@@ -1016,7 +1045,7 @@ async fn consumer(
                         }
                     }
 
-                    None
+                    (None, None)
                 }
             };
 
@@ -1024,16 +1053,6 @@ async fn consumer(
                 perform_blockchain_pruning(pruning_event, &tx).context("Pruning database")?;
             }
             let commit_result = tx.commit().context("Committing database transaction");
-
-            // Consensus may have deferred execution for the next block until this one is
-            // committed, so we must now send notification to consensus to unblock any
-            // deferred execution.
-            let maybe_committed_l2_block_number =
-                if let Some(Notification::L2Block(l2_block)) = notification.as_ref() {
-                    Some(l2_block.header.number)
-                } else {
-                    None
-                };
 
             // Now that the changes have been committed to storage we can send out the
             // notification. It is important that this is only ever done _after_
@@ -1043,20 +1062,19 @@ async fn consumer(
                 send_notification(notification, &mut notifications);
             }
 
-            // TODO return the value of the committed l2 block
-            commit_result.map(|_| maybe_committed_l2_block_number)
+            commit_result.map(|_| sync_to_consensus_msg)
         })?;
 
-        if let Some(committed_l2_block_number) = maybe_committed_l2_block_number {
-            // Notify consensus that a new L2 block has been committed.
-            if let Some(sync_to_consensus_tx) = sync_to_consensus_tx.clone() {
-                sync_to_consensus_tx
-                    .send(SyncMessageToConsensus::ConfirmFinalizedBlockCommitted {
-                        number: committed_l2_block_number,
-                    })
-                    .await
-                    .context("Sending L2 block committed message to consensus")?;
-            }
+        if let (Some(sync_to_consensus_tx), Some(sync_to_consensus_msg)) =
+            (sync_to_consensus_tx.clone(), sync_to_consensus_msg)
+        {
+            sync_to_consensus_tx
+                .send(sync_to_consensus_msg)
+                .await
+                .context(
+                    "Sending L2 consensus finalized and decided upon block committed message to \
+                     consensus",
+                )?;
         }
     }
 
@@ -1213,7 +1231,7 @@ async fn update_sync_status_latest(
     state: Arc<SyncState>,
     starting_block_hash: BlockHash,
     starting_block_num: BlockNumber,
-    mut latest: tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+    mut latest: watch::Receiver<(BlockNumber, BlockHash)>,
 ) {
     let starting = NumberedBlock::from((starting_block_hash, starting_block_num));
 

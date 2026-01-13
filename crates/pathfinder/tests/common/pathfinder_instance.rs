@@ -1,7 +1,5 @@
 //! Utilities for spawning and managing Pathfinder instances.
 
-use std::fs::{File, OpenOptions};
-use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
@@ -9,11 +7,17 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
 use http::StatusCode;
+use p2p_proto::consensus::ProposalPart;
+use pathfinder_common::{ConsensusFinalizedL2Block, ContractAddress};
 use pathfinder_lib::config::integration_testing::InjectFailureConfig;
+use pathfinder_lib::consensus::ConsensusProposals;
+use pathfinder_storage::consensus::open_consensus_storage_readonly;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
+
+use crate::common::utils::{self, create_log_file};
 
 /// Represents a running Pathfinder instance.
 pub struct PathfinderInstance {
@@ -43,6 +47,7 @@ pub struct Config {
     pub fixture_dir: PathBuf,
     pub test_dir: PathBuf,
     pub inject_failure: Option<InjectFailureConfig>,
+    pub local_feeder_gateway_port: Option<u16>,
 }
 
 pub type RpcPortWatch = (watch::Sender<(u32, u16)>, watch::Receiver<(u32, u16)>);
@@ -61,11 +66,13 @@ impl PathfinderInstance {
     /// returned `Ok(_)`, which means that the instance has already exited.
     pub fn spawn(config: Config) -> anyhow::Result<Self> {
         let id_file = config.fixture_dir.join(format!("id_{}.json", config.name));
-        let db_dir = config.test_dir.join(format!("db-{}", config.name));
+        let db_dir = config.db_dir();
         let stdout_path = config.test_dir.join(format!("{}_stdout.log", config.name));
-        let stdout_file = create_log_file(&config, &stdout_path)?;
+        let stdout_file =
+            create_log_file(format!("Pathfinder instance {}", config.name), &stdout_path)?;
         let stderr_path = config.test_dir.join(format!("{}_stderr.log", config.name));
-        let stderr_file = create_log_file(&config, &stderr_path)?;
+        let stderr_file =
+            create_log_file(format!("Pathfinder instance {}", config.name), &stderr_path)?;
 
         let mut command = Command::new(config.pathfinder_bin);
         let command = command
@@ -74,41 +81,53 @@ impl PathfinderInstance {
             .env(
                 "RUST_LOG",
                 "pathfinder_lib=trace,pathfinder=trace,pathfinder_consensus=trace,p2p=off,\
-                 informalsystems_malachitebft_core_consensus=trace",
+                 informalsystems_malachitebft_core_consensus=trace,starknet_gateway_client=trace,\
+                 starknet_gateway_types=trace,pathfinder_storage=trace",
             )
-            .args([
-                "--ethereum.url=https://ethereum-sepolia-rpc.publicnode.com",
-                "--network=sepolia-testnet",
-                format!("--data-directory={}", db_dir.display()).as_str(),
-                "--debug.pretty-log=true",
-                "--color=never",
-                "--monitor-address=127.0.0.1:0",
-                "--rpc.enable=true",
-                "--http-rpc=127.0.0.1:0",
-                "--consensus.enable=true",
-                // Currently the proposer address always points to Alice (0x1).
-                "--consensus.proposer-addresses=0x1",
-                format!(
-                    "--consensus.my-validator-address={:#x}",
-                    config.my_validator_address
-                )
-                .as_str(),
-                format!(
-                    "--consensus.validator-addresses={}",
-                    config
-                        .validator_addresses
-                        .iter()
-                        .map(|a| format!("0x{a}"))
-                        .collect::<Vec<_>>()
-                        .join(",")
-                )
-                .as_str(),
-                "--consensus.history-depth=2",
-                format!("--p2p.consensus.identity-config-file={}", id_file.display()).as_str(),
-                "--p2p.consensus.listen-on=/ip4/127.0.0.1/tcp/0",
-                "--p2p.consensus.experimental.direct-connection-timeout=1",
-                "--p2p.consensus.experimental.eviction-timeout=1",
+            .arg("--ethereum.url=https://ethereum-sepolia-rpc.publicnode.com");
+
+        if let Some(port) = config.local_feeder_gateway_port {
+            command.args([
+                "--network=custom",
+                "--chain-id=SN_SEPOLIA",
+                &format!("--feeder-gateway-url=http://127.0.0.1:{port}/feeder_gateway"),
+                &format!("--gateway-url=http://127.0.0.1:{port}/gateway"),
             ]);
+        } else {
+            command.arg("--network=sepolia-testnet");
+        }
+
+        let command = command.args([
+            format!("--data-directory={}", db_dir.display()).as_str(),
+            "--debug.pretty-log=true",
+            "--color=never",
+            "--monitor-address=127.0.0.1:0",
+            "--rpc.enable=true",
+            "--http-rpc=127.0.0.1:0",
+            "--consensus.enable=true",
+            // Currently the proposer address always points to Alice (0x1).
+            "--consensus.proposer-addresses=0x1",
+            format!(
+                "--consensus.my-validator-address={:#x}",
+                config.my_validator_address
+            )
+            .as_str(),
+            format!(
+                "--consensus.validator-addresses={}",
+                config
+                    .validator_addresses
+                    .iter()
+                    .map(|a| format!("0x{a}"))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+            .as_str(),
+            "--consensus.history-depth=2",
+            format!("--p2p.consensus.identity-config-file={}", id_file.display()).as_str(),
+            "--p2p.consensus.listen-on=/ip4/127.0.0.1/tcp/0",
+            "--p2p.consensus.experimental.direct-connection-timeout=1",
+            "--p2p.consensus.experimental.eviction-timeout=1",
+        ]);
         if let Some(boot_port) = config.boot_port {
             // Peer ID from `fixtures/id_Alice.json`.
             command.arg(format!(
@@ -198,9 +217,10 @@ impl PathfinderInstance {
         }
     }
 
-    /// Waits until the instance is ready to accept requests on the monitor
-    /// port, or until `timeout` is reached. Polls every `poll_interval`.
-    /// If the timeout is reached, an error is returned.
+    /// Waits until the instance is ready to accept requests on the monitor,
+    /// rpc, and consensus p2p ports, or until `timeout` is reached. Polls
+    /// every `poll_interval`. If the timeout is reached, an error is
+    /// returned.
     pub async fn wait_for_ready(
         &self,
         poll_interval: Duration,
@@ -210,9 +230,9 @@ impl PathfinderInstance {
         let fut = async move {
             let stopwatch = Instant::now();
             let (monitor_port, rpc_port, p2p_port) = tokio::join!(
-                Self::wait_for_port(pid, "monitor", &self.db_dir, poll_interval),
-                Self::wait_for_port(pid, "rpc", &self.db_dir, poll_interval),
-                Self::wait_for_port(pid, "p2p_consensus", &self.db_dir, poll_interval),
+                utils::wait_for_port(pid, "monitor", &self.db_dir, poll_interval),
+                utils::wait_for_port(pid, "rpc", &self.db_dir, poll_interval),
+                utils::wait_for_port(pid, "p2p_consensus", &self.db_dir, poll_interval),
             );
             let monitor_port = monitor_port?;
             self.monitor_port.store(monitor_port, Ordering::Relaxed);
@@ -252,37 +272,6 @@ impl PathfinderInstance {
         }
     }
 
-    async fn wait_for_port(
-        pid: u32,
-        port_name: &str,
-        db_dir: &Path,
-        poll_interval: Duration,
-    ) -> anyhow::Result<u16> {
-        let port_file = db_dir.join(format!("pid_{pid}_{port_name}_port"));
-        loop {
-            match tokio::fs::read_to_string(&port_file).await {
-                Ok(port_str) => {
-                    let port = port_str
-                        .trim()
-                        .parse::<u16>()
-                        .context(format!("Parsing port value in {}", port_file.display()))?;
-                    return Ok(port);
-                }
-                Err(e) if e.kind() == ErrorKind::NotFound => {
-                    // File not found yet, continue polling.
-                }
-                Err(e) => {
-                    return Err(anyhow::anyhow!(
-                        "Error reading port file {}: {e}",
-                        port_file.display()
-                    ));
-                }
-            }
-
-            sleep(poll_interval).await;
-        }
-    }
-
     pub fn name(&self) -> &'static str {
         self.name
     }
@@ -312,84 +301,48 @@ impl PathfinderInstance {
             return;
         }
 
-        println!(
-            "Pathfinder instance {:<7} (pid: {}) terminating...",
-            self.name,
-            self.process.id()
+        utils::terminate(
+            &mut self.process,
+            format!("Pathfinder instance {:<7}", self.name),
         );
-
-        _ = Command::new("kill")
-            // It's supposed to be the default signal in `kill`, but let's be explicit.
-            .arg("-TERM")
-            .arg(self.process.id().to_string())
-            .status();
-
-        // See if SIGTERM worked.
-        match self.process.try_wait() {
-            Ok(Some(status)) => {
-                println!(
-                    "Pathfinder instance {:<7} (pid: {}) terminated with status: {status}",
-                    self.name,
-                    self.process.id()
-                );
-            }
-            Ok(None) => match self.process.wait() {
-                Ok(status) => {
-                    println!(
-                        "Pathfinder instance {:<7} (pid: {}) terminated with status: {status}",
-                        self.name,
-                        self.process.id()
-                    );
-                }
-                Err(e) => {
-                    eprintln!(
-                        "Error waiting for Pathfinder instance {:<7} (pid: {}) to terminate: {e}",
-                        self.name,
-                        self.process.id(),
-                    );
-                    if let Err(error) = self.process.kill() {
-                        eprintln!(
-                            "Error killing Pathfinder instance {:<7} (pid: {}): {error}",
-                            self.name,
-                            self.process.id(),
-                        );
-                    }
-                }
-            },
-            Err(e) => {
-                eprintln!(
-                    "Error terminating Pathfinder instance {:<7} (pid: {}): {e}",
-                    self.name,
-                    self.process.id(),
-                );
-                if let Err(error) = self.process.kill() {
-                    eprintln!(
-                        "Error killing Pathfinder instance {:<7} (pid: {}): {error}",
-                        self.name,
-                        self.process.id(),
-                    );
-                }
-            }
-        }
     }
 
     pub fn enable_log_dump(enable: bool) {
         DUMP_LOGS_ON_DROP.store(enable, std::sync::atomic::Ordering::Relaxed);
     }
+
+    /// Retrieve consensus database artifacts up to and including
+    /// `up_to_height`.
+    pub fn consensus_db_artifacts(&self, up_to_height: u64) -> ConsensusDbArtifacts {
+        let consensus_storage = open_consensus_storage_readonly(&self.db_dir).unwrap();
+        let mut conn = consensus_storage.connection().unwrap();
+        let tx = conn.transaction().unwrap();
+        let consensus_storage = ConsensusProposals::new(tx);
+
+        let mut artifacts = Vec::new();
+
+        for height in 0..=up_to_height {
+            let parts = consensus_storage.parts(height).unwrap();
+            let blocks = consensus_storage
+                .consensus_finalized_blocks(height)
+                .unwrap();
+
+            if !parts.is_empty() || !blocks.is_empty() {
+                artifacts.push((height, (parts, blocks)));
+            }
+        }
+
+        artifacts
+    }
 }
 
-fn create_log_file(config: &Config, stdout_path: &Path) -> Result<File, anyhow::Error> {
-    let stdout_file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(stdout_path)
-        .context(format!(
-            "Creating log file {} for Pathfinder instance {}",
-            stdout_path.display(),
-            config.name
-        ))?;
-    Ok(stdout_file)
-}
+type ConsensusDbArtifacts = Vec<(
+    u64,
+    (
+        Vec<(u32, ContractAddress, Vec<ProposalPart>)>,
+        Vec<(u32, bool, ConsensusFinalizedL2Block)>,
+    ),
+)>;
 
 impl Drop for PathfinderInstance {
     fn drop(&mut self) {
@@ -438,6 +391,7 @@ impl Config {
                 pathfinder_bin: pathfinder_bin.to_path_buf(),
                 fixture_dir: fixture_dir.to_path_buf(),
                 inject_failure: None,
+                local_feeder_gateway_port: None,
             })
             .collect()
     }
@@ -455,6 +409,15 @@ impl Config {
     pub fn with_sync_enabled(mut self) -> Self {
         self.sync_enabled = true;
         self
+    }
+
+    pub fn with_local_feeder_gateway(mut self, port: u16) -> Self {
+        self.local_feeder_gateway_port = Some(port);
+        self
+    }
+
+    pub fn db_dir(&self) -> PathBuf {
+        self.test_dir.join(format!("db-{}", self.name))
     }
 }
 

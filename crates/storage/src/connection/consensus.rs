@@ -55,6 +55,13 @@ pub fn open_consensus_storage(data_directory: &Path) -> anyhow::Result<Consensus
     Ok(consensus_storage)
 }
 
+pub fn open_consensus_storage_readonly(data_directory: &Path) -> anyhow::Result<ConsensusStorage> {
+    let storage_manager =
+        StorageBuilder::file(data_directory.join("consensus.sqlite")).readonly()?;
+    let consensus_storage = storage_manager.create_read_only_pool(NonZeroU32::new(5).unwrap())?;
+    Ok(ConsensusStorage(consensus_storage))
+}
+
 impl ConsensusStorage {
     pub fn in_tempdir() -> anyhow::Result<ConsensusStorage> {
         let storage = StorageBuilder::in_tempdir()?;
@@ -274,6 +281,7 @@ impl ConsensusTransaction<'_> {
                     height      INTEGER NOT NULL,
                     round       INTEGER NOT NULL,
                     block       BLOB NOT NULL,
+                    is_decided  INTEGER NOT NULL DEFAULT 0,
                     UNIQUE(height, round)
             )",
             [],
@@ -334,6 +342,27 @@ impl ConsensusTransaction<'_> {
         Ok(count > 0)
     }
 
+    pub fn mark_consensus_finalized_block_as_decided(
+        &self,
+        height: u64,
+        round: u32,
+    ) -> Result<(), StorageError> {
+        self.0
+            .inner()
+            .execute(
+                r"
+                UPDATE consensus_finalized_blocks
+                SET is_decided = 1
+                WHERE height = :height AND round = :round",
+                named_params! {
+                    ":height": &height,
+                    ":round": &round,
+                },
+            )
+            .map(|updated_rows| assert_eq!(updated_rows, 1))
+            .map_err(StorageError::from)
+    }
+
     pub fn read_consensus_finalized_block(
         &self,
         height: u64,
@@ -355,9 +384,8 @@ impl ConsensusTransaction<'_> {
             .map_err(StorageError::from)
     }
 
-    /// Read the finalized block for the given height with the highest round. In
-    /// practice this should be the only round left in the DB for that height.
-    pub fn read_consensus_finalized_block_for_last_round(
+    /// Read the decided finalized block for the given height.
+    pub fn read_consensus_finalized_and_decided_block(
         &self,
         height: u64,
     ) -> Result<Option<Vec<u8>>, StorageError> {
@@ -366,7 +394,7 @@ impl ConsensusTransaction<'_> {
             .query_row(
                 r"SELECT block
                 FROM consensus_finalized_blocks
-                WHERE height = :height
+                WHERE height = :height AND is_decided = 1
                 ORDER BY round DESC
                 LIMIT 1",
                 named_params! {
@@ -398,44 +426,21 @@ impl ConsensusTransaction<'_> {
 
     /// Remove all finalized blocks for the given height **except** the one from
     /// `commit_round`.
-    pub fn remove_uncommitted_consensus_finalized_blocks(
+    pub fn remove_undecided_consensus_finalized_blocks(
         &self,
         height: u64,
-        commit_round: u32,
     ) -> Result<(), StorageError> {
         self.0
             .inner()
             .execute(
                 r"
                 DELETE FROM consensus_finalized_blocks
-                WHERE height = :height AND round <> :commit_round",
+                WHERE height = :height AND is_decided <> 1",
                 named_params! {
                     ":height": &height,
-                    ":commit_round": &commit_round,
                 },
             )
             .context("Deleting consensus finalized blocks which will not be committed to the DB")?;
-        Ok(())
-    }
-
-    /// Remove a finalized block for the given height and round.
-    pub fn remove_consensus_finalized_block(
-        &self,
-        height: u64,
-        round: u32,
-    ) -> Result<(), StorageError> {
-        self.0
-            .inner()
-            .execute(
-                r"
-                DELETE FROM consensus_finalized_blocks
-                WHERE height = :height AND round = :round",
-                named_params! {
-                    ":height": &height,
-                    ":round": &round,
-                },
-            )
-            .context("Deleting consensus finalized block")?;
         Ok(())
     }
 
@@ -453,5 +458,65 @@ impl ConsensusTransaction<'_> {
             )
             .context("Deleting consensus finalized blocks")?;
         Ok(())
+    }
+
+    pub fn consensus_proposal_parts(
+        &self,
+        height: u64,
+    ) -> Result<Vec<(u32, ContractAddress, Vec<u8>)>, StorageError> {
+        let mut stmt = self.0.inner().prepare(
+            r"SELECT round, proposer, parts
+            FROM consensus_proposals
+            WHERE height = :height",
+        )?;
+
+        let row_iter = stmt.query_map(
+            named_params! {
+                ":height": &height,
+            },
+            |row| {
+                let round: u32 = row.get_i64(0).map(|x| x as u32)?;
+                let proposer: ContractAddress = row.get_contract_address(1)?;
+                let parts_blob: Vec<u8> = row.get_blob(2)?.to_vec();
+                Ok((round, proposer, parts_blob))
+            },
+        )?;
+
+        let mut results = Vec::new();
+        for row_result in row_iter {
+            results.push(row_result?);
+        }
+
+        Ok(results)
+    }
+
+    pub fn consensus_finalized_blocks(
+        &self,
+        height: u64,
+    ) -> Result<Vec<(u32, bool, Vec<u8>)>, StorageError> {
+        let mut stmt = self.0.inner().prepare(
+            r"SELECT round, is_decided, block
+            FROM consensus_finalized_blocks
+            WHERE height = :height",
+        )?;
+
+        let row_iter = stmt.query_map(
+            named_params! {
+                ":height": &height,
+            },
+            |row| {
+                let round: u32 = row.get_i64(0).map(|x| x as u32)?;
+                let is_decided: bool = row.get_i64(1).map(|x| x != 0)?;
+                let block_blob: Vec<u8> = row.get_blob(2)?.to_vec();
+                Ok((round, is_decided, block_blob))
+            },
+        )?;
+
+        let mut results = Vec::new();
+        for row_result in row_iter {
+            results.push(row_result?);
+        }
+
+        Ok(results)
     }
 }
