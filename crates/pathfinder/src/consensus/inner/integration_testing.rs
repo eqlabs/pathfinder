@@ -127,19 +127,6 @@ pub fn debug_fail_on_proposal_part(
     );
 }
 
-pub fn debug_fail_on_entire_proposal_rx(
-    height: u64,
-    inject_failure: Option<InjectFailureConfig>,
-    data_directory: &Path,
-) {
-    debug_fail_on(
-        |trigger| matches!(trigger, InjectFailureTrigger::EntireProposalRx),
-        height,
-        inject_failure,
-        data_directory,
-    );
-}
-
 pub fn debug_fail_on_entire_proposal_persisted(
     height: u64,
     inject_failure: Option<InjectFailureConfig>,

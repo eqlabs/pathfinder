@@ -296,13 +296,6 @@ pub fn spawn(
                                 );
                                 match result {
                                     Ok(Some(commitment)) => {
-                                        // Does nothing in production builds.
-                                        integration_testing::debug_fail_on_entire_proposal_rx(
-                                            height_and_round.height(),
-                                            inject_failure,
-                                            &data_directory,
-                                        );
-
                                         anyhow::Ok(ComputationSuccess::IncomingProposalCommitment(
                                             height_and_round,
                                             commitment,
