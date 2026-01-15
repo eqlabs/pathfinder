@@ -325,6 +325,7 @@ pub fn spawn(
                                                 "Invalid proposal part from peer - skipping, continuing operation"
                                             );
                                             // Purge the proposal from storage
+                                            handled_proposal_parts.remove(&height_and_round);
                                             if let Err(purge_err) = proposals_db.remove_parts(
                                                 height_and_round.height(),
                                                 Some(height_and_round.round()),
@@ -713,6 +714,8 @@ pub fn spawn(
                         );
 
                         // Remove cached proposal parts for this height
+                        handled_proposal_parts
+                            .retain(|hnr, _| hnr.height() != height_and_round.height());
                         proposals_db.remove_parts(height_and_round.height(), None)?;
                         tracing::debug!(
                             "🖧  🗑️ {validator_address} removed my proposal parts for height {}",
