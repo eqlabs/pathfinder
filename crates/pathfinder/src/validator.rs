@@ -78,7 +78,15 @@ impl ValidatorBlockInfoStage {
         })
     }
 
-    pub fn validate_consensus_block_info<E>(
+    pub fn chain_id(&self) -> ChainId {
+        self.chain_id
+    }
+
+    pub fn proposal_height(&self) -> u64 {
+        self.proposal_height.get()
+    }
+
+    pub fn validate_block_info<E>(
         self,
         block_info: BlockInfo,
         main_storage: Storage,
@@ -189,17 +197,8 @@ fn validate_block_info_timestamp(
     let parent_header = db_tx
         .block_header(BlockId::Number(block_num))
         .context("Fetching block header for timestamp validation")
-        .map_err(ProposalHandlingError::fatal)?;
-
-    let Some(parent_header) = parent_header else {
-        // TODO: Deferred timestamp validation
-        // let msg = format!(
-        //     "Parent block header not found for height {}",
-        //     parent_height
-        // );
-        // return Err(ProposalHandlingError::recoverable_msg(msg));
-        return Ok(());
-    };
+        .map_err(ProposalHandlingError::fatal)?
+        .expect("BlockInfo validation should be deferred until parent block is committed");
 
     if proposal_timestamp <= parent_header.timestamp.get() {
         let msg = format!(
@@ -1004,6 +1003,7 @@ pub fn deployed_address(txnv: &TransactionVariant) -> Option<starknet_api::core:
 #[cfg(test)]
 mod tests {
     use assert_matches::assert_matches;
+    use p2p::consensus::HeightAndRound;
     use p2p_proto::consensus::TransactionVariant;
     use p2p_proto::transaction::L1HandlerV0;
     use pathfinder_common::{
@@ -1441,17 +1441,19 @@ mod tests {
         let main_storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
 
+        let hnr = HeightAndRound::new(0, 0);
+
         // Create a proposal init for height 0
         let proposal_init = p2p_proto::consensus::ProposalInit {
-            height: 0,
-            round: 0,
+            height: hnr.height(),
+            round: hnr.round(),
             valid_round: None,
             proposer: p2p_proto::common::Address(Felt::from_hex_str("0x1").unwrap()),
         };
 
         // Create block info
         let block_info = p2p_proto::consensus::BlockInfo {
-            height: 0,
+            height: hnr.height(),
             timestamp: 1000,
             builder: p2p_proto::common::Address(Felt::from_hex_str("0x1").unwrap()),
             l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
@@ -1466,7 +1468,7 @@ mod tests {
             .expect("Failed to create ValidatorBlockInfoStage");
 
         let validator_transaction_batch = validator_block_info
-            .validate_consensus_block_info::<BlockExecutor>(block_info, main_storage.clone(), None)
+            .validate_block_info::<BlockExecutor>(block_info, main_storage.clone(), None)
             .expect("Failed to validate block info");
 
         // Verify the validator is in the expected empty state
@@ -1580,11 +1582,8 @@ mod tests {
             l1_data_gas_price_wei: 1,
             eth_to_fri_rate: 1_000_000_000,
         };
-        let result = validator_block_info1.validate_consensus_block_info::<BlockExecutor>(
-            block_info1,
-            storage,
-            None,
-        );
+        let result =
+            validator_block_info1.validate_block_info::<BlockExecutor>(block_info1, storage, None);
 
         if let Some(expected_error_message) = expected_error_message {
             let err = result.unwrap_err();
@@ -1602,9 +1601,9 @@ mod tests {
 
     #[rstest]
     #[case(BlockNumber::GENESIS)]
-    #[ignore = "TODO With deferred execution, not having a parent in the database is considered
-        valid when receiving proposal parts. We could also have deferred block info validation,
-        where we wait until parent is committed before validating timestamps."]
+    #[should_panic(
+        expected = "BlockInfo validation should be deferred until parent block is committed"
+    )]
     #[case(BlockNumber::new_or_panic(42))]
     fn timestamp_validation_parent_block_not_found(#[case] proposal_height: BlockNumber) {
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
@@ -1636,13 +1635,13 @@ mod tests {
             // parent.
             assert!(
                 validator_block_info
-                    .validate_consensus_block_info::<BlockExecutor>(block_info, storage, None)
+                    .validate_block_info::<BlockExecutor>(block_info, storage, None)
                     .is_ok(),
                 "Genesis block timestamp validation should pass even without parent"
             );
         } else {
             let err = validator_block_info
-                .validate_consensus_block_info::<BlockExecutor>(block_info, storage, None)
+                .validate_block_info::<BlockExecutor>(block_info, storage, None)
                 .unwrap_err();
             let expected_err_message = format!(
                 "Parent block header not found for height {}",

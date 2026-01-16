@@ -115,7 +115,7 @@ pub fn spawn(
     let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
     // Manages batch execution with checkpoint-based rollback for
     // ExecutedTransactionCount support
-    let mut batch_execution_manager = BatchExecutionManager::new();
+    let mut batch_execution_manager = BatchExecutionManager::new(gas_price_provider.clone());
     // Keep track of whether we've already emitted a warning about the
     // event channel size exceeding the limit, to avoid spamming the logs.
     let mut channel_size_warning_emitted = false;
@@ -370,8 +370,10 @@ pub fn spawn(
                                     &validator_cache,
                                     deferred_executions.clone(),
                                     &mut batch_execution_manager,
+                                    main_readonly_storage.clone(),
                                     &proposals_db,
                                     number,
+                                    gas_price_provider.clone(),
                                 )?;
                                 Ok(success)
                             }
@@ -678,8 +680,10 @@ pub fn spawn(
                                 &validator_cache,
                                 deferred_executions.clone(),
                                 &mut batch_execution_manager,
+                                main_readonly_storage.clone(),
                                 &proposals_db,
                                 block_number,
+                                gas_price_provider.clone(),
                             )?;
 
                             Ok(success)
@@ -746,13 +750,16 @@ pub fn spawn(
 }
 
 /// Handle commit confirmation for a finalized block at given height.
+#[allow(clippy::too_many_arguments)]
 fn on_finalized_block_committed(
     validator_address: ContractAddress,
     validator_cache: &ValidatorCache<BlockExecutor>,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
+    main_db: Storage,
     proposals_db: &ConsensusProposals<'_>,
     number: pathfinder_common::BlockNumber,
+    gas_price_provider: Option<L1GasPriceProvider>,
 ) -> Result<ComputationSuccess, anyhow::Error> {
     // In practice this should only remove the finalized block for the last round at
     // the height, because lower rounds were already removed when the proposal
@@ -769,7 +776,9 @@ fn on_finalized_block_committed(
         validator_cache.clone(),
         deferred_executions.clone(),
         batch_execution_manager,
+        main_db,
         proposals_db,
+        gas_price_provider,
     )?;
 
     let success = match exec_success {
@@ -794,12 +803,12 @@ impl<E> ValidatorCache<E> {
         Self(Arc::new(Mutex::new(HashMap::new())))
     }
 
-    fn insert(&mut self, hnr: HeightAndRound, stage: ValidatorStage<E>) {
+    fn insert(&self, hnr: HeightAndRound, stage: ValidatorStage<E>) {
         let mut cache = self.0.lock().unwrap();
         cache.insert(hnr, stage);
     }
 
-    fn remove(&mut self, hnr: &HeightAndRound) -> Result<ValidatorStage<E>, ProposalHandlingError> {
+    fn remove(&self, hnr: &HeightAndRound) -> Result<ValidatorStage<E>, ProposalHandlingError> {
         let mut cache = self.0.lock().unwrap();
         cache.remove(hnr).ok_or_else(|| {
             ProposalHandlingError::Recoverable(ProposalError::ValidatorStageNotFound {
@@ -811,10 +820,12 @@ impl<E> ValidatorCache<E> {
 
 fn execute_deferred_for_next_height<E: BlockExecutorExt, T: TransactionExt>(
     height: u64,
-    mut validator_cache: ValidatorCache<E>,
+    validator_cache: ValidatorCache<E>,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
+    main_db: Storage,
     proposals_db: &ConsensusProposals<'_>,
+    gas_price_provider: Option<L1GasPriceProvider>,
 ) -> anyhow::Result<Option<(HeightAndRound, ProposalCommitmentWithOrigin)>> {
     // Retrieve and execute any deferred transactions or proposal finalizations
     // for the next height, if any. Sort by (height, round) in ascending order.
@@ -832,8 +843,15 @@ fn execute_deferred_for_next_height<E: BlockExecutorExt, T: TransactionExt>(
     if let Some((hnr, deferred)) = deferred.into_iter().next_back() {
         tracing::debug!("🖧  ⚙️ executing deferred proposal for height and round {hnr}");
 
-        let validator_stage = validator_cache.remove(&hnr).map_err(anyhow::Error::from)?;
-        let mut validator = validator_stage.try_into_transaction_batch_stage()?;
+        let block_info = deferred.block_info.expect(
+            "BlockInfo must be present if a deferred execution exists for height and round",
+        );
+        let validator_stage = validator_cache.remove(&hnr)?;
+        let mut validator = validator_stage
+            .try_into_block_info_stage()
+            .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?
+            .validate_block_info(block_info, main_db, gas_price_provider)
+            .map(Box::new)?;
 
         // Execute deferred transactions first.
         let opt_commitment = {
@@ -1110,7 +1128,28 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                 &mut parts_for_height_and_round,
             )?;
 
-            let new_validator = validator.validate_consensus_block_info(
+            let defer = {
+                let mut db_conn = main_readonly_storage.connection().context(
+                    "Creating database connection for deferral check in block info validation",
+                )?;
+                let db_tx = db_conn.transaction().context(
+                    "Creating DB transaction for deferral check in block info validation",
+                )?;
+                should_defer_validation(block_info.height, &db_tx)?
+            };
+            if defer {
+                tracing::debug!(
+                    "🖧  ⚙️ deferring block info validation for height and round \
+                     {height_and_round}..."
+                );
+                let mut dex = deferred_executions.lock().unwrap();
+                let deferred = dex.entry(height_and_round).or_default();
+                deferred.block_info = Some(block_info);
+                validator_cache.insert(height_and_round, ValidatorStage::BlockInfo(validator));
+                return Ok(None);
+            }
+
+            let new_validator = validator.validate_block_info(
                 block_info,
                 main_readonly_storage,
                 gas_price_provider,
@@ -1161,11 +1200,6 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
             );
 
             let validator_stage = validator_cache.remove(&height_and_round)?;
-
-            let mut validator = validator_stage
-                .try_into_transaction_batch_stage()
-                .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
-
             let tx_batch = tx_batch.clone();
             append_and_persist_part(
                 height_and_round,
@@ -1174,22 +1208,16 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                 &mut parts_for_height_and_round,
             )?;
 
-            let mut main_db_conn = main_readonly_storage.connection()?;
-            let main_db_tx = main_db_conn.transaction()?;
             // Use BatchExecutionManager to handle optimistic execution with checkpoints and
             // deferral
-            batch_execution_manager.process_batch_with_deferral::<E, T>(
+            let next_stage = batch_execution_manager.process_batch_with_deferral::<E, T>(
                 height_and_round,
                 tx_batch,
-                &mut validator,
-                &main_db_tx,
+                validator_stage,
+                main_readonly_storage.clone(),
                 &mut deferred_executions.lock().unwrap(),
             )?;
-
-            validator_cache.insert(
-                height_and_round,
-                ValidatorStage::TransactionBatch(validator),
-            );
+            validator_cache.insert(height_and_round, next_stage);
 
             Ok(None)
         }
@@ -1246,11 +1274,6 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                     //      - [?] at least one Transaction Batch
                     //      - [?] Executed Transaction Count
                     // - [x] Proposal Fin
-                    let validator_stage = validator_cache.remove(&height_and_round)?;
-                    let validator = validator_stage
-                        .try_into_transaction_batch_stage()
-                        .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
-
                     let proposer_address = append_and_persist_part(
                         height_and_round,
                         proposal_part,
@@ -1260,19 +1283,17 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
 
                     let valid_round =
                         valid_round_from_parts(&parts_for_height_and_round, &height_and_round)?;
-                    let mut main_db_conn = main_readonly_storage.connection()?;
-                    let main_db_tx = main_db_conn.transaction()?;
                     let proposal_commitment = defer_or_execute_proposal_fin::<E, T>(
                         height_and_round,
                         proposal_commitment,
                         proposer_address,
                         valid_round,
-                        &main_db_tx,
-                        validator,
+                        main_readonly_storage.clone(),
                         deferred_executions,
                         batch_execution_manager,
                         proposals_db,
                         &mut validator_cache,
+                        gas_price_provider.clone(),
                     )
                     // Note: We classify as recoverable by default, but storage errors in the
                     // chain are automatically detected and converted to fatal.
@@ -1338,11 +1359,6 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                 &mut parts_for_height_and_round,
             )?;
 
-            let validator_stage = validator_cache.remove(&height_and_round)?;
-            let mut validator = validator_stage
-                .try_into_transaction_batch_stage()
-                .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
-
             // Check if execution has started
             let execution_started = batch_execution_manager.is_executing(&height_and_round);
 
@@ -1364,6 +1380,11 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                      later processing (execution not started yet)"
                 );
             } else {
+                let validator_stage = validator_cache.remove(&height_and_round)?;
+                let mut validator = validator_stage
+                    .try_into_transaction_batch_stage()
+                    .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
+
                 // Execution has started - process ExecutedTransactionCount immediately
                 batch_execution_manager.process_executed_transaction_count::<E, T>(
                     height_and_round,
@@ -1394,16 +1415,38 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                         return Ok(Some(deferred_commitment));
                     }
                 }
-            }
 
-            validator_cache.insert(
-                height_and_round,
-                ValidatorStage::TransactionBatch(validator),
-            );
+                validator_cache.insert(
+                    height_and_round,
+                    ValidatorStage::TransactionBatch(validator),
+                );
+            }
 
             Ok(None)
         }
     }
+}
+
+/// Determine whether validation of proposal parts for the given height should
+/// be deferred because the previous block is not committed yet.
+fn should_defer_validation(
+    height: u64,
+    main_db_tx: &Transaction<'_>,
+) -> Result<bool, ProposalHandlingError> {
+    let parent_block = height.checked_sub(1);
+    let defer = if let Some(parent_block) = parent_block {
+        let parent_block = BlockNumber::new(parent_block)
+            .context("Block number is larger than i64::MAX")
+            .map_err(ProposalHandlingError::Fatal)?;
+        let parent_block = BlockId::Number(parent_block);
+        let parent_committed = main_db_tx
+            .block_exists(parent_block)
+            .map_err(ProposalHandlingError::Fatal)?;
+        !parent_committed
+    } else {
+        false
+    };
+    Ok(defer)
 }
 
 fn append_and_persist_part(
@@ -1435,12 +1478,12 @@ fn defer_or_execute_proposal_fin<E: BlockExecutorExt, T: TransactionExt>(
     proposal_commitment: Hash,
     proposer_address: ContractAddress,
     valid_round: Option<u32>,
-    main_db_tx: &Transaction<'_>,
-    mut validator: Box<crate::validator::ValidatorTransactionBatchStage<E>>,
+    main_db: Storage,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
     proposals_db: &ConsensusProposals<'_>,
     validator_cache: &mut ValidatorCache<E>,
+    gas_price_provider: Option<L1GasPriceProvider>,
 ) -> anyhow::Result<Option<ProposalCommitmentWithOrigin>> {
     let commitment = ProposalCommitmentWithOrigin {
         proposal_commitment: ProposalCommitment(proposal_commitment.0),
@@ -1448,7 +1491,10 @@ fn defer_or_execute_proposal_fin<E: BlockExecutorExt, T: TransactionExt>(
         pol_round: valid_round.map(Round::new).unwrap_or(Round::nil()),
     };
 
-    if should_defer_execution(height_and_round, main_db_tx)? {
+    let mut main_db_conn = main_db.connection()?;
+    let main_db_tx = main_db_conn.transaction()?;
+
+    if should_defer_execution(height_and_round, &main_db_tx)? {
         // The proposal cannot be finalized yet, because the previous
         // block is not committed yet. Defer its finalization.
         tracing::debug!(
@@ -1460,10 +1506,6 @@ fn defer_or_execute_proposal_fin<E: BlockExecutorExt, T: TransactionExt>(
             .entry(height_and_round)
             .or_default()
             .commitment = Some(commitment);
-        validator_cache.insert(
-            height_and_round,
-            ValidatorStage::TransactionBatch(validator),
-        );
         Ok(None)
     } else {
         // The proposal can be finalized now, because the previous
@@ -1475,7 +1517,29 @@ fn defer_or_execute_proposal_fin<E: BlockExecutorExt, T: TransactionExt>(
         };
         let deferred_txns_len = deferred.as_ref().map_or(0, |d| d.transactions.len());
 
-        if let Some(deferred) = deferred {
+        let validator = if let Some(deferred) = deferred {
+            let mut validator = if let Some(block_info) = deferred.block_info {
+                validator_cache
+                    .remove(&height_and_round)?
+                    .try_into_block_info_stage()
+                    .expect("ValidatorStage to be BlockInfo if BlockInfo is deferred")
+                    .validate_block_info(block_info, main_db.clone(), gas_price_provider)
+                    .map(Box::new)?
+            } else {
+                validator_cache
+                    .remove(&height_and_round)?
+                    .try_into_transaction_batch_stage()
+                    .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?
+            };
+
+            // Execute deferred transactions first.
+            if !deferred.transactions.is_empty() {
+                tracing::debug!(
+                    "🖧  ⚙️ executing {deferred_txns_len} deferred transactions for height and \
+                     round {height_and_round} before finalizing proposal..."
+                );
+            }
+
             if !deferred.transactions.is_empty() {
                 batch_execution_manager.execute_batch::<E, T>(
                     height_and_round,
@@ -1521,7 +1585,14 @@ fn defer_or_execute_proposal_fin<E: BlockExecutorExt, T: TransactionExt>(
                 )?;
                 return Ok(Some(deferred_commitment));
             }
-        }
+
+            validator
+        } else {
+            validator_cache
+                .remove(&height_and_round)?
+                .try_into_transaction_batch_stage()
+                .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?
+        };
 
         // Check if execution has started but ExecutedTransactionCount hasn't been
         // processed yet If so, defer ProposalFin until ExecutedTransactionCount
