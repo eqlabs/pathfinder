@@ -51,28 +51,17 @@ mod test {
     // - [ ] ??? any missing significant failure injection points ???.
     #[rstest]
     #[case::happy_path(None)]
-    // TODO Usually proposal parts at H=13 arrive before the local consensus engine emits a decided
-    // upon event for H=12. The network moves to H=13, while locally H=12 is uncommitted, so
-    // executing and thus committing H=13 locally is deferred indefinitely. With fully implemented
-    // proposal recovery, this should be resolved.
-    #[ignore = "TODO Determine why the test fails"]
     #[case::fail_on_proposal_init_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalInitRx }))]
-    #[ignore = "TODO Determine why the test fails"]
+    #[ignore = "Cannot trigger, empty proposals don't contain block info."]
     #[case::fail_on_block_info_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::BlockInfoRx }))]
-    #[ignore = "TODO Determine why the test fails"]
+    #[ignore = "Cannot trigger, empty proposals don't contain transaction batches."]
     #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::TransactionBatchRx }))]
-    #[ignore = "ExecutedTransactionCount is not currently present in fake proposals, so this test \
-                is the same as the happy path right now."]
+    #[ignore = "Cannot trigger, empty proposals don't contain executed transaction counts."]
     #[case::fail_on_executed_transaction_count_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ExecutedTransactionCountRx }))]
-    #[ignore = "TODO Determine why the test fails"]
     #[case::fail_on_proposal_fin_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalFinRx }))]
-    #[case::fail_on_entire_proposal_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::EntireProposalRx }))]
     #[case::fail_on_entire_proposal_persisted(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::EntireProposalPersisted }))]
-    #[ignore = "TODO Determine why the test fails"]
     #[case::fail_on_prevote_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::PrevoteRx }))]
-    #[ignore = "TODO Proposal recovery not fully implemented yet"]
     #[case::fail_on_precommit_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::PrecommitRx }))]
-    #[ignore = "TODO Proposal recovery not fully implemented yet"]
     #[case::fail_on_proposal_decided(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalDecided }))]
     #[case::fail_on_proposal_committed(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalCommitted }))]
     #[tokio::test]

@@ -362,6 +362,7 @@ fn start_height(
     }
 }
 
+// TODO start testing with non-empty proposals
 /// Create an empty proposal for the given height and round. Returns proposal
 /// parts that can be gossiped via P2P network and the finalized block that
 /// corresponds to this proposal.
