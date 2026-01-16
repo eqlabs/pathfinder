@@ -1,7 +1,7 @@
 {
   "openrpc": "1.0.0-rc1",
   "info": {
-    "version": "0.10.0",
+    "version": "0.10.1-rc.1",
     "title": "StarkNet Node API",
     "license": {}
   },
@@ -70,6 +70,18 @@
             "title": "Block id",
             "$ref": "#/components/schemas/BLOCK_ID"
           }
+        },
+        {
+          "name": "response_flags",
+          "description": "Flags that control what additional fields are included in transaction responses",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TXN_RESPONSE_FLAG"
+            },
+            "default": []
+          }
         }
       ],
       "result": {
@@ -106,6 +118,18 @@
           "schema": {
             "title": "Block id",
             "$ref": "#/components/schemas/BLOCK_ID"
+          }
+        },
+        {
+          "name": "response_flags",
+          "description": "Flags that control what additional fields are included in transaction responses",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TXN_RESPONSE_FLAG"
+            },
+            "default": []
           }
         }
       ],
@@ -315,6 +339,18 @@
             "title": "Transaction hash",
             "$ref": "#/components/schemas/TXN_HASH"
           }
+        },
+        {
+          "name": "response_flags",
+          "description": "Flags that control what additional fields are included in the response",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TXN_RESPONSE_FLAG"
+            },
+            "default": []
+          }
         }
       ],
       "result": {
@@ -351,6 +387,18 @@
             "title": "Index",
             "type": "integer",
             "minimum": 0
+          }
+        },
+        {
+          "name": "response_flags",
+          "description": "Flags that control what additional fields are included in the response",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TXN_RESPONSE_FLAG"
+            },
+            "default": []
           }
         }
       ],
@@ -1203,7 +1251,20 @@
           },
           "address": {
             "title": "from contract",
-            "$ref": "#/components/schemas/ADDRESS"
+            "description": "A contract address or a list of addresses from which events should originate",
+            "oneOf": [
+              {
+                "title": "Single address",
+                "$ref": "#/components/schemas/ADDRESS"
+              },
+              {
+                "title": "List of addresses",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ADDRESS"
+                }
+              }
+            ]
           },
           "keys": {
             "title": "event keys",
@@ -2286,7 +2347,24 @@
       },
       "BROADCASTED_INVOKE_TXN": {
         "title": "Broadcasted invoke transaction",
-        "$ref": "#/components/schemas/INVOKE_TXN_V3"
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/INVOKE_TXN_V3"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "proof": {
+                "title": "Proof",
+                "description": "Optional proof for the transaction",
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        ]
       },
       "BROADCASTED_DEPLOY_ACCOUNT_TXN": {
         "title": "Broadcasted deploy account transaction",
@@ -2780,6 +2858,14 @@
                 "title": "Fee DA mode",
                 "description": "The storage domain of the account's balance from which fee will be charged",
                 "$ref": "#/components/schemas/DA_MODE"
+              },
+              "proof_facts": {
+                "title": "Proof facts",
+                "description": "Optional proof facts for the transaction",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FELT"
+                }
               }
             },
             "required": [
@@ -3566,6 +3652,11 @@
         "type": "string",
         "enum": ["SKIP_VALIDATE"],
         "description": "Flags that indicate how to simulate a given transaction. By default, the sequencer behavior is replicated locally"
+      },
+      "TXN_RESPONSE_FLAG": {
+        "type": "string",
+        "enum": ["INCLUDE_PROOF_FACTS"],
+        "description": "Flags that control what additional fields are included in transaction responses. INCLUDE_PROOF_FACTS: Include proof_facts field when available (only for transactions submitted through the gateway with proof facts)."
       },
       "PRICE_UNIT_WEI": {
         "title": "Price unit wei",

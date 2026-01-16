@@ -65,6 +65,10 @@
       "nonce": "0x0",
       "nonce_data_availability_mode": "L1",
       "paymaster_data": [],
+      "proof_facts": [
+        "0x70726f6f6620666163742031",
+        "0x70726f6f6620666163742032"
+      ],
       "resource_bounds": {
         "l1_data_gas": {
           "max_amount": "0x0",

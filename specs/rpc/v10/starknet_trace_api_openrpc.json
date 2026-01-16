@@ -1,7 +1,7 @@
 {
   "openrpc": "1.0.0-rc1",
   "info": {
-    "version": "0.10.0",
+    "version": "0.10.1-rc.1",
     "title": "StarkNet Trace API",
     "license": {}
   },
@@ -77,22 +77,34 @@
         "name": "simulated_transactions",
         "description": "The execution trace and consumed resources of the required transactions",
         "schema": {
-          "type": "array",
-          "items": {
-            "schema": {
-              "type": "object",
-              "properties": {
-                "transaction_trace": {
-                  "title": "the transaction's trace",
-                  "$ref": "#/components/schemas/TRANSACTION_TRACE"
-                },
-                "fee_estimation": {
-                  "title": "the transaction's resources and fee",
-                  "$ref": "#/components/schemas/FEE_ESTIMATE"
+          "type": "object",
+          "properties": {
+            "simulated_transactions": {
+              "type": "array",
+              "description": "The execution trace and consumed resources of the required transactions",
+              "items": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "transaction_trace": {
+                      "title": "the transaction's trace",
+                      "$ref": "#/components/schemas/TRANSACTION_TRACE"
+                    },
+                    "fee_estimation": {
+                      "title": "the transaction's resources and fee",
+                      "$ref": "#/components/schemas/FEE_ESTIMATE"
+                    }
+                  }
                 }
               }
+            },
+            "initial_reads": {
+              "title": "Initial reads",
+              "description": "The set of state values fetched from the underlying state reader during execution for all transactions in the simulation. This provides a complete witness sufficient to reconstruct the cached state needed for re-execution. Only included when RETURN_INITIAL_READS is present in simulation_flags.",
+              "$ref": "#/components/schemas/INITIAL_READS"
             }
-          }
+          },
+          "required": ["simulated_transactions"]
         }
       },
       "errors": [
@@ -125,25 +137,48 @@
               }
             ]
           }
+        },
+        {
+          "name": "trace_flags",
+          "description": "Flags that indicate what additional information should be included in the trace",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TRACE_FLAG"
+            }
+          }
         }
       ],
       "result": {
         "name": "traces",
         "description": "The traces of all transactions in the block",
         "schema": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "description": "A single pair of transaction hash and corresponding trace",
-            "properties": {
-              "transaction_hash": {
-                "$ref": "#/components/schemas/FELT"
-              },
-              "trace_root": {
-                "$ref": "#/components/schemas/TRANSACTION_TRACE"
+          "type": "object",
+          "properties": {
+            "traces": {
+              "type": "array",
+              "description": "The traces of all transactions in the block",
+              "items": {
+                "type": "object",
+                "description": "A single pair of transaction hash and corresponding trace",
+                "properties": {
+                  "transaction_hash": {
+                    "$ref": "#/components/schemas/FELT"
+                  },
+                  "trace_root": {
+                    "$ref": "#/components/schemas/TRANSACTION_TRACE"
+                  }
+                }
               }
+            },
+            "initial_reads": {
+              "title": "Initial reads",
+              "description": "The set of state values fetched from the underlying state reader during execution for all transactions in the block. This provides a complete witness sufficient to reconstruct the cached state needed for re-execution. Only included when RETURN_INITIAL_READS is present in trace_flags.",
+              "$ref": "#/components/schemas/INITIAL_READS"
             }
-          }
+          },
+          "required": ["traces"]
         }
       },
       "errors": [
@@ -288,8 +323,91 @@
       },
       "SIMULATION_FLAG": {
         "type": "string",
-        "enum": ["SKIP_VALIDATE", "SKIP_FEE_CHARGE"],
-        "description": "Flags that indicate how to simulate a given transaction. By default, the sequencer behavior is replicated locally (enough funds are expected to be in the account, and fee will be deducted from the balance before the simulation of the next transaction). To skip the fee charge, use the SKIP_FEE_CHARGE flag."
+        "enum": ["SKIP_VALIDATE", "SKIP_FEE_CHARGE", "RETURN_INITIAL_READS"],
+        "description": "Flags that indicate how to simulate a given transaction. By default, the sequencer behavior is replicated locally (enough funds are expected to be in the account, and fee will be deducted from the balance before the simulation of the next transaction). To skip the fee charge, use the SKIP_FEE_CHARGE flag. When RETURN_INITIAL_READS is present, the node returns the minimal set of concrete state values fetched from the underlying state reader during execution for all transactions in the simulation. This provides a complete witness sufficient to reconstruct the cached state needed for re-execution."
+      },
+      "TRACE_FLAG": {
+        "type": "string",
+        "enum": ["RETURN_INITIAL_READS"],
+        "description": "Flags that indicate what additional information should be included in the trace. When RETURN_INITIAL_READS is present, the node returns the minimal set of concrete state values fetched from the underlying state reader during execution for all transactions in the block. This provides a complete witness sufficient to reconstruct the cached state needed for re-execution."
+      },
+      "INITIAL_READS": {
+        "title": "Initial reads",
+        "description": "The set of state values fetched from the underlying state reader during execution. This is a complete witness sufficient to reconstruct the cached state needed for re-execution.",
+        "type": "object",
+        "properties": {
+          "storage": {
+            "title": "Storage",
+            "description": "Storage entries that were read during simulation: (contract_address, storage_key) -> value",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "contract_address": {
+                  "$ref": "./api/starknet_api_openrpc.json#/components/schemas/ADDRESS"
+                },
+                "key": {
+                  "$ref": "./api/starknet_api_openrpc.json#/components/schemas/STORAGE_KEY"
+                },
+                "value": {
+                  "$ref": "#/components/schemas/FELT"
+                }
+              },
+              "required": ["contract_address", "key", "value"]
+            }
+          },
+          "nonces": {
+            "title": "Nonces",
+            "description": "Contract nonces that were read during simulation: contract_address -> nonce",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "contract_address": {
+                  "$ref": "./api/starknet_api_openrpc.json#/components/schemas/ADDRESS"
+                },
+                "nonce": {
+                  "$ref": "#/components/schemas/FELT"
+                }
+              },
+              "required": ["contract_address", "nonce"]
+            }
+          },
+          "class_hashes": {
+            "title": "Class hashes",
+            "description": "Contract class hashes that were read during simulation: contract_address -> class_hash",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "contract_address": {
+                  "$ref": "./api/starknet_api_openrpc.json#/components/schemas/ADDRESS"
+                },
+                "class_hash": {
+                  "$ref": "#/components/schemas/FELT"
+                }
+              },
+              "required": ["contract_address", "class_hash"]
+            }
+          },
+          "declared_contracts": {
+            "title": "Declared contracts",
+            "description": "Class declaration status that was read during simulation: class_hash -> is_declared",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "class_hash": {
+                  "$ref": "#/components/schemas/FELT"
+                },
+                "is_declared": {
+                  "type": "boolean"
+                }
+              },
+              "required": ["class_hash", "is_declared"]
+            }
+          }
+        }
       },
       "NESTED_CALL": {
         "$ref": "#/components/schemas/FUNCTION_INVOCATION"

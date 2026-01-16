@@ -7,6 +7,12 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- Preliminary support for JSON-RPC 0.10.1 `proof_facts` and `proof` transaction properties.
+
 ## [0.21.5] - 2026-01-12
 
 ### Added

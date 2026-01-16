@@ -3,6 +3,7 @@ use pathfinder_common::transaction::Transaction;
 use pathfinder_common::TransactionIndex;
 
 use crate::context::RpcContext;
+use crate::dto::TransactionResponseFlags;
 use crate::types::BlockId;
 use crate::RpcVersion;
 
@@ -10,21 +11,38 @@ use crate::RpcVersion;
 pub struct Input {
     block_id: BlockId,
     index: TransactionIndex,
+    response_flags: TransactionResponseFlags,
 }
 
 impl crate::dto::DeserializeForVersion for Input {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let rpc_version = value.version;
+
         value.deserialize_map(|value| {
+            let block_id = value.deserialize("block_id")?;
+            let index = value.deserialize("index")?;
+            let response_flags = if rpc_version >= RpcVersion::V10 {
+                value
+                    .deserialize_optional("response_flags")?
+                    .unwrap_or_default()
+            } else {
+                TransactionResponseFlags::default()
+            };
+
             Ok(Self {
-                block_id: value.deserialize("block_id")?,
-                index: value.deserialize("index")?,
+                block_id,
+                index,
+                response_flags,
             })
         })
     }
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Output(Transaction);
+pub struct Output {
+    transaction: Transaction,
+    include_proof_facts: bool,
+}
 
 crate::error::generate_rpc_error_subset!(
     GetTransactionByBlockIdAndIndexError: BlockNotFound,
@@ -42,10 +60,17 @@ pub async fn get_transaction_by_block_id_and_index(
         .try_into()
         .map_err(|_| GetTransactionByBlockIdAndIndexError::InvalidTxnIndex)?;
 
+    let include_proof_facts = input
+        .response_flags
+        .0
+        .iter()
+        .any(|flag| flag == &crate::dto::TransactionResponseFlag::IncludeProofFacts);
+
     let storage = context.storage.clone();
     let span = tracing::Span::current();
     let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
+
         let mut db = storage
             .connection()
             .context("Opening database connection")?;
@@ -62,7 +87,10 @@ pub async fn get_transaction_by_block_id_and_index(
                     .get(index)
                     .cloned()
                     .ok_or(GetTransactionByBlockIdAndIndexError::InvalidTxnIndex);
-                return result.map(Output);
+                return result.map(|transaction| Output {
+                    transaction,
+                    include_proof_facts,
+                });
             }
             other => other
                 .to_common_or_panic(&db_tx)
@@ -74,7 +102,10 @@ pub async fn get_transaction_by_block_id_and_index(
             .transaction_at_block(block_id, index)
             .context("Reading transaction from database")?
         {
-            Some(transaction) => Ok(Output(transaction)),
+            Some(transaction) => Ok(Output {
+                transaction,
+                include_proof_facts,
+            }),
             None => {
                 // We now need to check whether it was the block hash or transaction index which
                 // were invalid. We do this by checking if the block exists
@@ -100,7 +131,10 @@ impl crate::dto::SerializeForVersion for Output {
         &self,
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
-        serializer.serialize(&crate::dto::TransactionWithHash(&self.0))
+        serializer.serialize(&crate::dto::TransactionWithHash {
+            transaction: &self.transaction,
+            include_proof_facts: self.include_proof_facts,
+        })
     }
 }
 
@@ -123,7 +157,7 @@ mod tests {
                 1
             ]);
 
-            let positional = crate::dto::Value::new(positional_json, crate::RpcVersion::V08);
+            let positional = crate::dto::Value::new(positional_json, crate::RpcVersion::V10);
 
             let input = Input::deserialize(positional).unwrap();
             assert_eq!(
@@ -131,6 +165,7 @@ mod tests {
                 Input {
                     block_id: BlockId::Hash(block_hash!("0xdeadbeef")),
                     index: TransactionIndex::new_or_panic(1),
+                    response_flags: TransactionResponseFlags::default(),
                 }
             )
         }
@@ -142,7 +177,7 @@ mod tests {
                 "index": 1
             });
 
-            let named = crate::dto::Value::new(named_args_json, crate::RpcVersion::V08);
+            let named = crate::dto::Value::new(named_args_json, crate::RpcVersion::V10);
 
             let input = Input::deserialize(named).unwrap();
             assert_eq!(
@@ -150,6 +185,30 @@ mod tests {
                 Input {
                     block_id: BlockId::Hash(block_hash!("0xdeadbeef")),
                     index: TransactionIndex::new_or_panic(1),
+                    response_flags: TransactionResponseFlags::default(),
+                }
+            )
+        }
+
+        #[test]
+        fn named_args_with_response_flags() {
+            let named_args_json = json!({
+                "block_id": {"block_hash": "0xdeadbeef"},
+                "index": 1,
+                "response_flags": ["INCLUDE_PROOF_FACTS"]
+            });
+
+            let named = crate::dto::Value::new(named_args_json, crate::RpcVersion::V10);
+
+            let input = Input::deserialize(named).unwrap();
+            assert_eq!(
+                input,
+                Input {
+                    block_id: BlockId::Hash(block_hash!("0xdeadbeef")),
+                    index: TransactionIndex::new_or_panic(1),
+                    response_flags: TransactionResponseFlags(vec![
+                        crate::dto::TransactionResponseFlag::IncludeProofFacts
+                    ]),
                 }
             )
         }

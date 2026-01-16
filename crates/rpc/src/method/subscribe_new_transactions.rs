@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 
 use super::REORG_SUBSCRIPTION_NAME;
 use crate::context::RpcContext;
-use crate::dto::TransactionWithHash;
+use crate::dto::{TransactionResponseFlag, TransactionWithHash};
 use crate::jsonrpc::{RpcError, RpcSubscriptionFlow, SubscriptionMessage};
 use crate::{Reorg, RpcVersion};
 
@@ -17,6 +17,7 @@ pub struct SubscribeNewTransactions;
 pub struct Params {
     finality_status: Vec<TxnFinalityStatusWithoutL1Accepted>,
     sender_address: Option<HashSet<ContractAddress>>,
+    include_proof_facts: bool,
 }
 
 impl Default for Params {
@@ -24,6 +25,7 @@ impl Default for Params {
         Params {
             finality_status: vec![TxnFinalityStatusWithoutL1Accepted::AcceptedOnL2],
             sender_address: None,
+            include_proof_facts: false,
         }
     }
 }
@@ -48,18 +50,35 @@ impl crate::dto::DeserializeForVersion for Option<Params> {
         if value.is_null() {
             return Ok(None);
         }
+        let rpc_version = value.version;
+
         value.deserialize_map(|value| {
+            let finality_status = value
+                .deserialize_optional_array("finality_status", |v| {
+                    v.deserialize::<TxnFinalityStatusWithoutL1Accepted>()
+                })?
+                .unwrap_or_else(|| vec![TxnFinalityStatusWithoutL1Accepted::AcceptedOnL2]);
+            let sender_address = value
+                .deserialize_optional_array("sender_address", |addr| {
+                    Ok(ContractAddress(addr.deserialize()?))
+                })?
+                .map(|addrs| addrs.into_iter().collect());
+
+            let tags = if rpc_version >= RpcVersion::V10 {
+                value
+                    .deserialize_optional_array("tags", |tag| {
+                        tag.deserialize::<TransactionResponseFlag>()
+                    })?
+                    .unwrap_or_default()
+            } else {
+                vec![]
+            };
+            let include_proof_facts = tags.contains(&TransactionResponseFlag::IncludeProofFacts);
+
             Ok(Some(Params {
-                finality_status: value
-                    .deserialize_optional_array("finality_status", |v| {
-                        v.deserialize::<TxnFinalityStatusWithoutL1Accepted>()
-                    })?
-                    .unwrap_or_else(|| vec![TxnFinalityStatusWithoutL1Accepted::AcceptedOnL2]),
-                sender_address: value
-                    .deserialize_optional_array("sender_address", |addr| {
-                        Ok(ContractAddress(addr.deserialize()?))
-                    })?
-                    .map(|addrs| addrs.into_iter().collect()),
+                finality_status,
+                sender_address,
+                include_proof_facts,
             }))
         })
     }
@@ -114,13 +133,19 @@ pub enum Notification {
 pub struct TransactionWithFinality {
     transaction: Transaction,
     finality: TxnFinalityStatusWithoutL1Accepted,
+    include_proof_facts: bool,
 }
 
 impl Notification {
-    fn new_transaction(tx: Transaction, finality: TxnFinalityStatusWithoutL1Accepted) -> Self {
+    fn new_transaction(
+        tx: Transaction,
+        finality: TxnFinalityStatusWithoutL1Accepted,
+        include_proof_facts: bool,
+    ) -> Self {
         Notification::EmittedTransaction(Box::new(TransactionWithFinality {
             transaction: tx,
             finality,
+            include_proof_facts,
         }))
     }
 
@@ -147,7 +172,10 @@ impl crate::dto::SerializeForVersion for TransactionWithFinality {
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.flatten(&TransactionWithHash(&self.transaction))?;
+        serializer.flatten(&TransactionWithHash {
+            transaction: &self.transaction,
+            include_proof_facts: self.include_proof_facts,
+        })?;
         serializer.serialize_field("finality_status", &self.finality)?;
         serializer.end()
     }
@@ -247,7 +275,8 @@ impl RpcSubscriptionFlow for SubscribeNewTransactions {
                                 let msg = SubscriptionMessage {
                                     notification: Notification::new_transaction(
                                         tx.clone(),
-                                        TxnFinalityStatusWithoutL1Accepted::AcceptedOnL2
+                                        TxnFinalityStatusWithoutL1Accepted::AcceptedOnL2,
+                                        params.include_proof_facts,
                                     ),
                                     block_number: block.header.number,
                                     subscription_name: SUBSCRIPTION_NAME,
@@ -371,6 +400,7 @@ impl RpcSubscriptionFlow for SubscribeNewTransactions {
                                 variant,
                             },
                             TxnFinalityStatusWithoutL1Accepted::Received,
+                            params.include_proof_facts,
                         );
                         if msg_tx
                             .send(SubscriptionMessage {
@@ -420,7 +450,11 @@ async fn send_tx_updates(
         }
 
         let msg = SubscriptionMessage {
-            notification: Notification::new_transaction(tx.clone(), finality_status),
+            notification: Notification::new_transaction(
+                tx.clone(),
+                finality_status,
+                params.include_proof_facts,
+            ),
             block_number,
             subscription_name: SUBSCRIPTION_NAME,
         };
@@ -437,7 +471,7 @@ mod tests {
     use axum::extract::ws::Message;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
-    use pathfinder_common::transaction::{DeclareTransactionV0V1, Transaction, TransactionVariant};
+    use pathfinder_common::transaction::{InvokeTransactionV3, Transaction, TransactionVariant};
     use pathfinder_common::L2Block;
     use pathfinder_crypto::Felt;
     use pathfinder_storage::StorageBuilder;
@@ -449,7 +483,7 @@ mod tests {
     use crate::jsonrpc::websocket::WebsocketHistory;
     use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse};
     use crate::tracker::SubmittedTransactionTracker;
-    use crate::{v09, Notifications, PendingData, Reorg, RpcVersion};
+    use crate::{v10, Notifications, PendingData, Reorg, RpcVersion};
 
     #[test]
     fn parse_params() {
@@ -475,6 +509,37 @@ mod tests {
                         .cloned()
                         .collect()
                 ),
+                include_proof_facts: false,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_params_with_tags() {
+        let params = crate::dto::Value::new(
+            serde_json::json!({
+                "finality_status": ["ACCEPTED_ON_L2", "PRE_CONFIRMED", "CANDIDATE"],
+                "sender_address": ["0x1", "0x2"],
+                "tags": ["INCLUDE_PROOF_FACTS"]
+            }),
+            RpcVersion::V10,
+        );
+        let params: Option<Params> = params.deserialize().unwrap();
+        assert_eq!(
+            params.unwrap(),
+            Params {
+                finality_status: vec![
+                    TxnFinalityStatusWithoutL1Accepted::AcceptedOnL2,
+                    TxnFinalityStatusWithoutL1Accepted::PreConfirmed,
+                    TxnFinalityStatusWithoutL1Accepted::Candidate
+                ],
+                sender_address: Some(
+                    [contract_address!("0x1"), contract_address!("0x2")]
+                        .iter()
+                        .cloned()
+                        .collect()
+                ),
+                include_proof_facts: true,
             }
         );
     }
@@ -554,6 +619,68 @@ mod tests {
         assert_eq!(
             recv(&mut rx).await,
             sample_received_transaction_message("0x2", "0x4", subscription_id)
+        );
+        assert_recv_nothing(&mut rx).await;
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn received_no_filtering_include_proof_facts() {
+        let Setup {
+            tx,
+            mut rx,
+            #[allow(unused_variables)]
+            pending_data_tx,
+            submission_tracker,
+            ..
+        } = setup();
+        tx.send(Ok(Message::Text(
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "starknet_subscribeNewTransactions",
+                "params": {
+                    "finality_status": ["RECEIVED"],
+                    "tags": ["INCLUDE_PROOF_FACTS"]
+                }
+            })
+            .to_string()
+            .into(),
+        )))
+        .await
+        .unwrap();
+        let response = rx.recv().await.unwrap().unwrap();
+        let subscription_id = match response {
+            Message::Text(json) => {
+                let json: serde_json::Value = serde_json::from_str(&json).unwrap();
+                assert_eq!(json["jsonrpc"], "2.0");
+                assert_eq!(json["id"], 1);
+                json["result"].as_str().unwrap().parse().unwrap()
+            }
+            _ => {
+                panic!("Expected text message");
+            }
+        };
+        assert_recv_nothing(&mut rx).await;
+
+        // First received update.
+        let block_number = BlockNumber::new_or_panic(1);
+        submission_tracker.insert(
+            transaction_hash!("0x3"),
+            block_number,
+            sample_transaction_variant(contract_address!("0x1")),
+        );
+        submission_tracker.insert(
+            transaction_hash!("0x4"),
+            block_number,
+            sample_transaction_variant(contract_address!("0x2")),
+        );
+        assert_eq!(
+            recv(&mut rx).await,
+            sample_received_transaction_message_with_proof_facts("0x1", "0x3", subscription_id)
+        );
+        assert_eq!(
+            recv(&mut rx).await,
+            sample_received_transaction_message_with_proof_facts("0x2", "0x4", subscription_id)
         );
         assert_recv_nothing(&mut rx).await;
     }
@@ -1309,8 +1436,12 @@ mod tests {
             transactions: txs
                 .iter()
                 .map(|(sender_address, hash)| Transaction {
-                    variant: TransactionVariant::DeclareV0(DeclareTransactionV0V1 {
+                    variant: TransactionVariant::InvokeV3(InvokeTransactionV3 {
                         sender_address: *sender_address,
+                        proof_facts: vec![
+                            proof_fact_elem_bytes!(b"proof 0"),
+                            proof_fact_elem_bytes!(b"proof 1"),
+                        ],
                         ..Default::default()
                     }),
                     hash: *hash,
@@ -1319,8 +1450,12 @@ mod tests {
                     candidate_txs
                         .iter()
                         .map(|(sender_address, hash)| Transaction {
-                            variant: TransactionVariant::DeclareV0(DeclareTransactionV0V1 {
+                            variant: TransactionVariant::InvokeV3(InvokeTransactionV3 {
                                 sender_address: *sender_address,
+                                proof_facts: vec![
+                                    proof_fact_elem_bytes!(b"proof 0"),
+                                    proof_fact_elem_bytes!(b"proof 1"),
+                                ],
                                 ..Default::default()
                             }),
                             hash: *hash,
@@ -1352,6 +1487,18 @@ mod tests {
         subscription_id: u64,
     ) -> serde_json::Value {
         sample_transaction_message_ex(sender_address, hash, subscription_id, "RECEIVED")
+    }
+
+    fn sample_received_transaction_message_with_proof_facts(
+        sender_address: &str,
+        hash: &str,
+        subscription_id: u64,
+    ) -> serde_json::Value {
+        let mut message =
+            sample_transaction_message_ex(sender_address, hash, subscription_id, "RECEIVED");
+        message["params"]["result"]["proof_facts"] =
+            serde_json::json!(["0x70726f6f662030", "0x70726f6f662031"]);
+        message
     }
 
     fn sample_pre_confirmed_transaction_message(
@@ -1389,13 +1536,32 @@ mod tests {
             "method":"starknet_subscriptionNewTransaction",
             "params": {
                 "result": {
-                    "class_hash": "0x0",
-                    "max_fee": "0x0",
+                    "account_deployment_data": [],
+                    "calldata": [],
+                    "fee_data_availability_mode": "L1",
+                    "nonce": "0x0",
+                    "nonce_data_availability_mode": "L1",
+                    "paymaster_data": [],
+                    "resource_bounds": {
+                        "l1_data_gas": {
+                            "max_amount": "0x0",
+                            "max_price_per_unit": "0x0"
+                        },
+                        "l1_gas": {
+                            "max_amount": "0x0",
+                            "max_price_per_unit": "0x0"
+                        },
+                        "l2_gas": {
+                            "max_amount": "0x0",
+                            "max_price_per_unit": "0x0"
+                        }
+                    },
                     "sender_address": sender_address,
                     "signature": [],
+                    "tip": "0x0",
                     "transaction_hash": hash,
-                    "type": "DECLARE",
-                    "version": "0x0",
+                    "type": "INVOKE",
+                    "version": "0x3",
                     "finality_status": finality_status,
                 },
                 "subscription_id": subscription_id.to_string()
@@ -1413,8 +1579,12 @@ mod tests {
                 .iter()
                 .map(|(sender_address, hash)| {
                     let tx = Transaction {
-                        variant: TransactionVariant::DeclareV0(DeclareTransactionV0V1 {
+                        variant: TransactionVariant::InvokeV3(InvokeTransactionV3 {
                             sender_address: *sender_address,
+                            proof_facts: vec![
+                                proof_fact_elem_bytes!(b"proof 0"),
+                                proof_fact_elem_bytes!(b"proof 1"),
+                            ],
                             ..Default::default()
                         }),
                         hash: *hash,
@@ -1432,8 +1602,12 @@ mod tests {
     }
 
     fn sample_transaction_variant(sender_address: ContractAddress) -> TransactionVariant {
-        TransactionVariant::DeclareV0(DeclareTransactionV0V1 {
+        TransactionVariant::InvokeV3(InvokeTransactionV3 {
             sender_address,
+            proof_facts: vec![
+                proof_fact_elem_bytes!(b"proof 0"),
+                proof_fact_elem_bytes!(b"proof 1"),
+            ],
             ..Default::default()
         })
     }
@@ -1463,7 +1637,7 @@ mod tests {
             .with_pending_data(pending_data.clone())
             .with_websockets(WebsocketContext::new(WebsocketHistory::Unlimited));
         let submission_tracker = ctx.submission_tracker.clone();
-        let router = v09::register_routes().build(ctx);
+        let router = v10::register_routes().build(ctx);
         let (sender_tx, sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);

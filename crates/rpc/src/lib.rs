@@ -657,7 +657,14 @@ pub mod test_utils {
         };
         let txn6 = Transaction {
             hash: transaction_hash_bytes!(b"txn 6"),
-            ..txn1.clone()
+            variant: TransactionVariant::InvokeV3(InvokeTransactionV3 {
+                sender_address: contract2_addr,
+                proof_facts: vec![
+                    proof_fact_elem_bytes!(b"proof fact 1"),
+                    proof_fact_elem_bytes!(b"proof fact 2"),
+                ],
+                ..Default::default()
+            }),
         };
         let txn_reverted = Transaction {
             hash: transaction_hash_bytes!(b"txn reverted"),

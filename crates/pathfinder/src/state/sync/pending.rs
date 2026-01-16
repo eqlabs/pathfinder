@@ -452,6 +452,7 @@ mod tests {
                             account_deployment_data: vec![],
                             calldata: vec![],
                             sender_address: contract_address!("0x2"),
+                            proof_facts: vec![],
                         },
                     ),
                 },

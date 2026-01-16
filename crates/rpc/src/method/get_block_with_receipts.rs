@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::Context;
 
 use crate::context::RpcContext;
+use crate::dto::TransactionResponseFlags;
 use crate::pending::PendingBlockVariant;
 use crate::types::BlockId;
 use crate::RpcVersion;
@@ -16,22 +17,38 @@ pub enum Output {
             Vec<pathfinder_common::event::Event>,
         )>,
         is_l1_accepted: bool,
+        include_proof_facts: bool,
     },
     Pending {
         block: Arc<PendingBlockVariant>,
         block_number: pathfinder_common::BlockNumber,
+        include_proof_facts: bool,
     },
 }
 
+#[derive(Debug, PartialEq)]
 pub struct Input {
     pub block_id: BlockId,
+    pub response_flags: TransactionResponseFlags,
 }
 
 impl crate::dto::DeserializeForVersion for Input {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let rpc_version = value.version;
+
         value.deserialize_map(|value| {
+            let block_id = value.deserialize("block_id")?;
+            let response_flags = if rpc_version >= RpcVersion::V10 {
+                value
+                    .deserialize_optional("response_flags")?
+                    .unwrap_or_default()
+            } else {
+                TransactionResponseFlags::default()
+            };
+
             Ok(Self {
-                block_id: value.deserialize("block_id")?,
+                block_id,
+                response_flags,
             })
         })
     }
@@ -47,6 +64,13 @@ pub async fn get_block_with_receipts(
     let span = tracing::Span::current();
     util::task::spawn_blocking(move |_| {
         let _g = span.enter();
+
+        let include_proof_facts = input
+            .response_flags
+            .0
+            .iter()
+            .any(|flag| flag == &crate::dto::TransactionResponseFlag::IncludeProofFacts);
+
         let mut db = context
             .storage
             .connection()
@@ -64,6 +88,7 @@ pub async fn get_block_with_receipts(
                 return Ok(Output::Pending {
                     block: pending.pending_block(),
                     block_number: pending.pending_block_number(),
+                    include_proof_facts,
                 });
             }
             other => other
@@ -89,6 +114,7 @@ pub async fn get_block_with_receipts(
             header: header.into(),
             body,
             is_l1_accepted,
+            include_proof_facts,
         })
     })
     .await
@@ -106,6 +132,7 @@ impl crate::dto::SerializeForVersion for Output {
                 header,
                 body,
                 is_l1_accepted,
+                include_proof_facts,
             } => {
                 let finality = if *is_l1_accepted {
                     crate::dto::TxnFinalityStatus::AcceptedOnL1
@@ -131,12 +158,14 @@ impl crate::dto::SerializeForVersion for Output {
                             receipt,
                             events,
                             finality,
+                            include_proof_facts: *include_proof_facts,
                         }),
                 )?;
             }
             Output::Pending {
                 block,
                 block_number,
+                include_proof_facts,
             } => {
                 serializer.flatten(&(*block_number, block.as_ref()))?;
                 let transactions = block.transactions();
@@ -152,6 +181,7 @@ impl crate::dto::SerializeForVersion for Output {
                             receipt,
                             events,
                             finality: block.finality_status(),
+                            include_proof_facts: *include_proof_facts,
                         }),
                 )?;
             }
@@ -165,6 +195,7 @@ struct TransactionWithReceipt<'a> {
     pub receipt: &'a pathfinder_common::receipt::Receipt,
     pub events: &'a [pathfinder_common::event::Event],
     pub finality: crate::dto::TxnFinalityStatus,
+    pub include_proof_facts: bool,
 }
 
 impl crate::dto::SerializeForVersion for TransactionWithReceipt<'_> {
@@ -177,11 +208,17 @@ impl crate::dto::SerializeForVersion for TransactionWithReceipt<'_> {
             crate::RpcVersion::V07 => {
                 serializer.serialize_field(
                     "transaction",
-                    &crate::dto::TransactionWithHash(self.transaction),
+                    &crate::dto::TransactionWithHash {
+                        transaction: self.transaction,
+                        include_proof_facts: self.include_proof_facts,
+                    },
                 )?;
             }
             _ => {
-                serializer.serialize_field("transaction", &self.transaction)?;
+                serializer.serialize_field(
+                    "transaction",
+                    &(self.transaction, self.include_proof_facts),
+                )?;
             }
         }
         serializer.serialize_field(
@@ -204,6 +241,57 @@ mod tests {
     use crate::dto::{SerializeForVersion, Serializer};
     use crate::RpcVersion;
 
+    mod input {
+        use super::*;
+
+        #[test]
+        fn deserialize_v10_with_response_flags() {
+            use crate::dto::DeserializeForVersion;
+
+            let json = r#"{
+                "block_id": "latest",
+                "response_flags": ["INCLUDE_PROOF_FACTS"]
+            }"#;
+            let value = crate::dto::Value::new(
+                serde_json::from_str::<serde_json::Value>(json).unwrap(),
+                RpcVersion::V10,
+            );
+            let input = Input::deserialize(value).unwrap();
+
+            assert_eq!(
+                input,
+                Input {
+                    block_id: BlockId::Latest,
+                    response_flags: TransactionResponseFlags(vec![
+                        crate::dto::TransactionResponseFlag::IncludeProofFacts
+                    ]),
+                }
+            );
+        }
+
+        #[test]
+        fn deserialize_v10_without_response_flags() {
+            use crate::dto::DeserializeForVersion;
+
+            let json = r#"{
+                "block_id": "latest"
+            }"#;
+            let value = crate::dto::Value::new(
+                serde_json::from_str::<serde_json::Value>(json).unwrap(),
+                RpcVersion::V10,
+            );
+            let input = Input::deserialize(value).unwrap();
+
+            assert_eq!(
+                input,
+                Input {
+                    block_id: BlockId::Latest,
+                    response_flags: TransactionResponseFlags::default(),
+                }
+            );
+        }
+    }
+
     #[rstest::rstest]
     #[case::v06(RpcVersion::V06)]
     #[case::v07(RpcVersion::V07)]
@@ -215,6 +303,7 @@ mod tests {
         let context = RpcContext::for_tests_with_pending().await;
         let input = Input {
             block_id: BlockId::Pending,
+            response_flags: TransactionResponseFlags::default(),
         };
 
         let output = get_block_with_receipts(context.clone(), input, version)
@@ -237,6 +326,7 @@ mod tests {
         let context = RpcContext::for_tests_with_pre_confirmed().await;
         let input = Input {
             block_id: BlockId::Pending,
+            response_flags: TransactionResponseFlags::default(),
         };
 
         let output = get_block_with_receipts(context.clone(), input, version)
@@ -259,6 +349,7 @@ mod tests {
         let context = RpcContext::for_tests_with_pending().await;
         let input = Input {
             block_id: BlockId::Latest,
+            response_flags: TransactionResponseFlags::default(),
         };
 
         let output = get_block_with_receipts(context.clone(), input, version)
