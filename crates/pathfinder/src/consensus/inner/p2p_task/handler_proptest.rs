@@ -60,7 +60,7 @@ proptest! {
         let mut consensus_db_conn = consensus_storage.connection().unwrap();
         let consensus_db_tx = consensus_db_conn.transaction().unwrap();
         let proposals_db = ConsensusProposals::new(consensus_db_tx);
-        let mut batch_execution_manager = BatchExecutionManager::new();
+        let mut batch_execution_manager = BatchExecutionManager::new(None);
 
         let (proposal_parts, expect_success) = match proposal_type {
             strategy::ProposalCase::ValidEmpty => (create_structurally_valid_empty_proposal(), true),

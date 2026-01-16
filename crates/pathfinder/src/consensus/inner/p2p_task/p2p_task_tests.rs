@@ -589,7 +589,7 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
         // Verify: Proposal event should be sent now
         let proposal_cmd = wait_for_proposal_event(&mut env.rx_from_p2p, Duration::from_secs(3))
             .await
-            .expect("Expected proposal event after ExecutedTransactionCount");
+            .expect("Expected proposal event after ProposalFin");
         verify_proposal_event(proposal_cmd, 2, proposal_commitment);
     }
 
@@ -633,6 +633,7 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
         // Step 8: At some point sync sends SyncMessageToConsensus::GetFinalizedBlock
         // for H=1, and then confirms committing the block with
         // SyncMessageToConsensus::ConfirmFinalizedBlockCommitted
+        env.create_committed_block(1);
         env.tx_sync_to_consensus
             .send(SyncMessageToConsensus::ConfirmBlockCommitted {
                 number: BlockNumber::new_or_panic(1),
@@ -826,7 +827,7 @@ async fn test_executed_transaction_count_deferred_when_execution_not_started() {
         .expect("Failed to send ProposalInit");
     env.verify_task_alive().await;
 
-    // Step 2: Send BlockInfo
+    // Step 2: Send BlockInfo (should be deferred - parent not committed)
     env.p2p_tx
         .send(Event {
             source: PeerId::random(),
