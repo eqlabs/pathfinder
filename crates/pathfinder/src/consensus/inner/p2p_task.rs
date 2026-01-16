@@ -1101,8 +1101,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
     gas_price_provider: Option<L1GasPriceProvider>,
     inject_failure_config: Option<InjectFailureConfig>,
 ) -> Result<Option<ProposalCommitmentWithOrigin>, ProposalHandlingError> {
-    let mut parts_for_height_and_round =
-        handled_proposal_parts.entry(height_and_round).or_default();
+    let parts_for_height_and_round = handled_proposal_parts.entry(height_and_round).or_default();
 
     let has_executed_txn_count = parts_for_height_and_round
         .iter()
@@ -1143,7 +1142,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                 proposal_part,
                 is_replayed,
                 proposals_db,
-                &mut parts_for_height_and_round,
+                parts_for_height_and_round,
             )?;
             let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init)?;
             validator_cache.insert(height_and_round, ValidatorStage::BlockInfo(validator));
@@ -1178,7 +1177,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                 proposal_part,
                 is_replayed,
                 proposals_db,
-                &mut parts_for_height_and_round,
+                parts_for_height_and_round,
             )?;
 
             let defer = {
@@ -1259,7 +1258,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                 proposal_part,
                 is_replayed,
                 proposals_db,
-                &mut parts_for_height_and_round,
+                parts_for_height_and_round,
             )?;
 
             // Use BatchExecutionManager to handle optimistic execution with checkpoints and
@@ -1302,11 +1301,11 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                         proposal_part,
                         is_replayed,
                         proposals_db,
-                        &mut parts_for_height_and_round,
+                        parts_for_height_and_round,
                     )?;
 
                     let valid_round =
-                        valid_round_from_parts(&parts_for_height_and_round, &height_and_round)?;
+                        valid_round_from_parts(parts_for_height_and_round, &height_and_round)?;
                     let proposal_commitment = Some(ProposalCommitmentWithOrigin {
                         proposal_commitment: ProposalCommitment(proposal_commitment.0),
                         proposer_address,
@@ -1334,7 +1333,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                         proposal_part,
                         is_replayed,
                         proposals_db,
-                        &mut parts_for_height_and_round,
+                        parts_for_height_and_round,
                     )?;
 
                     let valid_round =
@@ -1413,7 +1412,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                 proposal_part.clone(),
                 is_replayed,
                 proposals_db,
-                &mut parts_for_height_and_round,
+                parts_for_height_and_round,
             )?;
 
             // Check if execution has started
