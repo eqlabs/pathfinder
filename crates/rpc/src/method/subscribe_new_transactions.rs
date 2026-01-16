@@ -483,7 +483,7 @@ mod tests {
     use crate::jsonrpc::websocket::WebsocketHistory;
     use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse};
     use crate::tracker::SubmittedTransactionTracker;
-    use crate::{v09, Notifications, PendingData, Reorg, RpcVersion};
+    use crate::{v10, Notifications, PendingData, Reorg, RpcVersion};
 
     #[test]
     fn parse_params() {
@@ -619,6 +619,68 @@ mod tests {
         assert_eq!(
             recv(&mut rx).await,
             sample_received_transaction_message("0x2", "0x4", subscription_id)
+        );
+        assert_recv_nothing(&mut rx).await;
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn received_no_filtering_include_proof_facts() {
+        let Setup {
+            tx,
+            mut rx,
+            #[allow(unused_variables)]
+            pending_data_tx,
+            submission_tracker,
+            ..
+        } = setup();
+        tx.send(Ok(Message::Text(
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "starknet_subscribeNewTransactions",
+                "params": {
+                    "finality_status": ["RECEIVED"],
+                    "tags": ["INCLUDE_PROOF_FACTS"]
+                }
+            })
+            .to_string()
+            .into(),
+        )))
+        .await
+        .unwrap();
+        let response = rx.recv().await.unwrap().unwrap();
+        let subscription_id = match response {
+            Message::Text(json) => {
+                let json: serde_json::Value = serde_json::from_str(&json).unwrap();
+                assert_eq!(json["jsonrpc"], "2.0");
+                assert_eq!(json["id"], 1);
+                json["result"].as_str().unwrap().parse().unwrap()
+            }
+            _ => {
+                panic!("Expected text message");
+            }
+        };
+        assert_recv_nothing(&mut rx).await;
+
+        // First received update.
+        let block_number = BlockNumber::new_or_panic(1);
+        submission_tracker.insert(
+            transaction_hash!("0x3"),
+            block_number,
+            sample_transaction_variant(contract_address!("0x1")),
+        );
+        submission_tracker.insert(
+            transaction_hash!("0x4"),
+            block_number,
+            sample_transaction_variant(contract_address!("0x2")),
+        );
+        assert_eq!(
+            recv(&mut rx).await,
+            sample_received_transaction_message_with_proof_facts("0x1", "0x3", subscription_id)
+        );
+        assert_eq!(
+            recv(&mut rx).await,
+            sample_received_transaction_message_with_proof_facts("0x2", "0x4", subscription_id)
         );
         assert_recv_nothing(&mut rx).await;
     }
@@ -1427,6 +1489,18 @@ mod tests {
         sample_transaction_message_ex(sender_address, hash, subscription_id, "RECEIVED")
     }
 
+    fn sample_received_transaction_message_with_proof_facts(
+        sender_address: &str,
+        hash: &str,
+        subscription_id: u64,
+    ) -> serde_json::Value {
+        let mut message =
+            sample_transaction_message_ex(sender_address, hash, subscription_id, "RECEIVED");
+        message["params"]["result"]["proof_facts"] =
+            serde_json::json!(["0x70726f6f662030", "0x70726f6f662031"]);
+        message
+    }
+
     fn sample_pre_confirmed_transaction_message(
         sender_address: &str,
         hash: &str,
@@ -1563,7 +1637,7 @@ mod tests {
             .with_pending_data(pending_data.clone())
             .with_websockets(WebsocketContext::new(WebsocketHistory::Unlimited));
         let submission_tracker = ctx.submission_tracker.clone();
-        let router = v09::register_routes().build(ctx);
+        let router = v10::register_routes().build(ctx);
         let (sender_tx, sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
