@@ -126,3 +126,41 @@ pub async fn sync_gas_prices(
         })
         .await
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+    use pathfinder_ethereum::EthereumClient;
+    use crate::state::l1_gas_price::{L1GasPriceConfig, L1GasPriceProvider};
+    use super::{L1GasPriceSyncConfig, sync_gas_prices};
+
+    #[ignore = "Uses network, takes too long..."]
+    #[test_log::test(tokio::test(flavor = "multi_thread"))]
+    async fn test_sync_gas_prices() {
+        // see https://github.com/snapview/tokio-tungstenite/issues/339
+        rustls::crypto::ring::default_provider().install_default().expect("Failed to install rustls crypto provider");
+
+        let client_url = reqwest::Url::parse("wss://eth.llamarpc.com").unwrap();
+        let ethereum_client = EthereumClient::new(client_url).unwrap();
+        let provider = L1GasPriceProvider::new(L1GasPriceConfig::default());
+        let provider2 = provider.clone();
+        util::task::spawn(async move {
+            let sync_config = L1GasPriceSyncConfig {
+                startup_blocks: 2
+            };
+            sync_gas_prices(
+                ethereum_client,
+                provider2,
+                sync_config,
+            )
+                .await
+                .unwrap();
+        });
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        // provider should have got some new (IOW not initial, but
+        // from its subscription) samples by now
+        let sample_count = provider.sample_count();
+        tracing::debug!("sample_count = {sample_count}");
+        assert!(sample_count > 3);
+    }
+}
