@@ -827,7 +827,7 @@ async fn test_executed_transaction_count_deferred_when_execution_not_started() {
         .expect("Failed to send ProposalInit");
     env.verify_task_alive().await;
 
-    // Step 2: Send BlockInfo (should be deferred - parent not commited)
+    // Step 2: Send BlockInfo (should be deferred - parent not committed)
     env.p2p_tx
         .send(Event {
             source: PeerId::random(),
