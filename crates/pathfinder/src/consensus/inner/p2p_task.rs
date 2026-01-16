@@ -847,7 +847,6 @@ impl<E> Clone for ValidatorCache<E> {
 }
 
 impl<E> ValidatorCache<E> {
-    // #[cfg(test)]
     fn new() -> Self {
         Self(Arc::new(Mutex::new(HashMap::new())))
     }
