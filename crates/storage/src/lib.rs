@@ -34,12 +34,12 @@ pub use transaction::dto::{
     DataAvailabilityMode,
     DeclareTransactionV4,
     DeployAccountTransactionV4,
-    InvokeTransactionV4,
+    InvokeTransactionV5,
     L1HandlerTransactionV0,
     MinimalFelt,
     ResourceBound,
     ResourceBoundsV1,
-    TransactionV2,
+    TransactionV3,
 };
 
 /// Sqlite key used for the PRAGMA user version.

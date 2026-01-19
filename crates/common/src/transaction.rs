@@ -8,6 +8,7 @@ use crate::{
     felt_bytes,
     AccountDeploymentDataElem,
     PaymasterDataElem,
+    ProofFactElem,
     ResourceAmount,
     ResourcePricePerUnit,
     Tip,
@@ -372,6 +373,7 @@ pub struct InvokeTransactionV3 {
     pub account_deployment_data: Vec<AccountDeploymentDataElem>,
     pub calldata: Vec<CallParam>,
     pub sender_address: ContractAddress,
+    pub proof_facts: Vec<ProofFactElem>,
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Eq, Dummy)]
@@ -694,6 +696,7 @@ impl DeclareTransactionV3 {
             fee_data_availability_mode: self.fee_data_availability_mode,
             resource_bounds: self.resource_bounds,
             query_only,
+            proof_facts: &[],
         }
         .hash(chain_id)
     }
@@ -725,6 +728,7 @@ impl DeployAccountTransactionV3 {
             fee_data_availability_mode: self.fee_data_availability_mode,
             resource_bounds: self.resource_bounds,
             query_only,
+            proof_facts: &[],
         }
         .hash(chain_id)
     }
@@ -760,6 +764,7 @@ impl InvokeTransactionV3 {
             fee_data_availability_mode: self.fee_data_availability_mode,
             resource_bounds: self.resource_bounds,
             query_only,
+            proof_facts: &self.proof_facts,
         }
         .hash(chain_id)
     }
@@ -861,6 +866,7 @@ struct V3Hasher<'a> {
     pub fee_data_availability_mode: DataAvailabilityMode,
     pub resource_bounds: ResourceBounds,
     pub query_only: bool,
+    pub proof_facts: &'a [ProofFactElem],
 }
 
 impl V3Hasher<'_> {
@@ -880,11 +886,26 @@ impl V3Hasher<'_> {
             .chain(self.nonce.0.into())
             .chain(self.pack_data_availability().into());
 
-        let hash = self
+        let hasher = self
             .data_hashes
             .iter()
-            .fold(hasher, |hasher, &data| hasher.chain(data.into()))
-            .finish();
+            .fold(hasher, |hasher, &data| hasher.chain(data.into()));
+
+        let hasher = if !self.proof_facts.is_empty() {
+            let proof_facts_hash = self
+                .proof_facts
+                .iter()
+                .fold(PoseidonHasher::default(), |hasher, data| {
+                    hasher.chain(data.0.into())
+                })
+                .finish();
+
+            hasher.chain(proof_facts_hash)
+        } else {
+            hasher
+        };
+
+        let hash = hasher.finish();
 
         TransactionHash(hash.into())
     }
@@ -1075,6 +1096,7 @@ mod tests {
     #[case::invoke_v0_legacy(invoke_v0_legacy(), GOERLI_TESTNET)]
     #[case::invoke_v1(invoke_v1(), ChainId::MAINNET)]
     #[case::invoke_v3(invoke_v3(), ChainId::SEPOLIA_TESTNET)]
+    #[case::invoke_v3_with_proof_facts(invoke_v3_with_proof_facts(), ChainId::MAINNET)]
     #[case::l1_handler(l1_handler(), ChainId::MAINNET)]
     #[case::l1_handler_v07(l1_handler_v07(), ChainId::MAINNET)]
     #[case::l1_handler_legacy(l1_handler_legacy(), GOERLI_TESTNET)]
@@ -1505,6 +1527,60 @@ mod tests {
                     call_param!(
                         "0x630ac7edd6c7c097e4f9774fe5855bed3a2b8886286c61f1f7afd601e124d60"
                     ),
+                ],
+                ..Default::default()
+            }),
+        }
+    }
+
+    // A variant of invoke_v3 with proof facts.
+    // Taken from `starknet_api` tests: https://github.com/starkware-libs/sequencer/blob/2a5c56209c2bd8d2be5379c58eba32cf2ba0391d/crates/starknet_api/resources/transaction_hash.json#L116
+    fn invoke_v3_with_proof_facts() -> Transaction {
+        Transaction {
+            hash: transaction_hash!(
+                "0x6d885b1a2b7cb7946480c63aa1697888a33e9ccd0b1516f41c41731a1628726"
+            ),
+            variant: TransactionVariant::InvokeV3(InvokeTransactionV3 {
+                signature: vec![
+                    transaction_signature_elem!(
+                        "0x389bca189562763f6a73da4aaab30d87d8bbc243571f4a353c48493a43a0634"
+                    ),
+                    transaction_signature_elem!(
+                        "0x62d30041a0b1199b3ad93515066d5c7791211fa32f585956fafe630082270e9"
+                    ),
+                ],
+                nonce: transaction_nonce!("0x9d"),
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+                resource_bounds: ResourceBounds {
+                    l1_gas: ResourceBound {
+                        max_amount: ResourceAmount(0xa9e),
+                        max_price_per_unit: ResourcePricePerUnit(0x7f2a1ad4f2f1),
+                    },
+                    l2_gas: Default::default(),
+                    l1_data_gas: Default::default(),
+                },
+                sender_address: contract_address!(
+                    "0x69c0f9bcd79697bdceaf7748e3ff8f34aa39e4063ce44896af664c0c96f6c10"
+                ),
+                calldata: vec![
+                    call_param!("0x1"),
+                    call_param!(
+                        "0x4c0a5193d58f74fbace4b74dcf65481e734ed1714121bdc571da345540efa05"
+                    ),
+                    call_param!(
+                        "0x3943907ef0ef6f9d2e2408b05e520a66daaf74293dbf665e5a20b117676170e"
+                    ),
+                    call_param!("0x2"),
+                    call_param!(
+                        "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7"
+                    ),
+                    call_param!("0x16345785d8a0000"),
+                ],
+                proof_facts: vec![
+                    proof_fact_elem!("0x1"),
+                    proof_fact_elem!("0x2"),
+                    proof_fact_elem!("0x3"),
                 ],
                 ..Default::default()
             }),

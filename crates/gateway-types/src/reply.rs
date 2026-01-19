@@ -270,6 +270,7 @@ pub mod transaction_status {
 pub mod transaction {
     use fake::{Dummy, Fake, Faker};
     use pathfinder_common::prelude::*;
+    use pathfinder_common::ProofFactElem;
     use pathfinder_crypto::Felt;
     use pathfinder_serde::{
         CallParamAsDecimalStr,
@@ -1130,6 +1131,7 @@ pub mod transaction {
                     account_deployment_data,
                     calldata,
                     sender_address,
+                    proof_facts,
                 }) => Self::Invoke(InvokeTransaction::V3(self::InvokeTransactionV3 {
                     nonce,
                     nonce_data_availability_mode: nonce_data_availability_mode.into(),
@@ -1142,6 +1144,7 @@ pub mod transaction {
                     transaction_hash,
                     calldata,
                     account_deployment_data,
+                    proof_facts,
                 })),
                 L1Handler(L1HandlerTransaction {
                     contract_address,
@@ -1383,6 +1386,7 @@ pub mod transaction {
                     transaction_hash: _,
                     calldata,
                     account_deployment_data,
+                    proof_facts,
                 })) => TransactionVariant::InvokeV3(
                     pathfinder_common::transaction::InvokeTransactionV3 {
                         signature,
@@ -1395,6 +1399,7 @@ pub mod transaction {
                         account_deployment_data,
                         calldata,
                         sender_address,
+                        proof_facts,
                     },
                 ),
                 Transaction::L1Handler(L1HandlerTransaction {
@@ -1922,6 +1927,9 @@ pub mod transaction {
         pub calldata: Vec<CallParam>,
 
         pub account_deployment_data: Vec<AccountDeploymentDataElem>,
+
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub proof_facts: Vec<ProofFactElem>,
     }
 
     /// Represents deserialized L2 "L1 handler" transaction data.

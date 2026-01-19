@@ -806,6 +806,8 @@ pub(crate) mod tests {
                             // AccountCallArray::data_len
                             call_param!("0"),
                         ],
+                        proof_facts: vec![],
+                        proof: vec![],
                     },
                 ))
             }
@@ -849,6 +851,8 @@ pub(crate) mod tests {
                             // AccountCallArray::data_len
                             call_param!("0"),
                         ],
+                        proof_facts: vec![],
+                        proof: vec![],
                     },
                 ))
             }

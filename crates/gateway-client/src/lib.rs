@@ -1225,6 +1225,25 @@ mod tests {
                 .unwrap();
         }
 
+        // FIXME: add a proper fixture once `proof_facts` is available on a public
+        // chain.
+        #[test_log::test(tokio::test)]
+        async fn success_0_14_3_with_invoke_proof_facts() {
+            let (_jh, url) = setup([(
+                "/feeder_gateway/get_state_update?blockNumber=3077642&includeBlock=true",
+                (
+                    starknet_gateway_test_fixtures::v0_14_3::state_update_with_block::SEPOLIA_INTEGRATION_FAKE,
+                    200,
+                ),
+            )]);
+            let client = Client::for_test(url).unwrap();
+
+            client
+                .state_update_with_block(BlockNumber::new_or_panic(3077642))
+                .await
+                .unwrap();
+        }
+
         #[test_log::test(tokio::test)]
         async fn block_not_found() {
             const BLOCK_NUMBER: u64 = 99999999;

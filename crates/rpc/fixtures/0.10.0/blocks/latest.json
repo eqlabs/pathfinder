@@ -116,7 +116,7 @@
             "receipt": {
                 "actual_fee": {
                     "amount": "0x0",
-                    "unit": "WEI"
+                    "unit": "FRI"
                 },
                 "events": [],
                 "execution_resources": {
@@ -141,13 +141,31 @@
                 "type": "INVOKE"
             },
             "transaction": {
+                "account_deployment_data": [],
                 "calldata": [],
-                "contract_address": "0x636f6e74726163742031",
-                "entry_point_selector": "0x0",
-                "max_fee": "0x0",
+                "fee_data_availability_mode": "L1",
+                "nonce": "0x0",
+                "nonce_data_availability_mode": "L1",
+                "paymaster_data": [],
+                "resource_bounds": {
+                    "l1_data_gas": {
+                        "max_amount": "0x0",
+                        "max_price_per_unit": "0x0"
+                    },
+                    "l1_gas": {
+                        "max_amount": "0x0",
+                        "max_price_per_unit": "0x0"
+                    },
+                    "l2_gas": {
+                        "max_amount": "0x0",
+                        "max_price_per_unit": "0x0"
+                    }
+                },
+                "sender_address": "0x636f6e74726163742032202873696572726129",
                 "signature": [],
+                "tip": "0x0",
                 "type": "INVOKE",
-                "version": "0x0"
+                "version": "0x3"
             }
         },
         {

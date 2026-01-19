@@ -1,7 +1,7 @@
 {
   "openrpc": "1.3.2",
   "info": {
-    "version": "0.10.0",
+    "version": "0.10.1-rc.1",
     "title": "StarkNet WebSocket RPC API",
     "license": {}
   },
@@ -286,6 +286,17 @@
               "$ref": "#/components/schemas/ADDRESS"
             }
           }
+        },
+        {
+          "name": "tags",
+          "summary": "Tags that control what additional fields are included in transaction responses",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SUBSCRIPTION_TAG"
+            }
+          }
         }
       ],
       "result": {
@@ -441,6 +452,11 @@
             }
           }
         ]
+      },
+      "SUBSCRIPTION_TAG": {
+        "type": "string",
+        "enum": ["INCLUDE_PROOF_FACTS"],
+        "description": "Tags that control what additional fields are included in subscription responses. INCLUDE_PROOF_FACTS: Include proof_facts field when available (only for INVOKE transactions with version 3)."
       },
       "REORG_DATA": {
         "name": "Reorg Data",

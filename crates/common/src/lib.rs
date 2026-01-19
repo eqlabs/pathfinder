@@ -552,6 +552,7 @@ macros::felt_newtypes!(
         L1ToL2MessagePayloadElem,
         L2ToL1MessagePayloadElem,
         PaymasterDataElem,
+        ProofFactElem,
         ProposalCommitment,
         PublicKey,
         SequencerAddress,
@@ -688,6 +689,10 @@ pub struct DecisionInfo {
     pub round: u32,
     pub value: ProposalCommitment,
 }
+
+/// A SNOS stwo proof element.
+#[derive(Copy, Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ProofElem(pub u32);
 
 #[cfg(test)]
 mod tests {
