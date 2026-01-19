@@ -15,7 +15,7 @@ use pathfinder_common::{BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
 use pathfinder_lib::consensus::{ConsensusChannels, ConsensusTaskHandles};
 use pathfinder_lib::state::l1_gas_price::{L1GasPriceConfig, L1GasPriceProvider};
-use pathfinder_lib::state::{sync_gas_prices, L1GasPriceSyncConfig, SyncContext};
+use pathfinder_lib::state::{sync_gas_prices, SyncContext};
 use pathfinder_lib::{config, consensus, monitoring, p2p_network, state};
 use pathfinder_rpc::context::{EthContractAddresses, WebsocketContext};
 use pathfinder_rpc::{Notifications, SyncState};
@@ -320,13 +320,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         let sync_provider = provider.clone();
         let ethereum_client = ethereum.client.clone();
         util::task::spawn(async move {
-            if let Err(e) = sync_gas_prices(
-                ethereum_client,
-                sync_provider,
-                L1GasPriceSyncConfig::default(),
-            )
-            .await
-            {
+            if let Err(e) = sync_gas_prices(ethereum_client, sync_provider).await {
                 tracing::error!(error = %e, "L1 gas price sync task failed");
             }
         });

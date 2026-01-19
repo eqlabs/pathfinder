@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use pathfinder_common::{Chain, L1BlockNumber};
+use pathfinder_common::Chain;
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
 use primitive_types::H160;
 use tokio::sync::mpsc;
@@ -73,15 +73,13 @@ impl Default for L1GasPriceSyncConfig {
 pub async fn sync_gas_prices(
     ethereum: EthereumClient,
     provider: L1GasPriceProvider,
-    config: L1GasPriceSyncConfig,
 ) -> anyhow::Result<()> {
     // Subscribe to new block headers
-    let provider2 = provider.clone();
     ethereum
         .subscribe_block_headers(move |data| {
-            let provider3 = provider2.clone();
+            let provider = provider.clone();
             async move {
-                if let Err(e) = provider3.add_sample(data) {
+                if let Err(e) = provider.add_sample(data) {
                     tracing::warn!(
                         block = %data.block_number,
                         error = %e,
@@ -97,41 +95,7 @@ pub async fn sync_gas_prices(
                 }
             }
         })
-        .await?;
-
-    // Get the finalized block to determine where to start historical fetch
-    let finalized = ethereum.get_finalized_block_number().await?;
-    tracing::debug!(finalized_block = %finalized, "Starting L1 gas price sync");
-
-    // Fetch historical gas prices to populate the buffer
-    let start_block = finalized.get().saturating_sub(config.startup_blocks).max(1);
-    let start_block = L1BlockNumber::new_or_panic(start_block);
-
-    tracing::debug!(
-        start = %start_block,
-        end = %finalized,
-        "Fetching historical gas prices"
-    );
-
-    let historical_data = ethereum
-        .get_gas_price_data_range(start_block, finalized)
-        .await?;
-
-    let fetched_count = historical_data.len();
-    if let Err(e) = provider.add_samples(historical_data) {
-        // This is expected: if the chain is active, we already got a
-        // block from the subscription above, and trying to add an
-        // earlier one will fail; we're fetching historical data just
-        // in case it isn't...
-        tracing::debug!(error = %e, "Failed to add historical gas price samples");
-    }
-
-    tracing::debug!(
-        samples = fetched_count,
-        "Populated gas price buffer with historical data"
-    );
-
-    Ok(())
+        .await
 }
 
 #[cfg(test)]
@@ -140,7 +104,7 @@ mod tests {
 
     use pathfinder_ethereum::EthereumClient;
 
-    use super::{sync_gas_prices, L1GasPriceSyncConfig};
+    use super::sync_gas_prices;
     use crate::state::l1_gas_price::{L1GasPriceConfig, L1GasPriceProvider};
 
     #[ignore = "Uses network, takes too long..."]
@@ -156,10 +120,7 @@ mod tests {
         let provider = L1GasPriceProvider::new(L1GasPriceConfig::default());
         let provider2 = provider.clone();
         util::task::spawn(async move {
-            let sync_config = L1GasPriceSyncConfig { startup_blocks: 2 };
-            sync_gas_prices(ethereum_client, provider2, sync_config)
-                .await
-                .unwrap();
+            sync_gas_prices(ethereum_client, provider2).await.unwrap();
         });
         tokio::time::sleep(Duration::from_secs(60)).await;
         // provider should have got some new (IOW not initial, but
