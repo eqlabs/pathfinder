@@ -28,7 +28,7 @@ pub enum ProposalHandlingError {
     /// Fatal error (DB errors, state corruption, storage failures, logic
     /// errors, etc.).
     #[error(transparent)]
-    Fatal(anyhow::Error),
+    Fatal(#[from] anyhow::Error),
 }
 
 impl ProposalHandlingError {
