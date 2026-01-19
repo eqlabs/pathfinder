@@ -730,6 +730,7 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
                 .map_err(ProposalHandlingError::fatal)?;
         let receipt_commitment =
             calculate_receipt_commitment(&receipts).map_err(ProposalHandlingError::fatal)?;
+        let event_count = events.iter().map(|e| e.len()).sum();
         let events_ref_by_txn = events
             .iter()
             .zip(transactions.iter().map(|t| t.hash))
@@ -753,12 +754,12 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
             starknet_version: self.block_info.starknet_version,
             event_commitment,
             transaction_commitment,
-            transaction_count: 0, // TODO validate concatenated_counts
-            event_count: 0,       // TODO validate concatenated_counts
+            transaction_count: transactions.len(),
+            event_count,
             l1_da_mode: self.block_info.l1_da_mode,
             receipt_commitment,
             state_diff_commitment,
-            state_diff_length: 0, // TODO validate concatenated_counts
+            state_diff_length: state_update.state_diff_length(),
         };
 
         debug!(

@@ -1082,7 +1082,11 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
     gas_price_provider: Option<L1GasPriceProvider>,
     inject_failure_config: Option<InjectFailureConfig>,
 ) -> Result<Option<ProposalCommitmentWithOrigin>, ProposalHandlingError> {
+    tracing::error!("YYYY proposal_part {proposal_part:#?}");
+
     let parts_for_height_and_round = handled_proposal_parts.entry(height_and_round).or_default();
+
+    tracing::error!("YYYY parts_for_height_and_round {parts_for_height_and_round:#?}");
 
     let has_executed_txn_count = parts_for_height_and_round
         .iter()

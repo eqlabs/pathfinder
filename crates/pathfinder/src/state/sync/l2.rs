@@ -370,6 +370,8 @@ where
         fetch_casm_from_fgw,
     } = context;
 
+    tracing::error!("ZZZZ Starting consensus-aware L2 sync");
+
     let ConsensusChannels {
         mut consensus_info_watch,
         sync_to_consensus_tx,
@@ -398,6 +400,8 @@ where
         _ = consensus_watch_fut => {}
         _ = fgw_watch_fut => {}
     }
+
+    tracing::error!("ZZZZ start polling loop");
 
     // Start polling head of chain
     'outer: loop {
@@ -854,6 +858,16 @@ async fn download_block(
                 let _ = send.send(result);
             });
             let block = recv.await.expect("Panic on rayon thread")?;
+
+            tracing::error!(
+                "YYYY FGw downloaded block {} block {block:#?}",
+                block.block_number
+            );
+
+            tracing::error!(
+                "YYYY FGw downloaded state diff {} state diff {state_update:#?}",
+                block.block_number
+            );
 
             // Check if commitments and block hash are correct
             let (tx, rx) = tokio::sync::oneshot::channel();
@@ -1426,6 +1440,13 @@ fn verify_gateway_block_commitments_and_hash(
     let computed_transaction_commitment =
         calculate_transaction_commitment(&block.transactions, block.starknet_version)?;
 
+    tracing::error!(
+        "YYYY verifying block hash {} computed tx commitment {} expected tx commitment {}",
+        block.block_number,
+        computed_transaction_commitment,
+        header.transaction_commitment
+    );
+
     // Older blocks on mainnet don't carry a precalculated transaction commitment.
     if block.transaction_commitment == TransactionCommitment::ZERO {
         // Update with the computed transaction commitment, verification is not
@@ -1442,6 +1463,14 @@ fn verify_gateway_block_commitments_and_hash(
         .map(|(r, _)| r.clone())
         .collect::<Vec<_>>();
     let computed_receipt_commitment = calculate_receipt_commitment(receipts.as_slice())?;
+
+    tracing::error!(
+        "YYYY verifying block hash {} computed receipt commitment {} expected receipt commitment \
+         {}",
+        block.block_number,
+        computed_receipt_commitment,
+        header.receipt_commitment
+    );
 
     // Older blocks on mainnet don't carry a precalculated receipt commitment.
     if let Some(receipt_commitment) = block.receipt_commitment {
@@ -1462,6 +1491,13 @@ fn verify_gateway_block_commitments_and_hash(
         .collect::<Vec<_>>();
     let event_commitment =
         calculate_event_commitment(&events_with_tx_hashes, block.starknet_version)?;
+
+    tracing::error!(
+        "YYYY verifying block hash {} computed event commitment {} expected event commitment {}",
+        block.block_number,
+        event_commitment,
+        header.event_commitment
+    );
 
     // Older blocks on mainnet don't carry a precalculated event
     // commitment.

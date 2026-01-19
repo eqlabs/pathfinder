@@ -72,7 +72,7 @@ mod test {
         // System contracts start to matter after block 10
         const HEIGHT: u64 = 15;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
-        const TEST_TIMEOUT: Duration = Duration::from_secs(120);
+        const TEST_TIMEOUT: Duration = Duration::from_secs(30); // TODO testing, revert to 120s later
         const POLL_READY: Duration = Duration::from_millis(500);
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 

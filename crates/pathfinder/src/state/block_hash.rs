@@ -351,6 +351,12 @@ fn compute_final_hash_v0(header: &BlockHeader, starknet_version_str: &str) -> Bl
 // Bumps the initial STARKNET_BLOCK_HASH0 to STARKNET_BLOCK_HASH1,
 // replaces gas price elements with gas_prices_hash.
 fn compute_final_hash_v1(header: &BlockHeader, starknet_version_str: &str) -> BlockHash {
+    tracing::error!(
+        "YYYY computing final hash v1 for block number {} header: {:#?}",
+        header.number,
+        header
+    );
+
     // Hash the block header.
     let mut hasher = PoseidonHasher::new();
     hasher.write(felt_bytes!(b"STARKNET_BLOCK_HASH1").into());
@@ -371,7 +377,9 @@ fn compute_final_hash_v1(header: &BlockHeader, starknet_version_str: &str) -> Bl
     );
     hasher.write(MontFelt::ZERO);
     hasher.write(header.parent_hash.0.into());
-    BlockHash(hasher.finish().into())
+    let x = BlockHash(hasher.finish().into());
+    tracing::error!("YYYY computed final hash v1: {}", x);
+    x
 }
 
 // TODO consider passing a representation of the block header that does not

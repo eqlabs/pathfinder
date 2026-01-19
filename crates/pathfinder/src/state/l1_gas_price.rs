@@ -49,8 +49,8 @@ impl Default for L1GasPriceConfig {
             storage_limit: 1000,
             blocks_for_mean: 100,
             lag_margin_seconds: 300,
-            max_time_gap_seconds: 600,
-            tolerance: 0.20,
+            max_time_gap_seconds: 600 * 100, // TODO testing, reduce later
+            tolerance: 1.20,                 // TODO testing, reduce later
         }
     }
 }

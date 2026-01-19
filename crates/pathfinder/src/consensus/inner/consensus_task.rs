@@ -9,16 +9,24 @@
 //! 4. issues commands to the P2P task, for example to gossip a proposal or a
 //!    vote
 
+use std::cell::LazyCell;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, LazyLock};
+use std::time::{Duration, SystemTime};
 use std::vec;
 
 use anyhow::Context;
 use p2p::consensus::HeightAndRound;
-use p2p_proto::common::{Address, Hash};
-use p2p_proto::consensus::{ProposalFin, ProposalInit, ProposalPart};
-use pathfinder_common::{BlockId, ConsensusFinalizedL2Block, ContractAddress, ProposalCommitment};
+use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
+use p2p_proto::consensus::{BlockInfo, ProposalFin, ProposalInit, ProposalPart};
+use pathfinder_common::{
+    BlockId,
+    ChainId,
+    ConsensusFinalizedL2Block,
+    ContractAddress,
+    ProposalCommitment,
+};
 use pathfinder_consensus::{
     Config,
     Consensus,
@@ -29,6 +37,7 @@ use pathfinder_consensus::{
     ValidatorSet,
     ValidatorSetProvider,
 };
+use pathfinder_executor::BlockExecutor;
 use pathfinder_storage::Storage;
 use tokio::sync::mpsc;
 
@@ -38,6 +47,8 @@ use super::{integration_testing, ConsensusTaskEvent, ConsensusValue, HeightExt, 
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
 use crate::consensus::inner::create_empty_block;
+use crate::consensus::inner::test_helpers::create_transaction_batch_0;
+use crate::validator::{ProdTransactionMapper, ValidatorBlockInfoStage};
 
 #[allow(clippy::too_many_arguments)]
 pub fn spawn(
@@ -129,7 +140,14 @@ pub fn spawn(
                                  {round}",
                             );
 
-                            match create_empty_proposal(height, round.into(), validator_address) {
+                            // match create_empty_proposal(height, round.into(), validator_address)
+                            // {
+                            match create_nonempty_proposal(
+                                height,
+                                round.into(),
+                                validator_address,
+                                main_storage.clone(),
+                            ) {
                                 Ok((wire_proposal, finalized_block)) => {
                                     let ProposalFin {
                                         proposal_commitment,
@@ -394,6 +412,82 @@ pub(crate) fn create_empty_proposal(
             }),
         ],
         empty_block,
+    ))
+}
+
+pub(crate) fn create_nonempty_proposal(
+    height: u64,
+    round: Round,
+    proposer: ContractAddress,
+    main_storage: Storage,
+) -> anyhow::Result<(Vec<ProposalPart>, ConsensusFinalizedL2Block)> {
+    let round = round.as_u32().context(format!(
+        "Attempted to create proposal with Nil round at height {height}"
+    ))?;
+    let proposer = Address(proposer.0);
+    let proposal_init = ProposalInit {
+        height,
+        round,
+        valid_round: None,
+        proposer,
+    };
+
+    static LAST_TIMESTAMP: AtomicU64 = AtomicU64::new(0);
+
+    let mut timestamp = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    if timestamp <= LAST_TIMESTAMP.load(std::sync::atomic::Ordering::Relaxed) {
+        timestamp = LAST_TIMESTAMP.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    } else {
+        LAST_TIMESTAMP.store(timestamp, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    let block_info = BlockInfo {
+        height,
+        builder: Address(proposer.0),
+        timestamp,
+        l2_gas_price_fri: 1_000_000,
+        l1_gas_price_wei: 1_000_000,
+        l1_data_gas_price_wei: 1_000_000,
+        eth_to_fri_rate: 1_000_000_000_000_000_000,
+        l1_da_mode: L1DataAvailabilityMode::Calldata,
+    };
+    let transactions = create_transaction_batch_0(height as u32, 0, 1, ChainId::SEPOLIA_TESTNET);
+
+    // let empty_block = create_empty_block(height);
+    // let proposal_commitment_hash =
+    // Hash(empty_block.header.state_diff_commitment.0);
+
+    let validator =
+        ValidatorBlockInfoStage::new(ChainId::SEPOLIA_TESTNET, proposal_init.clone()).unwrap();
+    let mut validator = validator
+        .validate_consensus_block_info::<BlockExecutor>(block_info.clone(), main_storage, None)
+        .unwrap();
+    validator
+        .execute_batch::<ProdTransactionMapper>(transactions.clone())
+        .unwrap();
+    let block = validator.consensus_finalize0().unwrap();
+
+    tracing::error!(
+        "YYYY Created non empty proposal for height {height}, block info: {block_info:#?}"
+    );
+
+    tracing::error!("YYYY Created non empty proposal for height {height}, block: {block:#?}");
+
+    Ok((
+        vec![
+            ProposalPart::Init(proposal_init),
+            ProposalPart::BlockInfo(block_info),
+            ProposalPart::TransactionBatch(transactions),
+            ProposalPart::ExecutedTransactionCount(1),
+            ProposalPart::Fin(ProposalFin {
+                proposal_commitment: Hash(block.header.state_diff_commitment.0),
+            }),
+        ],
+        block,
     ))
 }
 

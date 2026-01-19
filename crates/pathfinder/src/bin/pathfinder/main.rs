@@ -393,6 +393,11 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         None => rpc_server,
     };
 
+    tracing::error!(
+        "ZZZZ starting sync, is_sync_enabled={}",
+        config.is_sync_enabled
+    );
+
     let sync_handle = if config.is_sync_enabled {
         start_sync(
             sync_storage,
@@ -574,7 +579,11 @@ fn start_sync(
     p2p_client: Option<P2PSyncClient>,
     verify_tree_hashes: bool,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+    tracing::error!("ZZZZ Starting sync, p2p feature >>enabled<<");
+
     if config.sync_p2p.proxy {
+        tracing::error!("ZZZZ Sync type: feeder gateway");
+
         start_feeder_gateway_sync(
             storage,
             pathfinder_context,
@@ -587,6 +596,8 @@ fn start_sync(
             gateway_public_key,
         )
     } else if let Some(consensus_channels) = consensus_channels {
+        tracing::error!("ZZZZ Sync type: consensus-aware feeder gateway");
+
         start_consensus_aware_fgw_sync(
             storage,
             pathfinder_context,
@@ -600,6 +611,8 @@ fn start_sync(
             consensus_channels,
         )
     } else {
+        tracing::error!("ZZZZ Sync type: p2p");
+
         let p2p_client = p2p_client.expect("P2P client is expected with the p2p feature enabled");
         start_p2p_sync(
             storage,
@@ -629,6 +642,8 @@ fn start_sync(
     _p2p_client: Option<P2PSyncClient>,
     _verify_tree_hashes: bool,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+    tracing::error!("ZZZZ Starting sync, p2p feature >>disabled<<");
+
     start_feeder_gateway_sync(
         storage,
         pathfinder_context,

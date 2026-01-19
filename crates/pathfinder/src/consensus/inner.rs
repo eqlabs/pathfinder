@@ -16,7 +16,7 @@ mod persist_proposals;
 ))]
 pub use persist_proposals::ConsensusProposals;
 
-#[cfg(test)]
+// #[cfg(test)]
 mod test_helpers;
 
 use std::path::{Path, PathBuf};
@@ -187,6 +187,26 @@ impl HeightExt for NetworkMessage<ConsensusValue, ContractAddress> {
 /// block to be created even for empty proposals. For now, we create a (mostly)
 /// default block header with the necessary fields filled in.
 pub(crate) fn create_empty_block(height: u64) -> ConsensusFinalizedL2Block {
+    let timestamp = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    // The only version handled by consensus, so far
+    let starknet_version = StarknetVersion::new(0, 14, 0, 0);
+
+    ConsensusFinalizedL2Block {
+        header: ConsensusFinalizedBlockHeader {
+            number: BlockNumber::new_or_panic(height),
+            timestamp: BlockTimestamp::new_or_panic(timestamp),
+            starknet_version,
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+pub(crate) fn create_empty_block_0(height: u64) -> ConsensusFinalizedL2Block {
     let timestamp = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default()
