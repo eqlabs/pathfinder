@@ -5,7 +5,7 @@ use pathfinder_ethereum::{EthereumApi, EthereumClient};
 use primitive_types::H160;
 use tokio::sync::mpsc;
 
-use crate::state::l1_gas_price::L1GasPriceProvider;
+use crate::gas_price::L1GasPriceProvider;
 use crate::state::sync::SyncEvent;
 
 #[derive(Clone)]
@@ -124,7 +124,7 @@ mod tests {
     use pathfinder_ethereum::EthereumClient;
 
     use super::{sync_gas_prices, L1GasPriceSyncConfig};
-    use crate::state::l1_gas_price::{L1GasPriceConfig, L1GasPriceProvider};
+    use crate::gas_price::{L1GasPriceConfig, L1GasPriceProvider};
 
     #[ignore = "Uses network, takes too long..."]
     #[test_log::test(tokio::test(flavor = "multi_thread"))]

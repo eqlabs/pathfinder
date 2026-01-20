@@ -1,5 +1,4 @@
 pub mod block_hash;
-pub mod l1_gas_price;
 mod sync;
 
 // Re-export L1 gas price sync types

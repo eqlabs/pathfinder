@@ -15,7 +15,7 @@ use pathfinder_executor::BlockExecutorExt;
 use pathfinder_storage::{Storage, Transaction};
 
 use crate::consensus::ProposalHandlingError;
-use crate::state::l1_gas_price::L1GasPriceProvider;
+use crate::gas_price::L1GasPriceProvider;
 use crate::validator::{TransactionExt, ValidatorStage, ValidatorTransactionBatchStage};
 
 /// Manages batch execution with rollback support for ExecutedTransactionCount
@@ -141,6 +141,7 @@ impl BatchExecutionManager {
                         block_info,
                         main_db.clone(),
                         self.gas_price_provider.clone(),
+                        None, // TODO: Add L1ToFriValidator when oracle is available
                     )
                     .map(Box::new)?
             } else {
