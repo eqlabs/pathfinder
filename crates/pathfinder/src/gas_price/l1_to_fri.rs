@@ -142,3 +142,85 @@ impl L1ToFriValidator {
         L1ToFriValidationResult::Valid
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use pathfinder_common::L1BlockNumber;
+    use pathfinder_ethereum::L1GasPriceData;
+
+    use super::*;
+    use crate::gas_price::l1::L1GasPriceConfig;
+    use crate::gas_price::oracle::MockEthToFriOracle;
+
+    fn sample(block_num: u64, timestamp: u64, base_fee: u128, blob_fee: u128) -> L1GasPriceData {
+        L1GasPriceData {
+            block_number: L1BlockNumber::new_or_panic(block_num),
+            timestamp,
+            base_fee_per_gas: base_fee,
+            blob_fee,
+        }
+    }
+
+    fn make_provider_with_samples() -> L1GasPriceProvider {
+        let config = L1GasPriceConfig {
+            storage_limit: 100,
+            blocks_for_mean: 3,
+            lag_margin_seconds: 0,
+            max_time_gap_seconds: 1000,
+            tolerance: 0.20,
+        };
+        let provider = L1GasPriceProvider::new(config);
+        provider.add_sample(sample(0, 100, 1000, 100)).unwrap();
+        provider.add_sample(sample(1, 112, 1000, 100)).unwrap();
+        provider.add_sample(sample(2, 124, 1000, 100)).unwrap();
+        provider
+    }
+
+    #[test]
+    fn test_fri_validation_valid_cases() {
+        let mut mock = MockEthToFriOracle::new();
+        mock.expect_wei_to_fri().returning(|wei, _| Ok(wei * 2));
+        let v = L1ToFriValidator::new(
+            Arc::new(mock),
+            make_provider_with_samples(),
+            L1ToFriValidationConfig::default(),
+        );
+
+        let proposer_rate = 2 * ETH_TO_WEI;
+        assert!(matches!(
+            v.validate(124, 1000, 100, proposer_rate),
+            L1ToFriValidationResult::Valid
+        ));
+    }
+
+    #[test]
+    fn test_fri_validation_error_cases() {
+        let mut mock = MockEthToFriOracle::new();
+        mock.expect_wei_to_fri().returning(|wei, _| Ok(wei * 2));
+        let v = L1ToFriValidator::new(
+            Arc::new(mock),
+            make_provider_with_samples(),
+            L1ToFriValidationConfig::default(),
+        );
+
+        let proposer_rate = 3 * ETH_TO_WEI;
+        assert!(matches!(
+            v.validate(124, 1000, 100, proposer_rate),
+            L1ToFriValidationResult::InvalidFriDeviation { .. }
+        ));
+
+        let mut mock = MockEthToFriOracle::new();
+        mock.expect_wei_to_fri().returning(|_, ts| {
+            Err(crate::gas_price::oracle::EthToFriOracleError::Unavailable { timestamp: ts })
+        });
+        let v = L1ToFriValidator::new(
+            Arc::new(mock),
+            make_provider_with_samples(),
+            L1ToFriValidationConfig::default(),
+        );
+        assert!(matches!(
+            v.validate(124, 1000, 100, 2 * ETH_TO_WEI),
+            L1ToFriValidationResult::InsufficientData
+        ));
+    }
+}
