@@ -181,11 +181,8 @@ pub async fn trace_transaction(
                     .native_execution_force_use_for_incompatible_classes,
             );
 
-            // TODO: Spec only states that `starknet_traceBlockTransactions` should accept
-            // this flag at the moment but it seems like an oversight, we should
-            // probably also add it here?
-            //
-            // See https://github.com/eqlabs/pathfinder/issues/3175 for more info.
+            // The flag is not included in the spec for this method. Moreover, it isn't
+            // possible to return per-transaction initial reads at the moment.
             let return_initial_reads = false;
 
             let executor_transactions = transactions
