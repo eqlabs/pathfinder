@@ -10,7 +10,7 @@
 //! 5. caches proposals that we received from other validators and may need to
 //!    be proposed by us in another round at the same height
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -108,8 +108,6 @@ pub fn spawn(
     inject_failure: Option<InjectFailureConfig>,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     let validator_address = config.my_validator_address;
-    // TODO validators are long-lived but not persisted
-    let validator_cache = ValidatorCache::<BlockExecutor>::new();
     // Contains transaction batches and proposal finalizations that are
     // waiting for previous block to be committed before they can be executed.
     let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
@@ -136,42 +134,99 @@ pub fn spawn(
             .connection()
             .context("Creating consensus database connection")?;
         let gossip_handler = GossipHandler::new(validator_address, GossipRetryConfig::default());
-        loop {
-            let p2p_task_event = tokio::select! {
-                _ = peer_score_decay_timer.tick() => {
-                    p2p_client.decay_peer_scores();
-                    continue;
-                }
-                p2p_event = p2p_event_rx.recv() => {
-                    // Unbounded channel size monitoring.
-                    let channel_size = p2p_event_rx.len();
-                    if channel_size > EVENT_CHANNEL_SIZE_LIMIT {
-                        if !channel_size_warning_emitted {
-                            tracing::warn!(%channel_size, "Event channel size exceeded limit");
-                            channel_size_warning_emitted = true;
-                        }
-                    } else {
-                        channel_size_warning_emitted = false;
-                    }
 
-                    match p2p_event {
-                        Some(event) => P2PTaskEvent::P2PEvent(event),
-                        None => {
-                            tracing::warn!("P2P event receiver was dropped, exiting P2P task");
-                            anyhow::bail!("P2P event receiver was dropped, exiting P2P task");
+        let validator_cache = ValidatorCache::new();
+        // This is to:
+        // 1. avoid re-reading proposal parts for some H:R multiple times from the DB
+        //    when a new part is incoming for that H:R.
+        // 2. allow replaying of proposal parts during recovery (replayed parts are
+        //    already in storage so the parsing logic would fail if we loaded the parts
+        //    buffer from the DB on each new part).
+        let mut handled_proposal_parts = HashMap::new();
+        // Validators are long-lived but not persisted, and the recovery process
+        // right now works by re-executing all last proposals from the database
+        // for all heights found in the database. We do this by replaying all proposal
+        // parts for all last rounds from all heights.
+        let mut events_to_replay = tokio::task::block_in_place(|| {
+            tracing::info!(
+                "🖧  🔧 {validator_address} Building list of proposal parts to replay ..."
+            );
+            let proposals_db = cons_db_conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map(ConsensusProposals::new)
+                .context("Create consensus database transaction")?;
+            let stopwatch = std::time::Instant::now();
+            let all_last_parts = proposals_db
+                .all_last_parts(&validator_address)
+                .map_err(ProposalHandlingError::fatal)?;
+
+            tracing::trace!(
+                "🖧  🔧 {validator_address} Proposal parts to replay: {all_last_parts:#?}"
+            );
+
+            let fake_source_for_replay = PeerId::random();
+            let events_to_replay = all_last_parts
+                .into_iter()
+                .flat_map(|(height, round, parts)| {
+                    parts.into_iter().map(move |part| {
+                        P2PTaskEvent::P2PEvent(Event {
+                            source: fake_source_for_replay,
+                            kind: EventKind::Proposal(HeightAndRound::new(height, round), part),
+                        })
+                    })
+                })
+                .collect::<VecDeque<_>>();
+
+            tracing::info!(
+                "🖧  🔧 {validator_address} List of proposal parts to replay built in {} ms",
+                stopwatch.elapsed().as_millis()
+            );
+            anyhow::Ok(events_to_replay)
+        })
+        .context("Recovering events to replay")?;
+
+        loop {
+            // Replay recovered events first. And only then handle new incoming events.
+            let (p2p_task_event, is_replayed) = if let Some(event) = events_to_replay.pop_front() {
+                (event, true)
+            } else {
+                let p2p_task_event = tokio::select! {
+                    _ = peer_score_decay_timer.tick() => {
+                        p2p_client.decay_peer_scores();
+                        continue;
+                    }
+                    p2p_event = p2p_event_rx.recv() => {
+                        // Unbounded channel size monitoring.
+                        let channel_size = p2p_event_rx.len();
+                        if channel_size > EVENT_CHANNEL_SIZE_LIMIT {
+                            if !channel_size_warning_emitted {
+                                tracing::warn!(%channel_size, "Event channel size exceeded limit");
+                                channel_size_warning_emitted = true;
+                            }
+                        } else {
+                            channel_size_warning_emitted = false;
+                        }
+
+                        match p2p_event {
+                            Some(event) => P2PTaskEvent::P2PEvent(event),
+                            None => {
+                                tracing::warn!("P2P event receiver was dropped, exiting P2P task");
+                                anyhow::bail!("P2P event receiver was dropped, exiting P2P task");
+                            }
                         }
                     }
-                }
-                from_consensus = rx_from_consensus.recv() => {
-                    from_consensus.expect("Receiver not to be dropped")
-                }
-                from_sync = rx_from_sync.recv() => match from_sync {
-                    Some(request) => P2PTaskEvent::SyncRequest(request),
-                    None => {
-                        tracing::warn!("Sync request receiver was dropped, exiting P2P task");
-                        anyhow::bail!("Sync request receiver was dropped, exiting P2P task");
+                    from_consensus = rx_from_consensus.recv() => {
+                        from_consensus.expect("Receiver not to be dropped")
                     }
-                }
+                    from_sync = rx_from_sync.recv() => match from_sync {
+                        Some(request) => P2PTaskEvent::SyncRequest(request),
+                        None => {
+                            tracing::warn!("Sync request receiver was dropped, exiting P2P task");
+                            anyhow::bail!("Sync request receiver was dropped, exiting P2P task");
+                        }
+                    }
+                };
+                (p2p_task_event, false)
             };
 
             let success = tokio::task::block_in_place(|| {
@@ -186,7 +241,10 @@ pub fn spawn(
 
                 let success = match p2p_task_event {
                     P2PTaskEvent::P2PEvent(event) => {
-                        tracing::info!("🖧  💌 {validator_address} incoming p2p event: {event:?}");
+                        tracing::info!(
+                            "🖧  💌 {validator_address} incoming p2p event \
+                             (is_replayed={is_replayed}): {event:?}"
+                        );
 
                         // Even though rebroadcast certificates are not implemented yet, it still
                         // does make sense to keep `history_depth` larger than 0. This is due to
@@ -223,9 +281,10 @@ pub fn spawn(
                                     ProdTransactionMapper,
                                 >(
                                     chain_id,
-                                    validator_address,
                                     height_and_round,
                                     proposal_part,
+                                    is_replayed,
+                                    &mut handled_proposal_parts,
                                     vcache,
                                     dex,
                                     main_readonly_storage.clone(),
@@ -237,13 +296,6 @@ pub fn spawn(
                                 );
                                 match result {
                                     Ok(Some(commitment)) => {
-                                        // Does nothing in production builds.
-                                        integration_testing::debug_fail_on_entire_proposal_rx(
-                                            height_and_round.height(),
-                                            inject_failure,
-                                            &data_directory,
-                                        );
-
                                         anyhow::Ok(ComputationSuccess::IncomingProposalCommitment(
                                             height_and_round,
                                             commitment,
@@ -266,6 +318,7 @@ pub fn spawn(
                                                 "Invalid proposal part from peer - skipping, continuing operation"
                                             );
                                             // Purge the proposal from storage
+                                            handled_proposal_parts.remove(&height_and_round);
                                             if let Err(purge_err) = proposals_db.remove_parts(
                                                 height_and_round.height(),
                                                 Some(height_and_round.round()),
@@ -352,12 +405,9 @@ pub fn spawn(
                                     %number, "🖧  📥 {validator_address} confirm finalized block committed"
                                 );
                                 // There are 2 scenarios here:
-                                // 1. The normal scenario where consensus is used by sync to get the
-                                //    tip because the FGw is naturally lagging behind sync as it's
-                                //    just duplicating whatever consensus provides. In such case the
-                                //    following call will actually remove the finalized block for
-                                //    the last round at the height and run any deferred executions
-                                //    for the next height.
+                                // 1. Consensus is used by sync to get the tip because the FGw is
+                                //    naturally lagging behind sync as it's just duplicating
+                                //    whatever consensus provides.
                                 // 2. A rare but still possible scenario where the FGw is ahead of
                                 //    consensus for some nodes due to low network latency and their
                                 //    consensus engines not notifying those nodes internally fast
@@ -470,6 +520,8 @@ pub fn spawn(
                                     height_and_round.round(),
                                     &validator_address,
                                 )? {
+                                // TODO re-assess if the following comment is still true
+                                //
                                 // TODO we're assuming that all proposals are valid and any failure
                                 // to reach consensus in round 0
                                 // always yields re-proposing the same
@@ -477,6 +529,9 @@ pub fn spawn(
                                 // validation is integrated.
                                 proposal_parts
                             } else {
+                                // TODO re-assess if the following comment is still true, maybe we
+                                // should just error here?
+                                //
                                 // TODO this is here to catch a very rare case which I'm almost
                                 // sure occurred at least once during tests on my machine.
                                 tracing::warn!(
@@ -654,6 +709,8 @@ pub fn spawn(
                         );
 
                         // Remove cached proposal parts for this height
+                        handled_proposal_parts
+                            .retain(|hnr, _| hnr.height() != height_and_round.height());
                         proposals_db.remove_parts(height_and_round.height(), None)?;
                         tracing::debug!(
                             "🖧  🗑️ {validator_address} removed my proposal parts for height {}",
@@ -1035,9 +1092,10 @@ async fn send_proposal_to_consensus(
 #[allow(clippy::too_many_arguments)]
 fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
     chain_id: ChainId,
-    validator_address: ContractAddress,
     height_and_round: HeightAndRound,
     proposal_part: ProposalPart,
+    is_replayed: bool,
+    handled_proposal_parts: &mut HashMap<HeightAndRound, Vec<ProposalPart>>,
     mut validator_cache: ValidatorCache<E>,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     main_readonly_storage: Storage,
@@ -1047,13 +1105,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
     gas_price_provider: Option<L1GasPriceProvider>,
     inject_failure_config: Option<InjectFailureConfig>,
 ) -> Result<Option<ProposalCommitmentWithOrigin>, ProposalHandlingError> {
-    let mut parts_for_height_and_round = proposals_db
-        .foreign_parts(
-            height_and_round.height(),
-            height_and_round.round(),
-            &validator_address,
-        )?
-        .unwrap_or_default();
+    let parts_for_height_and_round = handled_proposal_parts.entry(height_and_round).or_default();
 
     let has_executed_txn_count = parts_for_height_and_round
         .iter()
@@ -1089,15 +1141,13 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
             // - [ ] Block Info
             // (...)
             let proposal_init = prop_init.clone();
-            parts_for_height_and_round.push(proposal_part);
-            let proposer_address = ContractAddress(proposal_init.proposer.0);
-            let updated = proposals_db.persist_parts(
-                height_and_round.height(),
-                height_and_round.round(),
-                &proposer_address,
-                &parts_for_height_and_round,
+            append_and_persist_part(
+                height_and_round,
+                proposal_part,
+                is_replayed,
+                proposals_db,
+                parts_for_height_and_round,
             )?;
-            assert!(!updated);
             let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init)?;
             validator_cache.insert(height_and_round, ValidatorStage::BlockInfo(validator));
             Ok(None)
@@ -1129,8 +1179,9 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
             append_and_persist_part(
                 height_and_round,
                 proposal_part,
+                is_replayed,
                 proposals_db,
-                &mut parts_for_height_and_round,
+                parts_for_height_and_round,
             )?;
 
             let defer = {
@@ -1210,8 +1261,9 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
             append_and_persist_part(
                 height_and_round,
                 proposal_part,
+                is_replayed,
                 proposals_db,
-                &mut parts_for_height_and_round,
+                parts_for_height_and_round,
             )?;
 
             // Use BatchExecutionManager to handle optimistic execution with checkpoints and
@@ -1252,12 +1304,13 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                     let proposer_address = append_and_persist_part(
                         height_and_round,
                         proposal_part,
+                        is_replayed,
                         proposals_db,
-                        &mut parts_for_height_and_round,
+                        parts_for_height_and_round,
                     )?;
 
                     let valid_round =
-                        valid_round_from_parts(&parts_for_height_and_round, &height_and_round)?;
+                        valid_round_from_parts(parts_for_height_and_round, &height_and_round)?;
                     let proposal_commitment = Some(ProposalCommitmentWithOrigin {
                         proposal_commitment: ProposalCommitment(proposal_commitment.0),
                         proposer_address,
@@ -1283,12 +1336,13 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                     let proposer_address = append_and_persist_part(
                         height_and_round,
                         proposal_part,
+                        is_replayed,
                         proposals_db,
-                        &mut parts_for_height_and_round,
+                        parts_for_height_and_round,
                     )?;
 
                     let valid_round =
-                        valid_round_from_parts(&parts_for_height_and_round, &height_and_round)?;
+                        valid_round_from_parts(parts_for_height_and_round, &height_and_round)?;
                     let proposal_commitment = defer_or_execute_proposal_fin::<E, T>(
                         height_and_round,
                         proposal_commitment,
@@ -1361,8 +1415,9 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
             append_and_persist_part(
                 height_and_round,
                 proposal_part.clone(),
+                is_replayed,
                 proposals_db,
-                &mut parts_for_height_and_round,
+                parts_for_height_and_round,
             )?;
 
             // Check if execution has started
@@ -1455,21 +1510,28 @@ fn should_defer_validation(
     Ok(defer)
 }
 
+/// Appends the given proposal part to the list of parts. Also persists the
+/// parts list unless the part is replayed, which assumes that the part is
+/// already in storage.
 fn append_and_persist_part(
     height_and_round: HeightAndRound,
     proposal_part: ProposalPart,
+    is_replayed: bool,
     proposals_db: &ConsensusProposals<'_>,
     parts: &mut Vec<ProposalPart>,
 ) -> Result<ContractAddress, ProposalHandlingError> {
+    let expect_update = !proposal_part.is_proposal_init();
     parts.push(proposal_part);
     let proposer_address = proposer_address_from_parts(parts, &height_and_round)?;
-    let updated = proposals_db.persist_parts(
-        height_and_round.height(),
-        height_and_round.round(),
-        &proposer_address,
-        parts,
-    )?;
-    assert!(updated);
+    if !is_replayed {
+        let updated = proposals_db.persist_parts(
+            height_and_round.height(),
+            height_and_round.round(),
+            &proposer_address,
+            parts,
+        )?;
+        assert_eq!(expect_update, updated);
+    }
     Ok(proposer_address)
 }
 
