@@ -35,12 +35,17 @@ use rayon::prelude::*;
 use tracing::debug;
 
 use crate::consensus::ProposalHandlingError;
+use crate::gas_price::{
+    L1GasPriceProvider,
+    L1GasPriceValidationResult,
+    L1ToFriValidationResult,
+    L1ToFriValidator,
+};
 use crate::state::block_hash::{
     calculate_event_commitment,
     calculate_receipt_commitment,
     calculate_transaction_commitment,
 };
-use crate::state::l1_gas_price::{L1GasPriceProvider, L1GasPriceValidationResult};
 
 /// TODO: Use this type as validation result.
 pub enum ValidationResult {
@@ -91,6 +96,7 @@ impl ValidatorBlockInfoStage {
         block_info: BlockInfo,
         main_storage: Storage,
         gas_price_provider: Option<L1GasPriceProvider>,
+        l1_to_fri_validator: Option<&L1ToFriValidator>,
     ) -> Result<ValidatorTransactionBatchStage<E>, ProposalHandlingError> {
         let _span = tracing::debug_span!(
             "Validator::validate_block_info",
@@ -124,7 +130,18 @@ impl ValidatorBlockInfoStage {
             )?;
         }
 
-        // TODO(validator) validate L2 gas prices
+        // Validate L1 gas prices in FRI terms
+        if let Some(validator) = l1_to_fri_validator {
+            validate_l1_to_fri_prices(
+                block_info.timestamp,
+                block_info.l1_gas_price_wei,
+                block_info.l1_data_gas_price_wei,
+                block_info.eth_to_fri_rate,
+                validator,
+            )?;
+        }
+
+        // TODO: Validate L2 gas price (pending Starknet spec finalization)
 
         let BlockInfo {
             height,
@@ -238,8 +255,52 @@ fn validate_l1_gas_prices(
             tracing::debug!(
                 l1_gas_price_wei,
                 l1_data_gas_price_wei,
-                "L1 gas price validation skipped: insufficient data (cold start)"
+                "L1 gas price validation skipped: insufficient data"
             );
+            Ok(())
+        }
+    }
+}
+
+/// Validates L1 gas prices in FRI terms (Apollo style).
+///
+/// This validation converts both proposer's and validator's L1 gas prices to
+/// FRI using their respective ETH/FRI conversion rates. The final FRI prices
+/// are compared with a 10% tolerance margin.
+///
+/// Rate mismatches are logged as metrics but do not cause rejection, following
+/// Apollo's approach that prioritizes liveness over strict determinism.
+fn validate_l1_to_fri_prices(
+    timestamp: u64,
+    l1_gas_price_wei: u128,
+    l1_data_gas_price_wei: u128,
+    eth_to_fri_rate: u128,
+    validator: &L1ToFriValidator,
+) -> Result<(), ProposalHandlingError> {
+    match validator.validate(
+        timestamp,
+        l1_gas_price_wei,
+        l1_data_gas_price_wei,
+        eth_to_fri_rate,
+    ) {
+        L1ToFriValidationResult::Valid => Ok(()),
+        L1ToFriValidationResult::InvalidFriDeviation {
+            proposed_fri,
+            expected_fri,
+            deviation_pct,
+        } => {
+            tracing::warn!(
+                proposed_fri,
+                expected_fri,
+                deviation_pct,
+                "L1-to-FRI price validation failed: FRI price deviation too high"
+            );
+            Err(ProposalHandlingError::recoverable_msg(format!(
+                "L1-to-FRI price deviation too high: {deviation_pct:.2}%"
+            )))
+        }
+        L1ToFriValidationResult::InsufficientData => {
+            tracing::debug!("L1-to-FRI validation skipped: insufficient data (cold start)");
             Ok(())
         }
     }
@@ -1468,7 +1529,7 @@ mod tests {
             .expect("Failed to create ValidatorBlockInfoStage");
 
         let validator_transaction_batch = validator_block_info
-            .validate_block_info::<BlockExecutor>(block_info, main_storage.clone(), None)
+            .validate_block_info::<BlockExecutor>(block_info, main_storage.clone(), None, None)
             .expect("Failed to validate block info");
 
         // Verify the validator is in the expected empty state
@@ -1582,8 +1643,12 @@ mod tests {
             l1_data_gas_price_wei: 1,
             eth_to_fri_rate: 1_000_000_000,
         };
-        let result =
-            validator_block_info1.validate_block_info::<BlockExecutor>(block_info1, storage, None);
+        let result = validator_block_info1.validate_block_info::<BlockExecutor>(
+            block_info1,
+            storage,
+            None,
+            None,
+        );
 
         if let Some(expected_error_message) = expected_error_message {
             let err = result.unwrap_err();
@@ -1635,13 +1700,13 @@ mod tests {
             // parent.
             assert!(
                 validator_block_info
-                    .validate_block_info::<BlockExecutor>(block_info, storage, None)
+                    .validate_block_info::<BlockExecutor>(block_info, storage, None, None)
                     .is_ok(),
                 "Genesis block timestamp validation should pass even without parent"
             );
         } else {
             let err = validator_block_info
-                .validate_block_info::<BlockExecutor>(block_info, storage, None)
+                .validate_block_info::<BlockExecutor>(block_info, storage, None, None)
                 .unwrap_err();
             let expected_err_message = format!(
                 "Parent block header not found for height {}",

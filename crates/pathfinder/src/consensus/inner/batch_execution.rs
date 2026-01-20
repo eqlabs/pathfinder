@@ -141,6 +141,7 @@ impl BatchExecutionManager {
                         block_info,
                         main_db.clone(),
                         self.gas_price_provider.clone(),
+                        None, // TODO: Add L1ToFriValidator when oracle is available
                     )
                     .map(Box::new)?
             } else {
