@@ -3,6 +3,11 @@
 //! This module provides gas price validation for consensus proposals
 
 pub mod l1;
+pub mod l1_to_fri;
+pub mod oracle;
+
+/// 1 ETH = 10^18 Wei
+pub(crate) const ETH_TO_WEI: u128 = 1_000_000_000_000_000_000;
 
 pub use l1::{
     L1GasPriceConfig,
