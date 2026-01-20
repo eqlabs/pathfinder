@@ -9,9 +9,10 @@
 //! 4. issues commands to the P2P task, for example to gossip a proposal or a
 //!    vote
 
+use std::cell::LazyCell;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::time::{Duration, SystemTime};
 use std::vec;
 
@@ -431,25 +432,38 @@ pub(crate) fn create_nonempty_proposal(
         "Attempted to create proposal with Nil round at height {height}"
     ))?;
 
-    static LAST_TIMESTAMP: AtomicU64 = AtomicU64::new(0);
+    static INIT_TIMESTAMP: LazyLock<u64> = LazyLock::new(|| {
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+    });
 
-    let mut timestamp = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    static TIMESTAMP_DELTA: AtomicU64 = AtomicU64::new(0);
 
-    if timestamp <= LAST_TIMESTAMP.load(std::sync::atomic::Ordering::Relaxed) {
-        timestamp = LAST_TIMESTAMP.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-    } else {
-        LAST_TIMESTAMP.store(timestamp, std::sync::atomic::Ordering::Relaxed);
-    }
+    let timestamp =
+        *INIT_TIMESTAMP + TIMESTAMP_DELTA.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+    // static LAST_TIMESTAMP: AtomicU64 = AtomicU64::new(0);
+
+    // let mut timestamp = SystemTime::now()
+    //     .duration_since(SystemTime::UNIX_EPOCH)
+    //     .unwrap_or_default()
+    //     .as_secs();
+
+    // if timestamp <= TIMESTAMP_DELTA.load(std::sync::atomic::Ordering::Relaxed) {
+    //     timestamp = TIMESTAMP_DELTA.fetch_add(1,
+    // std::sync::atomic::Ordering::Relaxed) + 1; } else {
+    //     TIMESTAMP_DELTA.store(timestamp, std::sync::atomic::Ordering::Relaxed);
+    // }
 
     let seed = thread_rng().gen::<u64>();
     tracing::debug!(%seed, "Creating proposal");
     let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
 
     let mut batches = Vec::new();
-    let num_batches = rng.gen_range(0..=10);
+    // Never send empty proposals because of the missing timestamp
+    let num_batches = rng.gen_range(1..=10);
 
     // let num_batches = 2;
 

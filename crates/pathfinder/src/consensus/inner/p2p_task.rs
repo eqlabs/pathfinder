@@ -1268,6 +1268,9 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                     proposals_db.persist_consensus_finalized_block(
                         height_and_round.height(),
                         height_and_round.round(),
+                        // FIXME this will break integration tests, because `create_empty_block`
+                        // fills in the timestamp with the current time, which can cause problems
+                        // with the next proposal having an earlier timestamp.
                         create_empty_block(height_and_round.height()),
                     )?;
 
