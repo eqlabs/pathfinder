@@ -1336,7 +1336,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                     )?;
 
                     let valid_round =
-                        valid_round_from_parts(&parts_for_height_and_round, &height_and_round)?;
+                        valid_round_from_parts(parts_for_height_and_round, &height_and_round)?;
                     let proposal_commitment = defer_or_execute_proposal_fin::<E, T>(
                         height_and_round,
                         proposal_commitment,
