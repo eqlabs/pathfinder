@@ -5,7 +5,7 @@ use pathfinder_ethereum::{EthereumApi, EthereumClient};
 use primitive_types::H160;
 use tokio::sync::mpsc;
 
-use crate::state::l1_gas_price::L1GasPriceProvider;
+use crate::gas_price::L1GasPriceProvider;
 use crate::state::sync::SyncEvent;
 
 #[derive(Clone)]

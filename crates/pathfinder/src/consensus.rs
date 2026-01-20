@@ -7,7 +7,7 @@ use tokio::sync::{mpsc, watch};
 
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
-use crate::state::l1_gas_price::L1GasPriceProvider;
+use crate::gas_price::L1GasPriceProvider;
 use crate::SyncMessageToConsensus;
 
 mod error;
