@@ -250,7 +250,7 @@ impl L1GasPriceProvider {
         let mut base_fee_sum: u128 = 0;
         let mut blob_fee_sum: u128 = 0;
 
-        for data in good_samples.iter().take(last_index).skip(first_index) {
+        for data in good_samples.iter().skip(first_index) {
             base_fee_sum = base_fee_sum.saturating_add(data.base_fee_per_gas);
             blob_fee_sum = blob_fee_sum.saturating_add(data.blob_fee);
         }
