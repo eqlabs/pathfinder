@@ -73,6 +73,11 @@ pub async fn trace_block_transactions(
     let span = tracing::Span::current();
 
     let storage = context.execution_storage.clone();
+
+    let return_initial_reads = input
+        .trace_flags
+        .contains(&crate::dto::TraceFlag::ReturnInitialReads);
+
     let traces = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
@@ -149,10 +154,6 @@ pub async fn trace_block_transactions(
             )));
         }
 
-        let return_initial_reads = input
-            .trace_flags
-            .contains(&crate::dto::TraceFlag::ReturnInitialReads);
-
         let executor_transactions = transactions
             .iter()
             .map(|transaction| compose_executor_transaction(transaction, &db_tx))
@@ -194,6 +195,17 @@ pub async fn trace_block_transactions(
         LocalExecution::Unsupported((block_id, transactions)) => (block_id, transactions),
     };
 
+    if return_initial_reads {
+        let err = anyhow::anyhow!(
+            r"Initial reads are not available when fetching traces from the feeder gateway
+
+Hint: this is likely due to one of these two reasons: 
+  1. Starknet version of the block is lower than {VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY}.
+  2. The block is on mainnet and falls within the range [{MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START}, {MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_END}] where re-execution is impossible.",
+        );
+        return Err(TraceBlockTransactionsError::Custom(err));
+    }
+
     context
         .sequencer
         .block_traces(block_id.into())
@@ -208,7 +220,6 @@ pub async fn trace_block_transactions(
                     .zip(transactions.into_iter())
                     .map(|(trace, tx)| Ok((tx.hash, map_gateway_trace(tx, trace)?)))
                     .collect::<Result<Vec<_>, TraceBlockTransactionsError>>()?,
-                // TODO: is the comment true?
                 // Gateway traces do not include initial reads.
                 initial_reads: None,
                 // State diffs are not available for traces fetched from the gateway.
@@ -777,6 +788,10 @@ pub(crate) mod tests {
 
     use super::*;
     use crate::dto::{DeserializeForVersion, SerializeForVersion, Serializer};
+    use crate::method::simulate_transactions::tests::{
+        fixtures,
+        setup_storage_with_starknet_version,
+    };
     use crate::RpcVersion;
 
     #[derive(Debug)]
@@ -787,18 +802,22 @@ pub(crate) mod tests {
 
     pub(crate) async fn setup_multi_tx_trace_test(
     ) -> anyhow::Result<(RpcContext, BlockHeader, Vec<Trace>)> {
-        use super::super::simulate_transactions::tests::{
-            fixtures,
-            setup_storage_with_starknet_version,
-        };
+        setup_multi_tx_trace_test_with_starknet_version(
+            VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
+        )
+        .await
+    }
 
+    pub(crate) async fn setup_multi_tx_trace_test_with_starknet_version(
+        starknet_version: StarknetVersion,
+    ) -> anyhow::Result<(RpcContext, BlockHeader, Vec<Trace>)> {
         let (
             storage,
             last_block_header,
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 1)).await;
+        ) = setup_storage_with_starknet_version(starknet_version).await;
         let context = RpcContext::for_tests().with_storage(storage.clone());
 
         let (next_block_header, transactions, traces) = {
@@ -1527,6 +1546,91 @@ pub(crate) mod tests {
             let expected_json: serde_json::Value = serde_json::from_str(expected).unwrap();
             pretty_assertions_sorted::assert_eq!(output_json, expected_json);
         }
+
+        Ok(())
+    }
+
+    #[rstest::rstest]
+    #[case::v10(RpcVersion::V10)]
+    #[tokio::test]
+    async fn test_trace_block_transactions_return_initial_reads_not_supported_when_fetching_from_fgw(
+        #[case] rpc_version: RpcVersion,
+    ) -> anyhow::Result<()> {
+        async fn setup(
+            starknet_version: StarknetVersion,
+            block_num_to_insert: BlockNumber,
+            block_hash: BlockHash,
+        ) -> anyhow::Result<(RpcContext, TraceBlockTransactionsInput)> {
+            let (context, _, _) =
+                setup_multi_tx_trace_test_with_starknet_version(starknet_version).await?;
+
+            let mut conn = context.storage.connection().unwrap();
+            let tx = conn.transaction().unwrap();
+            tx.insert_block_header(&BlockHeader {
+                number: block_num_to_insert,
+                hash: block_hash,
+                ..Default::default()
+            })?;
+            tx.commit()?;
+
+            let input = TraceBlockTransactionsInput {
+                // Make sure we _are not_ in the re-execution impossible range.
+                block_id: block_num_to_insert.into(),
+                trace_flags: crate::dto::TraceFlags(vec![
+                    crate::dto::TraceFlag::ReturnInitialReads,
+                ]),
+            };
+
+            Ok((context, input))
+        }
+
+        let input_block_hash = block_hash!("0x1");
+        let expected_error_message =
+            "Initial reads are not available when fetching traces from the feeder gateway";
+
+        // First test that with a Starknet version that requires fetching traces from
+        // the gateway, we get an error when `RETURN_INITIAL_READS` is set.
+        let starknet_version_with_fallback = StarknetVersion::new(0, 8, 0, 0);
+        assert!(
+            starknet_version_with_fallback
+                < VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
+        );
+        // Make sure we _are not_ in the re-execution impossible range.
+        let block_num_where_re_execution_is_possible =
+            MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START - 10;
+        let (context, input) = setup(
+            starknet_version_with_fallback,
+            block_num_where_re_execution_is_possible,
+            input_block_hash,
+        )
+        .await?;
+        let err = trace_block_transactions(context, input, rpc_version)
+            .await
+            .unwrap_err();
+        assert_matches!(
+            err,
+            TraceBlockTransactionsError::Custom(err) if err.to_string().starts_with(expected_error_message)
+        );
+
+        // Next test that we get an error when these conditions are fulfilled:
+        //   - Starknet version is new enough to support local tracing
+        //   - Block number is in the range where we fetch traces from the gateway
+        //   - `RETURN_INITIAL_READS` is set
+        let (context, input) = setup(
+            // Use a Starknet version that supports local tracing.
+            VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
+            // Make sure we _are_ in the re-execution impossible range.
+            MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START,
+            input_block_hash,
+        )
+        .await?;
+        let err = trace_block_transactions(context, input, rpc_version)
+            .await
+            .unwrap_err();
+        assert_matches!(
+            err,
+            TraceBlockTransactionsError::Custom(err) if err.to_string().starts_with(expected_error_message)
+        );
 
         Ok(())
     }
