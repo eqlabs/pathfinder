@@ -181,14 +181,29 @@ pub async fn trace_transaction(
                     .native_execution_force_use_for_incompatible_classes,
             );
 
+            // TODO: Spec only states that `starknet_traceBlockTransactions` should accept
+            // this flag at the moment but it seems like an oversight, we should
+            // probably also add it here?
+            //
+            // See https://github.com/eqlabs/pathfinder/issues/3175 for more info.
+            let return_initial_reads = false;
+
             let executor_transactions = transactions
                 .iter()
                 .map(|transaction| compose_executor_transaction(transaction, &db_tx))
                 .collect::<Result<Vec<_>, _>>()?;
 
-            match pathfinder_executor::trace(db_tx, state, cache, hash, executor_transactions) {
-                Ok(txs) => {
-                    let trace = txs
+            match pathfinder_executor::trace(
+                db_tx,
+                state,
+                cache,
+                hash,
+                executor_transactions,
+                return_initial_reads,
+            ) {
+                Ok(block_traces) => {
+                    let trace = block_traces
+                        .traces
                         .into_iter()
                         .find_map(|(tx_hash, trace)| {
                             if tx_hash == input.transaction_hash {

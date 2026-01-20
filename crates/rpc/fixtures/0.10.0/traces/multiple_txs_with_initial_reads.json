@@ -435,5 +435,81 @@
       },
       "transaction_hash": "0x2a973a52127349ccb6ecd72c31a7b1fc444a526643b4afe8a275a536075cb0e"
     }
-  ]
+  ],
+  "initial_reads": {
+    "class_hashes": [
+      {
+        "class_hash": "0x19cabebe31b9fb6bf5e7ce9a971bd7d06e9999e0b97eee943869141a46fd978",
+        "contract_address": "0xc01"
+      },
+      {
+        "class_hash": "0x6f38fb91ddbf325a0625533576bb6f6eafd9341868a9ec3faa4b01ce6c4f4dc",
+        "contract_address": "0xc02"
+      },
+      {
+        "class_hash": "0x0",
+        "contract_address": "0x12592426632af714f43ccb05536b6044fc3e897fa55288f658731f93590e7e7"
+      },
+      {
+        "class_hash": "0x13dbe991273192b5573c526cddc27a27decb8525b44536cb0f57b5b2c089b51",
+        "contract_address": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7"
+      }
+    ],
+    "declared_contracts": [
+      {
+        "class_hash": "0x13dbe991273192b5573c526cddc27a27decb8525b44536cb0f57b5b2c089b51",
+        "is_declared": true
+      },
+      {
+        "class_hash": "0x19cabebe31b9fb6bf5e7ce9a971bd7d06e9999e0b97eee943869141a46fd978",
+        "is_declared": true
+      },
+      {
+        "class_hash": "0x544b92d358447cb9e50b65092b7169f931d29e05c1404a2cd08c6fd7e32ba90",
+        "is_declared": false
+      },
+      {
+        "class_hash": "0x6f38fb91ddbf325a0625533576bb6f6eafd9341868a9ec3faa4b01ce6c4f4dc",
+        "is_declared": true
+      }
+    ],
+    "nonces": [
+      {
+        "contract_address": "0xc01",
+        "nonce": "0x0"
+      }
+    ],
+    "storage": [
+      {
+        "contract_address": "0xc01",
+        "storage_key": "0x1379ac0624b939ceb9dede92211d7db5ee174fe28be72245b0a1a2abd81c98f",
+        "value": "0x0"
+      },
+      {
+        "contract_address": "0x12592426632af714f43ccb05536b6044fc3e897fa55288f658731f93590e7e7",
+        "storage_key": "0x1275130f95dda36bcbb6e9d28796c1d7e10b6e9fd5ed083e0ede4b12f613528",
+        "value": "0x9"
+      },
+      {
+        "contract_address": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+        "storage_key": "0x32a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e",
+        "value": "0x10000000000000000000000000000"
+      },
+      {
+        "contract_address": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+        "storage_key": "0x32a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408f",
+        "value": "0x0"
+      },
+      {
+        "contract_address": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+        "storage_key": "0x5496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a",
+        "value": "0x0"
+      },
+      {
+        "contract_address": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+        "storage_key": "0x5496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9b",
+        "value": "0x0"
+      }
+    ]
+  }
 }

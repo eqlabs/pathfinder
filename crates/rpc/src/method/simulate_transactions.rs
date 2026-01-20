@@ -13,7 +13,7 @@ use crate::types::request::BroadcastedTransaction;
 use crate::types::BlockId;
 use crate::RpcVersion;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct SimulateTransactionInput {
     pub block_id: BlockId,
     pub transactions: Vec<BroadcastedTransaction>,
@@ -35,7 +35,10 @@ impl crate::dto::DeserializeForVersion for SimulateTransactionInput {
 }
 
 #[derive(Debug)]
-pub struct Output(Vec<pathfinder_executor::types::TransactionSimulation>);
+pub struct Output {
+    simulations: Vec<pathfinder_executor::types::TransactionSimulation>,
+    initial_reads: Option<pathfinder_executor::types::StateMaps>,
+}
 
 pub async fn simulate_transactions(
     context: RpcContext,
@@ -63,15 +66,13 @@ pub async fn simulate_transactions(
 
         let skip_validate = input
             .simulation_flags
-            .0
-            .iter()
-            .any(|flag| flag == &crate::dto::SimulationFlag::SkipValidate);
-
+            .contains(&crate::dto::SimulationFlag::SkipValidate);
         let skip_fee_charge = input
             .simulation_flags
-            .0
-            .iter()
-            .any(|flag| flag == &crate::dto::SimulationFlag::SkipFeeCharge);
+            .contains(&crate::dto::SimulationFlag::SkipFeeCharge);
+        let return_initial_reads = input
+            .simulation_flags
+            .contains(&crate::dto::SimulationFlag::ReturnInitialReads);
 
         let mut db_conn = context
             .execution_storage
@@ -134,13 +135,17 @@ pub async fn simulate_transactions(
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let txs = pathfinder_executor::simulate(
+        let (simulations, initial_reads) = pathfinder_executor::simulate(
             db_tx,
             state,
             transactions,
             context.config.fee_estimation_epsilon,
+            return_initial_reads,
         )?;
-        Ok(Output(txs))
+        Ok(Output {
+            simulations,
+            initial_reads,
+        })
     })
     .await
     .context("Simulating transaction")?
@@ -151,7 +156,34 @@ impl crate::dto::SerializeForVersion for Output {
         &self,
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
-        serializer.serialize_iter(self.0.len(), &mut self.0.iter().map(TransactionSimulation))
+        let rpc_version = serializer.version;
+        if rpc_version >= RpcVersion::V10 {
+            let mut serializer = serializer.serialize_struct()?;
+            serializer.serialize_iter(
+                "simulated_transactions",
+                self.simulations.len(),
+                &mut self.simulations.iter().map(TransactionSimulation),
+            )?;
+            serializer.serialize_optional(
+                "initial_reads",
+                self.initial_reads
+                    .as_ref()
+                    .map(|initial_reads| crate::dto::InitialReads {
+                        maps: initial_reads,
+                    }),
+            )?;
+            serializer.end()
+        } else {
+            debug_assert!(
+                self.initial_reads.is_none(),
+                "initial_reads was introduced in {}, but is present in earlier version",
+                RpcVersion::V10.to_str(),
+            );
+            serializer.serialize_iter(
+                self.simulations.len(),
+                &mut self.simulations.iter().map(TransactionSimulation),
+            )
+        }
     }
 }
 
@@ -269,6 +301,8 @@ pub(crate) mod tests {
     use crate::types::request::{
         BroadcastedDeclareTransaction,
         BroadcastedDeclareTransactionV1,
+        BroadcastedDeployAccountTransaction,
+        BroadcastedDeployAccountTransactionV1,
         BroadcastedDeployAccountTransactionV3,
         BroadcastedTransaction,
     };
@@ -307,6 +341,93 @@ pub(crate) mod tests {
         )
     }
 
+    #[rstest::rstest]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
+    fn input_deserialization_happy_path(#[case] rpc_version: RpcVersion) {
+        let simulation_flags = if rpc_version >= RpcVersion::V10 {
+            vec!["SKIP_FEE_CHARGE", "RETURN_INITIAL_READS"]
+        } else {
+            vec!["SKIP_FEE_CHARGE"]
+        };
+        let input_json = serde_json::json!({
+            "block_id": {"block_number": 1},
+            "transactions": [
+                {
+                    "contract_address_salt": "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
+                    "max_fee": "0x0",
+                    "signature": [],
+                    "class_hash": crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH,
+                    "nonce": "0x0",
+                    "version": TransactionVersion::ONE_WITH_QUERY_VERSION,
+                    "constructor_calldata": ["0x1"],
+                    "type": "DEPLOY_ACCOUNT"
+                }
+            ],
+            "simulation_flags": simulation_flags,
+        });
+
+        let value = crate::dto::Value::new(input_json, rpc_version);
+        let input = SimulateTransactionInput::deserialize(value).unwrap();
+        let expected_input = SimulateTransactionInput {
+            block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
+            transactions: vec![BroadcastedTransaction::DeployAccount(
+                BroadcastedDeployAccountTransaction::V1(BroadcastedDeployAccountTransactionV1 {
+                    contract_address_salt: contract_address_salt!(
+                        "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971"
+                    ),
+                    class_hash: crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH,
+                    constructor_calldata: vec![call_param!("0x1")],
+                    version: TransactionVersion::ONE_WITH_QUERY_VERSION,
+                    max_fee: fee!("0x0"),
+                    signature: vec![],
+                    nonce: transaction_nonce!("0x0"),
+                }),
+            )],
+            simulation_flags: crate::dto::SimulationFlags(if rpc_version >= RpcVersion::V10 {
+                vec![
+                    crate::dto::SimulationFlag::SkipFeeCharge,
+                    crate::dto::SimulationFlag::ReturnInitialReads,
+                ]
+            } else {
+                vec![crate::dto::SimulationFlag::SkipFeeCharge]
+            }),
+        };
+        assert_eq!(input, expected_input);
+    }
+
+    #[rstest::rstest]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
+    fn input_deserialization_rejects_return_initial_reads_pre_v10(#[case] rpc_version: RpcVersion) {
+        let input_json = serde_json::json!({
+            "block_id": {"block_number": 1},
+            "transactions": [],
+            "simulation_flags": ["RETURN_INITIAL_READS"]
+        });
+
+        let value = crate::dto::Value::new(input_json, rpc_version);
+        let deserialization_result = SimulateTransactionInput::deserialize(value);
+        if rpc_version >= RpcVersion::V10 {
+            let input = deserialization_result.unwrap();
+            let expected_input = SimulateTransactionInput {
+                block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
+                transactions: vec![],
+                simulation_flags: crate::dto::SimulationFlags(vec![
+                    crate::dto::SimulationFlag::ReturnInitialReads,
+                ]),
+            };
+            assert_eq!(input, expected_input);
+        } else {
+            let err = deserialization_result.unwrap_err();
+            assert_eq!(err.to_string(), "Invalid simulation flag");
+        }
+    }
+
     #[tokio::test]
     async fn test_simulate_transaction_with_skip_fee_charge() {
         let (context, _, _, _) = crate::test_setup::test_context().await;
@@ -334,7 +455,8 @@ pub(crate) mod tests {
         const DEPLOYED_CONTRACT_ADDRESS: ContractAddress =
             contract_address!("0xf3805e4f045a8b48e7e9e6cd5d910973a22360572207f3ae625c5cec2a3232");
 
-        let expected = crate::method::simulate_transactions::Output(vec![
+        let expected = crate::method::simulate_transactions::Output {
+    simulations: vec![
             pathfinder_executor::types::TransactionSimulation{
                 fee_estimation: pathfinder_executor::types::FeeEstimate {
                     l1_gas_consumed: 0x15.into(),
@@ -461,10 +583,11 @@ pub(crate) mod tests {
                                 contract_nonce!("0x1"),
                             )]),
                         },
-                    },
-                ),
-            }
-        ]).serialize(Serializer {
+                    }),
+            },
+                ],
+                initial_reads: None,
+        }.serialize(Serializer {
             version: RpcVersion::V07,
         }).unwrap();
 
@@ -474,6 +597,234 @@ pub(crate) mod tests {
         let result = result
             .serialize(Serializer {
                 version: RpcVersion::V07,
+            })
+            .unwrap();
+        pretty_assertions_sorted::assert_eq!(result, expected);
+    }
+
+    #[rstest::rstest]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
+    #[test_log::test(tokio::test)]
+    async fn test_simulate_transaction_with_return_initial_reads(#[case] rpc_version: RpcVersion) {
+        let (context, _, _, _) = crate::test_setup::test_context().await;
+
+        let simulation_flags = if rpc_version >= RpcVersion::V10 {
+            vec!["SKIP_FEE_CHARGE", "RETURN_INITIAL_READS"]
+        } else {
+            vec!["SKIP_FEE_CHARGE"]
+        };
+        let input_json = serde_json::json!({
+            "block_id": {"block_number": 1},
+            "transactions": [
+                {
+                    "contract_address_salt": "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
+                    "max_fee": "0x0",
+                    "signature": [],
+                    "class_hash": crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH,
+                    "nonce": "0x0",
+                    "version": TransactionVersion::ONE_WITH_QUERY_VERSION,
+                    "constructor_calldata": ["0x1"],
+                    "type": "DEPLOY_ACCOUNT"
+                }
+            ],
+            "simulation_flags": simulation_flags,
+        });
+
+        let value = crate::dto::Value::new(input_json, rpc_version);
+        let input = SimulateTransactionInput::deserialize(value).unwrap();
+
+        const DEPLOYED_CONTRACT_ADDRESS: ContractAddress =
+            contract_address!("0xf3805e4f045a8b48e7e9e6cd5d910973a22360572207f3ae625c5cec2a3232");
+
+        // TODO: Move this (and the rest of the fixtures in this file) into JSON files
+        // in ../../fixtures)
+        let expected = crate::method::simulate_transactions::Output {
+        simulations: vec![
+            pathfinder_executor::types::TransactionSimulation{
+                fee_estimation: pathfinder_executor::types::FeeEstimate {
+                    l1_gas_consumed: 0x15.into(),
+                    l1_gas_price: 1.into(),
+                    l1_data_gas_consumed: 0x160.into(),
+                    l1_data_gas_price: 2.into(),
+                    l2_gas_consumed: 0.into(),
+                    l2_gas_price: 1.into(),
+                    overall_fee: 0x2d5.into(),
+                    unit: pathfinder_executor::types::PriceUnit::Wei,
+                },
+                trace: pathfinder_executor::types::TransactionTrace::DeployAccount(
+                    pathfinder_executor::types::DeployAccountTransactionTrace {
+                        execution_info: DeployAccountTransactionExecutionInfo {
+                        constructor_invocation: Some(pathfinder_executor::types::FunctionInvocation {
+                                call_type: Some(pathfinder_executor::types::CallType::Call),
+                                caller_address: felt!("0x0"),
+                                class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
+                                entry_point_type: Some(pathfinder_executor::types::EntryPointType::Constructor),
+                                events: vec![pathfinder_executor::types::Event {
+                                    order: 0,
+                                    data: vec![],
+                                    keys: vec![
+                                        felt!("0x38f6a5b87c23cee6e7294bcc3302e95019f70f81586ff3cac38581f5ca96381"),
+                                        felt!("0x1"),
+                                    ],
+                                }],
+                                calldata: vec![felt!("0x1")],
+                                contract_address: DEPLOYED_CONTRACT_ADDRESS,
+                                selector: Some(entry_point!("0x028FFE4FF0F226A9107253E17A904099AA4F63A02A5621DE0576E5AA71BC5194").0),
+                                messages: vec![],
+                                result: vec![],
+                                execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
+                                    l1_gas: 2,
+                                    l2_gas: 0
+                                },
+                                internal_calls: vec![],
+                                computation_resources: pathfinder_executor::types::ComputationResources {
+                                    pedersen_builtin_applications: 2,
+                                    range_check_builtin_applications: 8,
+                                    steps: 312,
+                                    ..Default::default()
+                                },
+                                is_reverted: false,
+                            }),
+                        validate_invocation: Some(
+                            pathfinder_executor::types::FunctionInvocation {
+                                call_type: Some(pathfinder_executor::types::CallType::Call),
+                                caller_address: felt!("0x0"),
+                                class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
+                                entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
+                                events: vec![],
+                                calldata: vec![
+                                    crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0,
+                                    call_param!("0x046C0D4ABF0192A788ACA261E58D7031576F7D8EA5229F452B0F23E691DD5971").0,
+                                    call_param!("0x1").0,
+                                ],
+                                contract_address: DEPLOYED_CONTRACT_ADDRESS,
+                                selector: Some(entry_point!("0x036FCBF06CD96843058359E1A75928BEACFAC10727DAB22A3972F0AF8AA92895").0),
+                                messages: vec![],
+                                result: vec![
+                                    felt!("0x56414c4944")
+                                ],
+                                execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
+                                    l1_gas: 1,
+                                    l2_gas: 0,
+                                },
+                                internal_calls: vec![],
+                                computation_resources: pathfinder_executor::types::ComputationResources{
+                                    memory_holes: 1,
+                                    range_check_builtin_applications: 2,
+                                    steps: 135,
+                                    ..Default::default()
+                                },
+                                is_reverted: false,
+                            },
+                        ),
+                        fee_transfer_invocation: None,
+                        execution_resources: pathfinder_executor::types::ExecutionResources {
+                            computation_resources: pathfinder_executor::types::ComputationResources{
+                                memory_holes: 1,
+                                pedersen_builtin_applications: 2,
+                                range_check_builtin_applications: 10,
+                                steps:447,
+                                ..Default::default()
+                            },
+                            data_availability: pathfinder_executor::types::DataAvailabilityResources{
+                                l1_gas:0,
+                                l1_data_gas:352
+                            },
+                            l1_gas: 21,
+                            l1_data_gas: 352,
+                            l2_gas: 0,
+                        },},
+                        state_diff: pathfinder_executor::types::StateDiff {
+                            storage_diffs: BTreeMap::from([
+                                (
+                                    DEPLOYED_CONTRACT_ADDRESS,
+                                    vec![
+                                        pathfinder_executor::types::StorageDiff {
+                                            key: storage_address!("0x81ba5d1f84a6a8f0e7ae24720a20f43f81d9ee6eed98fd524ba8d53a49416b"),
+                                            value: storage_value!("0x1"),
+                                        },
+                                        pathfinder_executor::types::StorageDiff {
+                                            key: storage_address!("0x1379ac0624b939ceb9dede92211d7db5ee174fe28be72245b0a1a2abd81c98f"),
+                                            value: storage_value!("0x1"),
+                                        },
+                                        pathfinder_executor::types::StorageDiff {
+                                            key: storage_address!("0x7e79bbb6be5d418acd50c88b675e697f6f7094e203c9d7e29c6ad6731f931dd"),
+                                            value: storage_value!("0x1"),
+                                        },
+                                    ]
+                                )
+                            ]),
+                            deprecated_declared_classes: HashSet::new(),
+                            declared_classes: vec![],
+                            deployed_contracts: vec![
+                                pathfinder_executor::types::DeployedContract {
+                                    address: DEPLOYED_CONTRACT_ADDRESS,
+                                    class_hash: crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH
+                                }
+                            ],
+                            replaced_classes: vec![],
+                            migrated_compiled_classes: vec![],
+                            nonces: BTreeMap::from([(
+                                DEPLOYED_CONTRACT_ADDRESS,
+                                contract_nonce!("0x1"),
+                            )]),
+                        },
+                    },
+                ),
+            }],
+                initial_reads: if rpc_version >= RpcVersion::V10 {
+                    let maps = pathfinder_executor::types::StateMaps {
+                        nonces: BTreeMap::from([
+                            (
+                                DEPLOYED_CONTRACT_ADDRESS,
+                                contract_nonce!("0x0")
+                            )
+                        ]),
+                        class_hashes: BTreeMap::from([
+                            (
+                                DEPLOYED_CONTRACT_ADDRESS,
+                                class_hash!("0x0")
+                            )
+                        ]),
+                        storage: BTreeMap::from([
+                            (
+                                (DEPLOYED_CONTRACT_ADDRESS, storage_address!("0x81ba5d1f84a6a8f0e7ae24720a20f43f81d9ee6eed98fd524ba8d53a49416b")), 
+                                storage_value!("0x0")
+                            ),
+                            (
+                                (DEPLOYED_CONTRACT_ADDRESS, storage_address!("0x1379ac0624b939ceb9dede92211d7db5ee174fe28be72245b0a1a2abd81c98f")),
+                                storage_value!("0x0")
+                            ),
+                            (
+                                (DEPLOYED_CONTRACT_ADDRESS, storage_address!("0x7e79bbb6be5d418acd50c88b675e697f6f7094e203c9d7e29c6ad6731f931dd")),
+                                storage_value!("0x0")
+                            )
+                        ]),
+                        compiled_class_hashes: BTreeMap::new(),
+                        declared_contracts: BTreeMap::from([
+                            (
+                                crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH,
+                                true
+                            )
+                        ])
+                    };
+                    Some(maps)
+                } else {
+                    None
+                },
+        }.serialize(Serializer {
+            version: rpc_version,
+        }).unwrap();
+
+        let result = simulate_transactions(context, input, rpc_version)
+            .await
+            .expect("result");
+        let result = result
+            .serialize(Serializer {
+                version: rpc_version,
             })
             .unwrap();
         pretty_assertions_sorted::assert_eq!(result, expected);
@@ -517,7 +868,8 @@ pub(crate) mod tests {
 
         const OVERALL_FEE: u64 = 15720;
 
-        let expected = crate::method::simulate_transactions::Output(vec![
+        let expected = crate::method::simulate_transactions::Output {
+        simulations: vec![
             pathfinder_executor::types::TransactionSimulation{
                 trace: pathfinder_executor::types::TransactionTrace::Declare(pathfinder_executor::types::DeclareTransactionTrace {
                     execution_info: DeclareTransactionExecutionInfo {
@@ -635,9 +987,11 @@ pub(crate) mod tests {
                     l2_gas_price: 1.into(),
                     overall_fee: OVERALL_FEE.into(),
                     unit: pathfinder_executor::types::PriceUnit::Wei,
-                }
+                },
             }
-        ]).serialize(Serializer {
+        ],
+                initial_reads: None,
+        }.serialize(Serializer {
             version: RpcVersion::V07,
         }).unwrap();
 
@@ -2374,7 +2728,22 @@ pub(crate) mod tests {
             .unwrap();
 
         let serializer = crate::dto::Serializer { version };
-        let result_serializable = result.0.into_iter().collect::<Vec<_>>();
+        // TODO(serialization): This does not serialize the same way a real JSON-RPC
+        // call would, which would be:
+        //
+        // let result_serialized = result.serialize(serializer).unwrap();
+        //
+        // This matters because the way it is currently done we end up with a very
+        // different result:
+        //   - `include_state_diff` flag is not taken into account so we could be
+        //     missing state
+        //   diffs in the output.
+        //   - There will be no difference in the output scheme for different JSON-RPC
+        //     versions,
+        //   even though, for example, RpcVersion::V10 introduced changes to the scheme.
+        //
+        // There are several more cases of this in the tests below.
+        let result_serializable = result.simulations.into_iter().collect::<Vec<_>>();
         let result_serialized = serializer
             .serialize_iter(
                 result_serializable.len(),
@@ -2422,7 +2791,8 @@ pub(crate) mod tests {
             .unwrap();
 
         let serializer = crate::dto::Serializer { version };
-        let result_serializable = result.0.into_iter().collect::<Vec<_>>();
+        // TODO(serialization)
+        let result_serializable = result.simulations.into_iter().collect::<Vec<_>>();
         let result_serialized = serializer
             .serialize_iter(
                 result_serializable.len(),
@@ -2471,7 +2841,8 @@ pub(crate) mod tests {
             .unwrap();
 
         let serializer = crate::dto::Serializer { version };
-        let result_serializable = result.0.into_iter().collect::<Vec<_>>();
+        // TODO(serialization)
+        let result_serializable = result.simulations.into_iter().collect::<Vec<_>>();
         let result_serialized = serializer
             .serialize_iter(
                 result_serializable.len(),
@@ -2515,7 +2886,8 @@ pub(crate) mod tests {
             .unwrap();
 
         let serializer = crate::dto::Serializer { version };
-        let result_serializable = result.0.into_iter().collect::<Vec<_>>();
+        // TODO(serialization)
+        let result_serializable = result.simulations.into_iter().collect::<Vec<_>>();
         let result_serialized = serializer
             .serialize_iter(
                 result_serializable.len(),
@@ -2559,7 +2931,8 @@ pub(crate) mod tests {
             .unwrap();
 
         let serializer = crate::dto::Serializer { version };
-        let result_serializable = result.0.into_iter().collect::<Vec<_>>();
+        // TODO(serialization)
+        let result_serializable = result.simulations.into_iter().collect::<Vec<_>>();
         let result_serialized = serializer
             .serialize_iter(
                 result_serializable.len(),
@@ -2641,7 +3014,7 @@ pub(crate) mod tests {
             overall_fee: 0xb96e2.into(),
             unit: PriceUnit::Fri,
         };
-        assert_eq!(result.0[0].fee_estimation, expected_fee_estimate);
+        assert_eq!(result.simulations[0].fee_estimation, expected_fee_estimate);
     }
 
     #[test_log::test(tokio::test)]
@@ -2702,7 +3075,7 @@ pub(crate) mod tests {
             overall_fee: 0xb96e2.into(),
             unit: PriceUnit::Fri,
         };
-        assert_eq!(result.0[0].fee_estimation, expected_fee_estimate);
+        assert_eq!(result.simulations[0].fee_estimation, expected_fee_estimate);
     }
 
     const RPC_VERSION: RpcVersion = RpcVersion::V09;
