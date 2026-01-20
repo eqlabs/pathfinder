@@ -201,10 +201,11 @@ pub async fn rpc_handler(
                 return StatusCode::FORBIDDEN.into_response();
             }
 
-            ws.on_upgrade(|ws| async move {
-                let (ws_tx, ws_rx) = split_ws(ws, state.version);
-                handle_json_rpc_socket(state, ws_tx, ws_rx);
-            })
+            ws.max_message_size(crate::REQUEST_MAX_SIZE)
+                .on_upgrade(|ws| async move {
+                    let (ws_tx, ws_rx) = split_ws(ws, state.version);
+                    handle_json_rpc_socket(state, ws_tx, ws_rx);
+                })
         }
         Err(_) => {
             if method != http::Method::POST {
