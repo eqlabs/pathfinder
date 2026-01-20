@@ -16,17 +16,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     Only supported if JSON-RPC version is 0.10.0 or higher.
   - Added a `trace_flags` field to `starknet_traceBlockTransactions` input. Currently the only available flag is `RETURN_INITIAL_READS`.
     Only supported if JSON-RPC version is V10 or higher.
+
 - Preliminary support for JSON-RPC 0.10.1 `proof_facts` and `proof` transaction properties.
 
 ### Changed
 
-- `starknet_simulateTransactions` now returns and object with two fields:
-  - "simulated_transactions" - an array of transaction simulations (previous RPC version output).
-  - "initial_reads" - an `INITIAL_READS` object. This field is only present if the `RETURN_INITIAL_READS` flag was set in the input.
+- `starknet_simulateTransactions` now has a different response format based on whether or not
+  the `RETURN_INITIAL_READS` flag was set in the input:
+  1. If the flag was not set, the response is identical to previous RPC versions (an array of transaction simulations).
+  2. If the flag was set, the response is an object with two fields:
+     - "simulated_transactions" - an array of transaction simulations (previous RPC version output).
+     - "initial_reads" - an `INITIAL_READS` object, containing an aggregate of all initial reads for the simulated transactions.
+       This field is only present if the `RETURN_INITIAL_READS` flag was set in the input.
 
-- `starknet_traceBlockTransactions` now returns an object with two fields:
-  - "traces" - an array of transaction traces (previous RPC version output).
-  - "initial_reads" - an array of `INITIAL_READS` objects, one per transaction in the block. This field is only present if the `RETURN_INITIAL_READS` flag was set in the input.
+- `starknet_traceBlockTransactions` now has a different response format based on whether or not
+  the `RETURN_INITIAL_READS` flag was set in the input:
+  1. If the flag was not set, the response is identical to previous RPC versions (an array of transaction traces).
+  2. If the flag was set, the response is an object with two fields:
+     - "traces" - an array of transaction traces (previous RPC version output).
+     - "initial_reads" - an `INITIAL_READS` object, containing an aggregate of all initial reads for the traced transactions.
+       This field is only present if the `RETURN_INITIAL_READS` flag was set in the input.
 
 ## [0.21.5] - 2026-01-12
 

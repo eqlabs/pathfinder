@@ -1,3 +1,4 @@
+use std::fmt;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 
@@ -41,6 +42,22 @@ use crate::types::{
     TransactionType,
 };
 use crate::IntoFelt;
+
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+struct CacheKey {
+    block_hash: BlockHash,
+    return_initial_reads: bool,
+}
+
+impl fmt::Display for CacheKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{{ block_hash: {}, return_initial_reads: {} }}",
+            self.block_hash, self.return_initial_reads
+        )
+    }
+}
 
 #[derive(Debug)]
 enum CacheItem {
@@ -86,7 +103,7 @@ struct InternalError {
 }
 
 #[derive(Debug, Clone)]
-pub struct TraceCache(Arc<Mutex<SizedCache<BlockHash, CacheItem>>>);
+pub struct TraceCache(Arc<Mutex<SizedCache<CacheKey, CacheItem>>>);
 
 #[derive(Debug, Clone)]
 pub struct BlockTraces {
@@ -202,19 +219,24 @@ pub fn trace(
 ) -> Result<BlockTraces, TransactionExecutionError> {
     let mut tx_executor = create_executor(RcStorageAdapter::new(db_tx), execution_state)?;
 
+    let cache_key = CacheKey {
+        block_hash,
+        return_initial_reads,
+    };
+
     let sender = {
         let mut cache = cache.0.lock().unwrap();
-        match cache.cache_get(&block_hash) {
+        match cache.cache_get(&cache_key) {
             Some(CacheItem::CachedOk(cached)) => {
-                tracing::trace!(block=%block_hash, "trace cache hit: ok");
+                tracing::trace!(key=%cache_key, "trace cache hit: ok");
                 return Ok(cached.clone());
             }
             Some(CacheItem::CachedErr(e)) => {
-                tracing::trace!(block=%block_hash, "trace cache hit: err");
+                tracing::trace!(key=%cache_key, "trace cache hit: err");
                 return Err(e.to_owned().into());
             }
             Some(CacheItem::Inflight(receiver)) => {
-                tracing::trace!(block=%block_hash, "trace already inflight");
+                tracing::trace!(key=%cache_key, "trace already inflight");
                 let mut receiver = receiver.resubscribe();
                 drop(cache);
 
@@ -222,9 +244,9 @@ pub fn trace(
                 return trace.map_err(Into::into);
             }
             None => {
-                tracing::trace!(block=%block_hash, "trace cache miss");
+                tracing::trace!(key=%cache_key, "trace cache miss");
                 let (sender, receiver) = tokio::sync::broadcast::channel(1);
-                cache.cache_set(block_hash, CacheItem::Inflight(receiver));
+                cache.cache_set(cache_key.clone(), CacheItem::Inflight(receiver));
                 sender
             }
         }
@@ -265,7 +287,7 @@ pub fn trace(
                 // race conditions between senders and receivers.
                 let mut cache = cache.0.lock().unwrap();
                 let _ = sender.send(Err(error.clone()));
-                cache.cache_set(block_hash, CacheItem::CachedErr(error.clone()));
+                cache.cache_set(cache_key, CacheItem::CachedErr(error.clone()));
 
                 return Err(error.into());
             }
@@ -278,7 +300,7 @@ pub fn trace(
         .inspect_err(|_| {
             // Remove the cache entry so it's no longer inflight.
             let mut cache = cache.0.lock().unwrap();
-            cache.cache_remove(&block_hash);
+            cache.cache_remove(&cache_key);
         })?;
 
         tracing::trace!("Transaction tracing finished");
@@ -315,7 +337,7 @@ pub fn trace(
     // receivers.
     let mut cache = cache.0.lock().unwrap();
     let _ = sender.send(Ok(block_traces.clone()));
-    cache.cache_set(block_hash, CacheItem::CachedOk(block_traces.clone()));
+    cache.cache_set(cache_key, CacheItem::CachedOk(block_traces.clone()));
     Ok(block_traces)
 }
 

@@ -698,7 +698,7 @@ impl crate::dto::DeserializeForVersion for TraceFlags {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SimulationFlags(pub Vec<SimulationFlag>);
 
 impl SimulationFlags {
@@ -711,7 +711,7 @@ impl SimulationFlags {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum SimulationFlag {
     SkipFeeCharge,
     SkipValidate,
