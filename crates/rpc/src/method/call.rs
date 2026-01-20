@@ -284,6 +284,7 @@ mod tests {
             let header = BlockHeader::builder()
                 .number(BlockNumber::GENESIS)
                 .timestamp(BlockTimestamp::new_or_panic(0))
+                .starknet_version(StarknetVersion::V_0_13_4)
                 .finalize_with_hash(BlockHash(felt!("0xb00")));
             tx.insert_block_header(&header).unwrap();
 
@@ -298,6 +299,7 @@ mod tests {
                 .number(block1_number)
                 .timestamp(BlockTimestamp::new_or_panic(1))
                 .eth_l1_gas_price(GasPrice(1))
+                .starknet_version(StarknetVersion::V_0_13_4)
                 .finalize_with_hash(block1_hash);
             tx.insert_block_header(&header).unwrap();
 
@@ -628,6 +630,7 @@ mod tests {
 
             let header = BlockHeader::builder()
                 .number(block_number)
+                .starknet_version(StarknetVersion::V_0_13_4)
                 .finalize_with_hash(block_hash!("0xb02"));
             tx.insert_block_header(&header).unwrap();
 
