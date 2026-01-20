@@ -62,8 +62,8 @@ async fn main() {
             ConsensusEvent::RequestProposal { height, round } => {
                 println!("Need to propose at height {}, round {}", height, round);
             }
-            ConsensusEvent::Decision { height, value } => {
-                println!("Consensus reached at height {}: {:?}", height, value);
+            ConsensusEvent::Decision { height, round, value } => {
+                println!("Consensus reached at height {}, round {}: {:?}", height, round, value);
             }
             ConsensusEvent::Gossip(message) => {
                 println!("Need to gossip: {:?}", message);
@@ -113,6 +113,19 @@ The consensus engine operates on a command/event model:
 - **Commands**: Send commands to the consensus engine via `handle_command()`
 - **Events**: Poll for events from the consensus engine via `next_event().await`
 
+## Integration Contract
+
+This crate is a consensus *engine*, not a networking or block-production implementation. The application integrating it is responsible for:
+
+- **Proposal creation**: When you receive `ConsensusEvent::RequestProposal { height, round }`, build a proposal value and inject it back with `ConsensusCommand::Propose(Proposal<_, _>)`.
+- **Signing and validation**:
+  - Outbound messages produced by the engine come as `ConsensusEvent::Gossip(NetworkMessage<_, _>)`.
+  - Inbound messages from peers should be validated (e.g., signature checks using the sender's `PublicKey`, basic sanity checks, and any application-level rules) before being injected with `ConsensusCommand::Proposal(SignedProposal<_, _>)` or `ConsensusCommand::Vote(SignedVote<_, _>)`.
+- **Networking (gossip)**:
+  - On `ConsensusEvent::Gossip(...)`, broadcast the message to peers.
+  - On receiving a peer message, decode it and pass it into the engine via `handle_command(...)`.
+  - Be prepared for **duplicates** and **out-of-order** delivery from the network.
+
 ## Configuration
 
 The `Config` struct allows you to customize:
@@ -128,5 +141,6 @@ The consensus engine supports crash recovery through write-ahead logging:
 ```rust
 // Recover from a previous crash
 let validator_sets = Arc::new(StaticValidatorSetProvider::new(validator_set));
-let mut consensus = Consensus::recover(config, validator_sets);
+let highest_committed = None;
+let mut consensus = Consensus::recover(config, validator_sets, highest_committed)?;
 ```
