@@ -459,6 +459,9 @@ where
             continue 'outer;
         }
 
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        continue 'outer;
+
         tracing::debug!("Downloading block {next} from sequencer");
 
         // We start downloading the signature for the block
@@ -488,7 +491,11 @@ where
             .await?
             {
                 DownloadBlock::Block(block, commitments, state_update, state_diff_commitment) => {
-                    break (block, commitments, state_update, state_diff_commitment)
+                    // TODO testing, make sure that no block downloaded from FGw is ever used here
+                    // Now try from consensus, and then retry downloading from the FGw
+                    // continue 'outer;
+
+                    break (block, commitments, state_update, state_diff_commitment);
                 }
                 DownloadBlock::Wait => {
                     let fgw_fut = latest.wait_for(|(_, hash)| hash != &head.unwrap_or_default().1);

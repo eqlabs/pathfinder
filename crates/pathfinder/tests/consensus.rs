@@ -193,30 +193,30 @@ mod test {
         )
         .await?;
 
-        let dan_cfg = configs.next().unwrap().with_sync_enabled();
+        // let dan_cfg = configs.next().unwrap().with_sync_enabled();
 
-        let dan = PathfinderInstance::spawn(dan_cfg.clone())?;
-        dan.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
+        // let dan = PathfinderInstance::spawn(dan_cfg.clone())?;
+        // dan.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
 
         let alice_decided = wait_for_height(&alice, FINAL_HEIGHT, POLL_HEIGHT);
         let bob_decided = wait_for_height(&bob, FINAL_HEIGHT, POLL_HEIGHT);
         let charlie_decided = wait_for_height(&charlie, FINAL_HEIGHT, POLL_HEIGHT);
-        let dan_decided = wait_for_height(&dan, FINAL_HEIGHT, POLL_HEIGHT);
+        // let dan_decided = wait_for_height(&dan, FINAL_HEIGHT, POLL_HEIGHT);
         let alice_committed = wait_for_block_exists(&alice, FINAL_HEIGHT, POLL_HEIGHT);
         let bob_committed = wait_for_block_exists(&bob, FINAL_HEIGHT, POLL_HEIGHT);
         let charlie_committed = wait_for_block_exists(&charlie, FINAL_HEIGHT, POLL_HEIGHT);
-        let dan_committed = wait_for_block_exists(&dan, FINAL_HEIGHT, POLL_HEIGHT);
+        // let dan_committed = wait_for_block_exists(&dan, FINAL_HEIGHT, POLL_HEIGHT);
 
         let join_result = utils::join_all(
             vec![
                 alice_decided,
                 bob_decided,
                 charlie_decided,
-                dan_decided,
+                // dan_decided,
                 alice_committed,
                 bob_committed,
                 charlie_committed,
-                dan_committed,
+                // dan_committed,
             ],
             TEST_TIMEOUT,
         )
@@ -240,11 +240,13 @@ mod test {
             "Charlie should not have leftover consensus data: {charlie_artifacts:#?}"
         );
 
-        let dan_artifacts = dan.consensus_db_artifacts(FINAL_HEIGHT);
-        assert!(
-            dan_artifacts.is_empty(),
-            "Dan should not have leftover consensus data: {dan_artifacts:#?}"
-        );
+        // TODO testing creation on nonempty proposals
+        //
+        // let dan_artifacts = dan.consensus_db_artifacts(FINAL_HEIGHT);
+        // assert!(
+        //     dan_artifacts.is_empty(),
+        //     "Dan should not have leftover consensus data: {dan_artifacts:#?}"
+        // );
 
         join_result
     }

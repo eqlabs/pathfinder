@@ -684,7 +684,8 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
             Ok(next_stage)
         } else {
             Err(ProposalHandlingError::recoverable_msg(format!(
-                "expected {expected_proposal_commitment}, actual {actual_proposal_commitment}"
+                "proposal commitment mismatch, expected {expected_proposal_commitment}, actual \
+                 {actual_proposal_commitment}"
             )))
         }
     }
@@ -713,6 +714,13 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
 
         let start = Instant::now();
 
+        tracing::error!(
+            "XXXX State diff for block prep {}: executor.is_none={} transactions.len={}",
+            self.block_info.number,
+            executor.is_none(),
+            transactions.len(),
+        );
+
         // For empty proposals (no transactions), we don't need an executor.
         // Use an empty state diff instead.
         let state_update = if executor.is_none() && transactions.is_empty() {
@@ -739,6 +747,13 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
         let event_commitment =
             calculate_event_commitment(&events_ref_by_txn, block_info.starknet_version)
                 .map_err(ProposalHandlingError::fatal)?;
+
+        tracing::error!(
+            "XXXX State diff for block {}: {:#?}",
+            self.block_info.number,
+            state_update
+        );
+
         let state_diff_commitment = state_update.compute_state_diff_commitment();
 
         let header = ConsensusFinalizedBlockHeader {

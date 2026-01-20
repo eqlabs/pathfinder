@@ -206,12 +206,7 @@ pub(crate) fn create_empty_block(height: u64) -> ConsensusFinalizedL2Block {
     }
 }
 
-pub(crate) fn create_empty_block_0(height: u64) -> ConsensusFinalizedL2Block {
-    let timestamp = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-
+pub(crate) fn create_empty_block_0(height: u64, timestamp: u64) -> ConsensusFinalizedL2Block {
     // The only version handled by consensus, so far
     let starknet_version = StarknetVersion::new(0, 14, 0, 0);
 

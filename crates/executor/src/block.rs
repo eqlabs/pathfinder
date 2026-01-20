@@ -275,6 +275,8 @@ impl BlockExecutorExt for BlockExecutor {
             ..
         } = self;
 
+        tracing::error!("XXXX Finalizing block {:#?}", executor.block_context);
+
         executor.finalize()?;
 
         let mut state = executor.block_state.expect(BLOCK_STATE_ACCESS_ERR);
