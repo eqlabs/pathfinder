@@ -54,7 +54,7 @@ use crate::consensus::inner::batch_execution::{
 };
 use crate::consensus::inner::create_empty_block;
 use crate::consensus::{ProposalError, ProposalHandlingError};
-use crate::state::l1_gas_price::L1GasPriceProvider;
+use crate::gas_price::L1GasPriceProvider;
 use crate::validator::{
     ProdTransactionMapper,
     TransactionExt,
@@ -850,7 +850,12 @@ fn execute_deferred_for_next_height<E: BlockExecutorExt, T: TransactionExt>(
         let mut validator = validator_stage
             .try_into_block_info_stage()
             .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?
-            .validate_block_info(block_info, main_db, gas_price_provider)
+            .validate_block_info(
+                block_info,
+                main_db,
+                gas_price_provider,
+                None, // TODO: Add L1ToFriValidator when oracle is available
+            )
             .map(Box::new)?;
 
         // Execute deferred transactions first.
@@ -1153,6 +1158,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                 block_info,
                 main_readonly_storage,
                 gas_price_provider,
+                None, // TODO: Add L1ToFriValidator when oracle is available
             )?;
             validator_cache.insert(
                 height_and_round,
@@ -1523,7 +1529,12 @@ fn defer_or_execute_proposal_fin<E: BlockExecutorExt, T: TransactionExt>(
                     .remove(&height_and_round)?
                     .try_into_block_info_stage()
                     .expect("ValidatorStage to be BlockInfo if BlockInfo is deferred")
-                    .validate_block_info(block_info, main_db.clone(), gas_price_provider)
+                    .validate_block_info(
+                        block_info,
+                        main_db.clone(),
+                        gas_price_provider,
+                        None, // TODO: Add L1ToFriValidator when oracle is available
+                    )
                     .map(Box::new)?
             } else {
                 validator_cache

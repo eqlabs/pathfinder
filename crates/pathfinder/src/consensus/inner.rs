@@ -44,7 +44,7 @@ use tokio::sync::{mpsc, watch};
 use super::{ConsensusChannels, ConsensusTaskHandles};
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
-use crate::state::l1_gas_price::L1GasPriceProvider;
+use crate::gas_price::L1GasPriceProvider;
 use crate::SyncMessageToConsensus;
 
 #[allow(clippy::too_many_arguments)]
