@@ -27,6 +27,7 @@ jobs:
           filters: |
             code:
               - 'crates/**'
+              - '!**/*.md'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - '.github/workflows/**'
