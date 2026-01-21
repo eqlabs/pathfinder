@@ -12,121 +12,107 @@ Pathfinder Consensus provides a robust consensus engine for Starknet nodes that 
 
 ```rust
 use pathfinder_consensus::*;
-use serde::{Deserialize, Serialize};
 
-// Define your validator address type
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-struct MyAddress(String);
+// Create and start consensus
+let config = Config::new(my_address);
+let mut consensus: DefaultConsensus<MyValue, MyAddress> = Consensus::new(config);
+consensus.handle_command(ConsensusCommand::StartHeight(1, validator_set));
 
-impl std::fmt::Display for MyAddress {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl From<MyAddress> for Vec<u8> {
-    fn from(addr: MyAddress) -> Self {
-        addr.0.into_bytes()
-    }
-}
-
-// Define your consensus value type
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-struct BlockData(String);
-
-impl std::fmt::Display for BlockData {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-#[tokio::main]
-async fn main() {
-    // Create configuration
-    let my_address = MyAddress("validator_1".to_string());
-    let config = Config::new(my_address.clone());
-    
-    // Create consensus engine
-    let mut consensus = Consensus::new(config);
-    
-    // Start consensus at height 1
-    let validator_set = ValidatorSet::new(vec![
-        Validator::new(my_address.clone(), PublicKey::from_bytes([0; 32]))
-    ]);
-    
-    consensus.handle_command(ConsensusCommand::StartHeight(1, validator_set));
-    
-    // Poll for events
-    while let Some(event) = consensus.next_event().await {
+// Main loop
+loop {
+    if let Some(event) = consensus.next_event().await {
         match event {
             ConsensusEvent::RequestProposal { height, round } => {
-                println!("Need to propose at height {}, round {}", height, round);
+                // Build and submit proposal
+                consensus.handle_command(ConsensusCommand::Propose(proposal));
             }
-            ConsensusEvent::Decision { height, value } => {
-                println!("Consensus reached at height {}: {:?}", height, value);
+            ConsensusEvent::Decision { height, round, value } => {
+                // Commit the decided value
             }
-            ConsensusEvent::Gossip(message) => {
-                println!("Need to gossip: {:?}", message);
+            ConsensusEvent::Gossip(msg) => {
+                // Broadcast to peers
             }
-            ConsensusEvent::Error(error) => {
-                eprintln!("Consensus error: {}", error);
+            ConsensusEvent::Error(e) => {
+                // Handle error
             }
         }
     }
 }
 ```
 
-## Core Concepts
+## API Overview
 
-### ValidatorAddress Trait
+### Commands (input via `handle_command`)
 
-Your validator address type must implement the `ValidatorAddress` trait:
+| Command | Description |
+|---------|-------------|
+| `StartHeight(height, validator_set)` | Begin consensus at a new height |
+| `Propose(proposal)` | Submit your proposal (when you're the proposer) |
+| `Proposal(signed_proposal)` | Inject a proposal received from the network |
+| `Vote(signed_vote)` | Inject a vote received from the network |
 
-```rust
-pub trait ValidatorAddress:
-    Sync + Send + Ord + Display + Debug + Default + Clone + Into<Vec<u8>> + Serialize + DeserializeOwned
-{
-}
-```
+For detailed information about commands, refer to the [API documentation](https://docs.rs/pathfinder-consensus/latest/pathfinder_consensus/enum.ConsensusCommand.html).
 
-### ValuePayload Trait
+### Events (output via `next_event`)
 
-Your consensus value type must implement the `ValuePayload` trait:
+| Event | Description |
+|-------|-------------|
+| `RequestProposal { height, round }` | You're requested to build a proposal |
+| `Decision { height, round, value }` | Consensus reached |
+| `Gossip(NetworkMessage)` | Broadcast this message to peers |
+| `Error(ConsensusError)` | Internal error occurred |
 
-```rust
-pub trait ValuePayload:
-    Sync + Send + Ord + Display + Debug + Default + Clone + Serialize + DeserializeOwned
-{
-}
-```
-
-### Consensus Engine
-
-The main `Consensus<V, A>` struct is generic over:
-- `V`: Your consensus value type (must implement `ValuePayload`)
-- `A`: Your validator address type (must implement `ValidatorAddress`)
-
-### Commands and Events
-
-The consensus engine operates on a command/event model:
-
-- **Commands**: Send commands to the consensus engine via `handle_command()`
-- **Events**: Poll for events from the consensus engine via `next_event().await`
+For detailed information about events, refer to the [API documentation](https://docs.rs/pathfinder-consensus/latest/pathfinder_consensus/enum.ConsensusEvent.html).
 
 ## Configuration
 
-The `Config` struct allows you to customize:
+```rust
+let config = Config::new(my_address)
+    .with_wal_dir("/path/to/wal")
+    .with_history_depth(10)
+    .with_timeouts(TimeoutValues {
+        propose_timeout: Duration::from_secs(3),
+        prevote_timeout: Duration::from_secs(1),
+        precommit_timeout: Duration::from_secs(1),
+        commit_timeout: Duration::from_secs(1),
+    });
+```
 
-- **History Depth**: How many completed heights to keep in memory
-- **WAL Directory**: Where to store write-ahead logs for crash recovery
-- **Timeouts**: Customize consensus round timeouts
+## Custom Proposer Selection
+
+Implement [`ProposerSelector<A>`](https://docs.rs/pathfinder-consensus/latest/pathfinder_consensus/trait.ProposerSelector.html) to override round-robin selection:
+
+```rust
+#[derive(Clone)]
+struct WeightedSelector;
+
+impl<A: ValidatorAddress> ProposerSelector<A> for WeightedSelector {
+    fn select_proposer<'a>(
+        &self,
+        validator_set: &'a ValidatorSet<A>,
+        height: u64,
+        round: u32,
+    ) -> &'a Validator<A> {
+        // Custom selection logic
+        &validator_set.validators[round as usize % validator_set.count()]
+    }
+}
+
+let consensus = Consensus::with_proposer_selector(config, WeightedSelector);
+```
 
 ## Crash Recovery
 
-The consensus engine supports crash recovery through write-ahead logging:
+Recover state from write-ahead log after restart:
 
 ```rust
-// Recover from a previous crash
 let validator_sets = Arc::new(StaticValidatorSetProvider::new(validator_set));
-let mut consensus = Consensus::recover(config, validator_sets);
+let highest_committed = storage.get_highest_block()?; // Your storage layer
+let consensus = Consensus::recover(config, validator_sets, highest_committed)?;
 ```
+
+## Type Requirements
+
+Your address type must implement [`ValidatorAddress`](https://docs.rs/pathfinder-consensus/latest/pathfinder_consensus/trait.ValidatorAddress.html) (auto-implemented for types with `Sync + Send + Ord + Display + Debug + Default + Clone + Into<Vec<u8>> + Serialize + DeserializeOwned`).
+
+Your value type must implement [`ValuePayload`](https://docs.rs/pathfinder-consensus/latest/pathfinder_consensus/trait.ValuePayload.html) (auto-implemented for types with `Sync + Send + Ord + Display + Debug + Default + Clone + Serialize + DeserializeOwned`).
