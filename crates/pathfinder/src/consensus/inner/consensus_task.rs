@@ -443,8 +443,6 @@ pub(crate) fn create_nonempty_proposal(
     // Never send empty proposals because of the missing timestamp
     let num_batches = rng.gen_range(1..=10);
 
-    tracing::debug!(%num_batches, "GGGG Creating proposal");
-
     let mut next_txn_idx_start = 0;
     for _ in 1..=num_batches {
         let batch_len = rng.gen_range(1..=10);
