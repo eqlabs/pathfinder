@@ -398,6 +398,12 @@ impl ExecutionState {
             },
             use_kzg_da: self.allow_use_kzg_data
                 && self.block_info.l1_da_mode == L1DataAvailabilityMode::Blob,
+            starknet_version: self
+                .block_info
+                .starknet_version
+                .to_string()
+                .try_into()
+                .unwrap_or(starknet_api::block::StarknetVersion::PreV0_9_1),
         })
     }
 
