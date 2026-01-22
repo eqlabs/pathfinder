@@ -1594,6 +1594,13 @@ pub fn to_starknet_api_transaction(
                         .map(|a| a.0.into_starkfelt())
                         .collect(),
                 ),
+                proof_facts: starknet_api::transaction::fields::ProofFacts(
+                    tx.proof_facts
+                        .iter()
+                        .map(|p| p.0.into_starkfelt())
+                        .collect::<Vec<_>>()
+                        .into(),
+                ),
             };
 
             Ok(starknet_api::transaction::Transaction::Invoke(
