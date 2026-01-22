@@ -413,8 +413,6 @@ pub(crate) fn create_empty_proposal(
     ))
 }
 
-/// TODO: REGRESSION, internal params are hardcoded for the time being to
-/// reproduce an issue.
 pub(crate) fn create_nonempty_proposal(
     height: u64,
     round: Round,
@@ -443,20 +441,13 @@ pub(crate) fn create_nonempty_proposal(
 
     let mut batches = Vec::new();
     // Never send empty proposals because of the missing timestamp
-    let _num_batches = rng.gen_range(1..=10);
-
-    // TODO: REGRESSION, 3 batches is the bare minimum to reproduce the issue,
-    // because we roll back to batch 1 (counting from 0)
-    let num_batches = 3;
+    let num_batches = rng.gen_range(1..=10);
 
     tracing::debug!(%num_batches, "GGGG Creating proposal");
 
     let mut next_txn_idx_start = 0;
     for _ in 1..=num_batches {
-        let _batch_len = rng.gen_range(1..=10);
-
-        // TODO: REGRESSION, batch len does not matter, so always use 1
-        let batch_len = 1;
+        let batch_len = rng.gen_range(1..=10);
 
         let batch = create_transaction_batch_0(
             height as u32,
@@ -496,11 +487,7 @@ pub(crate) fn create_nonempty_proposal(
         .validate_block_info::<BlockExecutor>(block_info.clone(), main_storage, None, None)
         .unwrap();
 
-    let _num_exucuted_txns = rng.gen_range(1..=next_txn_idx_start);
-
-    // TODO: REGRESSION, this will force rollback to batch 1, rolling back to batch
-    // 0 does not cause the issue
-    let num_exucuted_txns = 2;
+    let num_exucuted_txns = rng.gen_range(1..=next_txn_idx_start);
 
     let txns_to_execute = batches
         .iter()
