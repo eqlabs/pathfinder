@@ -12,13 +12,11 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use std::vec;
 
 use anyhow::Context;
 use p2p::consensus::HeightAndRound;
-use p2p_proto::common::{Address, Hash};
-use p2p_proto::consensus::{ProposalFin, ProposalInit, ProposalPart};
-use pathfinder_common::{BlockId, ConsensusFinalizedL2Block, ContractAddress, ProposalCommitment};
+use p2p_proto::consensus::{ProposalFin, ProposalPart};
+use pathfinder_common::{BlockId, ContractAddress, ProposalCommitment};
 use pathfinder_consensus::{
     Config,
     Consensus,
@@ -37,7 +35,7 @@ use super::fetch_validators::L2ValidatorSetProvider;
 use super::{integration_testing, ConsensusTaskEvent, ConsensusValue, HeightExt, P2PTaskEvent};
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
-use crate::consensus::inner::create_empty_block;
+use crate::consensus::inner::dummy_proposal;
 
 #[allow(clippy::too_many_arguments)]
 pub fn spawn(
@@ -129,7 +127,13 @@ pub fn spawn(
                                  {round}",
                             );
 
-                            match create_empty_proposal(height, round.into(), validator_address) {
+                            match dummy_proposal::create(
+                                height,
+                                round.into(),
+                                validator_address,
+                                main_storage.clone(),
+                                None, // Randomize
+                            ) {
                                 Ok((wire_proposal, finalized_block)) => {
                                     let ProposalFin {
                                         proposal_commitment,
@@ -359,104 +363,5 @@ fn start_height(
         consensus.handle_command(ConsensusCommand::StartHeight(height, validator_set));
     } else {
         tracing::trace!(%height, "🧠 🤷  Consensus already active for");
-    }
-}
-
-// TODO start testing with non-empty proposals
-/// Create an empty proposal for the given height and round. Returns proposal
-/// parts that can be gossiped via P2P network and the finalized block that
-/// corresponds to this proposal.
-///
-/// https://github.com/starknet-io/starknet-p2p-specs/blob/main/p2p/proto/consensus/consensus.md#empty-proposals
-pub(crate) fn create_empty_proposal(
-    height: u64,
-    round: Round,
-    proposer: ContractAddress,
-) -> anyhow::Result<(Vec<ProposalPart>, ConsensusFinalizedL2Block)> {
-    let round = round.as_u32().context(format!(
-        "Attempted to create proposal with Nil round at height {height}"
-    ))?;
-    let proposer = Address(proposer.0);
-    let proposal_init = ProposalInit {
-        height,
-        round,
-        valid_round: None,
-        proposer,
-    };
-    let empty_block = create_empty_block(height);
-    let proposal_commitment_hash = Hash(empty_block.header.state_diff_commitment.0);
-
-    Ok((
-        vec![
-            ProposalPart::Init(proposal_init),
-            ProposalPart::Fin(ProposalFin {
-                proposal_commitment: proposal_commitment_hash,
-            }),
-        ],
-        empty_block,
-    ))
-}
-
-#[cfg(test)]
-mod tests {
-    use pathfinder_crypto::Felt;
-
-    use super::*;
-
-    /// Tests that create_empty_proposal successfully creates an empty proposal
-    /// and finalizes it without requiring an executor.
-    #[test]
-    fn test_create_empty_proposal() {
-        let height = 0u64;
-        let round = Round::new(0);
-        let proposer = ContractAddress::new_or_panic(Felt::from_hex_str("0x1").unwrap());
-
-        // Create an empty proposal - this should succeed without an executor
-        let (proposal_parts, finalized_block) = create_empty_proposal(height, round, proposer)
-            .expect("create_empty_proposal should succeed for empty proposals");
-
-        // Verify proposal structure
-        assert!(
-            proposal_parts.len() == 2,
-            "Empty proposal should have exactly Init and Fin"
-        );
-
-        // Verify it starts with Init
-        assert!(
-            matches!(proposal_parts[0], ProposalPart::Init(_)),
-            "First part should be ProposalInit"
-        );
-
-        // Verify it ends with Fin
-        let last_part = proposal_parts.last().expect("Proposal should have parts");
-        assert!(
-            matches!(last_part, ProposalPart::Fin(_)),
-            "Last part should be ProposalFin"
-        );
-
-        // Verify finalized block has empty state
-        assert_eq!(
-            finalized_block.header.transaction_count, 0,
-            "Empty proposal should have 0 transaction count"
-        );
-        assert_eq!(
-            finalized_block.header.event_count, 0,
-            "Empty proposal should have 0 event count"
-        );
-        assert_eq!(
-            finalized_block.state_update.contract_updates.len(),
-            0,
-            "Empty proposal should have no contract updates"
-        );
-        assert_eq!(
-            finalized_block.state_update.system_contract_updates.len(),
-            0,
-            "Empty proposal should have no system contract updates"
-        );
-        assert_eq!(
-            finalized_block.transactions_and_receipts.len(),
-            0,
-            "Empty proposal should have no transactions"
-        );
     }
 }
