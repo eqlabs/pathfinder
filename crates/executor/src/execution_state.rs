@@ -183,6 +183,12 @@ pub fn create_executor<S: StorageAdapter + Clone>(
         ..
     } = execution_state.create_state_reader(storage_adapter)?;
 
+    tracing::debug!("HHHH old block number and hash: {old_block_number_and_hash:?}");
+    tracing::debug!(
+        "HHHH block_info::next_block: {}",
+        block_context.block_info().block_number
+    );
+
     PathfinderExecutor::pre_process_and_create(
         pending_state_reader,
         block_context,
@@ -230,11 +236,21 @@ impl ExecutionState {
         self,
         storage_adapter: S,
     ) -> anyhow::Result<StateReaderStage<S>> {
+        tracing::debug!(
+            execute_on_parent_state = self.execute_on_parent_state,
+            "HHHH Creating state reader"
+        );
+
         let block_number = if self.execute_on_parent_state {
             self.block_info.number.parent()
         } else {
             Some(self.block_info.number)
         };
+
+        tracing::debug!(
+            "HHHH Creating state reader,  self.block_info.number = {}",
+            self.block_info.number
+        );
 
         let chain_info = self.chain_info()?;
         let block_info = self.block_info()?;

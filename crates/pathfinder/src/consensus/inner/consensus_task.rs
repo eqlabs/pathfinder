@@ -141,8 +141,6 @@ pub fn spawn(
                                  {round}",
                             );
 
-                            // match create_empty_proposal(height, round.into(), validator_address)
-                            // {
                             match create_nonempty_proposal(
                                 height,
                                 round.into(),
@@ -416,12 +414,6 @@ pub(crate) fn create_empty_proposal(
     ))
 }
 
-// TODO suspicion - rollback does not re-init the state properly, ie the state
-// diffs loose the system contracts, this can be observed in block 1 (contract
-// 0x2?) or in blocks >= 10 (contract 0x0 or 0x01 - block-10 hashes)
-//
-//
-// TODO rename to create_proposal
 pub(crate) fn create_nonempty_proposal(
     height: u64,
     round: Round,
@@ -444,34 +436,26 @@ pub(crate) fn create_nonempty_proposal(
     let timestamp =
         *INIT_TIMESTAMP + TIMESTAMP_DELTA.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-    // static LAST_TIMESTAMP: AtomicU64 = AtomicU64::new(0);
-
-    // let mut timestamp = SystemTime::now()
-    //     .duration_since(SystemTime::UNIX_EPOCH)
-    //     .unwrap_or_default()
-    //     .as_secs();
-
-    // if timestamp <= TIMESTAMP_DELTA.load(std::sync::atomic::Ordering::Relaxed) {
-    //     timestamp = TIMESTAMP_DELTA.fetch_add(1,
-    // std::sync::atomic::Ordering::Relaxed) + 1; } else {
-    //     TIMESTAMP_DELTA.store(timestamp, std::sync::atomic::Ordering::Relaxed);
-    // }
-
     let seed = thread_rng().gen::<u64>();
     tracing::debug!(%seed, "Creating proposal");
     let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
 
     let mut batches = Vec::new();
     // Never send empty proposals because of the missing timestamp
-    let num_batches = rng.gen_range(1..=10);
+    let _num_batches = rng.gen_range(1..=10);
 
-    // let num_batches = 2;
+    // TODO: REGRESSION, 3 batches is the bare minimum to reproduce the issue,
+    // because we roll back to batch 1 (counting from 0)
+    let num_batches = 3;
+
+    tracing::debug!(%num_batches, "GGGG Creating proposal");
 
     let mut next_txn_idx_start = 0;
-    for _ in 1..num_batches {
-        let batch_len = rng.gen_range(1..=10);
+    for _ in 1..=num_batches {
+        let _batch_len = rng.gen_range(1..=10);
 
-        // let batch_len = 20;
+        // TODO: REGRESSION, batch len does not matter, so always use 1
+        let batch_len = 1;
 
         let batch = create_transaction_batch_0(
             height as u32,
@@ -479,6 +463,7 @@ pub(crate) fn create_nonempty_proposal(
             batch_len,
             ChainId::SEPOLIA_TESTNET,
         );
+
         batches.push(batch);
         next_txn_idx_start += batch_len;
     }
@@ -492,60 +477,51 @@ pub(crate) fn create_nonempty_proposal(
 
     let mut parts = vec![ProposalPart::Init(proposal_init.clone())];
 
-    let block = if batches.is_empty() {
-        create_empty_block_0(height, timestamp)
-    } else {
-        let block_info = BlockInfo {
-            height,
-            builder: Address(proposer.0),
-            timestamp,
-            l2_gas_price_fri: 1_000_000,
-            l1_gas_price_wei: 1_000_000,
-            l1_data_gas_price_wei: 1_000_000,
-            eth_to_fri_rate: 1_000_000_000_000_000_000,
-            l1_da_mode: L1DataAvailabilityMode::Calldata,
-        };
-
-        parts.push(ProposalPart::BlockInfo(block_info.clone()));
-
-        let validator =
-            ValidatorBlockInfoStage::new(ChainId::SEPOLIA_TESTNET, proposal_init).unwrap();
-        let mut validator = validator
-            .validate_consensus_block_info::<BlockExecutor>(block_info.clone(), main_storage, None)
-            .unwrap();
-
-        let num_exucuted_txns = rng.gen_range(1..=next_txn_idx_start);
-
-        // let num_exucuted_txns = 30;
-
-        let txns_to_execute = batches
-            .iter()
-            .flatten()
-            .take(num_exucuted_txns)
-            .cloned()
-            .collect();
-
-        parts.extend(
-            batches
-                .into_iter()
-                .map(|batch| ProposalPart::TransactionBatch(batch)),
-        );
-        parts.push(ProposalPart::ExecutedTransactionCount(
-            num_exucuted_txns as u64,
-        ));
-
-        validator
-            .execute_batch::<ProdTransactionMapper>(txns_to_execute)
-            .unwrap();
-
-        validator.consensus_finalize0().unwrap()
+    let block_info = BlockInfo {
+        height,
+        builder: Address(proposer.0),
+        timestamp,
+        l2_gas_price_fri: 1_000_000,
+        l1_gas_price_wei: 1_000_000,
+        l1_data_gas_price_wei: 1_000_000,
+        eth_to_fri_rate: 1_000_000_000_000_000_000,
+        l1_da_mode: L1DataAvailabilityMode::Calldata,
     };
 
-    // tracing::error!(
-    //     "YYYY Created non empty proposal for height {height}, block info:
-    // {block_info:#?}" );
+    parts.push(ProposalPart::BlockInfo(block_info.clone()));
 
-    tracing::error!("YYYY Created non empty proposal for height {height}, block: {block:#?}");
+    let validator = ValidatorBlockInfoStage::new(ChainId::SEPOLIA_TESTNET, proposal_init).unwrap();
+    let mut validator = validator
+        .validate_consensus_block_info::<BlockExecutor>(block_info.clone(), main_storage, None)
+        .unwrap();
+
+    let _num_exucuted_txns = rng.gen_range(1..=next_txn_idx_start);
+
+    // TODO: REGRESSION, this will force rollback to batch 1, rolling back to batch
+    // 0 does not cause the issue
+    let num_exucuted_txns = 2;
+
+    let txns_to_execute = batches
+        .iter()
+        .flatten()
+        .take(num_exucuted_txns)
+        .cloned()
+        .collect();
+
+    parts.extend(
+        batches
+            .into_iter()
+            .map(|batch| ProposalPart::TransactionBatch(batch)),
+    );
+    parts.push(ProposalPart::ExecutedTransactionCount(
+        num_exucuted_txns as u64,
+    ));
+
+    validator
+        .execute_batch::<ProdTransactionMapper>(txns_to_execute)
+        .unwrap();
+
+    let block = validator.consensus_finalize0().unwrap();
 
     parts.push(ProposalPart::Fin(ProposalFin {
         proposal_commitment: Hash(block.header.state_diff_commitment.0),

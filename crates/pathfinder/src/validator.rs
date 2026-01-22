@@ -301,7 +301,7 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
     ) -> Result<E, ProposalHandlingError> {
         // Convert StateUpdateData to StateUpdate
         let state_update = StateUpdate {
-            block_hash: pathfinder_common::BlockHash::ZERO,
+            block_hash: pathfinder_common::BlockHash::ZERO, // TODO this is a bug!
             parent_state_commitment: pathfinder_common::StateCommitment::ZERO,
             state_commitment: pathfinder_common::StateCommitment::ZERO,
             contract_updates: state_update_data.contract_updates.clone(),

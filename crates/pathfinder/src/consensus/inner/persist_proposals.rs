@@ -281,10 +281,10 @@ mod tests {
         let consensus_storage =
             ConsensusStorage::in_tempdir().expect("Failed to create temp database");
         let mut conn = consensus_storage.connection().unwrap();
-        let tx = conn.transaction().unwrap();
-        tx.ensure_consensus_proposals_table_exists().unwrap();
-        tx.ensure_consensus_finalized_blocks_table_exists().unwrap();
-        tx.commit().unwrap();
+        // let tx = conn.transaction().unwrap();
+        // tx.ensure_consensus_proposals_table_exists().unwrap();
+        // tx.ensure_consensus_finalized_blocks_table_exists().unwrap();
+        // tx.commit().unwrap();
         (consensus_storage, conn)
     }
 

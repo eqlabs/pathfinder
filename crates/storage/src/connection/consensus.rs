@@ -64,8 +64,11 @@ pub fn open_consensus_storage_readonly(data_directory: &Path) -> anyhow::Result<
 
 impl ConsensusStorage {
     pub fn in_tempdir() -> anyhow::Result<ConsensusStorage> {
-        let storage = StorageBuilder::in_tempdir()?;
-        Ok(ConsensusStorage(storage))
+        let tempdir = tempfile::tempdir()?.keep();
+        let consensus_storage = open_consensus_storage(&tempdir)?;
+        Ok(consensus_storage)
+        // let storage = StorageBuilder::in_tempdir()?;
+        // Ok(ConsensusStorage(storage))
     }
 
     pub fn connection(&self) -> Result<ConsensusConnection, StorageError> {

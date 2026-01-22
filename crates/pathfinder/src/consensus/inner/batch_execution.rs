@@ -903,6 +903,144 @@ mod tests {
         );
     }
 
+    /// Test ExecutedTransactionCount processing with rollback support.
+    #[tokio::test]
+    async fn test_executed_transaction_count_rollback_regression() {
+        use p2p::consensus::HeightAndRound;
+        use pathfinder_common::ChainId;
+        use pathfinder_storage::StorageBuilder;
+
+        use crate::consensus::inner::test_helpers::create_transaction_batch;
+
+        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+        let block_info = create_test_block_info(1);
+
+        let mut validator_stage = ValidatorTransactionBatchStage::<BlockExecutor>::new(
+            chain_id,
+            block_info,
+            storage.clone(),
+        )
+        .expect("Failed to create validator stage");
+
+        let mut batch_execution_manager = BatchExecutionManager::new();
+        let height_and_round = HeightAndRound::new(2, 1);
+
+        // Execute multiple batches: 3 + 7 + 4 = 14 transactions total
+        let batch1 = create_transaction_batch(0, 3, chain_id);
+        let batch2 = create_transaction_batch(3, 7, chain_id);
+        let batch3 = create_transaction_batch(10, 4, chain_id);
+
+        batch_execution_manager
+            .execute_batch::<BlockExecutor, ProdTransactionMapper>(
+                height_and_round,
+                batch1,
+                &mut validator_stage,
+            )
+            .expect("Failed to execute batch 1");
+        batch_execution_manager
+            .execute_batch::<BlockExecutor, ProdTransactionMapper>(
+                height_and_round,
+                batch2,
+                &mut validator_stage,
+            )
+            .expect("Failed to execute batch 2");
+        batch_execution_manager
+            .execute_batch::<BlockExecutor, ProdTransactionMapper>(
+                height_and_round,
+                batch3,
+                &mut validator_stage,
+            )
+            .expect("Failed to execute batch 3");
+
+        assert_eq!(
+            validator_stage.transaction_count(),
+            14,
+            "Should have 14 transactions before ExecutedTransactionCount"
+        );
+
+        // Test 1: Normal case - no rollback (ExecutedTransactionCount matches current
+        // count)
+        {
+            let executed_transaction_count = 14;
+
+            batch_execution_manager
+                .process_executed_transaction_count::<BlockExecutor, ProdTransactionMapper>(
+                    height_and_round,
+                    executed_transaction_count,
+                    &mut validator_stage,
+                )
+                .expect("Failed to process ExecutedTransactionCount");
+
+            assert!(
+                batch_execution_manager.is_executed_transaction_count_processed(&height_and_round),
+                "ExecutedTransactionCount should be marked as processed"
+            );
+            assert_eq!(
+                validator_stage.transaction_count(),
+                14,
+                "Transaction count should remain 14 (no rollback)"
+            );
+        }
+
+        // Test 2: Rollback case - ExecutedTransactionCount indicates fewer transactions
+        // Re-execute batches to get back to 14 transactions
+        let storage_2 = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let mut validator_stage_2 = ValidatorTransactionBatchStage::<BlockExecutor>::new(
+            chain_id,
+            create_test_block_info(1),
+            storage_2,
+        )
+        .expect("Failed to create validator stage");
+
+        let batch1_2 = create_transaction_batch(0, 3, chain_id);
+        let batch2_2 = create_transaction_batch(3, 7, chain_id);
+        let batch3_2 = create_transaction_batch(10, 4, chain_id);
+
+        let height_and_round_2 = HeightAndRound::new(3, 1);
+        batch_execution_manager
+            .execute_batch::<BlockExecutor, ProdTransactionMapper>(
+                height_and_round_2,
+                batch1_2,
+                &mut validator_stage_2,
+            )
+            .expect("Failed to execute batch 1");
+        batch_execution_manager
+            .execute_batch::<BlockExecutor, ProdTransactionMapper>(
+                height_and_round_2,
+                batch2_2,
+                &mut validator_stage_2,
+            )
+            .expect("Failed to execute batch 2");
+        batch_execution_manager
+            .execute_batch::<BlockExecutor, ProdTransactionMapper>(
+                height_and_round_2,
+                batch3_2,
+                &mut validator_stage_2,
+            )
+            .expect("Failed to execute batch 3");
+
+        let executed_transaction_count = 7; // Rollback from 14 to 7
+
+        batch_execution_manager
+            .process_executed_transaction_count::<BlockExecutor, ProdTransactionMapper>(
+                height_and_round_2,
+                executed_transaction_count,
+                &mut validator_stage_2,
+            )
+            .expect("Failed to process ExecutedTransactionCount with rollback");
+
+        assert!(
+            batch_execution_manager.is_executed_transaction_count_processed(&height_and_round_2),
+            "ExecutedTransactionCount should be marked as processed after rollback"
+        );
+        assert_eq!(
+            validator_stage_2.transaction_count(),
+            7,
+            "Transaction count should be rolled back to 7 (matching ExecutedTransactionCount)"
+        );
+    }
+
     /// Test empty batch handling.
     #[tokio::test]
     async fn test_empty_batch() {

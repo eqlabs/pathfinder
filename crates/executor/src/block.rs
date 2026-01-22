@@ -275,7 +275,7 @@ impl BlockExecutorExt for BlockExecutor {
             ..
         } = self;
 
-        tracing::error!("XXXX Finalizing block {:#?}", executor.block_context);
+        // tracing::error!("XXXX Finalizing block {:#?}", executor.block_context);
 
         executor.finalize()?;
 
