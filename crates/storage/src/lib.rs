@@ -278,8 +278,8 @@ impl StorageBuilder {
     /// connections and shared cache causes locking errors if the connection
     /// pool is larger than 1 and timeouts otherwise.
     pub fn in_tempdir() -> anyhow::Result<Storage> {
-        let db_dir = tempfile::TempDir::new()?;
-        let mut db_path = PathBuf::from(db_dir.path());
+        let db_dir = tempfile::TempDir::new()?.keep();
+        let mut db_path = PathBuf::from(db_dir);
         db_path.push("db.sqlite");
         crate::StorageBuilder::file(db_path)
             .migrate()
@@ -293,8 +293,8 @@ impl StorageBuilder {
         trie_prune_mode: TriePruneMode,
         pool_size: NonZeroU32,
     ) -> anyhow::Result<Storage> {
-        let db_dir = tempfile::TempDir::new()?;
-        let mut db_path = PathBuf::from(db_dir.path());
+        let db_dir = tempfile::TempDir::new()?.keep();
+        let mut db_path = PathBuf::from(db_dir);
         db_path.push("db.sqlite");
         crate::StorageBuilder::file(db_path)
             .trie_prune_mode(Some(trie_prune_mode))

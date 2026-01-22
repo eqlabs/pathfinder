@@ -31,8 +31,11 @@ use tokio::sync::{mpsc, watch};
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
 
+use crate::consensus::inner::dummy_proposal::{
+    create_test_proposal_init,
+    create_transaction_batch,
+};
 use crate::consensus::inner::persist_proposals::ConsensusProposals;
-use crate::consensus::inner::test_helpers::{create_test_proposal, create_transaction_batch};
 use crate::consensus::inner::{
     p2p_task,
     ConsensusTaskEvent,
@@ -68,17 +71,6 @@ impl TestEnvironment {
         let main_storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let consensus_storage =
             ConsensusStorage::in_tempdir().expect("Failed to create consensus temp database");
-
-        // Initialize consensus storage tables
-        {
-            let mut db_conn = consensus_storage.connection().unwrap();
-            let db_tx = db_conn.transaction().unwrap();
-            db_tx.ensure_consensus_proposals_table_exists().unwrap();
-            db_tx
-                .ensure_consensus_finalized_blocks_table_exists()
-                .unwrap();
-            db_tx.commit().unwrap();
-        }
 
         // Mock channels for p2p communication
         let (p2p_tx, p2p_rx) = mpsc::unbounded_channel();
@@ -518,9 +510,8 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
 
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
     let height_and_round = HeightAndRound::new(2, 1);
-    let transactions = create_transaction_batch(0, 5, chain_id);
-    let (proposal_init, block_info) =
-        create_test_proposal(chain_id, 2, 1, proposer_address, transactions.clone());
+    let transactions = create_transaction_batch(0, 0, 5, chain_id);
+    let (proposal_init, block_info) = create_test_proposal_init(chain_id, 2, 1, proposer_address);
 
     // Focus is on batch execution and deferral logic, not commitment validation.
     // Using a dummy commitment...
@@ -696,9 +687,8 @@ async fn test_full_proposal_flow_normal_order() {
 
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
     let height_and_round = HeightAndRound::new(2, 1);
-    let transactions = create_transaction_batch(0, 5, chain_id);
-    let (proposal_init, block_info) =
-        create_test_proposal(chain_id, 2, 1, proposer_address, transactions.clone());
+    let transactions = create_transaction_batch(0, 0, 5, chain_id);
+    let (proposal_init, block_info) = create_test_proposal_init(chain_id, 2, 1, proposer_address);
 
     // Focus is on batch execution and deferral logic, not commitment validation.
     // Using a dummy commitment...
@@ -808,15 +798,9 @@ async fn test_executed_transaction_count_deferred_when_execution_not_started() {
 
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
     let height_and_round = HeightAndRound::new(2, 1);
-    let transactions_batch1 = create_transaction_batch(0, 3, chain_id);
-    let transactions_batch2 = create_transaction_batch(3, 2, chain_id); // Total: 5
-    let (proposal_init, block_info) = create_test_proposal(
-        chain_id,
-        2,
-        1,
-        proposer_address,
-        transactions_batch1.clone(),
-    );
+    let transactions_batch1 = create_transaction_batch(0, 0, 3, chain_id);
+    let transactions_batch2 = create_transaction_batch(0, 3, 2, chain_id); // Total: 5
+    let (proposal_init, block_info) = create_test_proposal_init(chain_id, 2, 1, proposer_address);
 
     // Step 1: Send ProposalInit
     env.p2p_tx
@@ -950,16 +934,10 @@ async fn test_multiple_batches_execution() {
 
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
     let height_and_round = HeightAndRound::new(2, 1);
-    let transactions_batch1 = create_transaction_batch(0, 2, chain_id);
-    let transactions_batch2 = create_transaction_batch(2, 3, chain_id);
-    let transactions_batch3 = create_transaction_batch(5, 2, chain_id); // Total: 7
-    let (proposal_init, block_info) = create_test_proposal(
-        chain_id,
-        2,
-        1,
-        proposer_address,
-        transactions_batch1.clone(),
-    );
+    let transactions_batch1 = create_transaction_batch(0, 0, 2, chain_id);
+    let transactions_batch2 = create_transaction_batch(0, 2, 3, chain_id);
+    let transactions_batch3 = create_transaction_batch(0, 5, 2, chain_id); // Total: 7
+    let (proposal_init, block_info) = create_test_proposal_init(chain_id, 2, 1, proposer_address);
 
     // Focus is on batch execution and deferral logic, not commitment validation.
     // Using a dummy commitment...
@@ -1088,15 +1066,9 @@ async fn test_executed_transaction_count_rollback() {
 
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
     let height_and_round = HeightAndRound::new(2, 1);
-    let transactions_batch1 = create_transaction_batch(0, 5, chain_id);
-    let transactions_batch2 = create_transaction_batch(5, 5, chain_id); // Total: 10
-    let (proposal_init, block_info) = create_test_proposal(
-        chain_id,
-        2,
-        1,
-        proposer_address,
-        transactions_batch1.clone(),
-    );
+    let transactions_batch1 = create_transaction_batch(0, 0, 5, chain_id);
+    let transactions_batch2 = create_transaction_batch(0, 5, 5, chain_id); // Total: 10
+    let (proposal_init, block_info) = create_test_proposal_init(chain_id, 2, 1, proposer_address);
 
     // Focus is on batch execution and deferral logic, not commitment validation.
     // Using a dummy commitment...
@@ -1233,9 +1205,8 @@ async fn test_empty_batch_is_rejected() {
 
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
     let height_and_round = HeightAndRound::new(2, 1);
-    let empty_transactions = create_transaction_batch(0, 0, chain_id);
-    let (proposal_init, block_info) =
-        create_test_proposal(chain_id, 2, 1, proposer_address, empty_transactions.clone());
+    let empty_transactions = create_transaction_batch(0, 0, 0, chain_id);
+    let (proposal_init, block_info) = create_test_proposal_init(chain_id, 2, 1, proposer_address);
 
     env.p2p_tx
         .send(Event {
@@ -1294,9 +1265,8 @@ async fn test_executed_transaction_count_exceeds_actually_executed() {
 
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
     let height_and_round = HeightAndRound::new(2, 1);
-    let transactions = create_transaction_batch(0, 5, chain_id);
-    let (proposal_init, block_info) =
-        create_test_proposal(chain_id, 2, 1, proposer_address, transactions.clone());
+    let transactions = create_transaction_batch(0, 0, 5, chain_id);
+    let (proposal_init, block_info) = create_test_proposal_init(chain_id, 2, 1, proposer_address);
 
     let proposal_commitment = ProposalCommitment(Felt::ZERO);
 
@@ -1392,9 +1362,8 @@ async fn test_executed_transaction_count_before_any_batch() {
 
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
     let height_and_round = HeightAndRound::new(2, 1);
-    let transactions = create_transaction_batch(0, 5, chain_id);
-    let (proposal_init, block_info) =
-        create_test_proposal(chain_id, 2, 1, proposer_address, transactions.clone());
+    let transactions = create_transaction_batch(0, 0, 5, chain_id);
+    let (proposal_init, block_info) = create_test_proposal_init(chain_id, 2, 1, proposer_address);
 
     let proposal_commitment = ProposalCommitment(Felt::ZERO);
 
@@ -1503,8 +1472,7 @@ async fn test_empty_proposal_per_spec() {
     // For empty proposals, we still need BlockInfo to transition to
     // TransactionBatch stage, but we don't send any TransactionBatch or
     // ExecutedTransactionCount
-    let (proposal_init, _block_info) =
-        create_test_proposal(chain_id, 2, 1, proposer_address, vec![]);
+    let (proposal_init, _block_info) = create_test_proposal_init(chain_id, 2, 1, proposer_address);
 
     // Using a dummy commitment...
     let proposal_commitment = ProposalCommitment(Felt::ZERO);
@@ -1575,12 +1543,11 @@ async fn recv_outdated_event_changes_peer_score() {
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
 
     // We'll use an empty proposal, the content isn't important.
-    let (proposal_init, _) = create_test_proposal(
+    let (proposal_init, _) = create_test_proposal_init(
         chain_id,
         proposal_height_and_round.height(),
         proposal_height_and_round.round(),
         proposer_address,
-        vec![],
     );
 
     let outdated_event_source = PeerId::random();
