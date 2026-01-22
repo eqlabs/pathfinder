@@ -804,6 +804,7 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
             calculate_event_commitment(&events_ref_by_txn, block_info.starknet_version)
                 .map_err(ProposalHandlingError::fatal)?;
         let state_diff_commitment = state_update.compute_state_diff_commitment();
+        let event_count = events.iter().map(|e| e.len()).sum();
 
         let header = ConsensusFinalizedBlockHeader {
             number: self.block_info.number,
@@ -818,12 +819,12 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
             starknet_version: self.block_info.starknet_version,
             event_commitment,
             transaction_commitment,
-            transaction_count: 0, // TODO validate concatenated_counts
-            event_count: 0,       // TODO validate concatenated_counts
+            transaction_count: transactions.len(),
+            event_count,
             l1_da_mode: self.block_info.l1_da_mode,
             receipt_commitment,
             state_diff_commitment,
-            state_diff_length: 0, // TODO validate concatenated_counts
+            state_diff_length: state_update.state_diff_length(),
         };
 
         debug!(
