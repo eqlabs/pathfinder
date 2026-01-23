@@ -729,6 +729,7 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
         self,
         expected_proposal_commitment: ProposalCommitment,
     ) -> Result<ConsensusFinalizedL2Block, ProposalHandlingError> {
+        let height = self.block_info.number;
         let next_stage = self.consensus_finalize0()?;
         let actual_proposal_commitment = next_stage.header.state_diff_commitment;
 
@@ -744,7 +745,8 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
             Ok(next_stage)
         } else {
             Err(ProposalHandlingError::recoverable_msg(format!(
-                "expected {expected_proposal_commitment}, actual {actual_proposal_commitment}"
+                "proposal commitment mismatch at height {height}, expected \
+                 {expected_proposal_commitment}, actual {actual_proposal_commitment}"
             )))
         }
     }
