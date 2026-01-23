@@ -27,7 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   2. If the flag was set, the response is an object with two fields:
      - "simulated_transactions" - an array of transaction simulations (previous RPC version output).
      - "initial_reads" - an `INITIAL_READS` object, containing an aggregate of all initial reads for the simulated transactions.
-       This field is only present if the `RETURN_INITIAL_READS` flag was set in the input.
 
 - `starknet_traceBlockTransactions` now has a different response format based on whether or not
   the `RETURN_INITIAL_READS` flag was set in the input:
@@ -35,7 +34,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   2. If the flag was set, the response is an object with two fields:
      - "traces" - an array of transaction traces (previous RPC version output).
      - "initial_reads" - an `INITIAL_READS` object, containing an aggregate of all initial reads for the traced transactions.
-       This field is only present if the `RETURN_INITIAL_READS` flag was set in the input.
 
 ## [0.21.5] - 2026-01-12
 

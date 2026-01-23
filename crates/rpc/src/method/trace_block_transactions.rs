@@ -47,12 +47,30 @@ impl crate::dto::DeserializeForVersion for TraceBlockTransactionsInput {
 
 #[derive(Debug)]
 pub struct TraceBlockTransactionsOutput {
-    traces: Vec<(
-        pathfinder_common::TransactionHash,
-        pathfinder_executor::types::TransactionTrace,
-    )>,
-    initial_reads: Option<pathfinder_executor::types::StateMaps>,
+    output_format: TraceOutputFormat,
     include_state_diffs: bool,
+}
+
+#[derive(Debug)]
+enum TraceOutputFormat {
+    /// Traces should be serialized as an array. This variant is picked
+    /// when the `RETURN_INITIAL_READS` [trace flag](crate::dto::TraceFlag)
+    /// is not set.
+    Array(pathfinder_executor::TransactionTraces),
+    /// Traces should be serialized as an object with `traces` and
+    /// `initial_reads` fields. This variant is picked when the
+    /// `RETURN_INITIAL_READS` [trace flag](crate::dto::TraceFlag)
+    /// is set.
+    ///
+    /// When local traces are not supported for the requested block (i.e.
+    /// they are fetched from the feeder gateway), the `initial_reads`
+    /// field will be `None`. When local traces are available, it will
+    /// contain the aggregate of the initial reads across all transactions
+    /// that were traced.
+    Object {
+        traces: pathfinder_executor::TransactionTraces,
+        initial_reads: Option<pathfinder_executor::types::StateMaps>,
+    },
 }
 
 pub async fn trace_block_transactions(
@@ -181,9 +199,20 @@ pub async fn trace_block_transactions(
             return_initial_reads,
         )?;
 
+        let output_format = match block_traces {
+            pathfinder_executor::BlockTraces::TracesOnly(traces) => {
+                TraceOutputFormat::Array(traces)
+            }
+            pathfinder_executor::BlockTraces::TracesWithInitialReads {
+                traces,
+                initial_reads,
+            } => TraceOutputFormat::Object {
+                traces,
+                initial_reads: Some(initial_reads),
+            },
+        };
         Ok(LocalExecution::Success(TraceBlockTransactionsOutput {
-            traces: block_traces.traces,
-            initial_reads: block_traces.initial_reads,
+            output_format,
             include_state_diffs: true,
         }))
     })
@@ -195,17 +224,6 @@ pub async fn trace_block_transactions(
         LocalExecution::Unsupported((block_id, transactions)) => (block_id, transactions),
     };
 
-    if return_initial_reads {
-        let err = anyhow::anyhow!(
-            r"Initial reads are not available when fetching traces from the feeder gateway
-
-Hint: this is likely due to one of these two reasons: 
-  1. Starknet version of the block is lower than {VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY}.
-  2. The block is on mainnet and falls within the range [{MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START}, {MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_END}] where re-execution is impossible.",
-        );
-        return Err(TraceBlockTransactionsError::Custom(err));
-    }
-
     context
         .sequencer
         .block_traces(block_id.into())
@@ -213,15 +231,23 @@ Hint: this is likely due to one of these two reasons:
         .context("Forwarding to feeder gateway")
         .map_err(TraceBlockTransactionsError::from)
         .map(|trace| {
+            let traces = trace
+                .traces
+                .into_iter()
+                .zip(transactions.into_iter())
+                .map(|(trace, tx)| Ok((tx.hash, map_gateway_trace(tx, trace)?)))
+                .collect::<Result<Vec<_>, TraceBlockTransactionsError>>()?;
+            let output_format = if return_initial_reads {
+                TraceOutputFormat::Object {
+                    traces,
+                    // Gateway traces do not include initial reads.
+                    initial_reads: None,
+                }
+            } else {
+                TraceOutputFormat::Array(traces)
+            };
             Ok(TraceBlockTransactionsOutput {
-                traces: trace
-                    .traces
-                    .into_iter()
-                    .zip(transactions.into_iter())
-                    .map(|(trace, tx)| Ok((tx.hash, map_gateway_trace(tx, trace)?)))
-                    .collect::<Result<Vec<_>, TraceBlockTransactionsError>>()?,
-                // Gateway traces do not include initial reads.
-                initial_reads: None,
+                output_format,
                 // State diffs are not available for traces fetched from the gateway.
                 include_state_diffs: false,
             })
@@ -650,7 +676,7 @@ impl crate::dto::SerializeForVersion for TraceBlockTransactionsOutput {
 
         fn serialize_as_object(
             serializer: crate::dto::Serializer,
-            initial_reads: &pathfinder_executor::types::StateMaps,
+            initial_reads: Option<&pathfinder_executor::types::StateMaps>,
             traces: &[(
                 pathfinder_common::TransactionHash,
                 pathfinder_executor::types::TransactionTrace,
@@ -667,34 +693,48 @@ impl crate::dto::SerializeForVersion for TraceBlockTransactionsOutput {
                     include_state_diffs,
                 }),
             )?;
-            serializer.serialize_field(
-                "initial_reads",
-                &crate::dto::InitialReads {
-                    maps: initial_reads,
-                },
-            )?;
+            if let Some(maps) = initial_reads {
+                serializer.serialize_field("initial_reads", &crate::dto::InitialReads { maps })?;
+            } else {
+                serializer.serialize_field("initial_reads", &EmptyObject)?;
+            }
             serializer.end()
         }
 
         let rpc_version = serializer.version;
-        if rpc_version >= RpcVersion::V10 {
-            match self.initial_reads.as_ref() {
-                Some(initial_reads) => serialize_as_object(
-                    serializer,
-                    initial_reads,
-                    &self.traces,
-                    self.include_state_diffs,
-                ),
-                None => serialize_as_array(serializer, &self.traces, self.include_state_diffs),
+        match &self.output_format {
+            TraceOutputFormat::Array(traces) => {
+                serialize_as_array(serializer, traces, self.include_state_diffs)
             }
-        } else {
-            debug_assert!(
-                self.initial_reads.is_none(),
-                "initial_reads was introduced in {}, but is present in earlier version",
-                RpcVersion::V10.to_str(),
-            );
-            serialize_as_array(serializer, &self.traces, self.include_state_diffs)
+            TraceOutputFormat::Object {
+                traces,
+                initial_reads,
+            } => {
+                debug_assert!(
+                    rpc_version >= RpcVersion::V10,
+                    "initial_reads was introduced in {}, but is present in earlier version",
+                    RpcVersion::V10.to_str(),
+                );
+                serialize_as_object(
+                    serializer,
+                    initial_reads.as_ref(),
+                    traces,
+                    self.include_state_diffs,
+                )
+            }
         }
+    }
+}
+
+struct EmptyObject;
+
+impl crate::dto::SerializeForVersion for EmptyObject {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let serializer = serializer.serialize_struct()?;
+        serializer.end()
     }
 }
 
@@ -783,6 +823,7 @@ pub(crate) mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
     use pathfinder_common::receipt::Receipt;
+    use pathfinder_common::Chain;
     use pathfinder_crypto::Felt;
     use starknet_gateway_types::reply::{GasPrices, L1DataAvailabilityMode};
 
@@ -802,14 +843,16 @@ pub(crate) mod tests {
 
     pub(crate) async fn setup_multi_tx_trace_test(
     ) -> anyhow::Result<(RpcContext, BlockHeader, Vec<Trace>)> {
-        setup_multi_tx_trace_test_with_starknet_version(
+        setup_multi_tx_trace_test_with_starknet_version_and_chain(
             VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
+            Chain::SepoliaTestnet,
         )
         .await
     }
 
-    pub(crate) async fn setup_multi_tx_trace_test_with_starknet_version(
+    pub(crate) async fn setup_multi_tx_trace_test_with_starknet_version_and_chain(
         starknet_version: StarknetVersion,
+        chain: Chain,
     ) -> anyhow::Result<(RpcContext, BlockHeader, Vec<Trace>)> {
         let (
             storage,
@@ -818,7 +861,7 @@ pub(crate) mod tests {
             universal_deployer_address,
             test_storage_value,
         ) = setup_storage_with_starknet_version(starknet_version).await;
-        let context = RpcContext::for_tests().with_storage(storage.clone());
+        let context = RpcContext::for_tests_on(chain).with_storage(storage.clone());
 
         let (next_block_header, transactions, traces) = {
             let mut db = storage.connection().map_err(anyhow::Error::from)?;
@@ -1045,11 +1088,12 @@ pub(crate) mod tests {
         for _ in 0..NUM_REQUESTS {
             expected.push(
                 TraceBlockTransactionsOutput {
-                    traces: traces
-                        .iter()
-                        .map(|t| (t.transaction_hash, t.trace_root.clone()))
-                        .collect(),
-                    initial_reads: None,
+                    output_format: TraceOutputFormat::Array(
+                        traces
+                            .iter()
+                            .map(|t| (t.transaction_hash, t.trace_root.clone()))
+                            .collect(),
+                    ),
                     include_state_diffs: true,
                 }
                 .serialize(Serializer {
@@ -1553,28 +1597,29 @@ pub(crate) mod tests {
     #[rstest::rstest]
     #[case::v10(RpcVersion::V10)]
     #[tokio::test]
-    async fn test_trace_block_transactions_return_initial_reads_not_supported_when_fetching_from_fgw(
+    async fn test_trace_block_transactions_return_initial_reads_when_fetching_from_fgw(
         #[case] rpc_version: RpcVersion,
     ) -> anyhow::Result<()> {
         async fn setup(
             starknet_version: StarknetVersion,
             block_num_to_insert: BlockNumber,
-            block_hash: BlockHash,
         ) -> anyhow::Result<(RpcContext, TraceBlockTransactionsInput)> {
-            let (context, _, _) =
-                setup_multi_tx_trace_test_with_starknet_version(starknet_version).await?;
+            let (context, _, _) = setup_multi_tx_trace_test_with_starknet_version_and_chain(
+                starknet_version,
+                Chain::Mainnet,
+            )
+            .await?;
 
             let mut conn = context.storage.connection().unwrap();
             let tx = conn.transaction().unwrap();
             tx.insert_block_header(&BlockHeader {
                 number: block_num_to_insert,
-                hash: block_hash,
+                starknet_version,
                 ..Default::default()
             })?;
             tx.commit()?;
 
             let input = TraceBlockTransactionsInput {
-                // Make sure we _are not_ in the re-execution impossible range.
                 block_id: block_num_to_insert.into(),
                 trace_flags: crate::dto::TraceFlags(vec![
                     crate::dto::TraceFlag::ReturnInitialReads,
@@ -1584,53 +1629,60 @@ pub(crate) mod tests {
             Ok((context, input))
         }
 
-        let input_block_hash = block_hash!("0x1");
-        let expected_error_message =
-            "Initial reads are not available when fetching traces from the feeder gateway";
-
         // First test that with a Starknet version that requires fetching traces from
-        // the gateway, we get an error when `RETURN_INITIAL_READS` is set.
-        let starknet_version_with_fallback = StarknetVersion::new(0, 8, 0, 0);
+        // the gateway, we get an empty "initial_reads" object when
+        // `RETURN_INITIAL_READS` is set.
+        let (block_with_fallback, starknet_version_with_fallback) = (
+            BlockNumber::new_or_panic(632905), // Must be lower than 632915.
+            StarknetVersion::new(0, 13, 1, 0), // Version for block 632905 on mainnet.
+        );
         assert!(
             starknet_version_with_fallback
                 < VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
         );
-        // Make sure we _are not_ in the re-execution impossible range.
-        let block_num_where_re_execution_is_possible =
-            MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START - 10;
-        let (context, input) = setup(
-            starknet_version_with_fallback,
-            block_num_where_re_execution_is_possible,
-            input_block_hash,
-        )
-        .await?;
-        let err = trace_block_transactions(context, input, rpc_version)
-            .await
-            .unwrap_err();
-        assert_matches!(
-            err,
-            TraceBlockTransactionsError::Custom(err) if err.to_string().starts_with(expected_error_message)
-        );
+        let (context, input) = setup(starknet_version_with_fallback, block_with_fallback).await?;
 
-        // Next test that we get an error when these conditions are fulfilled:
+        let output_json = trace_block_transactions(context, input, rpc_version)
+            .await
+            .unwrap()
+            .serialize(Serializer {
+                version: rpc_version,
+            })?;
+
+        let initial_reads = output_json.get("initial_reads").unwrap();
+        assert!(initial_reads.is_object());
+        assert_eq!(initial_reads.to_string(), "{}");
+
+        // Next test that we get an empty "initial_reads" object when these conditions
+        // are fulfilled:
         //   - Starknet version is new enough to support local tracing
         //   - Block number is in the range where we fetch traces from the gateway
         //   - `RETURN_INITIAL_READS` is set
+        #[rustfmt::skip]
+        let (re_execution_impossible_block, re_execution_impossible_starknet_version) = (
+            MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START + 10, // 1943704 + 10 = 1943714.
+            StarknetVersion::new(0, 13, 6, 0), // Version for block 1943714 on mainnet.
+        );
+        assert!(
+            re_execution_impossible_starknet_version
+                >= VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
+        );
         let (context, input) = setup(
-            // Use a Starknet version that supports local tracing.
-            VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
-            // Make sure we _are_ in the re-execution impossible range.
-            MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START,
-            input_block_hash,
+            re_execution_impossible_starknet_version,
+            re_execution_impossible_block,
         )
         .await?;
-        let err = trace_block_transactions(context, input, rpc_version)
+
+        let output_json = trace_block_transactions(context, input, rpc_version)
             .await
-            .unwrap_err();
-        assert_matches!(
-            err,
-            TraceBlockTransactionsError::Custom(err) if err.to_string().starts_with(expected_error_message)
-        );
+            .unwrap()
+            .serialize(Serializer {
+                version: rpc_version,
+            })?;
+
+        let initial_reads = output_json.get("initial_reads").unwrap();
+        assert!(initial_reads.is_object());
+        assert_eq!(initial_reads.to_string(), "{}");
 
         Ok(())
     }

@@ -106,10 +106,15 @@ struct InternalError {
 pub struct TraceCache(Arc<Mutex<SizedCache<CacheKey, CacheItem>>>);
 
 #[derive(Debug, Clone)]
-pub struct BlockTraces {
-    pub traces: Vec<(TransactionHash, TransactionTrace)>,
-    pub initial_reads: Option<StateMaps>,
+pub enum BlockTraces {
+    TracesOnly(TransactionTraces),
+    TracesWithInitialReads {
+        traces: TransactionTraces,
+        initial_reads: StateMaps,
+    },
 }
+
+pub type TransactionTraces = Vec<(TransactionHash, TransactionTrace)>;
 
 impl Default for TraceCache {
     fn default() -> Self {
@@ -318,19 +323,19 @@ pub fn trace(
     // Since `CachedState::get_initial_reads` will always return an aggregate
     // of all initial reads up to that point, we can just call it once after
     // all transactions are traced.
-    let initial_reads = return_initial_reads
-        .then(|| {
-            tx_executor
-                .block_state
-                .as_ref()
-                .expect(BLOCK_STATE_ACCESS_ERR)
-                .get_initial_reads()
-                .map(StateMaps::from)
-        })
-        .transpose()?;
-    let block_traces = BlockTraces {
-        traces,
-        initial_reads,
+    let block_traces = if return_initial_reads {
+        let initial_reads = tx_executor
+            .block_state
+            .as_ref()
+            .expect(BLOCK_STATE_ACCESS_ERR)
+            .get_initial_reads()
+            .map(StateMaps::from)?;
+        BlockTraces::TracesWithInitialReads {
+            traces,
+            initial_reads,
+        }
+    } else {
+        BlockTraces::TracesOnly(traces)
     };
 
     // Lock the cache before sending to avoid race conditions between senders and

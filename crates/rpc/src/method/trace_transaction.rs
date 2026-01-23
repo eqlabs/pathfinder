@@ -198,9 +198,8 @@ pub async fn trace_transaction(
                 executor_transactions,
                 return_initial_reads,
             ) {
-                Ok(block_traces) => {
-                    let trace = block_traces
-                        .traces
+                Ok(pathfinder_executor::BlockTraces::TracesOnly(traces)) => {
+                    let trace = traces
                         .into_iter()
                         .find_map(|(tx_hash, trace)| {
                             if tx_hash == input.transaction_hash {
@@ -216,6 +215,9 @@ pub async fn trace_transaction(
                             ))
                         })?;
                     Ok(LocalExecution::Success(trace))
+                }
+                Ok(pathfinder_executor::BlockTraces::TracesWithInitialReads { .. }) => {
+                    unreachable!("return_initial_reads is false")
                 }
                 Err(e) => Err(e.into()),
             }
