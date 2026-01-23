@@ -1792,8 +1792,8 @@ mod tests {
     /// Requirements to reproduce:
     /// - `H >= 10`
     /// - rollback to batch `B`, `B > 0`
-    #[test]
-    fn regression_rollback_to_nonzero_batch_from_h10_onwards_clears_system_contract_0x1() {
+    #[tokio::test]
+    async fn regression_rollback_to_nonzero_batch_from_h10_onwards_clears_system_contract_0x1() {
         let main_storage = StorageBuilder::in_tempdir().unwrap();
         let consensus_storage = ConsensusStorage::in_tempdir().unwrap();
         let mut consensus_db_conn = consensus_storage.connection().unwrap();
@@ -1813,6 +1813,7 @@ mod tests {
                 ContractAddress::ZERO,
                 main_storage.clone(),
             )
+            .await
             .unwrap();
 
             for proposal_part in proposal_parts {

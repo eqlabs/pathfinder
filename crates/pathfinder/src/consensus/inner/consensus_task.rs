@@ -21,6 +21,7 @@ use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
 use p2p_proto::consensus::{BlockInfo, ProposalFin, ProposalInit, ProposalPart};
 use pathfinder_common::{
     BlockId,
+    BlockNumber,
     ChainId,
     ConsensusFinalizedL2Block,
     ContractAddress,
@@ -145,7 +146,9 @@ pub fn spawn(
                                 round.into(),
                                 validator_address,
                                 main_storage.clone(),
-                            ) {
+                            )
+                            .await
+                            {
                                 Ok((wire_proposal, finalized_block)) => {
                                     let ProposalFin {
                                         proposal_commitment,
@@ -413,7 +416,7 @@ pub(crate) fn create_empty_proposal(
     ))
 }
 
-pub(crate) fn create_nonempty_proposal(
+pub(crate) async fn create_nonempty_proposal(
     height: u64,
     round: Round,
     proposer: ContractAddress,
@@ -480,38 +483,57 @@ pub(crate) fn create_nonempty_proposal(
 
     parts.push(ProposalPart::BlockInfo(block_info.clone()));
 
-    let validator = ValidatorBlockInfoStage::new(ChainId::SEPOLIA_TESTNET, proposal_init).unwrap();
-    let mut validator = validator
-        .validate_block_info::<BlockExecutor>(block_info.clone(), main_storage, None, None)
-        .unwrap();
+    let (parts, block) = util::task::spawn_blocking(move |_| {
+        let validator = ValidatorBlockInfoStage::new(ChainId::SEPOLIA_TESTNET, proposal_init)?;
 
-    let num_exucuted_txns = rng.gen_range(1..=next_txn_idx_start);
+        let parent_number = height.checked_sub(1);
+        if let Some(parent_number) = parent_number {
+            let mut main_db_conn = main_storage.connection()?;
+            let main_db_txn = main_db_conn.transaction()?;
 
-    let txns_to_execute = batches
-        .iter()
-        .flatten()
-        .take(num_exucuted_txns)
-        .cloned()
-        .collect();
+            while !main_db_txn
+                .block_exists(BlockId::Number(BlockNumber::new_or_panic(parent_number)))?
+            {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+        }
 
-    parts.extend(
-        batches
-            .into_iter()
-            .map(|batch| ProposalPart::TransactionBatch(batch)),
-    );
-    parts.push(ProposalPart::ExecutedTransactionCount(
-        num_exucuted_txns as u64,
-    ));
+        let mut validator = validator.validate_block_info::<BlockExecutor>(
+            block_info.clone(),
+            main_storage,
+            None,
+            None,
+        )?;
 
-    validator
-        .execute_batch::<ProdTransactionMapper>(txns_to_execute)
-        .unwrap();
+        let num_exucuted_txns = rng.gen_range(1..=next_txn_idx_start);
 
-    let block = validator.consensus_finalize0().unwrap();
+        let txns_to_execute = batches
+            .iter()
+            .flatten()
+            .take(num_exucuted_txns)
+            .cloned()
+            .collect();
 
-    parts.push(ProposalPart::Fin(ProposalFin {
-        proposal_commitment: Hash(block.header.state_diff_commitment.0),
-    }));
+        parts.extend(
+            batches
+                .into_iter()
+                .map(|batch| ProposalPart::TransactionBatch(batch)),
+        );
+        parts.push(ProposalPart::ExecutedTransactionCount(
+            num_exucuted_txns as u64,
+        ));
+
+        validator.execute_batch::<ProdTransactionMapper>(txns_to_execute)?;
+
+        let block = validator.consensus_finalize0()?;
+
+        parts.push(ProposalPart::Fin(ProposalFin {
+            proposal_commitment: Hash(block.header.state_diff_commitment.0),
+        }));
+
+        anyhow::Ok((parts, block))
+    })
+    .await??;
 
     Ok((parts, block))
 }
