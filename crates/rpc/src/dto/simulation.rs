@@ -1,6 +1,15 @@
 use anyhow::anyhow;
-use pathfinder_common::{contract_address, entry_point, felt, ContractAddress, ContractNonce};
+use pathfinder_common::{
+    contract_address,
+    entry_point,
+    felt,
+    ContractAddress,
+    ContractNonce,
+    StorageAddress,
+};
+use pathfinder_crypto::Felt;
 use pathfinder_executor::types::{FunctionInvocation, RevertibleFunctionInvocation};
+use pathfinder_executor::IntoFelt;
 use serde::ser::Error;
 
 use super::SerializeStruct;
@@ -156,6 +165,38 @@ impl crate::dto::SerializeForVersion for TransactionTrace {
                 }
             }
         }
+        serializer.end()
+    }
+}
+
+#[derive(Debug)]
+pub struct InitialReads<'a> {
+    pub maps: &'a pathfinder_executor::types::StateMaps,
+}
+
+impl<'a> crate::dto::SerializeForVersion for InitialReads<'a> {
+    fn serialize(&self, serializer: super::Serializer) -> Result<super::Ok, super::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_iter(
+            "storage",
+            self.maps.storage.len(),
+            &mut self.maps.storage.iter().map(StorageValue),
+        )?;
+        serializer.serialize_iter(
+            "nonces",
+            self.maps.nonces.len(),
+            &mut self.maps.nonces.iter().map(Nonce),
+        )?;
+        serializer.serialize_iter(
+            "class_hashes",
+            self.maps.class_hashes.len(),
+            &mut self.maps.class_hashes.iter().map(ClassHash),
+        )?;
+        serializer.serialize_iter(
+            "declared_contracts",
+            self.maps.declared_contracts.len(),
+            &mut self.maps.declared_contracts.iter().map(DeclaredContract),
+        )?;
         serializer.end()
     }
 }
@@ -469,6 +510,74 @@ impl crate::dto::SerializeForVersion for Nonce<'_> {
     }
 }
 
+struct ClassHash<'a>((&'a ContractAddress, &'a pathfinder_common::ClassHash));
+
+impl crate::dto::SerializeForVersion for ClassHash<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("contract_address", &self.0 .0)?;
+        serializer.serialize_field("class_hash", self.0 .1)?;
+        serializer.end()
+    }
+}
+
+struct StorageValue<'a>(
+    (
+        &'a (ContractAddress, StorageAddress),
+        &'a pathfinder_common::StorageValue,
+    ),
+);
+
+impl crate::dto::SerializeForVersion for StorageValue<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("contract_address", &self.0 .0 .0)?;
+        serializer.serialize_field("storage_key", &self.0 .0 .1)?;
+        serializer.serialize_field("value", self.0 .1)?;
+        serializer.end()
+    }
+}
+
+struct CompiledClassHash<'a>(
+    (
+        &'a pathfinder_common::ClassHash,
+        &'a starknet_api::core::CompiledClassHash,
+    ),
+);
+
+impl crate::dto::SerializeForVersion for CompiledClassHash<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("class_hash", self.0 .0)?;
+        let cch = self.0 .1 .0.into_felt();
+        serializer.serialize_field("compiled_class_hash", &cch)?;
+        serializer.end()
+    }
+}
+
+struct DeclaredContract<'a>((&'a pathfinder_common::ClassHash, &'a bool));
+
+impl crate::dto::SerializeForVersion for DeclaredContract<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("class_hash", self.0 .0)?;
+        serializer.serialize_field("is_declared", self.0 .1)?;
+        serializer.end()
+    }
+}
+
 impl crate::dto::SerializeForVersion for pathfinder_executor::types::ExecutionResources {
     fn serialize(
         &self,
@@ -551,21 +660,74 @@ impl crate::dto::SerializeForVersion for CallType {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct TraceFlags(pub Vec<TraceFlag>);
+
+impl TraceFlags {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn contains(&self, flag: &TraceFlag) -> bool {
+        self.0.contains(flag)
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum TraceFlag {
+    ReturnInitialReads,
+}
+
+impl crate::dto::DeserializeForVersion for TraceFlag {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let rpc_version = value.version;
+        let value: String = value.deserialize()?;
+        match value.as_str() {
+            "RETURN_INITIAL_READS" if rpc_version >= RpcVersion::V10 => {
+                Ok(Self::ReturnInitialReads)
+            }
+            _ => Err(serde_json::Error::custom("Invalid trace flag")),
+        }
+    }
+}
+
+impl crate::dto::DeserializeForVersion for TraceFlags {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let array = value.deserialize_array(TraceFlag::deserialize)?;
+        Ok(Self(array))
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SimulationFlags(pub Vec<SimulationFlag>);
 
-#[derive(Debug, Eq, PartialEq)]
+impl SimulationFlags {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn contains(&self, flag: &SimulationFlag) -> bool {
+        self.0.contains(flag)
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum SimulationFlag {
     SkipFeeCharge,
     SkipValidate,
+    ReturnInitialReads,
 }
 
 impl crate::dto::DeserializeForVersion for SimulationFlag {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let rpc_version = value.version;
         let value: String = value.deserialize()?;
         match value.as_str() {
             "SKIP_FEE_CHARGE" => Ok(Self::SkipFeeCharge),
             "SKIP_VALIDATE" => Ok(Self::SkipValidate),
+            "RETURN_INITIAL_READS" if rpc_version >= RpcVersion::V10 => {
+                Ok(Self::ReturnInitialReads)
+            }
             _ => Err(serde_json::Error::custom("Invalid simulation flag")),
         }
     }
@@ -634,7 +796,7 @@ mod tests {
         BlockHeader,
         ContractAddress,
         ContractAddress,
-        StorageValue,
+        pathfinder_common::StorageValue,
     ) {
         let test_storage_key = StorageAddress::from_name(b"my_storage_var");
         let test_storage_value = storage_value!("0x09");

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use blockifier::blockifier_versioned_constants::VersionedConstants;
 use blockifier::execution::call_info::{CallInfo, OrderedL2ToL1Message};
-use blockifier::state::cached_state::StateMaps;
+use blockifier::state::cached_state::StateMaps as BlockifierStateMaps;
 use blockifier::state::errors::StateError;
 use blockifier::state::state_api::StateReader as _;
 use blockifier::transaction::transaction_execution::Transaction;
@@ -18,7 +18,7 @@ use pathfinder_common::state_update::{
 use pathfinder_common::transaction::TransactionVariant;
 use pathfinder_crypto::Felt;
 use starknet_api::block::FeeType;
-use starknet_api::core::PatriciaKey;
+use starknet_api::core::{CompiledClassHash, PatriciaKey};
 use starknet_api::execution_resources::{GasAmount, GasVector};
 use starknet_api::transaction::fields::{
     AccountDeploymentData,
@@ -562,6 +562,66 @@ pub struct MsgToL1 {
 pub struct InnerCallExecutionResources {
     pub l1_gas: u128,
     pub l2_gas: u128,
+}
+
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
+pub struct StateMaps {
+    pub nonces: BTreeMap<ContractAddress, ContractNonce>,
+    pub class_hashes: BTreeMap<ContractAddress, ClassHash>,
+    pub storage: BTreeMap<(ContractAddress, StorageAddress), StorageValue>,
+    pub compiled_class_hashes: BTreeMap<ClassHash, CompiledClassHash>,
+    pub declared_contracts: BTreeMap<ClassHash, bool>,
+}
+
+impl From<blockifier::state::cached_state::StateMaps> for StateMaps {
+    fn from(value: blockifier::state::cached_state::StateMaps) -> Self {
+        Self {
+            nonces: value
+                .nonces
+                .into_iter()
+                .map(|(address, nonce)| {
+                    let address = ContractAddress::new_or_panic(address.key().into_felt());
+                    let nonce = ContractNonce(nonce.into_felt());
+                    (address, nonce)
+                })
+                .collect(),
+            class_hashes: value
+                .class_hashes
+                .into_iter()
+                .map(|(address, class_hash)| {
+                    let address = ContractAddress::new_or_panic(address.key().into_felt());
+                    let class_hash = ClassHash::new_or_panic(class_hash.into_felt());
+                    (address, class_hash)
+                })
+                .collect(),
+            storage: value
+                .storage
+                .into_iter()
+                .map(|((address, key), value)| {
+                    let address = ContractAddress::new_or_panic(address.key().into_felt());
+                    let key = StorageAddress::new_or_panic(key.into_felt());
+                    let value = StorageValue(value.into_felt());
+                    ((address, key), value)
+                })
+                .collect(),
+            compiled_class_hashes: value
+                .compiled_class_hashes
+                .into_iter()
+                .map(|(class_hash, compiled_class_hash)| {
+                    let class_hash = ClassHash::new_or_panic(class_hash.into_felt());
+                    (class_hash, compiled_class_hash)
+                })
+                .collect(),
+            declared_contracts: value
+                .declared_contracts
+                .into_iter()
+                .map(|(class_hash, declared)| {
+                    let class_hash = ClassHash::new_or_panic(class_hash.into_felt());
+                    (class_hash, declared)
+                })
+                .collect(),
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
@@ -1146,7 +1206,7 @@ pub(crate) fn transaction_declared_deprecated_class(
 }
 
 pub(crate) fn to_state_diff<S: StorageAdapter + Clone>(
-    state_maps: StateMaps,
+    state_maps: BlockifierStateMaps,
     initial_state: PathfinderExecutionState<S>,
     old_declared_contracts: impl Iterator<Item = ClassHash>,
 ) -> Result<StateDiff, StateError> {

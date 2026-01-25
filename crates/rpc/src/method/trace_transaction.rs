@@ -181,14 +181,25 @@ pub async fn trace_transaction(
                     .native_execution_force_use_for_incompatible_classes,
             );
 
+            // The flag is not included in the spec for this method. Moreover, it isn't
+            // possible to return per-transaction initial reads at the moment.
+            let return_initial_reads = false;
+
             let executor_transactions = transactions
                 .iter()
                 .map(|transaction| compose_executor_transaction(transaction, &db_tx))
                 .collect::<Result<Vec<_>, _>>()?;
 
-            match pathfinder_executor::trace(db_tx, state, cache, hash, executor_transactions) {
-                Ok(txs) => {
-                    let trace = txs
+            match pathfinder_executor::trace(
+                db_tx,
+                state,
+                cache,
+                hash,
+                executor_transactions,
+                return_initial_reads,
+            ) {
+                Ok(pathfinder_executor::BlockTraces::TracesOnly(traces)) => {
+                    let trace = traces
                         .into_iter()
                         .find_map(|(tx_hash, trace)| {
                             if tx_hash == input.transaction_hash {
@@ -204,6 +215,9 @@ pub async fn trace_transaction(
                             ))
                         })?;
                     Ok(LocalExecution::Success(trace))
+                }
+                Ok(pathfinder_executor::BlockTraces::TracesWithInitialReads { .. }) => {
+                    unreachable!("return_initial_reads is false")
                 }
                 Err(e) => Err(e.into()),
             }

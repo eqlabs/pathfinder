@@ -171,9 +171,16 @@ fn execute(
         }
     };
 
-    match pathfinder_executor::simulate(db_tx, execution_state, transactions, Percentage::new(0)) {
+    match pathfinder_executor::simulate(
+        db_tx,
+        execution_state,
+        transactions,
+        Percentage::new(0),
+        false,
+    ) {
         Ok(simulations) => {
             for (simulation, (receipt, transaction)) in simulations
+                .0
                 .iter()
                 .zip(work.receipts.iter().zip(work.transactions.iter()))
             {

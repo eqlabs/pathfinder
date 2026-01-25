@@ -39,9 +39,7 @@
         },
         "is_reverted": false,
         "messages": [],
-        "result": [
-          "0x1"
-        ]
+        "result": ["0x1"]
       },
       "state_diff": {
         "declared_classes": [
@@ -95,9 +93,7 @@
         },
         "is_reverted": false,
         "messages": [],
-        "result": [
-          "0x56414c4944"
-        ]
+        "result": ["0x56414c4944"]
       }
     },
     "transaction_hash": "0x548c629e4ee49b5280bb1363288d2e112974beaa2959c96500a9f0cbc41e5ee"
@@ -233,9 +229,7 @@
         },
         "is_reverted": false,
         "messages": [],
-        "result": [
-          "0x1"
-        ]
+        "result": ["0x1"]
       },
       "state_diff": {
         "declared_classes": [],
@@ -296,9 +290,7 @@
         },
         "is_reverted": false,
         "messages": [],
-        "result": [
-          "0x56414c4944"
-        ]
+        "result": ["0x56414c4944"]
       }
     },
     "transaction_hash": "0x1cdd84a12e3582bd60acf7546d6e1a54e9706414f28cd3b2ce8a3d2eb5e4f73"
@@ -331,9 +323,7 @@
             },
             "is_reverted": false,
             "messages": [],
-            "result": [
-              "0x9"
-            ]
+            "result": ["0x9"]
           }
         ],
         "class_hash": "0x19cabebe31b9fb6bf5e7ce9a971bd7d06e9999e0b97eee943869141a46fd978",
@@ -347,11 +337,7 @@
         },
         "is_reverted": false,
         "messages": [],
-        "result": [
-          "0x1",
-          "0x1",
-          "0x9"
-        ]
+        "result": ["0x1", "0x1", "0x9"]
       },
       "execution_resources": {
         "l1_data_gas": 128,
@@ -391,9 +377,7 @@
         },
         "is_reverted": false,
         "messages": [],
-        "result": [
-          "0x1"
-        ]
+        "result": ["0x1"]
       },
       "state_diff": {
         "declared_classes": [],
@@ -445,9 +429,7 @@
         },
         "is_reverted": false,
         "messages": [],
-        "result": [
-          "0x56414c4944"
-        ]
+        "result": ["0x56414c4944"]
       }
     },
     "transaction_hash": "0x2a973a52127349ccb6ecd72c31a7b1fc444a526643b4afe8a275a536075cb0e"

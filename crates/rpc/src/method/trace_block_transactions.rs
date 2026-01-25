@@ -2,6 +2,7 @@ use anyhow::Context;
 use pathfinder_common::ChainId;
 use pathfinder_executor::types::InnerCallExecutionResources;
 use pathfinder_executor::TransactionExecutionError;
+use serde::de::Error;
 use starknet_gateway_client::GatewayApi;
 
 use crate::context::RpcContext;
@@ -17,24 +18,59 @@ use crate::{compose_executor_transaction, RpcVersion};
 #[derive(Debug, Clone)]
 pub struct TraceBlockTransactionsInput {
     pub block_id: BlockId,
+    pub trace_flags: crate::dto::TraceFlags,
 }
 
 impl crate::dto::DeserializeForVersion for TraceBlockTransactionsInput {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let rpc_version = value.version;
         value.deserialize_map(|value| {
             Ok(Self {
                 block_id: value.deserialize("block_id")?,
+                trace_flags: if rpc_version >= RpcVersion::V10 {
+                    value.deserialize("trace_flags")?
+                } else if !value.contains_key("trace_flags") {
+                    crate::dto::TraceFlags::new()
+                } else {
+                    let err = serde_json::Error::custom(format!(
+                        "Trace flags are not supported in RPC version {}. Use RPC version {} or \
+                         higher.",
+                        rpc_version.to_str(),
+                        RpcVersion::V10.to_str(),
+                    ));
+                    return Err(err);
+                },
             })
         })
     }
 }
 
+#[derive(Debug)]
 pub struct TraceBlockTransactionsOutput {
-    traces: Vec<(
-        pathfinder_common::TransactionHash,
-        pathfinder_executor::types::TransactionTrace,
-    )>,
+    output_format: TraceOutputFormat,
     include_state_diffs: bool,
+}
+
+#[derive(Debug)]
+enum TraceOutputFormat {
+    /// Traces should be serialized as an array. This variant is picked
+    /// when the `RETURN_INITIAL_READS` [trace flag](crate::dto::TraceFlag)
+    /// is not set.
+    Array(pathfinder_executor::TransactionTraces),
+    /// Traces should be serialized as an object with `traces` and
+    /// `initial_reads` fields. This variant is picked when the
+    /// `RETURN_INITIAL_READS` [trace flag](crate::dto::TraceFlag)
+    /// is set.
+    ///
+    /// When local traces are not supported for the requested block (i.e.
+    /// they are fetched from the feeder gateway), the `initial_reads`
+    /// field will be `None`. When local traces are available, it will
+    /// contain the aggregate of the initial reads across all transactions
+    /// that were traced.
+    Object {
+        traces: pathfinder_executor::TransactionTraces,
+        initial_reads: Option<pathfinder_executor::types::StateMaps>,
+    },
 }
 
 pub async fn trace_block_transactions(
@@ -55,6 +91,11 @@ pub async fn trace_block_transactions(
     let span = tracing::Span::current();
 
     let storage = context.execution_storage.clone();
+
+    let return_initial_reads = input
+        .trace_flags
+        .contains(&crate::dto::TraceFlag::ReturnInitialReads);
+
     let traces = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
@@ -149,19 +190,29 @@ pub async fn trace_block_transactions(
                 .config
                 .native_execution_force_use_for_incompatible_classes,
         );
-        let traces =
-            match pathfinder_executor::trace(db_tx, state, cache, hash, executor_transactions) {
-                Ok(traces) => traces,
-                Err(e) => return Err(e.into()),
-            };
+        let block_traces = pathfinder_executor::trace(
+            db_tx,
+            state,
+            cache,
+            hash,
+            executor_transactions,
+            return_initial_reads,
+        )?;
 
-        let traces = traces
-            .into_iter()
-            .map(|(hash, trace)| Ok((hash, trace)))
-            .collect::<Result<Vec<_>, TraceBlockTransactionsError>>()?;
-
+        let output_format = match block_traces {
+            pathfinder_executor::BlockTraces::TracesOnly(traces) => {
+                TraceOutputFormat::Array(traces)
+            }
+            pathfinder_executor::BlockTraces::TracesWithInitialReads {
+                traces,
+                initial_reads,
+            } => TraceOutputFormat::Object {
+                traces,
+                initial_reads: Some(initial_reads),
+            },
+        };
         Ok(LocalExecution::Success(TraceBlockTransactionsOutput {
-            traces,
+            output_format,
             include_state_diffs: true,
         }))
     })
@@ -180,18 +231,23 @@ pub async fn trace_block_transactions(
         .context("Forwarding to feeder gateway")
         .map_err(TraceBlockTransactionsError::from)
         .map(|trace| {
+            let traces = trace
+                .traces
+                .into_iter()
+                .zip(transactions.into_iter())
+                .map(|(trace, tx)| Ok((tx.hash, map_gateway_trace(tx, trace)?)))
+                .collect::<Result<Vec<_>, TraceBlockTransactionsError>>()?;
+            let output_format = if return_initial_reads {
+                TraceOutputFormat::Object {
+                    traces,
+                    // Gateway traces do not include initial reads.
+                    initial_reads: None,
+                }
+            } else {
+                TraceOutputFormat::Array(traces)
+            };
             Ok(TraceBlockTransactionsOutput {
-                traces: trace
-                    .traces
-                    .into_iter()
-                    .zip(transactions.into_iter())
-                    .map(|(trace, tx)| {
-                        let transaction_hash = tx.hash;
-                        let trace_root = map_gateway_trace(tx, trace)?;
-
-                        Ok((transaction_hash, trace_root))
-                    })
-                    .collect::<Result<Vec<_>, TraceBlockTransactionsError>>()?,
+                output_format,
                 // State diffs are not available for traces fetched from the gateway.
                 include_state_diffs: false,
             })
@@ -600,21 +656,92 @@ impl crate::dto::SerializeForVersion for TraceBlockTransactionsOutput {
         &self,
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
-        serializer.serialize_iter(
-            self.traces.len(),
-            &mut self.traces.iter().map(|(hash, trace)| Trace {
-                transaction_hash: hash,
-                transaction_trace: trace,
-                include_state_diff: self.include_state_diffs,
-            }),
-        )
+        fn serialize_as_array(
+            serializer: crate::dto::Serializer,
+            traces: &[(
+                pathfinder_common::TransactionHash,
+                pathfinder_executor::types::TransactionTrace,
+            )],
+            include_state_diffs: bool,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
+            serializer.serialize_iter(
+                traces.len(),
+                &mut traces.iter().map(|(hash, tx)| Trace {
+                    transaction_hash: hash,
+                    transaction_trace: tx,
+                    include_state_diffs,
+                }),
+            )
+        }
+
+        fn serialize_as_object(
+            serializer: crate::dto::Serializer,
+            initial_reads: Option<&pathfinder_executor::types::StateMaps>,
+            traces: &[(
+                pathfinder_common::TransactionHash,
+                pathfinder_executor::types::TransactionTrace,
+            )],
+            include_state_diffs: bool,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
+            let mut serializer = serializer.serialize_struct()?;
+            serializer.serialize_iter(
+                "traces",
+                traces.len(),
+                &mut traces.iter().map(|(hash, tx)| Trace {
+                    transaction_hash: hash,
+                    transaction_trace: tx,
+                    include_state_diffs,
+                }),
+            )?;
+            if let Some(maps) = initial_reads {
+                serializer.serialize_field("initial_reads", &crate::dto::InitialReads { maps })?;
+            } else {
+                serializer.serialize_field("initial_reads", &EmptyObject)?;
+            }
+            serializer.end()
+        }
+
+        let rpc_version = serializer.version;
+        match &self.output_format {
+            TraceOutputFormat::Array(traces) => {
+                serialize_as_array(serializer, traces, self.include_state_diffs)
+            }
+            TraceOutputFormat::Object {
+                traces,
+                initial_reads,
+            } => {
+                debug_assert!(
+                    rpc_version >= RpcVersion::V10,
+                    "initial_reads was introduced in {}, but is present in earlier version",
+                    RpcVersion::V10.to_str(),
+                );
+                serialize_as_object(
+                    serializer,
+                    initial_reads.as_ref(),
+                    traces,
+                    self.include_state_diffs,
+                )
+            }
+        }
+    }
+}
+
+struct EmptyObject;
+
+impl crate::dto::SerializeForVersion for EmptyObject {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let serializer = serializer.serialize_struct()?;
+        serializer.end()
     }
 }
 
 struct Trace<'a> {
     pub transaction_hash: &'a pathfinder_common::TransactionHash,
     pub transaction_trace: &'a pathfinder_executor::types::TransactionTrace,
-    pub include_state_diff: bool,
+    pub include_state_diffs: bool,
 }
 
 impl crate::dto::SerializeForVersion for Trace<'_> {
@@ -628,7 +755,7 @@ impl crate::dto::SerializeForVersion for Trace<'_> {
             "trace_root",
             &crate::dto::TransactionTrace {
                 trace: self.transaction_trace.clone(),
-                include_state_diff: self.include_state_diff,
+                include_state_diff: self.include_state_diffs,
             },
         )?;
         serializer.end()
@@ -692,14 +819,20 @@ impl From<TransactionExecutionError> for TraceBlockTransactionsError {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
     use pathfinder_common::receipt::Receipt;
+    use pathfinder_common::Chain;
     use pathfinder_crypto::Felt;
     use starknet_gateway_types::reply::{GasPrices, L1DataAvailabilityMode};
 
     use super::*;
-    use crate::dto::{SerializeForVersion, Serializer};
+    use crate::dto::{DeserializeForVersion, SerializeForVersion, Serializer};
+    use crate::method::simulate_transactions::tests::{
+        fixtures,
+        setup_storage_with_starknet_version,
+    };
     use crate::RpcVersion;
 
     #[derive(Debug)]
@@ -710,19 +843,25 @@ pub(crate) mod tests {
 
     pub(crate) async fn setup_multi_tx_trace_test(
     ) -> anyhow::Result<(RpcContext, BlockHeader, Vec<Trace>)> {
-        use super::super::simulate_transactions::tests::{
-            fixtures,
-            setup_storage_with_starknet_version,
-        };
+        setup_multi_tx_trace_test_with_starknet_version_and_chain(
+            VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
+            Chain::SepoliaTestnet,
+        )
+        .await
+    }
 
+    pub(crate) async fn setup_multi_tx_trace_test_with_starknet_version_and_chain(
+        starknet_version: StarknetVersion,
+        chain: Chain,
+    ) -> anyhow::Result<(RpcContext, BlockHeader, Vec<Trace>)> {
         let (
             storage,
             last_block_header,
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 1)).await;
-        let context = RpcContext::for_tests().with_storage(storage.clone());
+        ) = setup_storage_with_starknet_version(starknet_version).await;
+        let context = RpcContext::for_tests_on(chain).with_storage(storage.clone());
 
         let (next_block_header, transactions, traces) = {
             let mut db = storage.connection().map_err(anyhow::Error::from)?;
@@ -823,12 +962,80 @@ pub(crate) mod tests {
     #[case::v08(RpcVersion::V08)]
     #[case::v09(RpcVersion::V09)]
     #[case::v10(RpcVersion::V10)]
+    fn input_deserialization_happy_path(#[case] rpc_version: RpcVersion) {
+        let input_json = if rpc_version >= RpcVersion::V10 {
+            serde_json::json!({
+                "block_id": {"block_number": 1},
+                "trace_flags": ["RETURN_INITIAL_READS"]
+            })
+        } else {
+            serde_json::json!({
+                "block_id": {"block_number": 1},
+            })
+        };
+
+        let value = crate::dto::Value::new(input_json, rpc_version);
+        let input = TraceBlockTransactionsInput::deserialize(value).unwrap();
+
+        assert_matches!(
+            input.block_id,
+                BlockId::Number(num) if num.get() == 1
+        );
+        let expected_flags = if rpc_version >= RpcVersion::V10 {
+            vec![crate::dto::TraceFlag::ReturnInitialReads]
+        } else {
+            vec![]
+        };
+        assert_eq!(input.trace_flags.0, expected_flags);
+    }
+
+    #[rstest::rstest]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
+    #[tokio::test]
+    async fn input_deserialization_trace_flags_rejected_pre_v10(#[case] rpc_version: RpcVersion) {
+        let input_json = serde_json::json!({
+            "block_id": {"block_number": 1},
+            "trace_flags": ["RETURN_INITIAL_READS"]
+        });
+
+        let value = crate::dto::Value::new(input_json, rpc_version);
+        let result = TraceBlockTransactionsInput::deserialize(value);
+
+        if rpc_version >= RpcVersion::V10 {
+            assert!(
+                result.is_ok(),
+                "Expected success for trace_flags in RPC version {}",
+                rpc_version.to_str()
+            );
+        } else {
+            let err = result.unwrap_err();
+            assert_eq!(
+                err.to_string(),
+                format!(
+                    "Trace flags are not supported in RPC version {}. Use RPC version {} or \
+                     higher.",
+                    rpc_version.to_str(),
+                    RpcVersion::V10.to_str()
+                ),
+            );
+        }
+    }
+
+    #[rstest::rstest]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
     #[tokio::test]
     async fn test_multiple_transactions(#[case] version: RpcVersion) -> anyhow::Result<()> {
         let (context, next_block_header, _) = setup_multi_tx_trace_test().await?;
 
         let input = TraceBlockTransactionsInput {
             block_id: next_block_header.hash.into(),
+            trace_flags: crate::dto::TraceFlags::new(),
         };
         let output = trace_block_transactions(context, input, version)
             .await
@@ -854,6 +1061,7 @@ pub(crate) mod tests {
 
         let input = TraceBlockTransactionsInput {
             block_id: next_block_header.hash.into(),
+            trace_flags: crate::dto::TraceFlags::new(),
         };
         let mut joins = tokio::task::JoinSet::new();
         for _ in 0..NUM_REQUESTS {
@@ -880,10 +1088,12 @@ pub(crate) mod tests {
         for _ in 0..NUM_REQUESTS {
             expected.push(
                 TraceBlockTransactionsOutput {
-                    traces: traces
-                        .iter()
-                        .map(|t| (t.transaction_hash, t.trace_root.clone()))
-                        .collect(),
+                    output_format: TraceOutputFormat::Array(
+                        traces
+                            .iter()
+                            .map(|t| (t.transaction_hash, t.trace_root.clone()))
+                            .collect(),
+                    ),
                     include_state_diffs: true,
                 }
                 .serialize(Serializer {
@@ -1299,6 +1509,7 @@ pub(crate) mod tests {
 
         let input = TraceBlockTransactionsInput {
             block_id: next_block_header.hash.into(),
+            trace_flags: crate::dto::TraceFlags::new(),
         };
 
         let output = trace_block_transactions(context, input, RPC_VERSION)
@@ -1308,6 +1519,170 @@ pub(crate) mod tests {
             .unwrap();
 
         crate::assert_json_matches_fixture!(output, version, "traces/multiple_pending_txs.json");
+
+        Ok(())
+    }
+
+    #[rstest::rstest]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
+    #[tokio::test]
+    async fn test_trace_block_transactions_return_initial_reads(
+        #[case] rpc_version: RpcVersion,
+    ) -> anyhow::Result<()> {
+        fn fixture(rpc_version: RpcVersion, trace_flags: &crate::dto::TraceFlags) -> &'static str {
+            match rpc_version {
+                RpcVersion::V06 => include_str!("../../fixtures/0.6.0/traces/multiple_txs.json"),
+                RpcVersion::V07 => include_str!("../../fixtures/0.7.0/traces/multiple_txs.json"),
+                RpcVersion::V08 => include_str!("../../fixtures/0.8.0/traces/multiple_txs.json"),
+                RpcVersion::V09 => include_str!("../../fixtures/0.9.0/traces/multiple_txs.json"),
+                RpcVersion::V10 => {
+                    if trace_flags.contains(&crate::dto::TraceFlag::ReturnInitialReads) {
+                        include_str!(
+                            "../../fixtures/0.10.0/traces/multiple_txs_with_initial_reads.json"
+                        )
+                    } else {
+                        include_str!("../../fixtures/0.10.0/traces/multiple_txs.json")
+                    }
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        let (context, next_block_header, _) = setup_multi_tx_trace_test().await?;
+
+        let mut input = TraceBlockTransactionsInput {
+            block_id: next_block_header.hash.into(),
+            trace_flags: crate::dto::TraceFlags::new(),
+        };
+
+        // First test without `RETURN_INITIAL_READS`.
+        let output = trace_block_transactions(context.clone(), input.clone(), rpc_version)
+            .await
+            .unwrap()
+            .serialize(Serializer {
+                version: rpc_version,
+            })?;
+        let expected = fixture(rpc_version, &input.trace_flags);
+        let expected_json: serde_json::Value = serde_json::from_str(expected).unwrap();
+        pretty_assertions_sorted::assert_eq!(output, expected_json);
+
+        // Then, for RpcVersion that support `RETURN_INITIAL_READS` (i.e. after
+        // RpcVersion::V10), test with the flag enabled.
+        //
+        // NB: Testing twice with a different set of flags also serves as a guarantee
+        // that we don't accidentally cache results based solely on the block
+        // identifier.
+        if rpc_version >= RpcVersion::V10 {
+            input
+                .trace_flags
+                .0
+                .push(crate::dto::TraceFlag::ReturnInitialReads);
+            let output_json = trace_block_transactions(context, input.clone(), rpc_version)
+                .await
+                .unwrap()
+                .serialize(Serializer {
+                    version: rpc_version,
+                })?;
+            let expected = fixture(rpc_version, &input.trace_flags);
+            let expected_json: serde_json::Value = serde_json::from_str(expected).unwrap();
+            pretty_assertions_sorted::assert_eq!(output_json, expected_json);
+        }
+
+        Ok(())
+    }
+
+    #[rstest::rstest]
+    #[case::v10(RpcVersion::V10)]
+    #[tokio::test]
+    async fn test_trace_block_transactions_return_initial_reads_when_fetching_from_fgw(
+        #[case] rpc_version: RpcVersion,
+    ) -> anyhow::Result<()> {
+        async fn setup(
+            starknet_version: StarknetVersion,
+            block_num_to_insert: BlockNumber,
+        ) -> anyhow::Result<(RpcContext, TraceBlockTransactionsInput)> {
+            let (context, _, _) = setup_multi_tx_trace_test_with_starknet_version_and_chain(
+                starknet_version,
+                Chain::Mainnet,
+            )
+            .await?;
+
+            let mut conn = context.storage.connection().unwrap();
+            let tx = conn.transaction().unwrap();
+            tx.insert_block_header(&BlockHeader {
+                number: block_num_to_insert,
+                starknet_version,
+                ..Default::default()
+            })?;
+            tx.commit()?;
+
+            let input = TraceBlockTransactionsInput {
+                block_id: block_num_to_insert.into(),
+                trace_flags: crate::dto::TraceFlags(vec![
+                    crate::dto::TraceFlag::ReturnInitialReads,
+                ]),
+            };
+
+            Ok((context, input))
+        }
+
+        // First test that with a Starknet version that requires fetching traces from
+        // the gateway, we get an empty "initial_reads" object when
+        // `RETURN_INITIAL_READS` is set.
+        let (block_with_fallback, starknet_version_with_fallback) = (
+            BlockNumber::new_or_panic(632905), // Must be lower than 632915.
+            StarknetVersion::new(0, 13, 1, 0), // Version for block 632905 on mainnet.
+        );
+        assert!(
+            starknet_version_with_fallback
+                < VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
+        );
+        let (context, input) = setup(starknet_version_with_fallback, block_with_fallback).await?;
+
+        let output_json = trace_block_transactions(context, input, rpc_version)
+            .await
+            .unwrap()
+            .serialize(Serializer {
+                version: rpc_version,
+            })?;
+
+        let initial_reads = output_json.get("initial_reads").unwrap();
+        assert!(initial_reads.is_object());
+        assert_eq!(initial_reads.to_string(), "{}");
+
+        // Next test that we get an empty "initial_reads" object when these conditions
+        // are fulfilled:
+        //   - Starknet version is new enough to support local tracing
+        //   - Block number is in the range where we fetch traces from the gateway
+        //   - `RETURN_INITIAL_READS` is set
+        #[rustfmt::skip]
+        let (re_execution_impossible_block, re_execution_impossible_starknet_version) = (
+            MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START + 10, // 1943704 + 10 = 1943714.
+            StarknetVersion::new(0, 13, 6, 0), // Version for block 1943714 on mainnet.
+        );
+        assert!(
+            re_execution_impossible_starknet_version
+                >= VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
+        );
+        let (context, input) = setup(
+            re_execution_impossible_starknet_version,
+            re_execution_impossible_block,
+        )
+        .await?;
+
+        let output_json = trace_block_transactions(context, input, rpc_version)
+            .await
+            .unwrap()
+            .serialize(Serializer {
+                version: rpc_version,
+            })?;
+
+        let initial_reads = output_json.get("initial_reads").unwrap();
+        assert!(initial_reads.is_object());
+        assert_eq!(initial_reads.to_string(), "{}");
 
         Ok(())
     }
@@ -1396,6 +1771,7 @@ pub(crate) mod tests {
             context.clone(),
             TraceBlockTransactionsInput {
                 block_id: BlockId::Number(block.block_number),
+                trace_flags: crate::dto::TraceFlags::new(),
             },
             RPC_VERSION,
         )
@@ -1487,6 +1863,7 @@ pub(crate) mod tests {
             context.clone(),
             TraceBlockTransactionsInput {
                 block_id: BlockId::Number(block.block_number),
+                trace_flags: crate::dto::TraceFlags::new(),
             },
             RPC_VERSION,
         )

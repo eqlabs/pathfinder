@@ -1,3 +1,4 @@
+use std::fmt;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 
@@ -36,15 +37,32 @@ use crate::types::{
     InvokeTransactionTrace,
     L1HandlerTransactionTrace,
     StateDiff,
+    StateMaps,
     TransactionExecutionInfo,
     TransactionType,
 };
 use crate::IntoFelt;
 
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+struct CacheKey {
+    block_hash: BlockHash,
+    return_initial_reads: bool,
+}
+
+impl fmt::Display for CacheKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{{ block_hash: {}, return_initial_reads: {} }}",
+            self.block_hash, self.return_initial_reads
+        )
+    }
+}
+
 #[derive(Debug)]
 enum CacheItem {
-    Inflight(tokio::sync::broadcast::Receiver<Result<Traces, TraceError>>),
-    CachedOk(Traces),
+    Inflight(tokio::sync::broadcast::Receiver<Result<BlockTraces, TraceError>>),
+    CachedOk(BlockTraces),
     CachedErr(TraceError),
 }
 
@@ -85,9 +103,18 @@ struct InternalError {
 }
 
 #[derive(Debug, Clone)]
-pub struct TraceCache(Arc<Mutex<SizedCache<BlockHash, CacheItem>>>);
+pub struct TraceCache(Arc<Mutex<SizedCache<CacheKey, CacheItem>>>);
 
-type Traces = Vec<(TransactionHash, TransactionTrace)>;
+#[derive(Debug, Clone)]
+pub enum BlockTraces {
+    TracesOnly(TransactionTraces),
+    TracesWithInitialReads {
+        traces: TransactionTraces,
+        initial_reads: StateMaps,
+    },
+}
+
+pub type TransactionTraces = Vec<(TransactionHash, TransactionTrace)>;
 
 impl Default for TraceCache {
     fn default() -> Self {
@@ -106,11 +133,12 @@ pub fn simulate(
     execution_state: ExecutionState,
     transactions: Vec<Transaction>,
     epsilon: Percentage,
-) -> Result<Vec<TransactionSimulation>, TransactionExecutionError> {
+    return_initial_reads: bool,
+) -> Result<(Vec<TransactionSimulation>, Option<StateMaps>), TransactionExecutionError> {
     let block_number = execution_state.block_info.number;
     let mut tx_executor = create_executor(RcStorageAdapter::new(db_tx), execution_state)?;
 
-    transactions
+    let sims = transactions
         .into_iter()
         .enumerate()
         .map(|(tx_index, mut tx)| {
@@ -164,10 +192,26 @@ pub fn simulate(
                     state_diff,
                     tx_executor.block_context.versioned_constants(),
                     &gas_vector_computation_mode,
-                ),
+                )
             })
         })
-        .collect()
+        .collect::<Result<_, TransactionExecutionError>>()?;
+
+    // Since `CachedState::get_initial_reads` will always return an aggregate
+    // of all initial reads up to that point, we can just call it once after
+    // all transactions are simulated.
+    let initial_reads = return_initial_reads
+        .then(|| {
+            tx_executor
+                .block_state
+                .as_ref()
+                .expect(BLOCK_STATE_ACCESS_ERR)
+                .get_initial_reads()
+                .map(StateMaps::from)
+        })
+        .transpose()?;
+
+    Ok((sims, initial_reads))
 }
 
 pub fn trace(
@@ -176,22 +220,28 @@ pub fn trace(
     cache: TraceCache,
     block_hash: BlockHash,
     transactions: Vec<Transaction>,
-) -> Result<Vec<(TransactionHash, TransactionTrace)>, TransactionExecutionError> {
+    return_initial_reads: bool,
+) -> Result<BlockTraces, TransactionExecutionError> {
     let mut tx_executor = create_executor(RcStorageAdapter::new(db_tx), execution_state)?;
+
+    let cache_key = CacheKey {
+        block_hash,
+        return_initial_reads,
+    };
 
     let sender = {
         let mut cache = cache.0.lock().unwrap();
-        match cache.cache_get(&block_hash) {
+        match cache.cache_get(&cache_key) {
             Some(CacheItem::CachedOk(cached)) => {
-                tracing::trace!(block=%block_hash, "trace cache hit: ok");
+                tracing::trace!(key=%cache_key, "trace cache hit: ok");
                 return Ok(cached.clone());
             }
             Some(CacheItem::CachedErr(e)) => {
-                tracing::trace!(block=%block_hash, "trace cache hit: err");
+                tracing::trace!(key=%cache_key, "trace cache hit: err");
                 return Err(e.to_owned().into());
             }
             Some(CacheItem::Inflight(receiver)) => {
-                tracing::trace!(block=%block_hash, "trace already inflight");
+                tracing::trace!(key=%cache_key, "trace already inflight");
                 let mut receiver = receiver.resubscribe();
                 drop(cache);
 
@@ -199,9 +249,9 @@ pub fn trace(
                 return trace.map_err(Into::into);
             }
             None => {
-                tracing::trace!(block=%block_hash, "trace cache miss");
+                tracing::trace!(key=%cache_key, "trace cache miss");
                 let (sender, receiver) = tokio::sync::broadcast::channel(1);
-                cache.cache_set(block_hash, CacheItem::Inflight(receiver));
+                cache.cache_set(cache_key.clone(), CacheItem::Inflight(receiver));
                 sender
             }
         }
@@ -242,7 +292,7 @@ pub fn trace(
                 // race conditions between senders and receivers.
                 let mut cache = cache.0.lock().unwrap();
                 let _ = sender.send(Err(error.clone()));
-                cache.cache_set(block_hash, CacheItem::CachedErr(error.clone()));
+                cache.cache_set(cache_key, CacheItem::CachedErr(error.clone()));
 
                 return Err(error.into());
             }
@@ -255,7 +305,7 @@ pub fn trace(
         .inspect_err(|_| {
             // Remove the cache entry so it's no longer inflight.
             let mut cache = cache.0.lock().unwrap();
-            cache.cache_remove(&block_hash);
+            cache.cache_remove(&cache_key);
         })?;
 
         tracing::trace!("Transaction tracing finished");
@@ -270,12 +320,30 @@ pub fn trace(
         traces.push((hash, trace));
     }
 
+    // Since `CachedState::get_initial_reads` will always return an aggregate
+    // of all initial reads up to that point, we can just call it once after
+    // all transactions are traced.
+    let block_traces = if return_initial_reads {
+        let initial_reads = tx_executor
+            .block_state
+            .as_ref()
+            .expect(BLOCK_STATE_ACCESS_ERR)
+            .get_initial_reads()
+            .map(StateMaps::from)?;
+        BlockTraces::TracesWithInitialReads {
+            traces,
+            initial_reads,
+        }
+    } else {
+        BlockTraces::TracesOnly(traces)
+    };
+
     // Lock the cache before sending to avoid race conditions between senders and
     // receivers.
     let mut cache = cache.0.lock().unwrap();
-    let _ = sender.send(Ok(traces.clone()));
-    cache.cache_set(block_hash, CacheItem::CachedOk(traces.clone()));
-    Ok(traces)
+    let _ = sender.send(Ok(block_traces.clone()));
+    cache.cache_set(cache_key, CacheItem::CachedOk(block_traces.clone()));
+    Ok(block_traces)
 }
 
 pub(crate) fn to_trace(
