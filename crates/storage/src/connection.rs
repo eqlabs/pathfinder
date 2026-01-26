@@ -30,13 +30,13 @@ pub use trie::{Node, NodeRef, RootIndexUpdate, StoredNode, TrieStorageIndex, Tri
 
 use crate::bloom::AggregateBloomCache;
 use crate::params::RowExt;
-use crate::{StorageError, VERSION_KEY};
+use crate::{RocksDB, StorageError, VERSION_KEY};
 
 type PooledConnection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
 
 pub struct Connection {
     connection: PooledConnection,
-    rocksdb: Arc<rust_rocksdb::DB>,
+    rocksdb: Arc<RocksDB>,
     event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
@@ -46,7 +46,7 @@ pub struct Connection {
 impl Connection {
     pub(crate) fn new(
         connection: PooledConnection,
-        rocksdb: Arc<rust_rocksdb::DB>,
+        rocksdb: Arc<RocksDB>,
         event_filter_cache: Arc<AggregateBloomCache>,
         running_event_filter: Arc<Mutex<RunningEventFilter>>,
         trie_prune_mode: TriePruneMode,
@@ -66,6 +66,7 @@ impl Connection {
         let tx = self.connection.transaction()?;
         Ok(Transaction {
             transaction: tx,
+            rocksdb: Arc::clone(&self.rocksdb),
             event_filter_cache: self.event_filter_cache.clone(),
             running_event_filter: self.running_event_filter.clone(),
             trie_prune_mode: self.trie_prune_mode,
@@ -80,6 +81,7 @@ impl Connection {
         let tx = self.connection.transaction_with_behavior(behavior)?;
         Ok(Transaction {
             transaction: tx,
+            rocksdb: Arc::clone(&self.rocksdb),
             event_filter_cache: self.event_filter_cache.clone(),
             running_event_filter: self.running_event_filter.clone(),
             trie_prune_mode: self.trie_prune_mode,
@@ -98,6 +100,7 @@ impl Connection {
 
 pub struct Transaction<'inner> {
     transaction: rusqlite::Transaction<'inner>,
+    rocksdb: Arc<RocksDB>,
     event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
@@ -126,6 +129,10 @@ impl Transaction<'_> {
 
     pub(crate) fn inner(&self) -> &rusqlite::Transaction<'_> {
         &self.transaction
+    }
+
+    pub(crate) fn rocksdb(&self) -> &RocksDB {
+        &self.rocksdb
     }
 
     pub fn commit(self) -> anyhow::Result<()> {

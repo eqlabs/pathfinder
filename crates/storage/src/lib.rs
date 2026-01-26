@@ -14,11 +14,12 @@ mod error;
 pub mod fake;
 mod params;
 mod schema;
+use rust_rocksdb::ColumnFamilyDescriptor;
 pub use schema::revision_0073::reorg_regression_checks;
 pub mod test_utils;
 
 use std::num::NonZeroU32;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
@@ -45,6 +46,8 @@ pub use transaction::dto::{
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";
 
+type RocksDB = rust_rocksdb::DBWithThreadMode<rust_rocksdb::MultiThreaded>;
+
 /// Specifies the [journal mode](https://sqlite.org/pragma.html#pragma_journal_mode)
 /// of the [Storage].
 #[derive(Clone, Copy, Debug)]
@@ -69,7 +72,7 @@ struct Inner {
     /// Uses [`Arc`] to allow _shallow_ [Storage] cloning
     database_path: Arc<PathBuf>,
     pool: Pool<SqliteConnectionManager>,
-    rocksdb: Arc<rust_rocksdb::DB>,
+    rocksdb: Arc<RocksDB>,
     event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
@@ -79,6 +82,7 @@ struct Inner {
 pub struct StorageManager {
     database_path: PathBuf,
     journal_mode: JournalMode,
+    rocksdb: Arc<RocksDB>,
     event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
@@ -111,21 +115,10 @@ impl StorageManager {
             .max_size(capacity.get())
             .build(pool_manager)?;
 
-        let rocksdb_path = if self.database_path.starts_with("file:memdb") {
-            // in-memory database
-            // FIXME: make sure we clean this up after use
-            let tmpdir = tempfile::Builder::new().disable_cleanup(true).tempdir()?;
-            tmpdir.path().to_path_buf()
-        } else {
-            self.database_path.join("rocksdb")
-        };
-        std::fs::create_dir_all(&rocksdb_path)?;
-        let rocksdb = Arc::new(rust_rocksdb::DB::open_default(&rocksdb_path)?);
-
         Ok(Storage(Inner {
             database_path: Arc::new(self.database_path.clone()),
             pool,
-            rocksdb,
+            rocksdb: Arc::clone(&self.rocksdb),
             event_filter_cache: self.event_filter_cache.clone(),
             running_event_filter: self.running_event_filter.clone(),
             trie_prune_mode: self.trie_prune_mode,
@@ -378,9 +371,20 @@ impl StorageBuilder {
             .map_err(|(_connection, error)| error)
             .context("Closing DB after migration")?;
 
+        let rocksdb_path = if self.database_path.starts_with("file:memdb") {
+            // in-memory database
+            // FIXME: make sure we clean this up after use
+            let tmpdir = tempfile::Builder::new().disable_cleanup(true).tempdir()?;
+            tmpdir.path().to_path_buf()
+        } else {
+            self.database_path.with_extension("rocksdb")
+        };
+        let rocksdb = Arc::new(Self::open_rocksdb(&rocksdb_path)?);
+
         Ok(StorageManager {
             database_path: self.database_path,
             journal_mode: self.journal_mode,
+            rocksdb,
             event_filter_cache: Arc::new(AggregateBloomCache::with_size(
                 self.event_filter_cache_size,
             )),
@@ -448,14 +452,38 @@ impl StorageBuilder {
             .map_err(|(_connection, error)| error)
             .context("Closing DB after loading running event filter")?;
 
+        let rocksdb_path = if database_path.starts_with("file:memdb") {
+            // in-memory database
+            // FIXME: make sure we clean this up after use
+            let tmpdir = tempfile::Builder::new().disable_cleanup(true).tempdir()?;
+            tmpdir.path().to_path_buf()
+        } else {
+            database_path.with_extension("rocksdb")
+        };
+        let rocksdb = Arc::new(Self::open_rocksdb(&rocksdb_path)?);
+
         Ok(ReadOnlyStorageManager(StorageManager {
             database_path,
             journal_mode,
+            rocksdb,
             event_filter_cache: Arc::new(AggregateBloomCache::with_size(event_filter_cache_size)),
             running_event_filter: Arc::new(Mutex::new(running_event_filter)),
             trie_prune_mode,
             blockchain_history_mode,
         }))
+    }
+
+    fn open_rocksdb(path: &Path) -> anyhow::Result<RocksDB> {
+        let mut options = rust_rocksdb::Options::default();
+        options.create_if_missing(true);
+        options.create_missing_column_families(true);
+
+        let cfs = ["trie_class", "trie_storage", "trie_contracts"]
+            .iter()
+            .map(|name| ColumnFamilyDescriptor::new(*name, rust_rocksdb::Options::default()));
+
+        let db = RocksDB::open_cf_descriptors(&options, path, cfs)?;
+        Ok(db)
     }
 
     /// - If there is no explicitly requested configuration, assumes the user
