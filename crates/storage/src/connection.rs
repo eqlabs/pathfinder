@@ -36,6 +36,7 @@ type PooledConnection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionMana
 
 pub struct Connection {
     connection: PooledConnection,
+    rocksdb: Arc<rust_rocksdb::DB>,
     event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
@@ -45,6 +46,7 @@ pub struct Connection {
 impl Connection {
     pub(crate) fn new(
         connection: PooledConnection,
+        rocksdb: Arc<rust_rocksdb::DB>,
         event_filter_cache: Arc<AggregateBloomCache>,
         running_event_filter: Arc<Mutex<RunningEventFilter>>,
         trie_prune_mode: TriePruneMode,
@@ -52,6 +54,7 @@ impl Connection {
     ) -> Self {
         Self {
             connection,
+            rocksdb,
             event_filter_cache,
             running_event_filter,
             trie_prune_mode,

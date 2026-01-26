@@ -18,7 +18,7 @@ pub use schema::revision_0073::reorg_regression_checks;
 pub mod test_utils;
 
 use std::num::NonZeroU32;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
@@ -69,6 +69,7 @@ struct Inner {
     /// Uses [`Arc`] to allow _shallow_ [Storage] cloning
     database_path: Arc<PathBuf>,
     pool: Pool<SqliteConnectionManager>,
+    rocksdb: Arc<rust_rocksdb::DB>,
     event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
@@ -110,9 +111,21 @@ impl StorageManager {
             .max_size(capacity.get())
             .build(pool_manager)?;
 
+        let rocksdb_path = if self.database_path.starts_with("file:memdb") {
+            // in-memory database
+            // FIXME: make sure we clean this up after use
+            let tmpdir = tempfile::Builder::new().disable_cleanup(true).tempdir()?;
+            tmpdir.path().to_path_buf()
+        } else {
+            self.database_path.join("rocksdb")
+        };
+        std::fs::create_dir_all(&rocksdb_path)?;
+        let rocksdb = Arc::new(rust_rocksdb::DB::open_default(&rocksdb_path)?);
+
         Ok(Storage(Inner {
             database_path: Arc::new(self.database_path.clone()),
             pool,
+            rocksdb,
             event_filter_cache: self.event_filter_cache.clone(),
             running_event_filter: self.running_event_filter.clone(),
             trie_prune_mode: self.trie_prune_mode,
@@ -633,15 +646,12 @@ impl Storage {
         let conn = self.0.pool.get().map_err(StorageError::from)?;
         Ok(Connection::new(
             conn,
+            Arc::clone(&self.0.rocksdb),
             self.0.event_filter_cache.clone(),
             self.0.running_event_filter.clone(),
             self.0.trie_prune_mode,
             self.0.blockchain_history_mode,
         ))
-    }
-
-    pub fn path(&self) -> &Path {
-        &self.0.database_path
     }
 
     pub fn is_migrated(&self) -> Result<bool, StorageError> {
