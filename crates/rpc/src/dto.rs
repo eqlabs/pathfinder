@@ -622,6 +622,55 @@ impl Map {
             }
         }
     }
+
+    pub fn deserialize_optional_array_or_scalar<T: DeserializeForVersion>(
+        &mut self,
+        key: &'static str,
+        cb: impl Fn(Value) -> Result<T, serde_json::Error>,
+    ) -> Result<Vec<T>, serde_json::Error> {
+        match &mut self.data {
+            MapOrArray::Map(data) => {
+                let value = data.remove(key);
+                match value {
+                    Some(value) => {
+                        let value1 = Value {
+                            data: value.clone(),
+                            name: Some(key),
+                            version: self.version,
+                        };
+                        match value1.deserialize_array(&cb) {
+                            Ok(res) => Ok(res),
+                            Err(_) => {
+                                let value2 = Value {
+                                    data: value,
+                                    name: Some(key),
+                                    version: self.version,
+                                };
+                                let scalar = cb(value2)?;
+                                Ok(vec![scalar])
+                            }
+                        }
+                    }
+                    None => Ok(vec![]),
+                }
+            }
+            MapOrArray::Array { values, offset } => {
+                let value = values.get_mut(*offset).map(|value| value.take());
+                match value {
+                    Some(value) => {
+                        let value = Value {
+                            data: value,
+                            name: Some(key),
+                            version: self.version,
+                        };
+                        *offset += 1;
+                        Ok(value.deserialize_array(cb)?)
+                    }
+                    None => Ok(vec![]),
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]

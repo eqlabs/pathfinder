@@ -84,10 +84,7 @@ impl crate::dto::DeserializeForVersion for EventFilter {
         let version = value.version;
         value.deserialize_map(|value| {
             let raw_addresses = if version >= RpcVersion::V10 {
-                match value.deserialize_optional_array("address", |v| v.deserialize()) {
-                    Ok(opt_addresses) => opt_addresses.unwrap_or_default(),
-                    Err(_) => vec![value.deserialize("address")?],
-                }
+                value.deserialize_optional_array_or_scalar("address", |v| v.deserialize())?
             } else {
                 let mut opt_address = vec![];
                 if let Some(addr) = value.deserialize_optional("address")? {
