@@ -774,6 +774,33 @@ mod tests {
         assert_eq!(input, expected);
     }
 
+    #[test]
+    fn parsing_single_address() {
+        let input = json!({
+            "filter": {
+                "from_block": {"block_number": 0},
+                "to_block": {"block_number": 1000},
+                "address": "0x17c378e4fa718fd3405324eee83c5c7c515d72010fb30977b08b84b0fa217a9",
+                "chunk_size": 1024
+            }
+        });
+
+        let filter = EventFilter {
+            from_block: Some(BlockId::Number(BlockNumber::new_or_panic(0))),
+            to_block: Some(BlockId::Number(BlockNumber::new_or_panic(1000))),
+            addresses: make_contract_address_filter(
+                "0x17c378e4fa718fd3405324eee83c5c7c515d72010fb30977b08b84b0fa217a9",
+            ),
+            chunk_size: 1024,
+            ..Default::default()
+        };
+        let expected = GetEventsInput { filter };
+
+        let input =
+            GetEventsInput::deserialize(crate::dto::Value::new(input, RpcVersion::V10)).unwrap();
+        assert_eq!(input, expected);
+    }
+
     #[rstest::rstest]
     #[case::positional(json!([{
         "address": ["0x10", "0x20"],
