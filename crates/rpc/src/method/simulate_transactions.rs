@@ -627,6 +627,35 @@ pub(crate) mod tests {
     #[case::v10(RpcVersion::V10)]
     #[test_log::test(tokio::test)]
     async fn test_simulate_transaction_with_return_initial_reads(#[case] rpc_version: RpcVersion) {
+        fn fixture(
+            rpc_version: RpcVersion,
+            simulation_flags: &crate::dto::SimulationFlags,
+        ) -> serde_json::Result<serde_json::Value> {
+            let fixture_str = match rpc_version {
+                RpcVersion::V07 => {
+                    include_str!("../../fixtures/0.7.0/simulations/simulate_transaction.json")
+                }
+                RpcVersion::V08 => {
+                    include_str!("../../fixtures/0.8.0/simulations/simulate_transaction.json")
+                }
+                RpcVersion::V09 => {
+                    include_str!("../../fixtures/0.9.0/simulations/simulate_transaction.json")
+                }
+                RpcVersion::V10 => {
+                    if simulation_flags.contains(&crate::dto::SimulationFlag::ReturnInitialReads) {
+                        include_str!(
+                            "../../fixtures/0.10.0/simulations/\
+                             simulate_transaction_with_return_initial_reads.json"
+                        )
+                    } else {
+                        include_str!("../../fixtures/0.10.0/simulations/simulate_transaction.json")
+                    }
+                }
+                RpcVersion::V06 | RpcVersion::PathfinderV01 => unreachable!("no such test case"),
+            };
+            serde_json::from_str(fixture_str)
+        }
+
         let (context, _, _, _) = crate::test_setup::test_context().await;
 
         let input_json = serde_json::json!({
@@ -645,166 +674,19 @@ pub(crate) mod tests {
             ],
             "simulation_flags": ["SKIP_FEE_CHARGE"],
         });
-
         let value = crate::dto::Value::new(input_json, rpc_version);
         let mut input = SimulateTransactionInput::deserialize(value).unwrap();
 
-        const DEPLOYED_CONTRACT_ADDRESS: ContractAddress =
-            contract_address!("0xf3805e4f045a8b48e7e9e6cd5d910973a22360572207f3ae625c5cec2a3232");
-
-        // TODO: Move this (and the rest of the fixtures in this file) into JSON files
-        // in ../../fixtures.
-        let mut expected = crate::method::simulate_transactions::Output {
-            simulations: vec![
-                pathfinder_executor::types::TransactionSimulation{
-                    fee_estimation: pathfinder_executor::types::FeeEstimate {
-                        l1_gas_consumed: 0x15.into(),
-                        l1_gas_price: 1.into(),
-                        l1_data_gas_consumed: 0x160.into(),
-                        l1_data_gas_price: 2.into(),
-                        l2_gas_consumed: 0.into(),
-                        l2_gas_price: 1.into(),
-                        overall_fee: 0x2d5.into(),
-                        unit: pathfinder_executor::types::PriceUnit::Wei,
-                    },
-                    trace: pathfinder_executor::types::TransactionTrace::DeployAccount(
-                        pathfinder_executor::types::DeployAccountTransactionTrace {
-                            execution_info: DeployAccountTransactionExecutionInfo {
-                            constructor_invocation: Some(pathfinder_executor::types::FunctionInvocation {
-                                    call_type: Some(pathfinder_executor::types::CallType::Call),
-                                    caller_address: felt!("0x0"),
-                                    class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
-                                    entry_point_type: Some(pathfinder_executor::types::EntryPointType::Constructor),
-                                    events: vec![pathfinder_executor::types::Event {
-                                        order: 0,
-                                        data: vec![],
-                                        keys: vec![
-                                            felt!("0x38f6a5b87c23cee6e7294bcc3302e95019f70f81586ff3cac38581f5ca96381"),
-                                            felt!("0x1"),
-                                        ],
-                                    }],
-                                    calldata: vec![felt!("0x1")],
-                                    contract_address: DEPLOYED_CONTRACT_ADDRESS,
-                                    selector: Some(entry_point!("0x028FFE4FF0F226A9107253E17A904099AA4F63A02A5621DE0576E5AA71BC5194").0),
-                                    messages: vec![],
-                                    result: vec![],
-                                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
-                                        l1_gas: 2,
-                                        l2_gas: 0
-                                    },
-                                    internal_calls: vec![],
-                                    computation_resources: pathfinder_executor::types::ComputationResources {
-                                        pedersen_builtin_applications: 2,
-                                        range_check_builtin_applications: 8,
-                                        steps: 312,
-                                        ..Default::default()
-                                    },
-                                    is_reverted: false,
-                                }),
-                            validate_invocation: Some(
-                                pathfinder_executor::types::FunctionInvocation {
-                                    call_type: Some(pathfinder_executor::types::CallType::Call),
-                                    caller_address: felt!("0x0"),
-                                    class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
-                                    entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
-                                    events: vec![],
-                                    calldata: vec![
-                                        crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0,
-                                        call_param!("0x046C0D4ABF0192A788ACA261E58D7031576F7D8EA5229F452B0F23E691DD5971").0,
-                                        call_param!("0x1").0,
-                                    ],
-                                    contract_address: DEPLOYED_CONTRACT_ADDRESS,
-                                    selector: Some(entry_point!("0x036FCBF06CD96843058359E1A75928BEACFAC10727DAB22A3972F0AF8AA92895").0),
-                                    messages: vec![],
-                                    result: vec![
-                                        felt!("0x56414c4944")
-                                    ],
-                                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
-                                        l1_gas: 1,
-                                        l2_gas: 0,
-                                    },
-                                    internal_calls: vec![],
-                                    computation_resources: pathfinder_executor::types::ComputationResources{
-                                        memory_holes: 1,
-                                        range_check_builtin_applications: 2,
-                                        steps: 135,
-                                        ..Default::default()
-                                    },
-                                    is_reverted: false,
-                                },
-                            ),
-                            fee_transfer_invocation: None,
-                            execution_resources: pathfinder_executor::types::ExecutionResources {
-                                computation_resources: pathfinder_executor::types::ComputationResources{
-                                    memory_holes: 1,
-                                    pedersen_builtin_applications: 2,
-                                    range_check_builtin_applications: 10,
-                                    steps:447,
-                                    ..Default::default()
-                                },
-                                data_availability: pathfinder_executor::types::DataAvailabilityResources{
-                                    l1_gas:0,
-                                    l1_data_gas:352
-                                },
-                                l1_gas: 21,
-                                l1_data_gas: 352,
-                                l2_gas: 0,
-                            },},
-                            state_diff: pathfinder_executor::types::StateDiff {
-                                storage_diffs: BTreeMap::from([
-                                    (
-                                        DEPLOYED_CONTRACT_ADDRESS,
-                                        vec![
-                                            pathfinder_executor::types::StorageDiff {
-                                                key: storage_address!("0x81ba5d1f84a6a8f0e7ae24720a20f43f81d9ee6eed98fd524ba8d53a49416b"),
-                                                value: storage_value!("0x1"),
-                                            },
-                                            pathfinder_executor::types::StorageDiff {
-                                                key: storage_address!("0x1379ac0624b939ceb9dede92211d7db5ee174fe28be72245b0a1a2abd81c98f"),
-                                                value: storage_value!("0x1"),
-                                            },
-                                            pathfinder_executor::types::StorageDiff {
-                                                key: storage_address!("0x7e79bbb6be5d418acd50c88b675e697f6f7094e203c9d7e29c6ad6731f931dd"),
-                                                value: storage_value!("0x1"),
-                                            },
-                                        ]
-                                    )
-                                ]),
-                                deprecated_declared_classes: HashSet::new(),
-                                declared_classes: vec![],
-                                deployed_contracts: vec![
-                                    pathfinder_executor::types::DeployedContract {
-                                        address: DEPLOYED_CONTRACT_ADDRESS,
-                                        class_hash: crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH
-                                    }
-                                ],
-                                replaced_classes: vec![],
-                                migrated_compiled_classes: vec![],
-                                nonces: BTreeMap::from([(
-                                    DEPLOYED_CONTRACT_ADDRESS,
-                                    contract_nonce!("0x1"),
-                                )]),
-                            },
-                        },
-                    ),
-                }],
-                initial_reads: None,
-        };
-
         // First test without `RETURN_INITIAL_READS`.
-        let expected_serialized = expected
-            .serialize(Serializer {
-                version: rpc_version,
-            })
-            .unwrap();
-        let output_serialized = simulate_transactions(context.clone(), input.clone(), rpc_version)
+        let output_json = simulate_transactions(context.clone(), input.clone(), rpc_version)
             .await
-            .expect("result")
+            .unwrap()
             .serialize(Serializer {
                 version: rpc_version,
             })
             .unwrap();
-        pretty_assertions_sorted::assert_eq!(output_serialized, expected_serialized);
+        let expected_json = fixture(rpc_version, &input.simulation_flags).unwrap();
+        pretty_assertions_sorted::assert_eq!(output_json, expected_json);
 
         // Then, for RpcVersion that support `RETURN_INITIAL_READS` (i.e. after
         // RpcVersion::V10), test with the flag enabled.
@@ -813,58 +695,15 @@ pub(crate) mod tests {
                 .simulation_flags
                 .0
                 .push(crate::dto::SimulationFlag::ReturnInitialReads);
-            let expected_initial_reads = pathfinder_executor::types::StateMaps {
-                nonces: BTreeMap::from([(DEPLOYED_CONTRACT_ADDRESS, contract_nonce!("0x0"))]),
-                class_hashes: BTreeMap::from([(DEPLOYED_CONTRACT_ADDRESS, class_hash!("0x0"))]),
-                storage: BTreeMap::from([
-                    (
-                        (
-                            DEPLOYED_CONTRACT_ADDRESS,
-                            storage_address!(
-                                "0x81ba5d1f84a6a8f0e7ae24720a20f43f81d9ee6eed98fd524ba8d53a49416b"
-                            ),
-                        ),
-                        storage_value!("0x0"),
-                    ),
-                    (
-                        (
-                            DEPLOYED_CONTRACT_ADDRESS,
-                            storage_address!(
-                                "0x1379ac0624b939ceb9dede92211d7db5ee174fe28be72245b0a1a2abd81c98f"
-                            ),
-                        ),
-                        storage_value!("0x0"),
-                    ),
-                    (
-                        (
-                            DEPLOYED_CONTRACT_ADDRESS,
-                            storage_address!(
-                                "0x7e79bbb6be5d418acd50c88b675e697f6f7094e203c9d7e29c6ad6731f931dd"
-                            ),
-                        ),
-                        storage_value!("0x0"),
-                    ),
-                ]),
-                compiled_class_hashes: BTreeMap::new(),
-                declared_contracts: BTreeMap::from([(
-                    crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH,
-                    true,
-                )]),
-            };
-            expected.initial_reads = Some(expected_initial_reads);
-            let expected_serialized = expected
-                .serialize(Serializer {
-                    version: rpc_version,
-                })
-                .unwrap();
-            let output_serialized = simulate_transactions(context, input, rpc_version)
+            let output_json = simulate_transactions(context, input.clone(), rpc_version)
                 .await
-                .expect("result")
+                .unwrap()
                 .serialize(Serializer {
                     version: rpc_version,
                 })
                 .unwrap();
-            pretty_assertions_sorted::assert_eq!(output_serialized, expected_serialized);
+            let expected_json = fixture(rpc_version, &input.simulation_flags).unwrap();
+            pretty_assertions_sorted::assert_eq!(output_json, expected_json);
         }
     }
 
@@ -2803,7 +2642,9 @@ pub(crate) mod tests {
         };
         let result_serialized = simulate_transactions(context, input, version)
             .await
-            .unwrap().serialize(crate::dto::Serializer { version }).unwrap();
+            .unwrap()
+            .serialize(crate::dto::Serializer { version })
+            .unwrap();
         crate::assert_json_matches_fixture!(
             result_serialized,
             version,
@@ -2842,7 +2683,9 @@ pub(crate) mod tests {
 
         let result_serialized = simulate_transactions(context, input, version)
             .await
-            .unwrap().serialize(crate::dto::Serializer { version }).unwrap();
+            .unwrap()
+            .serialize(crate::dto::Serializer { version })
+            .unwrap();
         crate::assert_json_matches_fixture!(
             result_serialized,
             version,
@@ -2876,7 +2719,9 @@ pub(crate) mod tests {
         };
         let result_serialized = simulate_transactions(context, input, version)
             .await
-            .unwrap().serialize(crate::dto::Serializer { version }).unwrap();
+            .unwrap()
+            .serialize(crate::dto::Serializer { version })
+            .unwrap();
         crate::assert_json_matches_fixture!(
             result_serialized,
             version,
@@ -2910,7 +2755,9 @@ pub(crate) mod tests {
         };
         let result_serialized = simulate_transactions(context, input, version)
             .await
-            .unwrap().serialize(crate::dto::Serializer { version }).unwrap();
+            .unwrap()
+            .serialize(crate::dto::Serializer { version })
+            .unwrap();
         crate::assert_json_matches_fixture!(
             result_serialized,
             version,
