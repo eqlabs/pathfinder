@@ -2761,34 +2761,11 @@ pub(crate) mod tests {
             block_id: BlockId::Number(last_block_header.number),
             simulation_flags: crate::dto::SimulationFlags(vec![]),
         };
-        let result = simulate_transactions(context, input, version)
+        let result_serialized = simulate_transactions(context, input, version)
             .await
+            .unwrap()
+            .serialize(crate::dto::Serializer { version })
             .unwrap();
-
-        let serializer = crate::dto::Serializer { version };
-        // TODO(serialization): This does not serialize the same way a real JSON-RPC
-        // call would, which would be:
-        //
-        // let result_serialized = result.serialize(serializer).unwrap();
-        //
-        // This matters because the way it is currently done we end up with a very
-        // different result:
-        //   - `include_state_diff` flag is not taken into account so we could be
-        //     missing state
-        //   diffs in the output.
-        //   - There will be no difference in the output scheme for different JSON-RPC
-        //     versions,
-        //   even though, for example, RpcVersion::V10 introduced changes to the scheme.
-        //
-        // There are several more cases of this in the tests below.
-        let result_serializable = result.simulations.into_iter().collect::<Vec<_>>();
-        let result_serialized = serializer
-            .serialize_iter(
-                result_serializable.len(),
-                &mut result_serializable.into_iter(),
-            )
-            .unwrap();
-
         crate::assert_json_matches_fixture!(
             result_serialized,
             version,
@@ -2824,20 +2801,9 @@ pub(crate) mod tests {
                 crate::dto::SimulationFlag::SkipFeeCharge,
             ]),
         };
-        let result = simulate_transactions(context, input, version)
+        let result_serialized = simulate_transactions(context, input, version)
             .await
-            .unwrap();
-
-        let serializer = crate::dto::Serializer { version };
-        // TODO(serialization)
-        let result_serializable = result.simulations.into_iter().collect::<Vec<_>>();
-        let result_serialized = serializer
-            .serialize_iter(
-                result_serializable.len(),
-                &mut result_serializable.into_iter(),
-            )
-            .unwrap();
-
+            .unwrap().serialize(crate::dto::Serializer { version }).unwrap();
         crate::assert_json_matches_fixture!(
             result_serialized,
             version,
@@ -2874,20 +2840,9 @@ pub(crate) mod tests {
             ]),
         };
 
-        let result = simulate_transactions(context, input, version)
+        let result_serialized = simulate_transactions(context, input, version)
             .await
-            .unwrap();
-
-        let serializer = crate::dto::Serializer { version };
-        // TODO(serialization)
-        let result_serializable = result.simulations.into_iter().collect::<Vec<_>>();
-        let result_serialized = serializer
-            .serialize_iter(
-                result_serializable.len(),
-                &mut result_serializable.into_iter(),
-            )
-            .unwrap();
-
+            .unwrap().serialize(crate::dto::Serializer { version }).unwrap();
         crate::assert_json_matches_fixture!(
             result_serialized,
             version,
@@ -2919,20 +2874,9 @@ pub(crate) mod tests {
             block_id: BlockId::Number(last_block_header.number),
             simulation_flags: crate::dto::SimulationFlags(vec![]),
         };
-        let result = simulate_transactions(context, input, version)
+        let result_serialized = simulate_transactions(context, input, version)
             .await
-            .unwrap();
-
-        let serializer = crate::dto::Serializer { version };
-        // TODO(serialization)
-        let result_serializable = result.simulations.into_iter().collect::<Vec<_>>();
-        let result_serialized = serializer
-            .serialize_iter(
-                result_serializable.len(),
-                &mut result_serializable.into_iter(),
-            )
-            .unwrap();
-
+            .unwrap().serialize(crate::dto::Serializer { version }).unwrap();
         crate::assert_json_matches_fixture!(
             result_serialized,
             version,
@@ -2964,20 +2908,9 @@ pub(crate) mod tests {
             block_id: BlockId::Number(last_block_header.number),
             simulation_flags: crate::dto::SimulationFlags(vec![]),
         };
-        let result = simulate_transactions(context, input, version)
+        let result_serialized = simulate_transactions(context, input, version)
             .await
-            .unwrap();
-
-        let serializer = crate::dto::Serializer { version };
-        // TODO(serialization)
-        let result_serializable = result.simulations.into_iter().collect::<Vec<_>>();
-        let result_serialized = serializer
-            .serialize_iter(
-                result_serializable.len(),
-                &mut result_serializable.into_iter(),
-            )
-            .unwrap();
-
+            .unwrap().serialize(crate::dto::Serializer { version }).unwrap();
         crate::assert_json_matches_fixture!(
             result_serialized,
             version,
