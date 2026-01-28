@@ -12,7 +12,7 @@ use anyhow::Context;
 use config::BlockchainHistory;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_common::{BlockNumber, Chain, ChainId, EthereumChain};
-use pathfinder_ethereum::{EthereumApi, EthereumClient};
+use pathfinder_ethereum::EthereumClient;
 use pathfinder_lib::consensus::{ConsensusChannels, ConsensusTaskHandles};
 use pathfinder_lib::gas_price::{L1GasPriceConfig, L1GasPriceProvider};
 use pathfinder_lib::state::{sync_gas_prices, L1GasPriceSyncConfig, SyncContext};
