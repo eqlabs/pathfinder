@@ -44,6 +44,47 @@ pub fn create_l1_handler_transaction(
     }
 }
 
+/// Creates a realistic L1Handler transaction for testing
+///
+/// `seed` is used to vary the transaction content independently of `index`, so
+/// that we don't encounter duplicate transaction hashes across multiple
+/// blocks.
+pub fn create_l1_handler_transaction_0(
+    seed: u32,
+    index: usize,
+    chain_id: ChainId,
+) -> proto_consensus::Transaction {
+    // base is a seed and index dependent value to avoid collisions but at the same
+    // time easily allow to trace back which seed/index produced the transaction
+    let base = index as u64 + ((seed as u64) << 32);
+    let base = Felt::from_u64(base);
+
+    // Create the L1Handler transaction
+    let txn = p2p_proto::consensus::TransactionVariant::L1HandlerV0(
+        p2p_proto::transaction::L1HandlerV0 {
+            nonce: base,
+            address: Address(base),
+            entry_point_selector: base,
+            calldata: vec![base],
+        },
+    );
+
+    // Calculate the correct hash
+    let l1_handler = pathfinder_common::transaction::L1HandlerTransaction {
+        nonce: pathfinder_common::TransactionNonce(base),
+        contract_address: ContractAddress::new_or_panic(base),
+        entry_point_selector: pathfinder_common::EntryPoint(base),
+        calldata: vec![pathfinder_common::CallParam(base)],
+    };
+
+    let hash = l1_handler.calculate_hash(chain_id);
+
+    proto_consensus::Transaction {
+        transaction_hash: p2p_proto::common::Hash(hash.0),
+        txn,
+    }
+}
+
 /// Creates a batch of transactions for testing
 pub fn create_transaction_batch(
     start_index: usize,
@@ -52,6 +93,18 @@ pub fn create_transaction_batch(
 ) -> Vec<proto_consensus::Transaction> {
     (start_index..start_index + count)
         .map(|i| create_l1_handler_transaction(i, chain_id))
+        .collect()
+}
+
+/// Creates a batch of transactions for testing
+pub fn create_transaction_batch_0(
+    seed: u32,
+    start_index: usize,
+    count: usize,
+    chain_id: ChainId,
+) -> Vec<proto_consensus::Transaction> {
+    (start_index..start_index + count)
+        .map(|i| create_l1_handler_transaction_0(seed, i, chain_id))
         .collect()
 }
 

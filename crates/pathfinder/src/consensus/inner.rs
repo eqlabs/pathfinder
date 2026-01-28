@@ -16,7 +16,8 @@ mod persist_proposals;
 ))]
 pub use persist_proposals::ConsensusProposals;
 
-#[cfg(test)]
+// TODO: REGRESSION, re-enable once the issue is resolved.
+// #[cfg(test)]
 mod test_helpers;
 
 use std::path::{Path, PathBuf};

@@ -10,15 +10,22 @@
 //!    vote
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::atomic::AtomicU64;
+use std::sync::{Arc, LazyLock};
+use std::time::{Duration, SystemTime};
 use std::vec;
 
 use anyhow::Context;
 use p2p::consensus::HeightAndRound;
-use p2p_proto::common::{Address, Hash};
-use p2p_proto::consensus::{ProposalFin, ProposalInit, ProposalPart};
-use pathfinder_common::{BlockId, ConsensusFinalizedL2Block, ContractAddress, ProposalCommitment};
+use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
+use p2p_proto::consensus::{BlockInfo, ProposalFin, ProposalInit, ProposalPart};
+use pathfinder_common::{
+    BlockId,
+    ChainId,
+    ConsensusFinalizedL2Block,
+    ContractAddress,
+    ProposalCommitment,
+};
 use pathfinder_consensus::{
     Config,
     Consensus,
@@ -29,7 +36,9 @@ use pathfinder_consensus::{
     ValidatorSet,
     ValidatorSetProvider,
 };
+use pathfinder_executor::BlockExecutor;
 use pathfinder_storage::Storage;
+use rand::{thread_rng, Rng, SeedableRng};
 use tokio::sync::mpsc;
 
 use super::fetch_proposers::L2ProposerSelector;
@@ -38,6 +47,8 @@ use super::{integration_testing, ConsensusTaskEvent, ConsensusValue, HeightExt, 
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
 use crate::consensus::inner::create_empty_block;
+use crate::consensus::inner::test_helpers::create_transaction_batch_0;
+use crate::validator::{ProdTransactionMapper, ValidatorBlockInfoStage};
 
 #[allow(clippy::too_many_arguments)]
 pub fn spawn(
@@ -129,7 +140,12 @@ pub fn spawn(
                                  {round}",
                             );
 
-                            match create_empty_proposal(height, round.into(), validator_address) {
+                            match create_nonempty_proposal(
+                                height,
+                                round.into(),
+                                validator_address,
+                                main_storage.clone(),
+                            ) {
                                 Ok((wire_proposal, finalized_block)) => {
                                     let ProposalFin {
                                         proposal_commitment,
@@ -395,6 +411,124 @@ pub(crate) fn create_empty_proposal(
         ],
         empty_block,
     ))
+}
+
+/// TODO: REGRESSION, internal params are hardcoded for the time being to
+/// reproduce an issue.
+pub(crate) fn create_nonempty_proposal(
+    height: u64,
+    round: Round,
+    proposer: ContractAddress,
+    main_storage: Storage,
+) -> anyhow::Result<(Vec<ProposalPart>, ConsensusFinalizedL2Block)> {
+    let round = round.as_u32().context(format!(
+        "Attempted to create proposal with Nil round at height {height}"
+    ))?;
+
+    static INIT_TIMESTAMP: LazyLock<u64> = LazyLock::new(|| {
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+    });
+
+    static TIMESTAMP_DELTA: AtomicU64 = AtomicU64::new(0);
+
+    let timestamp =
+        *INIT_TIMESTAMP + TIMESTAMP_DELTA.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+    let seed = thread_rng().gen::<u64>();
+    tracing::debug!(%seed, "Creating proposal");
+    let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
+
+    let mut batches = Vec::new();
+    // Never send empty proposals because of the missing timestamp
+    let _num_batches = rng.gen_range(1..=10);
+
+    // TODO: REGRESSION, 3 batches is the bare minimum to reproduce the issue,
+    // because we roll back to batch 1 (counting from 0)
+    let num_batches = 3;
+
+    tracing::debug!(%num_batches, "GGGG Creating proposal");
+
+    let mut next_txn_idx_start = 0;
+    for _ in 1..=num_batches {
+        let _batch_len = rng.gen_range(1..=10);
+
+        // TODO: REGRESSION, batch len does not matter, so always use 1
+        let batch_len = 1;
+
+        let batch = create_transaction_batch_0(
+            height as u32,
+            next_txn_idx_start,
+            batch_len,
+            ChainId::SEPOLIA_TESTNET,
+        );
+
+        batches.push(batch);
+        next_txn_idx_start += batch_len;
+    }
+
+    let proposal_init = ProposalInit {
+        height,
+        round,
+        valid_round: None,
+        proposer: Address(proposer.0),
+    };
+
+    let mut parts = vec![ProposalPart::Init(proposal_init.clone())];
+
+    let block_info = BlockInfo {
+        height,
+        builder: Address(proposer.0),
+        timestamp,
+        l2_gas_price_fri: 1_000_000,
+        l1_gas_price_wei: 1_000_000,
+        l1_data_gas_price_wei: 1_000_000,
+        eth_to_fri_rate: 1_000_000_000_000_000_000,
+        l1_da_mode: L1DataAvailabilityMode::Calldata,
+    };
+
+    parts.push(ProposalPart::BlockInfo(block_info.clone()));
+
+    let validator = ValidatorBlockInfoStage::new(ChainId::SEPOLIA_TESTNET, proposal_init).unwrap();
+    let mut validator = validator
+        .validate_block_info::<BlockExecutor>(block_info.clone(), main_storage, None, None)
+        .unwrap();
+
+    let _num_exucuted_txns = rng.gen_range(1..=next_txn_idx_start);
+
+    // TODO: REGRESSION, this will force rollback to batch 1, rolling back to batch
+    // 0 does not cause the issue
+    let num_exucuted_txns = 2;
+
+    let txns_to_execute = batches
+        .iter()
+        .flatten()
+        .take(num_exucuted_txns)
+        .cloned()
+        .collect();
+
+    parts.extend(
+        batches
+            .into_iter()
+            .map(|batch| ProposalPart::TransactionBatch(batch)),
+    );
+    parts.push(ProposalPart::ExecutedTransactionCount(
+        num_exucuted_txns as u64,
+    ));
+
+    validator
+        .execute_batch::<ProdTransactionMapper>(txns_to_execute)
+        .unwrap();
+
+    let block = validator.consensus_finalize0().unwrap();
+
+    parts.push(ProposalPart::Fin(ProposalFin {
+        proposal_commitment: Hash(block.header.state_diff_commitment.0),
+    }));
+
+    Ok((parts, block))
 }
 
 #[cfg(test)]

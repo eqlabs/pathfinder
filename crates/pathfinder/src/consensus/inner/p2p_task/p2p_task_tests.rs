@@ -69,17 +69,6 @@ impl TestEnvironment {
         let consensus_storage =
             ConsensusStorage::in_tempdir().expect("Failed to create consensus temp database");
 
-        // Initialize consensus storage tables
-        {
-            let mut db_conn = consensus_storage.connection().unwrap();
-            let db_tx = db_conn.transaction().unwrap();
-            db_tx.ensure_consensus_proposals_table_exists().unwrap();
-            db_tx
-                .ensure_consensus_finalized_blocks_table_exists()
-                .unwrap();
-            db_tx.commit().unwrap();
-        }
-
         // Mock channels for p2p communication
         let (p2p_tx, p2p_rx) = mpsc::unbounded_channel();
         let (tx_to_consensus, rx_from_p2p) = mpsc::channel(Self::TX_TO_CONSENSUS_CHANNEL_SIZE);

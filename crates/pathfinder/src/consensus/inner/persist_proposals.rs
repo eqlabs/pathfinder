@@ -280,11 +280,7 @@ mod tests {
     fn setup_test_db() -> (ConsensusStorage, ConsensusConnection) {
         let consensus_storage =
             ConsensusStorage::in_tempdir().expect("Failed to create temp database");
-        let mut conn = consensus_storage.connection().unwrap();
-        let tx = conn.transaction().unwrap();
-        tx.ensure_consensus_proposals_table_exists().unwrap();
-        tx.ensure_consensus_finalized_blocks_table_exists().unwrap();
-        tx.commit().unwrap();
+        let conn = consensus_storage.connection().unwrap();
         (consensus_storage, conn)
     }
 
