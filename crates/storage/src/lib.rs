@@ -8,6 +8,7 @@ mod prelude;
 mod bloom;
 use bloom::AggregateBloomCache;
 pub use bloom::AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
+mod columns;
 use connection::pruning::BlockchainHistoryMode;
 mod connection;
 mod error;
@@ -47,6 +48,7 @@ pub use transaction::dto::{
 const VERSION_KEY: &str = "user_version";
 
 type RocksDB = rust_rocksdb::DBWithThreadMode<rust_rocksdb::MultiThreaded>;
+type RocksDBBatch = rust_rocksdb::WriteBatchWithTransaction<false>;
 
 /// Specifies the [journal mode](https://sqlite.org/pragma.html#pragma_journal_mode)
 /// of the [Storage].
@@ -474,13 +476,42 @@ impl StorageBuilder {
     }
 
     fn open_rocksdb(path: &Path) -> anyhow::Result<RocksDB> {
+        let available_parallelism = std::thread::available_parallelism()
+            .map(|e| e.get() as i32)
+            .unwrap_or(1);
+
         let mut options = rust_rocksdb::Options::default();
         options.create_if_missing(true);
         options.create_missing_column_families(true);
+        options.increase_parallelism(available_parallelism);
+        options.set_max_background_jobs(available_parallelism);
+        options.set_atomic_flush(true);
+        options.set_max_subcompactions(available_parallelism as _);
+        options.set_max_write_buffer_number(5);
+        options.set_min_write_buffer_number_to_merge(2);
+        options.set_bytes_per_sync(1 * 1024 * 1024 as u64);
+        options.set_wal_bytes_per_sync(512 * 1024 as u64);
+        options.set_max_log_file_size(10 * 1024 * 1024);
+        options.set_max_open_files(2048);
+        options.set_keep_log_file_num(3);
+        options.set_log_level(rust_rocksdb::LogLevel::Warn);
 
-        let cfs = ["trie_class", "trie_storage", "trie_contracts"]
+        let mut env = rust_rocksdb::Env::new().context("Creating rocksdb env")?;
+        // Low priority threads are used for compaction (can be preempted by flush).
+        env.set_low_priority_background_threads(available_parallelism);
+
+        options.set_env(&env);
+
+        // TODO: make this configurable
+        let cache = rust_rocksdb::Cache::new_hyper_clock_cache(8 * 1024 * 1024 * 1024, 0);
+        let mut block_opts = rust_rocksdb::BlockBasedOptions::default();
+        block_opts.set_block_cache(&cache);
+
+        options.set_block_based_table_factory(&block_opts);
+
+        let cfs = columns::COLUMNS
             .iter()
-            .map(|name| ColumnFamilyDescriptor::new(*name, rust_rocksdb::Options::default()));
+            .map(|column| ColumnFamilyDescriptor::new(column.name, column.options()));
 
         let db = RocksDB::open_cf_descriptors(&options, path, cfs)?;
         Ok(db)

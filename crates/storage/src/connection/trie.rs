@@ -6,8 +6,16 @@ use bitvec::vec::BitVec;
 use pathfinder_common::prelude::*;
 use pathfinder_crypto::Felt;
 
+use crate::columns::Column;
 use crate::prelude::*;
 use crate::TriePruneMode;
+
+pub const TRIE_CLASS_HASH_COLUMN: Column = Column::new("trie_class_hash");
+pub const TRIE_CLASS_NODE_COLUMN: Column = Column::new("trie_class_node");
+pub const TRIE_CONTRACT_HASH_COLUMN: Column = Column::new("trie_contract_hash");
+pub const TRIE_CONTRACT_NODE_COLUMN: Column = Column::new("trie_contract_node");
+pub const TRIE_STORAGE_HASH_COLUMN: Column = Column::new("trie_storage_hash");
+pub const TRIE_STORAGE_NODE_COLUMN: Column = Column::new("trie_storage_node");
 
 impl Transaction<'_> {
     pub fn class_root_index(
@@ -327,18 +335,24 @@ impl Transaction<'_> {
         update: &TrieUpdate,
         block_number: BlockNumber,
     ) -> anyhow::Result<RootIndexUpdate> {
-        self.insert_trie(update, block_number, "trie_contracts")
+        self.insert_trie(
+            update,
+            block_number,
+            "trie_contracts",
+            &TRIE_CONTRACT_HASH_COLUMN,
+            &TRIE_CONTRACT_NODE_COLUMN,
+        )
     }
 
     pub fn contract_trie_node(
         &self,
         index: TrieStorageIndex,
     ) -> anyhow::Result<Option<StoredNode>> {
-        self.trie_node(index, "trie_contracts")
+        self.trie_node(index, &TRIE_CONTRACT_NODE_COLUMN)
     }
 
     pub fn contract_trie_node_hash(&self, index: TrieStorageIndex) -> anyhow::Result<Option<Felt>> {
-        self.trie_node_hash(index, "trie_contracts")
+        self.trie_node_hash(index, &TRIE_CONTRACT_HASH_COLUMN)
     }
 
     pub fn insert_class_trie(
@@ -346,15 +360,21 @@ impl Transaction<'_> {
         update: &TrieUpdate,
         block_number: BlockNumber,
     ) -> anyhow::Result<RootIndexUpdate> {
-        self.insert_trie(update, block_number, "trie_class")
+        self.insert_trie(
+            update,
+            block_number,
+            "trie_class",
+            &TRIE_CLASS_HASH_COLUMN,
+            &TRIE_CLASS_NODE_COLUMN,
+        )
     }
 
     pub fn class_trie_node(&self, index: TrieStorageIndex) -> anyhow::Result<Option<StoredNode>> {
-        self.trie_node(index, "trie_class")
+        self.trie_node(index, &TRIE_CLASS_NODE_COLUMN)
     }
 
     pub fn class_trie_node_hash(&self, index: TrieStorageIndex) -> anyhow::Result<Option<Felt>> {
-        self.trie_node_hash(index, "trie_class")
+        self.trie_node_hash(index, &TRIE_CLASS_HASH_COLUMN)
     }
 
     pub fn insert_storage_trie(
@@ -362,15 +382,21 @@ impl Transaction<'_> {
         update: &TrieUpdate,
         block_number: BlockNumber,
     ) -> anyhow::Result<RootIndexUpdate> {
-        self.insert_trie(update, block_number, "trie_storage")
+        self.insert_trie(
+            update,
+            block_number,
+            "trie_storage",
+            &TRIE_STORAGE_HASH_COLUMN,
+            &TRIE_STORAGE_NODE_COLUMN,
+        )
     }
 
     pub fn storage_trie_node(&self, index: TrieStorageIndex) -> anyhow::Result<Option<StoredNode>> {
-        self.trie_node(index, "trie_storage")
+        self.trie_node(index, &TRIE_STORAGE_NODE_COLUMN)
     }
 
     pub fn storage_trie_node_hash(&self, index: TrieStorageIndex) -> anyhow::Result<Option<Felt>> {
-        self.trie_node_hash(index, "trie_storage")
+        self.trie_node_hash(index, &TRIE_STORAGE_HASH_COLUMN)
     }
 
     /// Prune tries by removing nodes that are no longer needed at the given
@@ -502,6 +528,8 @@ impl Transaction<'_> {
         update: &TrieUpdate,
         block_number: BlockNumber,
         table: &'static str,
+        rocksdb_hash_column: &Column,
+        rocksdb_node_column: &Column,
     ) -> anyhow::Result<RootIndexUpdate> {
         if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
             self.prune_trie(block_number, num_blocks_kept, table)?;
@@ -553,6 +581,10 @@ impl Transaction<'_> {
             }
         }
 
+        let hash_column = self.rocksdb_get_column(rocksdb_hash_column);
+        let node_column = self.rocksdb_get_column(rocksdb_node_column);
+        let mut batch = crate::RocksDBBatch::default();
+
         let mut indices = HashMap::new();
 
         // Reusable (and oversized) buffer for encoding.
@@ -576,8 +608,23 @@ impl Transaction<'_> {
 
             indices.insert(idx, storage_idx.into());
 
+            batch.put_cf(
+                &hash_column,
+                storage_idx.to_be_bytes().as_slice(),
+                hash.as_be_bytes().as_slice(),
+            );
+            batch.put_cf(
+                &node_column,
+                storage_idx.to_be_bytes().as_slice(),
+                &buffer[..length],
+            );
+
             metrics::counter!(METRIC_TRIE_NODES_ADDED, "table" => table).increment(1);
         }
+
+        self.rocksdb()
+            .write(&batch)
+            .context("Writing trie nodes to RocksDB")?;
 
         Ok(RootIndexUpdate::Updated(
             *indices
@@ -590,45 +637,36 @@ impl Transaction<'_> {
     fn trie_node(
         &self,
         index: TrieStorageIndex,
-        table: &'static str,
+        rocksdb_node_column: &Column,
     ) -> anyhow::Result<Option<StoredNode>> {
-        // We rely on sqlite caching the statement here. Storing the statement would be
-        // nice, however that leads to &mut requirements or interior mutable
-        // work-arounds.
-        let mut stmt = self
-            .inner()
-            .prepare_cached(&format!("SELECT data FROM {table} WHERE idx = ?"))
-            .context("Creating get statement")?;
+        let node = self
+            .rocksdb()
+            .get_pinned_cf(
+                &self.rocksdb_get_column(rocksdb_node_column),
+                index.0.to_be_bytes().as_slice(),
+            )?
+            .map(|v| StoredNode::decode(v.as_ref()).context("Decoding node from RocksDB"))
+            .transpose()?;
 
-        let Some(data): Option<Vec<u8>> = stmt
-            .query_row(params![&index], |row| row.get(0))
-            .optional()?
-        else {
-            return Ok(None);
-        };
-
-        let node = StoredNode::decode(&data).context("Decoding node")?;
-
-        Ok(Some(node))
+        Ok(node)
     }
 
     /// Returns the hash of the node with the given index.
     fn trie_node_hash(
         &self,
         index: TrieStorageIndex,
-        table: &'static str,
+        rocksdb_hash_column: &Column,
     ) -> anyhow::Result<Option<Felt>> {
-        // We rely on sqlite caching the statement here. Storing the statement would be
-        // nice, however that leads to &mut requirements or interior mutable
-        // work-arounds.
-        let mut stmt = self
-            .inner()
-            .prepare_cached(&format!("SELECT hash FROM {table} WHERE idx = ?"))
-            .context("Creating get statement")?;
+        let hash = self
+            .rocksdb()
+            .get_pinned_cf(
+                &self.rocksdb_get_column(rocksdb_hash_column),
+                index.0.to_be_bytes().as_slice(),
+            )?
+            .map(|v| Felt::from_be_slice(v.as_ref()).context("Decoding node hash from RocksDB"))
+            .transpose()?;
 
-        stmt.query_row(params![&index], |row| row.get_felt(0))
-            .optional()
-            .map_err(Into::into)
+        Ok(hash)
     }
 }
 

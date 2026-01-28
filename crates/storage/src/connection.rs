@@ -27,6 +27,14 @@ use pruning::BlockchainHistoryMode;
 // Re-export this so users don't require rusqlite as a direct dep.
 pub use rusqlite::TransactionBehavior;
 pub use trie::{Node, NodeRef, RootIndexUpdate, StoredNode, TrieStorageIndex, TrieUpdate};
+pub(crate) use trie::{
+    TRIE_CLASS_HASH_COLUMN,
+    TRIE_CLASS_NODE_COLUMN,
+    TRIE_CONTRACT_HASH_COLUMN,
+    TRIE_CONTRACT_NODE_COLUMN,
+    TRIE_STORAGE_HASH_COLUMN,
+    TRIE_STORAGE_NODE_COLUMN,
+};
 
 use crate::bloom::AggregateBloomCache;
 use crate::params::RowExt;
@@ -135,7 +143,19 @@ impl Transaction<'_> {
         &self.rocksdb
     }
 
+    pub(crate) fn rocksdb_get_column(
+        &self,
+        column: &crate::columns::Column,
+    ) -> Arc<rust_rocksdb::BoundColumnFamily<'_>> {
+        let name = column.name;
+        match self.rocksdb.cf_handle(name) {
+            Some(column) => column,
+            None => panic!("RocksDB column {name} missing"),
+        }
+    }
+
     pub fn commit(self) -> anyhow::Result<()> {
+        self.rocksdb.write(&self.rocksdb_batch)?;
         Ok(self.transaction.commit()?)
     }
 
