@@ -170,9 +170,9 @@ mod tests {
             tolerance: 0.20,
         };
         let provider = L1GasPriceProvider::new(config);
-        provider.add_sample(sample(0, 100, 1000, 100)).unwrap();
-        provider.add_sample(sample(1, 112, 1000, 100)).unwrap();
-        provider.add_sample(sample(2, 124, 1000, 100)).unwrap();
+        provider.add_sample(sample(0, 100, 1000, 100));
+        provider.add_sample(sample(1, 112, 1000, 100));
+        provider.add_sample(sample(2, 124, 1000, 100));
         provider
     }
 
