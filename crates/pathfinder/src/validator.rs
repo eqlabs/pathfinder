@@ -360,12 +360,15 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
         state_update_data: &StateUpdateData,
     ) -> Result<E, ProposalHandlingError> {
         // Convert StateUpdateData to StateUpdate
+        //
+        // NOTE: We intentionally exclude `system_contract_updates` from the
+        // pending_state (see https://github.com/eqlabs/pathfinder/issues/3207)
         let state_update = StateUpdate {
             block_hash: pathfinder_common::BlockHash::ZERO,
             parent_state_commitment: pathfinder_common::StateCommitment::ZERO,
             state_commitment: pathfinder_common::StateCommitment::ZERO,
             contract_updates: state_update_data.contract_updates.clone(),
-            system_contract_updates: state_update_data.system_contract_updates.clone(),
+            system_contract_updates: Default::default(),
             declared_cairo_classes: state_update_data.declared_cairo_classes.clone(),
             declared_sierra_classes: state_update_data.declared_sierra_classes.clone(),
             migrated_compiled_classes: state_update_data.migrated_compiled_classes.clone(),
