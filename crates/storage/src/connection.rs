@@ -155,7 +155,6 @@ impl Transaction<'_> {
     }
 
     pub fn commit(self) -> anyhow::Result<()> {
-        self.rocksdb.write(&self.rocksdb_batch)?;
         Ok(self.transaction.commit()?)
     }
 
