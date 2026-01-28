@@ -1,6 +1,5 @@
 use anyhow::Context;
 use pathfinder_common::{L1TransactionHash, TransactionHash};
-use pathfinder_ethereum::EthereumApi;
 
 use crate::context::RpcContext;
 use crate::dto::TxnExecutionStatus;

@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use pathfinder_common::{Chain, L1BlockNumber};
-use pathfinder_ethereum::{EthereumApi, EthereumClient};
+use pathfinder_ethereum::EthereumClient;
 use primitive_types::H160;
 use tokio::sync::mpsc;
 
@@ -23,13 +23,10 @@ pub struct L1SyncContext<EthereumClient> {
 ///
 /// Emits [Ethereum state update](pathfinder_ethereum::EthereumStateUpdate)
 /// which should be handled to update storage and respond to queries.
-pub async fn sync<T>(
+pub async fn sync(
     tx_event: mpsc::Sender<SyncEvent>,
-    context: L1SyncContext<T>,
-) -> anyhow::Result<()>
-where
-    T: EthereumApi + Clone,
-{
+    context: L1SyncContext<EthereumClient>,
+) -> anyhow::Result<()> {
     let L1SyncContext {
         mut ethereum,
         chain: _,

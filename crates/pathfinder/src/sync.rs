@@ -87,7 +87,6 @@ where
     /// errors are transient. We cannot proceed without a checkpoint, so we
     /// retry until we get one.
     async fn get_checkpoint(&self) -> pathfinder_ethereum::EthereumStateUpdate {
-        use pathfinder_ethereum::EthereumApi;
         if let Some(forced) = &self.l1_checkpoint_override {
             return *forced;
         }
