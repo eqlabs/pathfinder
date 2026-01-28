@@ -409,9 +409,27 @@ impl Transaction<'_> {
             return Ok(());
         };
         tracing::info!("Cleaning up state trie");
-        self.prune_trie(block_number, num_blocks_kept, "trie_contracts")?;
-        self.prune_trie(block_number, num_blocks_kept, "trie_class")?;
-        self.prune_trie(block_number, num_blocks_kept, "trie_storage")?;
+        self.prune_trie(
+            block_number,
+            num_blocks_kept,
+            "trie_contracts",
+            &TRIE_CONTRACT_HASH_COLUMN,
+            &TRIE_CONTRACT_NODE_COLUMN,
+        )?;
+        self.prune_trie(
+            block_number,
+            num_blocks_kept,
+            "trie_class",
+            &TRIE_CLASS_HASH_COLUMN,
+            &TRIE_CLASS_NODE_COLUMN,
+        )?;
+        self.prune_trie(
+            block_number,
+            num_blocks_kept,
+            "trie_storage",
+            &TRIE_STORAGE_HASH_COLUMN,
+            &TRIE_STORAGE_NODE_COLUMN,
+        )?;
         Ok(())
     }
 
@@ -478,6 +496,8 @@ impl Transaction<'_> {
         block_number: BlockNumber,
         num_blocks_kept: u64,
         table: &'static str,
+        rocksdb_hash_column: &Column,
+        rocksdb_node_column: &Column,
     ) -> anyhow::Result<()> {
         if let Some(before_block) = block_number.checked_sub(num_blocks_kept) {
             // Delete nodes that have already been marked as ready for deletion.
@@ -490,10 +510,12 @@ impl Transaction<'_> {
             let mut rows = select_stmt
                 .query(params![&before_block])
                 .context("Fetching nodes to delete")?;
-            let mut delete_stmt = self
-                .inner()
-                .prepare_cached(&format!(r"DELETE FROM {table} WHERE idx = ?"))
-                .context("Creating delete statement")?;
+
+            let hash_column = self.rocksdb_get_column(rocksdb_hash_column);
+            let node_column = self.rocksdb_get_column(rocksdb_node_column);
+
+            let mut batch = crate::RocksDBBatch::default();
+
             while let Some(row) = rows.next().context("Iterating over rows")? {
                 let (indices, _) = bincode::decode_from_slice::<Vec<u64>, _>(
                     row.get_blob(0)?,
@@ -501,11 +523,17 @@ impl Transaction<'_> {
                 )
                 .context("Decoding indices")?;
                 for idx in indices.iter() {
-                    delete_stmt.execute(params![idx]).context("Deleting node")?;
+                    let key = idx.to_be_bytes();
+                    batch.delete_cf(&hash_column, &key);
+                    batch.delete_cf(&node_column, &key);
                 }
                 metrics::counter!(METRIC_TRIE_NODES_REMOVED, "table" => table)
                     .increment(indices.len() as u64);
             }
+
+            self.rocksdb()
+                .write(&batch)
+                .context("Removing trie nodes from RocksDB")?;
 
             // Delete the removal markers.
             let mut delete_stmt = self
@@ -532,7 +560,13 @@ impl Transaction<'_> {
         rocksdb_node_column: &Column,
     ) -> anyhow::Result<RootIndexUpdate> {
         if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
-            self.prune_trie(block_number, num_blocks_kept, table)?;
+            self.prune_trie(
+                block_number,
+                num_blocks_kept,
+                table,
+                rocksdb_hash_column,
+                rocksdb_node_column,
+            )?;
             self.remove_trie(&update.nodes_removed, block_number, table)?;
         }
 
