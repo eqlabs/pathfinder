@@ -136,7 +136,7 @@ fn main() -> anyhow::Result<()> {
         let bn = BlockNumber::new(n).context(format!("invalid block number {n}"))?;
         if let Some(pairs) = db_tx.events_for_block(bn.into())? {
             for pair in pairs {
-                let tx_hash = pair.0;
+                let tx_hash = pair.0 .0;
                 for event in &pair.1 {
                     let accept_address = if let Some(addr) = address {
                         event.from_address == addr

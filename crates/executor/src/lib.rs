@@ -33,6 +33,6 @@ pub use execution_state::{
     VersionedConstantsMap,
 };
 pub use felt::{IntoFelt, IntoStarkFelt};
-pub use simulate::{simulate, trace, TraceCache};
+pub use simulate::{simulate, trace, BlockTraces, TraceCache, TransactionTraces};
 pub use starknet_api::contract_class::ClassInfo;
 pub use state_reader::{ConcurrentStorageAdapter, NativeClassCache};
