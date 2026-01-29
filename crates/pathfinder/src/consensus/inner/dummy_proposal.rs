@@ -124,11 +124,7 @@ pub(crate) fn create(
         .cloned()
         .collect();
 
-    parts.extend(
-        batches
-            .into_iter()
-            .map(|batch| ProposalPart::TransactionBatch(batch)),
-    );
+    parts.extend(batches.into_iter().map(ProposalPart::TransactionBatch));
     parts.push(ProposalPart::ExecutedTransactionCount(
         num_executed_txns as u64,
     ));
