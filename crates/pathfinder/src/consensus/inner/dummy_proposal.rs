@@ -6,12 +6,18 @@
 use std::num::NonZeroUsize;
 use std::sync::atomic::AtomicU64;
 use std::sync::LazyLock;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use anyhow::Context;
 use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
 use p2p_proto::consensus::{BlockInfo, ProposalFin, ProposalInit, ProposalPart};
-use pathfinder_common::{ChainId, ConsensusFinalizedL2Block, ContractAddress};
+use pathfinder_common::{
+    BlockId,
+    BlockNumber,
+    ChainId,
+    ConsensusFinalizedL2Block,
+    ContractAddress,
+};
 use pathfinder_consensus::Round;
 use pathfinder_crypto::Felt;
 use pathfinder_executor::BlockExecutor;
@@ -19,6 +25,57 @@ use pathfinder_storage::Storage;
 use rand::{thread_rng, Rng, SeedableRng};
 
 use crate::validator::{ProdTransactionMapper, ValidatorBlockInfoStage};
+
+/// Blocks consensus tasks's processing loop until the parent block of height is
+/// committed in main storage without blocking the async runtime.
+pub(crate) async fn wait_for_parent_committed(
+    height: u64,
+    main_storage: Storage,
+    poll_interval: Duration,
+) -> anyhow::Result<()> {
+    let parent_number = height.checked_sub(1);
+
+    tracing::debug!(
+        %height,
+        ?parent_number,
+        "Waiting for parent block to be committed"
+    );
+
+    util::task::spawn_blocking(move |_| {
+        if let Some(parent_number) = parent_number {
+            loop {
+                {
+                    let mut main_db_conn = main_storage.connection()?;
+                    let main_db_txn = main_db_conn.transaction()?;
+
+                    if main_db_txn
+                        .block_exists(BlockId::Number(BlockNumber::new_or_panic(parent_number)))?
+                    {
+                        break;
+                    }
+
+                    // Drop the transaction and return the connection to the
+                    // pool before sleeping to avoid holding locks on the DB or
+                    // shrinking available DB connections in the pool
+                    // for longer than necessary
+                }
+
+                tracing::debug!(
+                    %height,
+                    %parent_number,
+                    "Parent block not yet committed, sleeping"
+                );
+
+                std::thread::sleep(poll_interval);
+            }
+        }
+
+        anyhow::Ok(())
+    })
+    .await??;
+
+    Ok(())
+}
 
 #[derive(Debug)]
 pub(crate) struct ProposalCreationConfig {
