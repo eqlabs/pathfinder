@@ -127,6 +127,14 @@ pub fn spawn(
                                  {round}",
                             );
 
+                            dummy_proposal::wait_for_parent_committed(
+                                height,
+                                main_storage.clone(),
+                                Duration::from_millis(50),
+                            )
+                            .await
+                            .context("Waiting for parent block to be committed")?;
+
                             match dummy_proposal::create(
                                 height,
                                 round.into(),
