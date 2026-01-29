@@ -439,7 +439,7 @@ pub(crate) async fn create_nonempty_proposal(
         *INIT_TIMESTAMP + TIMESTAMP_DELTA.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
     let seed = thread_rng().gen::<u64>();
-    tracing::debug!(%seed, "Creating proposal");
+    tracing::debug!(%height, %round, %seed, "Creating proposal");
     let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
 
     let mut batches = Vec::new();
