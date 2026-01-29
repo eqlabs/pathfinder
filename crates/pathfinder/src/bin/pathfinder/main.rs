@@ -314,11 +314,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     // Create L1 gas price provider and sync task if consensus is enabled
     let gas_price_provider = if let Some(consensus_config) = &config.consensus {
         // TODO: Hardcoding default config for now
-        let provider = L1GasPriceProvider::new(L1GasPriceConfig {
-            max_time_gap_seconds: consensus_config.l1_gas_price_max_time_gap,
-            tolerance: consensus_config.l1_gas_price_tolerance,
-            ..Default::default()
-        });
+        let provider = L1GasPriceProvider::new(L1GasPriceConfig::from(consensus_config));
 
         // Spawn the L1 gas price sync task
         let sync_provider = provider.clone();
