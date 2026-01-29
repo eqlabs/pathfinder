@@ -74,6 +74,7 @@ impl<'tx> ConsensusProposals<'tx> {
 
     /// Retrieve proposal parts from other validators (where proposer !=
     /// validator).
+    #[cfg(test)]
     pub fn foreign_parts(
         &self,
         height: u64,
