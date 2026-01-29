@@ -120,7 +120,7 @@ mod test {
         utils::log_elapsed(stopwatch);
 
         // TODO Looking at how the tests perform it turns out that proposal recovery
-        // doesn't work. In all the passing failure scenarions (except the happy path,
+        // doesn't work. In all the passing failure scenarios (except the happy path,
         // which is not a failure scenario), the network recovers by reproposing
         // in the next round (ie. round 1 instead of round 0), either at H=13 or H=14,
         // and then continues as normal. From this perspective the only recovery that
