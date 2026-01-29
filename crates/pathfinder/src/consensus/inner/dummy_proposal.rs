@@ -41,9 +41,13 @@ pub(crate) async fn wait_for_parent_committed(
         "Waiting for parent block to be committed"
     );
 
-    util::task::spawn_blocking(move |_| {
+    util::task::spawn_blocking(move |cancellation_token| {
         if let Some(parent_number) = parent_number {
             loop {
+                if cancellation_token.is_cancelled() {
+                    break;
+                }
+
                 {
                     let mut main_db_conn = main_storage.connection()?;
                     let main_db_txn = main_db_conn.transaction()?;
