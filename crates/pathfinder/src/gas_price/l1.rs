@@ -10,6 +10,7 @@ use pathfinder_common::L1BlockNumber;
 use pathfinder_ethereum::L1GasPriceData;
 
 use super::deviation_pct;
+use crate::config::ConsensusConfig;
 
 /// Configuration for L1 gas price validation.
 #[derive(Debug, Clone)]
@@ -46,6 +47,21 @@ impl Default for L1GasPriceConfig {
             max_time_gap_seconds: 600,
             tolerance: 0.20,
         }
+    }
+}
+
+impl From<&ConsensusConfig> for L1GasPriceConfig {
+    #[cfg(feature = "p2p")]
+    fn from(cfg: &ConsensusConfig) -> Self {
+        L1GasPriceConfig {
+            tolerance: cfg.l1_gas_price_tolerance,
+            max_time_gap_seconds: cfg.l1_gas_price_max_time_gap,
+            ..Default::default()
+        }
+    }
+    #[cfg(not(feature = "p2p"))]
+    fn from(_cfg: &ConsensusConfig) -> Self {
+        L1GasPriceConfig::default()
     }
 }
 
