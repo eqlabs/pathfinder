@@ -595,13 +595,6 @@ impl Transaction<'_> {
             }
         }
 
-        let mut stmt = self
-            .inner()
-            .prepare_cached(&format!(
-                "INSERT INTO {table} (hash, data) VALUES(?, ?) RETURNING idx",
-            ))
-            .context("Creating insert statement")?;
-
         let mut to_insert = Vec::new();
         let mut to_process = vec![NodeRef::Index(update.nodes_added.len() - 1)];
 
@@ -641,6 +634,17 @@ impl Transaction<'_> {
         // Reusable (and oversized) buffer for encoding.
         let mut buffer = [0u8; 256];
 
+        let mut storage_idx = self
+            .trie_storage_index
+            .fetch_add(to_insert.len() as u64, std::sync::atomic::Ordering::SeqCst);
+
+        let mut stmt = self
+            .inner()
+            .prepare_cached(&format!(
+                "INSERT INTO {table} (hash, data) VALUES(?, ?) RETURNING idx",
+            ))
+            .context("Creating insert statement")?;
+
         // Insert nodes in reverse to ensure children always have an assigned index for
         // the parent to use.
         for idx in to_insert.into_iter().rev() {
@@ -650,12 +654,12 @@ impl Transaction<'_> {
 
             let length = node.encode(&mut buffer).context("Encoding node")?;
 
-            let storage_idx: u64 = stmt
-                .query_row(
-                    params![&hash.as_be_bytes().as_slice(), &&buffer[..length]],
-                    |row| row.get(0),
-                )
-                .context("Inserting node")?;
+            // let storage_idx: u64 = stmt
+            //     .query_row(
+            //         params![&hash.as_be_bytes().as_slice(), &&buffer[..length]],
+            //         |row| row.get(0),
+            //     )
+            //     .context("Inserting node")?;
 
             indices.insert(idx, storage_idx.into());
 
@@ -669,6 +673,15 @@ impl Transaction<'_> {
                 storage_idx.to_be_bytes().as_slice(),
                 &buffer[..length],
             );
+
+            tracing::warn!(
+                %table,
+                %storage_idx,
+                %hash,
+                ?node,
+                "Inserted trie node"
+            );
+            storage_idx += 1;
 
             metrics::counter!(METRIC_TRIE_NODES_ADDED, "table" => table).increment(1);
         }
@@ -699,6 +712,13 @@ impl Transaction<'_> {
             .map(|v| StoredNode::decode(v.as_ref()).context("Decoding node from RocksDB"))
             .transpose()?;
 
+        tracing::warn!(
+            %index,
+            table=%rocksdb_node_column.name,
+            ?node,
+            "Fetched trie node"
+        );
+
         Ok(node)
     }
 
@@ -716,6 +736,13 @@ impl Transaction<'_> {
             )?
             .map(|v| Felt::from_be_slice(v.as_ref()).context("Decoding node hash from RocksDB"))
             .transpose()?;
+
+        tracing::warn!(
+            %index,
+            table=%rocksdb_hash_column.name,
+            ?hash,
+            "Fetched trie hash"
+        );
 
         Ok(hash)
     }

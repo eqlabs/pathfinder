@@ -1335,7 +1335,7 @@ fn l2_update(
         // sync process ends..
         anyhow::ensure!(
             state_commitment == expected_state_commitment,
-            "State commitment mismatch"
+            format!("State commitment mismatch: expected {expected_state_commitment:?}, got {state_commitment:?}, storage commitment {storage_commitment:?}, class commitment {class_commitment:?}")
         );
     }
 

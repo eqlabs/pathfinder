@@ -75,6 +75,7 @@ struct Inner {
     database_path: Arc<PathBuf>,
     pool: Pool<SqliteConnectionManager>,
     rocksdb: Arc<RocksDB>,
+    trie_storage_index: Arc<std::sync::atomic::AtomicU64>,
     event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
@@ -85,6 +86,7 @@ pub struct StorageManager {
     database_path: PathBuf,
     journal_mode: JournalMode,
     rocksdb: Arc<RocksDB>,
+    trie_storage_index: Arc<std::sync::atomic::AtomicU64>,
     event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
@@ -121,6 +123,7 @@ impl StorageManager {
             database_path: Arc::new(self.database_path.clone()),
             pool,
             rocksdb: Arc::clone(&self.rocksdb),
+            trie_storage_index: Arc::clone(&self.trie_storage_index),
             event_filter_cache: self.event_filter_cache.clone(),
             running_event_filter: self.running_event_filter.clone(),
             trie_prune_mode: self.trie_prune_mode,
@@ -383,10 +386,18 @@ impl StorageBuilder {
         };
         let rocksdb = Arc::new(Self::open_rocksdb(&rocksdb_path)?);
 
+        // columns::COLUMNS.iter().for_each(|column| {
+        //     let column_handle = rocksdb
+        //         .cf_handle(column.name)
+        //         .expect("RocksDB column missing");
+        //     let i = rocksdb.iterator_cf(&column_handle,
+        // rust_rocksdb::IteratorMode::End); });
+
         Ok(StorageManager {
             database_path: self.database_path,
             journal_mode: self.journal_mode,
             rocksdb,
+            trie_storage_index: Arc::new(std::sync::atomic::AtomicU64::new(1)),
             event_filter_cache: Arc::new(AggregateBloomCache::with_size(
                 self.event_filter_cache_size,
             )),
@@ -468,6 +479,7 @@ impl StorageBuilder {
             database_path,
             journal_mode,
             rocksdb,
+            trie_storage_index: Arc::new(std::sync::atomic::AtomicU64::new(1)),
             event_filter_cache: Arc::new(AggregateBloomCache::with_size(event_filter_cache_size)),
             running_event_filter: Arc::new(Mutex::new(running_event_filter)),
             trie_prune_mode,
@@ -709,6 +721,7 @@ impl Storage {
             self.0.event_filter_cache.clone(),
             self.0.running_event_filter.clone(),
             self.0.trie_prune_mode,
+            self.0.trie_storage_index.clone(),
             self.0.blockchain_history_mode,
         ))
     }
