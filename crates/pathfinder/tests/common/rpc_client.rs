@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use p2p::consensus::HeightAndRound;
+use pathfinder_common::consensus_info;
 use serde::Deserialize;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
@@ -57,7 +58,7 @@ async fn wait_for_height_fut(
             };
 
         let Ok(JsonRpcReply {
-            result: ConsensusInfo {
+            result: Output {
                 highest_decided, ..
             },
         }) = get_consensus_info(name, rpc_port).await
@@ -72,12 +73,12 @@ async fn wait_for_height_fut(
             "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} decided h:r {}",
             highest_decided
                 .as_ref()
-                .map(|info| format!("{}", HeightAndRound::new(info.height, info.round)))
+                .map(|info| format!("{}", HeightAndRound::new(info.height.get(), info.round)))
                 .unwrap_or("None".to_string()),
         );
 
         if let Some(highest_decided) = highest_decided {
-            let current = HeightAndRound::new(highest_decided.height, highest_decided.round);
+            let current = HeightAndRound::new(highest_decided.height.get(), highest_decided.round);
 
             if let Some(tx) = &next_hnr_tx {
                 if last_hnr.is_none() || last_hnr.as_ref() != Some(&current) {
@@ -86,7 +87,7 @@ async fn wait_for_height_fut(
                 }
             }
 
-            if highest_decided.height >= height {
+            if highest_decided.height.get() >= height {
                 return;
             }
         }
@@ -189,7 +190,7 @@ async fn wait_for_block_exists_fut(
 pub async fn get_consensus_info(
     name: &'static str,
     rpc_port: u16,
-) -> anyhow::Result<JsonRpcReply<ConsensusInfo>> {
+) -> anyhow::Result<JsonRpcReply<Output>> {
     reqwest::Client::new()
         .post(format!(
             "http://127.0.0.1:{rpc_port}/rpc/pathfinder/unstable"
@@ -199,9 +200,30 @@ pub async fn get_consensus_info(
         .send()
         .await
         .with_context(|| format!("Sending JSON-RPC request as {name}"))?
-        .json::<JsonRpcReply<ConsensusInfo>>()
+        .json::<JsonRpcReply<Output>>()
         .await
         .with_context(|| format!("Parsing JSON-RPC response as {name}"))
+}
+
+pub async fn get_cached_artifacts_info(
+    instance: &PathfinderInstance,
+    less_than_height: u64,
+) -> Vec<CachedItem> {
+    let name = instance.name();
+    let mut rpc_port_watch_rx = instance.rpc_port_watch_rx().clone();
+    let (pid, rpc_port) =
+        if let Ok(borrowed) = rpc_port_watch_rx.wait_for(|port| *port != (0, 0)).await {
+            *borrowed
+        } else {
+            panic!("Rpc port watch for {name} is closed");
+        };
+    let JsonRpcReply {
+        result: Output { mut cached, .. },
+    } = get_consensus_info(name, rpc_port).await.expect(&format!(
+        "Couldn't get consensus info for {name} (pid: {pid})"
+    ));
+    cached.retain(|CachedItem { height, .. }| *height < less_than_height);
+    cached
 }
 
 #[derive(Deserialize)]
@@ -209,14 +231,18 @@ pub struct JsonRpcReply<T> {
     pub result: T,
 }
 
-#[derive(Deserialize)]
-pub struct ConsensusInfo {
-    pub highest_decided: Option<DecisionInfo>,
+#[derive(Debug, Deserialize)]
+pub struct Output {
+    pub highest_decided: Option<consensus_info::Decision>,
     pub peer_score_change_counter: Option<u64>,
+    pub cached: Vec<CachedItem>,
 }
 
-#[derive(Deserialize)]
-pub struct DecisionInfo {
+#[derive(Debug, Deserialize)]
+pub struct CachedItem {
     pub height: u64,
-    pub round: u32,
+    #[serde(alias = "proposals")]
+    pub _proposals: Vec<consensus_info::ProposalParts>,
+    #[serde(alias = "blocks")]
+    pub _blocks: Vec<consensus_info::FinalizedBlock>,
 }

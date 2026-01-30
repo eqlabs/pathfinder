@@ -1,7 +1,7 @@
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::sync::Arc;
 
-use pathfinder_common::{contract_address, ChainId, ConsensusInfo, ContractAddress};
+use pathfinder_common::{consensus_info, contract_address, ChainId, ContractAddress};
 use pathfinder_ethereum::EthereumClient;
 use pathfinder_executor::{NativeClassCache, TraceCache, VersionedConstantsMap};
 use pathfinder_storage::Storage;
@@ -96,7 +96,7 @@ pub struct RpcContext {
     pub ethereum: EthereumClient,
     pub config: RpcConfig,
     pub native_class_cache: Option<NativeClassCache>,
-    pub consensus_info_watch: Option<watch::Receiver<ConsensusInfo>>,
+    pub consensus_info_watch: Option<watch::Receiver<consensus_info::Consensus>>,
 }
 
 impl RpcContext {
@@ -170,7 +170,7 @@ impl RpcContext {
 
     pub fn with_consensus_info_watch(
         self,
-        consensus_info_watch: watch::Receiver<ConsensusInfo>,
+        consensus_info_watch: watch::Receiver<consensus_info::Consensus>,
     ) -> Self {
         Self {
             consensus_info_watch: Some(consensus_info_watch),

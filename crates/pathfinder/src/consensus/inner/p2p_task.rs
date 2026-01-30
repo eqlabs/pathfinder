@@ -10,7 +10,7 @@
 //! 5. caches proposals that we received from other validators and may need to
 //!    be proposed by us in another round at the same height
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -20,12 +20,12 @@ use p2p::libp2p::PeerId;
 use p2p_proto::common::{Address, Hash};
 use p2p_proto::consensus::{ProposalFin, ProposalInit, ProposalPart};
 use pathfinder_common::{
+    consensus_info,
     BlockId,
     BlockNumber,
     ChainId,
-    ConsensusInfo,
+    ConsensusFinalizedL2Block,
     ContractAddress,
-    DecisionInfo,
     ProposalCommitment,
 };
 use pathfinder_consensus::{
@@ -38,12 +38,10 @@ use pathfinder_consensus::{
     SignedVote,
 };
 use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
-use pathfinder_storage::consensus::ConsensusStorage;
 use pathfinder_storage::{Storage, Transaction, TransactionBehavior};
 use tokio::sync::{mpsc, watch};
 
 use super::gossip_retry::{GossipHandler, GossipRetryConfig};
-use super::persist_proposals::ConsensusProposals;
 use super::{integration_testing, ConsensusTaskEvent, ConsensusValue, P2PTaskConfig, P2PTaskEvent};
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::consensus::inner::batch_execution::{
@@ -97,9 +95,9 @@ pub fn spawn(
     tx_to_consensus: mpsc::Sender<ConsensusTaskEvent>,
     mut rx_from_consensus: mpsc::Receiver<P2PTaskEvent>,
     mut rx_from_sync: mpsc::Receiver<SyncMessageToConsensus>,
-    info_watch_tx: watch::Sender<ConsensusInfo>,
+    info_watch_tx: watch::Sender<consensus_info::Consensus>,
     main_storage: Storage,
-    consensus_storage: ConsensusStorage,
+    mut finalized_blocks: HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
     data_directory: &Path,
     verify_tree_hashes: bool,
     gas_price_provider: Option<L1GasPriceProvider>,
@@ -132,103 +130,49 @@ pub fn spawn(
         let mut main_db_conn = main_storage
             .connection()
             .context("Creating main database connection")?;
-        let mut cons_db_conn = consensus_storage
-            .connection()
-            .context("Creating consensus database connection")?;
         let gossip_handler = GossipHandler::new(validator_address, GossipRetryConfig::default());
 
         let validator_cache = ValidatorCache::new();
-        // This is to:
-        // 1. avoid re-reading proposal parts for some H:R multiple times from the DB
-        //    when a new part is incoming for that H:R.
-        // 2. allow replaying of proposal parts during recovery (replayed parts are
-        //    already in storage so the parsing logic would fail if we loaded the parts
-        //    buffer from the DB on each new part).
-        let mut handled_proposal_parts = HashMap::new();
-        // Validators are long-lived but not persisted, and the recovery process
-        // right now works by re-executing all last proposals from the database
-        // for all heights found in the database. We do this by replaying all proposal
-        // parts for all last rounds from all heights.
-        let mut events_to_replay = tokio::task::block_in_place(|| {
-            tracing::info!(
-                "🖧  🔧 {validator_address} Building list of proposal parts to replay ..."
-            );
-            let proposals_db = cons_db_conn
-                .transaction_with_behavior(TransactionBehavior::Immediate)
-                .map(ConsensusProposals::new)
-                .context("Create consensus database transaction")?;
-            let stopwatch = std::time::Instant::now();
-            let all_last_parts = proposals_db
-                .all_last_parts(&validator_address)
-                .map_err(ProposalHandlingError::fatal)?;
-
-            tracing::trace!(
-                "🖧  🔧 {validator_address} Proposal parts to replay: {all_last_parts:#?}"
-            );
-
-            let fake_source_for_replay = PeerId::random();
-            let events_to_replay = all_last_parts
-                .into_iter()
-                .flat_map(|(height, round, parts)| {
-                    parts.into_iter().map(move |part| {
-                        P2PTaskEvent::P2PEvent(Event {
-                            source: fake_source_for_replay,
-                            kind: EventKind::Proposal(HeightAndRound::new(height, round), part),
-                        })
-                    })
-                })
-                .collect::<VecDeque<_>>();
-
-            tracing::info!(
-                "🖧  🔧 {validator_address} List of proposal parts to replay built in {} ms",
-                stopwatch.elapsed().as_millis()
-            );
-            anyhow::Ok(events_to_replay)
-        })
-        .context("Recovering events to replay")?;
+        let mut incoming_proposal_parts = HashMap::new();
+        let mut own_proposal_parts = HashMap::new();
+        let mut decided_blocks = HashMap::<u64, (u32, ConsensusFinalizedL2Block)>::new();
 
         loop {
-            // Replay recovered events first. And only then handle new incoming events.
-            let (p2p_task_event, is_replayed) = if let Some(event) = events_to_replay.pop_front() {
-                (event, true)
-            } else {
-                let p2p_task_event = tokio::select! {
-                    _ = peer_score_decay_timer.tick() => {
-                        p2p_client.decay_peer_scores();
-                        continue;
-                    }
-                    p2p_event = p2p_event_rx.recv() => {
-                        // Unbounded channel size monitoring.
-                        let channel_size = p2p_event_rx.len();
-                        if channel_size > EVENT_CHANNEL_SIZE_LIMIT {
-                            if !channel_size_warning_emitted {
-                                tracing::warn!(%channel_size, "Event channel size exceeded limit");
-                                channel_size_warning_emitted = true;
-                            }
-                        } else {
-                            channel_size_warning_emitted = false;
+            let p2p_task_event = tokio::select! {
+                _ = peer_score_decay_timer.tick() => {
+                    p2p_client.decay_peer_scores();
+                    continue;
+                }
+                p2p_event = p2p_event_rx.recv() => {
+                    // Unbounded channel size monitoring.
+                    let channel_size = p2p_event_rx.len();
+                    if channel_size > EVENT_CHANNEL_SIZE_LIMIT {
+                        if !channel_size_warning_emitted {
+                            tracing::warn!(%channel_size, "Event channel size exceeded limit");
+                            channel_size_warning_emitted = true;
                         }
+                    } else {
+                        channel_size_warning_emitted = false;
+                    }
 
-                        match p2p_event {
-                            Some(event) => P2PTaskEvent::P2PEvent(event),
-                            None => {
-                                tracing::warn!("P2P event receiver was dropped, exiting P2P task");
-                                anyhow::bail!("P2P event receiver was dropped, exiting P2P task");
-                            }
-                        }
-                    }
-                    from_consensus = rx_from_consensus.recv() => {
-                        from_consensus.expect("Receiver not to be dropped")
-                    }
-                    from_sync = rx_from_sync.recv() => match from_sync {
-                        Some(request) => P2PTaskEvent::SyncRequest(request),
+                    match p2p_event {
+                        Some(event) => P2PTaskEvent::P2PEvent(event),
                         None => {
-                            tracing::warn!("Sync request receiver was dropped, exiting P2P task");
-                            anyhow::bail!("Sync request receiver was dropped, exiting P2P task");
+                            tracing::warn!("P2P event receiver was dropped, exiting P2P task");
+                            anyhow::bail!("P2P event receiver was dropped, exiting P2P task");
                         }
                     }
-                };
-                (p2p_task_event, false)
+                }
+                from_consensus = rx_from_consensus.recv() => {
+                    from_consensus.expect("Receiver not to be dropped")
+                }
+                from_sync = rx_from_sync.recv() => match from_sync {
+                    Some(request) => P2PTaskEvent::SyncRequest(request),
+                    None => {
+                        tracing::warn!("Sync request receiver was dropped, exiting P2P task");
+                        anyhow::bail!("Sync request receiver was dropped, exiting P2P task");
+                    }
+                }
             };
 
             let success = tokio::task::block_in_place(|| {
@@ -236,18 +180,9 @@ pub fn spawn(
                 let mut main_db_tx = main_db_conn
                     .transaction_with_behavior(TransactionBehavior::Immediate)
                     .context("Create main database transaction")?;
-                let proposals_db = cons_db_conn
-                    .transaction_with_behavior(TransactionBehavior::Immediate)
-                    .map(ConsensusProposals::new)
-                    .context("Create consensus database transaction")?;
 
                 let success = match p2p_task_event {
                     P2PTaskEvent::P2PEvent(event) => {
-                        tracing::info!(
-                            "🖧  💌 {validator_address} incoming p2p event \
-                             (is_replayed={is_replayed}): {event:?}"
-                        );
-
                         // Even though rebroadcast certificates are not implemented yet, it still
                         // does make sense to keep `history_depth` larger than 0. This is due to
                         // race conditions that occur between the current height, which is being
@@ -266,7 +201,7 @@ pub fn spawn(
                             &main_db_tx,
                             &event.kind,
                             config.history_depth,
-                            &proposals_db,
+                            &incoming_proposal_parts,
                         )? {
                             return Ok(ComputationSuccess::ChangePeerScore {
                                 peer_id: event.source,
@@ -282,12 +217,11 @@ pub fn spawn(
                                     chain_id,
                                     height_and_round,
                                     proposal_part,
-                                    is_replayed,
-                                    &mut handled_proposal_parts,
+                                    &mut incoming_proposal_parts,
+                                    &mut finalized_blocks,
                                     vcache,
                                     dex,
                                     main_readonly_storage.clone(),
-                                    &proposals_db,
                                     &mut batch_execution_manager,
                                     &data_directory,
                                     gas_price_provider.clone(),
@@ -318,24 +252,8 @@ pub fn spawn(
                                                 "Invalid proposal part from peer - skipping, continuing operation"
                                             );
                                             // Purge the proposal from storage
-                                            handled_proposal_parts.remove(&height_and_round);
-                                            if let Err(purge_err) = proposals_db.remove_parts(
-                                                height_and_round.height(),
-                                                Some(height_and_round.round()),
-                                            ) {
-                                                tracing::error!(
-                                                    validator = %validator_address,
-                                                    height_and_round = %height_and_round,
-                                                    error = %purge_err,
-                                                    "Failed to purge proposal parts after recoverable error"
-                                                );
-                                            } else {
-                                                tracing::debug!(
-                                                    validator = %validator_address,
-                                                    height_and_round = %height_and_round,
-                                                    "Purged proposal parts after recoverable error"
-                                                );
-                                            }
+                                            incoming_proposal_parts.remove(&height_and_round);
+                                            // TODO no need to remove the finalized block here???
                                             Ok(ComputationSuccess::Continue)
                                         } else {
                                             tracing::error!(
@@ -382,9 +300,9 @@ pub fn spawn(
                                 // If we're the proposer we could have a false positive here, which
                                 // we avoid by having the decided block marked, so we only return
                                 // a block that is both finalized and decided upon or nothing.
-                                let resp = proposals_db
-                                    .read_consensus_finalized_and_decided_block(number.get())?
-                                    .map(Box::new);
+                                let resp = decided_blocks
+                                    .get(&number.get())
+                                    .map(|(_, block)| Box::new(block.clone()));
 
                                 if resp.is_none() {
                                     tracing::trace!(
@@ -404,6 +322,13 @@ pub fn spawn(
                                 tracing::trace!(
                                     %number, "🖧  📥 {validator_address} confirm finalized block committed"
                                 );
+
+                                integration_testing::debug_fail_on_proposal_committed(
+                                    number.get(),
+                                    inject_failure,
+                                    &data_directory,
+                                );
+
                                 // There are 2 scenarios here:
                                 // 1. Consensus is used by sync to get the tip because the FGw is
                                 //    naturally lagging behind sync as it's just duplicating
@@ -421,7 +346,8 @@ pub fn spawn(
                                     deferred_executions.clone(),
                                     &mut batch_execution_manager,
                                     main_readonly_storage.clone(),
-                                    &proposals_db,
+                                    &mut decided_blocks,
+                                    &mut finalized_blocks,
                                     number,
                                     gas_price_provider.clone(),
                                     worker_pool.clone(),
@@ -489,17 +415,11 @@ pub fn spawn(
                              {height_and_round}, hash {proposal_commitment}"
                         );
 
-                        let duplicate_encountered = proposals_db.persist_parts(
-                            height_and_round.height(),
-                            height_and_round.round(),
-                            &validator_address,
-                            &proposal_parts,
-                        )?;
-                        proposals_db.persist_consensus_finalized_block(
-                            height_and_round.height(),
-                            height_and_round.round(),
-                            finalized_block,
-                        )?;
+                        let duplicate_encountered = own_proposal_parts
+                            .insert(height_and_round, proposal_parts)
+                            .is_some();
+                        finalized_blocks.insert(height_and_round, finalized_block);
+
                         if duplicate_encountered {
                             tracing::warn!(
                                 "Duplicate proposal cache request for {height_and_round}!"
@@ -518,70 +438,12 @@ pub fn spawn(
                                 proposal.round.as_u32().expect("Valid round"),
                             );
 
-                            let proposal_parts = if let Some(proposal_parts) = proposals_db
-                                .own_parts(
-                                    height_and_round.height(),
-                                    height_and_round.round(),
-                                    &validator_address,
-                                )? {
-                                // TODO re-assess if the following comment is still true
-                                //
-                                // TODO we're assuming that all proposals are valid and any failure
-                                // to reach consensus in round 0
-                                // always yields re-proposing the same
-                                // proposal in following rounds. This will change once proposal
-                                // validation is integrated.
-                                proposal_parts
-                            } else {
-                                // TODO re-assess if the following comment is still true, maybe we
-                                // should just error here?
-                                //
-                                // TODO this is here to catch a very rare case which I'm almost
-                                // sure occurred at least once during tests on my machine.
-                                tracing::warn!(
-                                    "Engine requested gossiping a proposal for {height_and_round} \
-                                     via ConsensusEvent::Gossip but we did not create it due to \
-                                     missing respective ConsensusEvent::RequestProposal.",
-                                );
-
-                                // The engine chose us for this round as proposer and requested that
-                                // we gossip a proposal from a previous round. For now we just
-                                // choose the proposal from the previous round, and the rest are
-                                // kept for debugging purposes.
-                                let Some((round, mut proposal_parts)) =
-                                    proposals_db.last_parts(proposal.height, &validator_address)?
-                                else {
-                                    panic!("At least one proposal from a previous round");
-                                };
-                                assert_eq!(
-                                    round + 1,
-                                    proposal.round.as_u32().expect("Round not to be None")
-                                );
-                                let ProposalInit {
-                                    round, proposer, ..
-                                } = proposal_parts
-                                    .first_mut()
-                                    .and_then(ProposalPart::as_init_mut)
-                                    .expect("First part to be Init");
-                                // Since the proposal comes from some previous round we need to
-                                // correct the round number and
-                                // proposer address.
-                                assert_ne!(
-                                    *round,
-                                    proposal.round.as_u32().expect("Round not to be None")
-                                );
-                                assert_ne!(*proposer, Address(proposal.proposer.0));
-                                *round = proposal.round.as_u32().expect("Round not to be None");
-                                *proposer = Address(proposal.proposer.0);
-                                let proposer_address = ContractAddress(proposal.proposer.0);
-                                proposals_db.persist_parts(
-                                    proposal.height,
-                                    *round,
-                                    &proposer_address,
-                                    &proposal_parts,
-                                )?;
-                                proposal_parts
-                            };
+                            let proposal_parts = own_proposal_parts
+                                .get(&height_and_round)
+                                .context(format!(
+                                    "Getting own proposal parts for {height_and_round}"
+                                ))?
+                                .clone();
 
                             Ok(ComputationSuccess::ProposalGossip(
                                 height_and_round,
@@ -630,11 +492,7 @@ pub fn spawn(
                         );
                         let stopwatch = std::time::Instant::now();
 
-                        let block: Option<pathfinder_common::ConsensusFinalizedL2Block> =
-                            proposals_db.read_consensus_finalized_block(
-                                height_and_round.height(),
-                                height_and_round.round(),
-                            )?;
+                        let block = finalized_blocks.remove(&height_and_round);
 
                         // The block will not be in the consensus DB if it has already been
                         // downloaded from the feeder gateway and committed to the main DB by the
@@ -648,41 +506,11 @@ pub fn spawn(
                                 "Proposal commitment mismatch"
                             );
 
-                            proposals_db.mark_consensus_finalized_block_as_decided(
+                            decided_blocks.insert(
                                 height_and_round.height(),
-                                height_and_round.round(),
-                            )?;
+                                (height_and_round.round(), block),
+                            );
                         }
-
-                        info_watch_tx.send_if_modified(|info| {
-                            let do_update = match info.highest_decision {
-                                None => true,
-                                Some(decision) => {
-                                    let new_height =
-                                        height_and_round.height() > decision.height.get();
-                                    let new_value = value.0 != decision.value;
-                                    new_height || new_value
-                                }
-                            };
-                            if do_update {
-                                let height = BlockNumber::new_or_panic(height_and_round.height());
-                                *info = ConsensusInfo {
-                                    highest_decision: Some(DecisionInfo {
-                                        height,
-                                        round: height_and_round.round(),
-                                        value: value.0,
-                                    }),
-                                    ..*info
-                                };
-                            }
-                            do_update
-                        });
-
-                        integration_testing::debug_fail_on_proposal_committed(
-                            height_and_round.height(),
-                            inject_failure,
-                            &data_directory,
-                        );
 
                         tracing::info!(
                             "🖧  💾 {validator_address} Finalized and prepared block for \
@@ -695,9 +523,8 @@ pub fn spawn(
                         // block, which has just been marked as decided upon, and will be
                         // committed by the sync task until it is confirmed that the block was
                         // indeed committed.
-                        proposals_db.remove_undecided_consensus_finalized_blocks(
-                            height_and_round.height(),
-                        )?;
+                        finalized_blocks.retain(|hnr, _| hnr.height() != height_and_round.height());
+
                         tracing::debug!(
                             "🖧  🗑️ {validator_address} removed my undecided finalized blocks for \
                              height {}",
@@ -713,13 +540,24 @@ pub fn spawn(
                         );
 
                         // Remove cached proposal parts for this height
-                        handled_proposal_parts
+                        incoming_proposal_parts
                             .retain(|hnr, _| hnr.height() != height_and_round.height());
-                        proposals_db.remove_parts(height_and_round.height(), None)?;
+                        own_proposal_parts
+                            .retain(|hnr, _| hnr.height() != height_and_round.height());
                         tracing::debug!(
                             "🖧  🗑️ {validator_address} removed my proposal parts for height {}",
                             height_and_round.height()
                         );
+
+                        update_info_watch(
+                            height_and_round,
+                            value,
+                            &incoming_proposal_parts,
+                            &own_proposal_parts,
+                            &finalized_blocks,
+                            &decided_blocks,
+                            &info_watch_tx,
+                        )?;
 
                         // Consistency of our storage is more important than any irrational
                         // scenarios that in theory cannot occur. In the abnormal case that
@@ -742,7 +580,8 @@ pub fn spawn(
                                 deferred_executions.clone(),
                                 &mut batch_execution_manager,
                                 main_readonly_storage.clone(),
-                                &proposals_db,
+                                &mut decided_blocks,
+                                &mut finalized_blocks,
                                 block_number,
                                 gas_price_provider.clone(),
                                 worker_pool.clone(),
@@ -756,7 +595,6 @@ pub fn spawn(
                 }?;
 
                 main_db_tx.commit()?;
-                proposals_db.commit()?;
                 tracing::debug!("DB txs committed");
                 Ok(success)
             })?;
@@ -772,7 +610,7 @@ pub fn spawn(
                 }
                 ComputationSuccess::IncomingProposalCommitment(height_and_round, commitment) => {
                     // Does nothing in production builds.
-                    integration_testing::debug_fail_on_entire_proposal_persisted(
+                    integration_testing::debug_fail_on_proposal_finalized(
                         height_and_round.height(),
                         inject_failure,
                         &data_directory,
@@ -819,15 +657,13 @@ fn on_finalized_block_committed(
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
     main_db: Storage,
-    proposals_db: &ConsensusProposals<'_>,
-    number: pathfinder_common::BlockNumber,
+    decided_blocks: &mut HashMap<u64, (u32, ConsensusFinalizedL2Block)>,
+    finalized_blocks: &mut HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
+    number: BlockNumber,
     gas_price_provider: Option<L1GasPriceProvider>,
     worker_pool: ValidatorWorkerPool,
 ) -> Result<ComputationSuccess, anyhow::Error> {
-    // In practice this should only remove the finalized block for the last round at
-    // the height, because lower rounds were already removed when the proposal
-    // was decided upon in that last round.
-    proposals_db.remove_consensus_finalized_blocks(number.get())?;
+    decided_blocks.remove(&number.get());
 
     tracing::debug!(
         "🖧  🗑️ {validator_address} removed finalized block for last round at height {} after \
@@ -840,7 +676,7 @@ fn on_finalized_block_committed(
         deferred_executions.clone(),
         batch_execution_manager,
         main_db,
-        proposals_db,
+        finalized_blocks,
         gas_price_provider,
         worker_pool,
     )?;
@@ -880,30 +716,6 @@ impl ValidatorCache {
             })
         })
     }
-
-    /// Removes all validators for older rounds at the given height.
-    fn remove_older_rounds_for_height(
-        &self,
-        height: u64,
-        current_round: u32,
-    ) -> Vec<HeightAndRound> {
-        let mut cache = self.0.lock().unwrap();
-        let old_rounds: Vec<HeightAndRound> = cache
-            .keys()
-            .filter(|hnr| hnr.height() == height && hnr.round() < current_round)
-            .cloned()
-            .collect();
-
-        for hnr in &old_rounds {
-            if let Some(_validator) = cache.remove(hnr) {
-                tracing::debug!(
-                    "🖧  ⚙️ cleaned up validator for old round {hnr} (new round {current_round})"
-                );
-            }
-        }
-
-        old_rounds
-    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -913,7 +725,7 @@ fn execute_deferred_for_next_height<T: TransactionExt>(
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
     main_db: Storage,
-    proposals_db: &ConsensusProposals<'_>,
+    finalized_blocks: &mut HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
     gas_price_provider: Option<L1GasPriceProvider>,
     worker_pool: ValidatorWorkerPool,
 ) -> anyhow::Result<Option<(HeightAndRound, ProposalCommitmentWithOrigin)>> {
@@ -986,7 +798,7 @@ fn execute_deferred_for_next_height<T: TransactionExt>(
                     "🖧  ⚙️ executed deferred finalized consensus for height and round {hnr}"
                 );
 
-                proposals_db.persist_consensus_finalized_block(hnr.height(), hnr.round(), block)?;
+                finalized_blocks.insert(hnr, block);
                 Some(commitment)
             } else {
                 tracing::debug!(
@@ -1017,7 +829,7 @@ fn is_outdated_p2p_event(
     db_tx: &Transaction<'_>,
     event: &EventKind,
     history_depth: u64,
-    proposals_db: &ConsensusProposals<'_>,
+    proposal_parts: &HashMap<HeightAndRound, Vec<ProposalPart>>,
 ) -> anyhow::Result<bool> {
     // Ignore messages that refer to already committed blocks.
     let incoming_height = event.height();
@@ -1025,13 +837,7 @@ fn is_outdated_p2p_event(
     // Check the consensus database for the latest finalized height, which
     // represents blocks that consensus has decided upon (even if not yet
     // committed to main DB).
-    let latest_finalized = proposals_db
-        .inner()
-        .latest_finalized_height()
-        .map_err(|e| {
-            anyhow::Error::from(e)
-                .context("Failed to query latest finalized height from consensus database")
-        })?;
+    let latest_finalized = proposal_parts.keys().map(|hnr| hnr.height()).max();
 
     if let Some(latest_finalized) = latest_finalized {
         let threshold = latest_finalized.saturating_sub(history_depth);
@@ -1128,38 +934,18 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
     chain_id: ChainId,
     height_and_round: HeightAndRound,
     proposal_part: ProposalPart,
-    is_replayed: bool,
-    handled_proposal_parts: &mut HashMap<HeightAndRound, Vec<ProposalPart>>,
+    incoming_proposal_parts: &mut HashMap<HeightAndRound, Vec<ProposalPart>>,
+    finalized_blocks: &mut HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
     mut validator_cache: ValidatorCache,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     main_readonly_storage: Storage,
-    proposals_db: &ConsensusProposals<'_>,
     batch_execution_manager: &mut BatchExecutionManager,
     data_directory: &Path,
     gas_price_provider: Option<L1GasPriceProvider>,
     inject_failure_config: Option<InjectFailureConfig>,
     worker_pool: ValidatorWorkerPool,
 ) -> Result<Option<ProposalCommitmentWithOrigin>, ProposalHandlingError> {
-    // When receiving a new ProposalInit, clean up validators and execution state
-    // for older rounds at this height BEFORE taking any references to
-    // handled_proposal_parts. This is necessary to release resources (like
-    // ConcurrentBlockExecutor handles) held by validators from previous rounds
-    // that will never complete. Without this cleanup, after a crash and
-    // restart, replayed proposals from old rounds would hold executor resources
-    // that may block new rounds.
-    if let ProposalPart::Init(_) = &proposal_part {
-        let height = height_and_round.height();
-        let current_round = height_and_round.round();
-        let old_rounds = validator_cache.remove_older_rounds_for_height(height, current_round);
-
-        for old_hnr in old_rounds {
-            batch_execution_manager.cleanup(&old_hnr);
-            handled_proposal_parts.remove(&old_hnr);
-            deferred_executions.lock().unwrap().remove(&old_hnr);
-        }
-    }
-
-    let parts_for_height_and_round = handled_proposal_parts.entry(height_and_round).or_default();
+    let parts_for_height_and_round = incoming_proposal_parts.entry(height_and_round).or_default();
 
     let has_executed_txn_count = parts_for_height_and_round
         .iter()
@@ -1195,13 +981,7 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
             // - [ ] Block Info
             // (...)
             let proposal_init = prop_init.clone();
-            append_and_persist_part(
-                height_and_round,
-                proposal_part,
-                is_replayed,
-                proposals_db,
-                parts_for_height_and_round,
-            )?;
+            append_part(height_and_round, proposal_part, parts_for_height_and_round)?;
             let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init)?;
             validator_cache.insert(height_and_round, ValidatorStage::BlockInfo(validator));
             Ok(None)
@@ -1230,13 +1010,7 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
                 .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
 
             let block_info = block_info.clone();
-            append_and_persist_part(
-                height_and_round,
-                proposal_part,
-                is_replayed,
-                proposals_db,
-                parts_for_height_and_round,
-            )?;
+            append_part(height_and_round, proposal_part, parts_for_height_and_round)?;
 
             let defer = {
                 let mut db_conn = main_readonly_storage.connection().context(
@@ -1313,13 +1087,7 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
 
             let validator_stage = validator_cache.remove(&height_and_round)?;
             let tx_batch = tx_batch.clone();
-            append_and_persist_part(
-                height_and_round,
-                proposal_part,
-                is_replayed,
-                proposals_db,
-                parts_for_height_and_round,
-            )?;
+            append_part(height_and_round, proposal_part, parts_for_height_and_round)?;
 
             // Use BatchExecutionManager to handle optimistic execution with checkpoints and
             // deferral
@@ -1329,7 +1097,6 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
                 validator_stage,
                 main_readonly_storage.clone(),
                 &mut deferred_executions.lock().unwrap(),
-                is_replayed,
             )?;
             validator_cache.insert(height_and_round, next_stage);
 
@@ -1351,19 +1118,13 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
                     // Looks like an empty proposal:
                     // - [x] Proposal Init
                     // - [x] Proposal Fin
-                    proposals_db.persist_consensus_finalized_block(
-                        height_and_round.height(),
-                        height_and_round.round(),
-                        create_empty_block(height_and_round.height()),
-                    )?;
-
-                    let proposer_address = append_and_persist_part(
+                    finalized_blocks.insert(
                         height_and_round,
-                        proposal_part,
-                        is_replayed,
-                        proposals_db,
-                        parts_for_height_and_round,
-                    )?;
+                        create_empty_block(height_and_round.height()),
+                    );
+
+                    let proposer_address =
+                        append_part(height_and_round, proposal_part, parts_for_height_and_round)?;
 
                     let valid_round =
                         valid_round_from_parts(parts_for_height_and_round, &height_and_round)?;
@@ -1389,13 +1150,8 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
                     //      - [?] at least one Transaction Batch
                     //      - [?] Executed Transaction Count
                     // - [x] Proposal Fin
-                    let proposer_address = append_and_persist_part(
-                        height_and_round,
-                        proposal_part,
-                        is_replayed,
-                        proposals_db,
-                        parts_for_height_and_round,
-                    )?;
+                    let proposer_address =
+                        append_part(height_and_round, proposal_part, parts_for_height_and_round)?;
 
                     let valid_round =
                         valid_round_from_parts(parts_for_height_and_round, &height_and_round)?;
@@ -1407,7 +1163,7 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
                         main_readonly_storage.clone(),
                         deferred_executions,
                         batch_execution_manager,
-                        proposals_db,
+                        finalized_blocks,
                         &mut validator_cache,
                         gas_price_provider.clone(),
                         worker_pool,
@@ -1469,11 +1225,9 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
             //      - [?] at least one Transaction Batch
             //      - [x] Executed Transaction Count
             // - [ ] Proposal Fin
-            append_and_persist_part(
+            append_part(
                 height_and_round,
                 proposal_part.clone(),
-                is_replayed,
-                proposals_db,
                 parts_for_height_and_round,
             )?;
 
@@ -1524,11 +1278,7 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
                              {height_and_round} after ExecutedTransactionCount was processed"
                         );
 
-                        proposals_db.persist_consensus_finalized_block(
-                            height_and_round.height(),
-                            height_and_round.round(),
-                            block,
-                        )?;
+                        finalized_blocks.insert(height_and_round, block);
 
                         return Ok(Some(deferred_commitment));
                     }
@@ -1567,29 +1317,14 @@ fn should_defer_validation(
     Ok(defer)
 }
 
-/// Appends the given proposal part to the list of parts. Also persists the
-/// parts list unless the part is replayed, which assumes that the part is
-/// already in storage.
-fn append_and_persist_part(
+/// Appends the given proposal part to the list of parts.
+fn append_part(
     height_and_round: HeightAndRound,
     proposal_part: ProposalPart,
-    is_replayed: bool,
-    proposals_db: &ConsensusProposals<'_>,
     parts: &mut Vec<ProposalPart>,
 ) -> Result<ContractAddress, ProposalHandlingError> {
-    let expect_update = !proposal_part.is_proposal_init();
     parts.push(proposal_part);
-    let proposer_address = proposer_address_from_parts(parts, &height_and_round)?;
-    if !is_replayed {
-        let updated = proposals_db.persist_parts(
-            height_and_round.height(),
-            height_and_round.round(),
-            &proposer_address,
-            parts,
-        )?;
-        assert_eq!(expect_update, updated);
-    }
-    Ok(proposer_address)
+    proposer_address_from_parts(parts, &height_and_round)
 }
 
 /// Either defer or execute the proposal finalization depending on whether
@@ -1606,7 +1341,7 @@ fn defer_or_execute_proposal_fin<T: TransactionExt>(
     main_db: Storage,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
-    proposals_db: &ConsensusProposals<'_>,
+    finalized_blocks: &mut HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
     validator_cache: &mut ValidatorCache,
     gas_price_provider: Option<L1GasPriceProvider>,
     worker_pool: ValidatorWorkerPool,
@@ -1710,11 +1445,7 @@ fn defer_or_execute_proposal_fin<T: TransactionExt>(
                      complete, additionally {deferred_txns_len} previously deferred transactions \
                      were executed",
                 );
-                proposals_db.persist_consensus_finalized_block(
-                    height_and_round.height(),
-                    height_and_round.round(),
-                    block,
-                )?;
+                finalized_blocks.insert(height_and_round, block);
                 return Ok(Some(deferred_commitment));
             }
 
@@ -1754,11 +1485,7 @@ fn defer_or_execute_proposal_fin<T: TransactionExt>(
              additionally {deferred_txns_len} previously deferred transactions were executed",
         );
 
-        proposals_db.persist_consensus_finalized_block(
-            height_and_round.height(),
-            height_and_round.round(),
-            block,
-        )?;
+        finalized_blocks.insert(height_and_round, block);
 
         Ok(Some(commitment))
     }
@@ -1836,6 +1563,63 @@ fn valid_round_from_parts(
     Ok(*valid_round)
 }
 
+fn update_info_watch(
+    hnr: HeightAndRound,
+    value: ConsensusValue,
+    incoming_proposal_parts: &HashMap<HeightAndRound, Vec<ProposalPart>>,
+    own_proposal_parts: &HashMap<HeightAndRound, Vec<ProposalPart>>,
+    finalized_blocks: &HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
+    decided_blocks: &HashMap<u64, (u32, ConsensusFinalizedL2Block)>,
+    info_watch_tx: &watch::Sender<consensus_info::Consensus>,
+) -> Result<(), ProposalHandlingError> {
+    let mut cached = BTreeMap::<u64, consensus_info::CachedAtHeight>::new();
+    incoming_proposal_parts
+        .iter()
+        .chain(own_proposal_parts.iter())
+        .try_for_each(|(hnr, parts)| -> Result<(), ProposalHandlingError> {
+            cached
+                .entry(hnr.height())
+                .or_default()
+                .proposals
+                .push(consensus_info::ProposalParts {
+                    round: hnr.round(),
+                    proposer: proposer_address_from_parts(parts, &hnr)?,
+                    parts_len: parts.len(),
+                });
+            Ok(())
+        })?;
+    finalized_blocks.keys().for_each(|hnr| {
+        cached
+            .entry(hnr.height())
+            .or_default()
+            .blocks
+            .push(consensus_info::FinalizedBlock {
+                round: hnr.round(),
+                is_decided: false,
+            })
+    });
+    decided_blocks.iter().for_each(|(h, (r, _))| {
+        cached
+            .entry(*h)
+            .or_default()
+            .blocks
+            .push(consensus_info::FinalizedBlock {
+                round: *r,
+                is_decided: true,
+            })
+    });
+
+    info_watch_tx.send_modify(move |info| {
+        info.highest_decision = Some(consensus_info::Decision {
+            height: BlockNumber::new_or_panic(hnr.height()),
+            round: hnr.round(),
+            value: value.0,
+        });
+        info.cached = cached;
+    });
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -1862,15 +1646,12 @@ mod tests {
     #[test]
     fn regression_rollback_to_nonzero_batch_from_h10_onwards_clears_system_contract_0x1() {
         let main_storage = StorageBuilder::in_tempdir().unwrap();
-        let consensus_storage = ConsensusStorage::in_tempdir().unwrap();
-        let mut consensus_db_conn = consensus_storage.connection().unwrap();
-        let consensus_db_tx = consensus_db_conn.transaction().unwrap();
-        let proposals_db = ConsensusProposals::new(consensus_db_tx);
         let worker_pool = create_test_worker_pool();
         let mut batch_execution_manager = BatchExecutionManager::new(None, worker_pool.clone());
         let dummy_data_dir = PathBuf::new();
 
-        let mut handled_proposal_parts = HashMap::new();
+        let mut incoming_proposal_parts = HashMap::new();
+        let mut finalized_blocks = HashMap::new();
         let validator_cache = ValidatorCache::new();
         let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
 
@@ -1895,12 +1676,11 @@ mod tests {
                     ChainId::SEPOLIA_TESTNET,
                     HeightAndRound::new(h, 0),
                     proposal_part,
-                    false,
-                    &mut handled_proposal_parts,
+                    &mut incoming_proposal_parts,
+                    &mut finalized_blocks,
                     validator_cache.clone(),
                     deferred_executions.clone(),
                     main_storage.clone(),
-                    &proposals_db,
                     &mut batch_execution_manager,
                     &dummy_data_dir,
                     None,

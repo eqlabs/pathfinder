@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod casm_class;
 pub mod class_definition;
+pub mod consensus_info;
 pub mod consts;
 pub mod event;
 pub mod hash;
@@ -688,21 +689,6 @@ pub fn calculate_class_commitment_leaf_hash(
         )
         .into(),
     )
-}
-
-#[derive(Default, Debug, Clone, Copy)]
-pub struct ConsensusInfo {
-    /// Highest decided height and value.
-    pub highest_decision: Option<DecisionInfo>,
-    /// Track the number of times peer scores were changed.
-    pub peer_score_change_counter: u64,
-}
-
-#[derive(Default, Debug, Clone, Copy)]
-pub struct DecisionInfo {
-    pub height: BlockNumber,
-    pub round: u32,
-    pub value: ProposalCommitment,
 }
 
 /// A SNOS stwo proof element.

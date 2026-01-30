@@ -127,13 +127,13 @@ pub fn debug_fail_on_proposal_part(
     );
 }
 
-pub fn debug_fail_on_entire_proposal_persisted(
+pub fn debug_fail_on_proposal_finalized(
     height: u64,
     inject_failure: Option<InjectFailureConfig>,
     data_directory: &Path,
 ) {
     debug_fail_on(
-        |trigger| matches!(trigger, InjectFailureTrigger::EntireProposalPersisted),
+        |trigger| matches!(trigger, InjectFailureTrigger::ProposalFinalized),
         height,
         inject_failure,
         data_directory,
