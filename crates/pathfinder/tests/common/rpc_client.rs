@@ -5,7 +5,7 @@ use std::time::Duration;
 use anyhow::Context;
 use p2p::consensus::HeightAndRound;
 use serde::Deserialize;
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 
@@ -18,12 +18,14 @@ pub fn wait_for_height(
     instance: &PathfinderInstance,
     height: u64,
     poll_interval: Duration,
+    next_hnr_tx: Option<mpsc::Sender<HeightAndRound>>,
 ) -> JoinHandle<()> {
     tokio::spawn(wait_for_height_fut(
         instance.name(),
         instance.rpc_port_watch_rx().clone(),
         height,
         poll_interval,
+        next_hnr_tx,
     ))
 }
 
@@ -34,7 +36,10 @@ async fn wait_for_height_fut(
     mut rpc_port_watch_rx: watch::Receiver<(u32, u16)>,
     height: u64,
     poll_interval: Duration,
+    next_hnr_tx: Option<mpsc::Sender<HeightAndRound>>,
 ) {
+    let mut last_hnr = None;
+
     loop {
         // Sleeping first actually makes sense here, because the node will likely not
         // have any decided heights immediately after the RPC server is ready.
@@ -72,6 +77,15 @@ async fn wait_for_height_fut(
         );
 
         if let Some(highest_decided) = highest_decided {
+            let current = HeightAndRound::new(highest_decided.height, highest_decided.round);
+
+            if let Some(tx) = &next_hnr_tx {
+                if last_hnr.is_none() || last_hnr.as_ref() != Some(&current) {
+                    last_hnr = Some(current);
+                    let _ = tx.send(current).await;
+                }
+            }
+
             if highest_decided.height >= height {
                 return;
             }

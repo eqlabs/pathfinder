@@ -366,7 +366,7 @@ mod tests {
     use pathfinder_executor::BlockExecutor;
 
     use super::*;
-    use crate::consensus::inner::test_helpers::create_test_proposal;
+    use crate::consensus::inner::dummy_proposal::create_test_proposal_init;
     use crate::validator::{ProdTransactionMapper, ValidatorBlockInfoStage};
 
     /// Helper function to create a committed parent block in storage
@@ -441,7 +441,7 @@ mod tests {
         use pathfinder_executor::types::BlockInfo;
         use pathfinder_storage::StorageBuilder;
 
-        use crate::consensus::inner::test_helpers::create_transaction_batch;
+        use crate::consensus::inner::dummy_proposal::create_transaction_batch;
 
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
@@ -478,7 +478,7 @@ mod tests {
         );
 
         // Execute a batch to start execution
-        let transactions = create_transaction_batch(0, 5, chain_id);
+        let transactions = create_transaction_batch(0, 0, 5, chain_id);
         batch_execution_manager
             .execute_batch::<BlockExecutor, ProdTransactionMapper>(
                 height_and_round,
@@ -539,7 +539,7 @@ mod tests {
         use pathfinder_common::{BlockNumber, BlockTimestamp, ChainId, SequencerAddress};
         use pathfinder_storage::StorageBuilder;
 
-        use crate::consensus::inner::test_helpers::create_transaction_batch;
+        use crate::consensus::inner::dummy_proposal::create_transaction_batch;
 
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
@@ -630,7 +630,7 @@ mod tests {
             .expect("Failed to create validator stage");
 
         // Step 2: TransactionBatch arrives and executes
-        let transactions = create_transaction_batch(0, 5, chain_id);
+        let transactions = create_transaction_batch(0, 0, 5, chain_id);
         let next_stage = batch_execution_manager
             .process_batch_with_deferral::<BlockExecutor, ProdTransactionMapper>(
                 height_and_round,
@@ -675,19 +675,18 @@ mod tests {
         use pathfinder_common::ChainId;
         use pathfinder_storage::StorageBuilder;
 
-        use crate::consensus::inner::test_helpers::create_transaction_batch;
+        use crate::consensus::inner::dummy_proposal::create_transaction_batch;
 
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
 
         let height_and_round = HeightAndRound::new(2, 1);
         let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
-        let (proposal_init, proposal_block_info) = create_test_proposal(
+        let (proposal_init, proposal_block_info) = create_test_proposal_init(
             chain_id,
             height_and_round.height(),
             height_and_round.round(),
             proposer_address,
-            Vec::new(),
         );
         let validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
             .map(ValidatorStage::<BlockExecutor>::BlockInfo)
@@ -703,7 +702,7 @@ mod tests {
 
         // Test 1: Deferral when parent not committed
         let next_stage = {
-            let transactions = create_transaction_batch(0, 3, chain_id);
+            let transactions = create_transaction_batch(0, 0, 3, chain_id);
 
             let next_stage = batch_execution_manager
                 .process_batch_with_deferral::<BlockExecutor, ProdTransactionMapper>(
@@ -744,7 +743,7 @@ mod tests {
         create_committed_parent_block(&storage, 1).expect("Failed to create parent block");
 
         {
-            let transactions = create_transaction_batch(3, 2, chain_id);
+            let transactions = create_transaction_batch(0, 3, 2, chain_id);
 
             let next_stage = batch_execution_manager
                 .process_batch_with_deferral::<BlockExecutor, ProdTransactionMapper>(
@@ -789,7 +788,7 @@ mod tests {
             let mut next_stage = validator_stage_2;
             // Execute multiple batches
             for i in 0..3 {
-                let transactions = create_transaction_batch(i * 2, 2, chain_id);
+                let transactions = create_transaction_batch(0, i * 2, 2, chain_id);
                 next_stage = batch_execution_manager
                     .process_batch_with_deferral::<BlockExecutor, ProdTransactionMapper>(
                         height_and_round_2,
@@ -819,7 +818,7 @@ mod tests {
         use pathfinder_common::ChainId;
         use pathfinder_storage::StorageBuilder;
 
-        use crate::consensus::inner::test_helpers::create_transaction_batch;
+        use crate::consensus::inner::dummy_proposal::create_transaction_batch;
 
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
@@ -836,9 +835,9 @@ mod tests {
         let height_and_round = HeightAndRound::new(2, 1);
 
         // Execute multiple batches: 3 + 7 + 4 = 14 transactions total
-        let batch1 = create_transaction_batch(0, 3, chain_id);
-        let batch2 = create_transaction_batch(3, 7, chain_id);
-        let batch3 = create_transaction_batch(10, 4, chain_id);
+        let batch1 = create_transaction_batch(0, 0, 3, chain_id);
+        let batch2 = create_transaction_batch(0, 3, 7, chain_id);
+        let batch3 = create_transaction_batch(0, 10, 4, chain_id);
 
         batch_execution_manager
             .execute_batch::<BlockExecutor, ProdTransactionMapper>(
@@ -902,9 +901,9 @@ mod tests {
         )
         .expect("Failed to create validator stage");
 
-        let batch1_2 = create_transaction_batch(0, 3, chain_id);
-        let batch2_2 = create_transaction_batch(3, 7, chain_id);
-        let batch3_2 = create_transaction_batch(10, 4, chain_id);
+        let batch1_2 = create_transaction_batch(0, 0, 3, chain_id);
+        let batch2_2 = create_transaction_batch(0, 3, 7, chain_id);
+        let batch3_2 = create_transaction_batch(0, 10, 4, chain_id);
 
         let height_and_round_2 = HeightAndRound::new(3, 1);
         batch_execution_manager
