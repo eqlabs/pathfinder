@@ -13,7 +13,7 @@ use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::{BlockId, Chain, ConsensusFinalizedL2Block, L2Block, L2BlockToCommit};
 use pathfinder_crypto::Felt;
-use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
+use pathfinder_ethereum::{EthereumClient, EthereumStateUpdate};
 use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_rpc::types::syncing::{self, NumberedBlock, Syncing};
 use pathfinder_rpc::{Notifications, PendingData, Reorg, SyncState};
@@ -153,17 +153,16 @@ where
 }
 
 /// Implements the main sync loop, where L1 and L2 sync results are combined.
-pub async fn sync<Ethereum, SequencerClient, F1, F2, L1Sync, L2Sync>(
-    context: SyncContext<SequencerClient, Ethereum>,
+pub async fn sync<SequencerClient, F1, F2, L1Sync, L2Sync>(
+    context: SyncContext<SequencerClient, EthereumClient>,
     mut l1_sync: L1Sync,
     l2_sync: L2Sync,
 ) -> anyhow::Result<()>
 where
-    Ethereum: EthereumApi + Clone + Send + 'static,
     SequencerClient: GatewayApi + Clone + Send + Sync + 'static,
     F1: Future<Output = anyhow::Result<()>> + Send + 'static,
     F2: Future<Output = anyhow::Result<()>> + Send + 'static,
-    L1Sync: FnMut(mpsc::Sender<SyncEvent>, L1SyncContext<Ethereum>) -> F1,
+    L1Sync: FnMut(mpsc::Sender<SyncEvent>, L1SyncContext<EthereumClient>) -> F1,
     L2Sync: FnOnce(
             mpsc::Sender<SyncEvent>,
             L2SyncContext<SequencerClient>,
@@ -442,18 +441,17 @@ where
 /// This function is also stripped of the sync status updater and pending block
 /// poller, since this is a PoC for consensus integration and those features
 /// are not needed here.
-pub async fn consensus_sync<Ethereum, SequencerClient, F1, F2, L1Sync, L2Sync>(
-    context: SyncContext<SequencerClient, Ethereum>,
+pub async fn consensus_sync<SequencerClient, F1, F2, L1Sync, L2Sync>(
+    context: SyncContext<SequencerClient, EthereumClient>,
     mut l1_sync: L1Sync,
     l2_sync: L2Sync,
     consensus_channels: ConsensusChannels,
 ) -> anyhow::Result<()>
 where
-    Ethereum: EthereumApi + Clone + Send + 'static,
     SequencerClient: GatewayApi + Clone + Send + Sync + 'static,
     F1: Future<Output = anyhow::Result<()>> + Send + 'static,
     F2: Future<Output = anyhow::Result<()>> + Send + 'static,
-    L1Sync: FnMut(mpsc::Sender<SyncEvent>, L1SyncContext<Ethereum>) -> F1,
+    L1Sync: FnMut(mpsc::Sender<SyncEvent>, L1SyncContext<EthereumClient>) -> F1,
     L2Sync: FnOnce(
             mpsc::Sender<SyncEvent>,
             Option<ConsensusChannels>,

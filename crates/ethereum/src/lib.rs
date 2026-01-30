@@ -87,29 +87,6 @@ fn compute_blob_fee(excess_blob_gas: Option<u64>) -> u128 {
         .unwrap_or(alloy::eips::eip4844::BLOB_TX_MIN_BLOB_GASPRICE)
 }
 
-/// Ethereum API trait
-pub trait EthereumApi {
-    fn get_starknet_state(
-        &self,
-        address: &H160,
-    ) -> impl Future<Output = anyhow::Result<EthereumStateUpdate>>;
-    fn get_chain(&self) -> impl Future<Output = anyhow::Result<EthereumChain>>;
-    fn get_l1_handler_txs(
-        &self,
-        address: &H160,
-        tx_hash: &L1TransactionHash,
-    ) -> impl Future<Output = anyhow::Result<Vec<L1HandlerTransaction>>>;
-    fn sync_and_listen<F, Fut>(
-        &mut self,
-        address: &H160,
-        poll_interval: Duration,
-        callback: F,
-    ) -> impl Future<Output = anyhow::Result<()>>
-    where
-        F: Fn(EthereumStateUpdate) -> Fut + Send + 'static,
-        Fut: Future<Output = ()> + Send + 'static;
-}
-
 /// Ethereum client
 #[derive(Clone)]
 pub struct EthereumClient {
@@ -269,11 +246,11 @@ impl EthereumClient {
     }
 }
 
-impl EthereumApi for EthereumClient {
+impl EthereumClient {
     /// Listens for Ethereum events and notifies the caller using the provided
     /// callback. State updates will only be emitted once they belong to a
     /// finalized block.
-    async fn sync_and_listen<F, Fut>(
+    pub async fn sync_and_listen<F, Fut>(
         &mut self,
         address: &H160,
         poll_interval: Duration,
@@ -398,7 +375,7 @@ impl EthereumApi for EthereumClient {
         }
     }
 
-    async fn get_l1_handler_txs(
+    pub async fn get_l1_handler_txs(
         &self,
         address: &H160,
         tx_hash: &L1TransactionHash,
@@ -465,7 +442,7 @@ impl EthereumApi for EthereumClient {
     }
 
     /// Get the Starknet state
-    async fn get_starknet_state(&self, address: &H160) -> anyhow::Result<EthereumStateUpdate> {
+    pub async fn get_starknet_state(&self, address: &H160) -> anyhow::Result<EthereumStateUpdate> {
         let provider = self.provider().await?;
 
         // Create the StarknetCoreContract instance
@@ -490,7 +467,7 @@ impl EthereumApi for EthereumClient {
     }
 
     /// Get the Ethereum chain
-    async fn get_chain(&self) -> anyhow::Result<EthereumChain> {
+    pub async fn get_chain(&self) -> anyhow::Result<EthereumChain> {
         let provider = self.provider().await?;
         let chain_id = provider.get_chain_id().await?;
         let chain_id = U256::from(chain_id);
