@@ -7,14 +7,6 @@ mod fetch_validators;
 mod gossip_retry;
 mod integration_testing;
 mod p2p_task;
-mod persist_proposals;
-
-#[cfg(all(
-    feature = "p2p",
-    feature = "consensus-integration-tests",
-    debug_assertions
-))]
-pub use persist_proposals::ConsensusProposals;
 
 mod dummy_proposal;
 
@@ -35,7 +27,6 @@ use pathfinder_common::{
     StarknetVersion,
 };
 use pathfinder_consensus::{ConsensusCommand, ConsensusEvent, NetworkMessage};
-use pathfinder_storage::consensus::open_consensus_storage;
 use pathfinder_storage::Storage;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, watch};
@@ -68,9 +59,6 @@ pub fn start(
     // Requests sent to consensus by the sync task.
     let (sync_to_consensus_tx, sync_to_consensus_rx) = mpsc::channel::<SyncMessageToConsensus>(10);
 
-    let consensus_storage =
-        open_consensus_storage(data_directory).expect("Consensus storage cannot be opened");
-
     let (info_watch_tx, consensus_info_watch) = watch::channel(ConsensusInfo::default());
 
     let consensus_p2p_event_processing_handle = p2p_task::spawn(
@@ -83,7 +71,6 @@ pub fn start(
         sync_to_consensus_rx,
         info_watch_tx,
         main_storage.clone(),
-        consensus_storage.clone(),
         data_directory,
         verify_tree_hashes,
         gas_price_provider,

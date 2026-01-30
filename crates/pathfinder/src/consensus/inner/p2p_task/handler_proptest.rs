@@ -41,9 +41,7 @@ use rand::seq::SliceRandom as _;
 use rand::Rng as _;
 
 use crate::consensus::inner::batch_execution::BatchExecutionManager;
-use crate::consensus::inner::open_consensus_storage;
 use crate::consensus::inner::p2p_task::{handle_incoming_proposal_part, ValidatorCache};
-use crate::consensus::inner::persist_proposals::ConsensusProposals;
 use crate::consensus::ProposalHandlingError;
 use crate::validator::{deployed_address, TransactionExt};
 

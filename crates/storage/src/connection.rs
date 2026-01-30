@@ -2,7 +2,6 @@ use std::sync::{Arc, Mutex};
 
 mod block;
 mod class;
-pub mod consensus;
 mod ethereum;
 pub mod event;
 pub mod pruning;

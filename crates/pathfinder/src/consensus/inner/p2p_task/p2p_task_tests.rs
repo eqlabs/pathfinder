@@ -25,7 +25,6 @@ use pathfinder_common::{
 };
 use pathfinder_consensus::ConsensusCommand;
 use pathfinder_crypto::Felt;
-use pathfinder_storage::consensus::ConsensusStorage;
 use pathfinder_storage::{Storage, StorageBuilder};
 use tokio::sync::{mpsc, watch};
 use tokio::time::error::Elapsed;
@@ -35,7 +34,6 @@ use crate::consensus::inner::dummy_proposal::{
     create_test_proposal_init,
     create_transaction_batch,
 };
-use crate::consensus::inner::persist_proposals::ConsensusProposals;
 use crate::consensus::inner::{
     p2p_task,
     ConsensusTaskEvent,

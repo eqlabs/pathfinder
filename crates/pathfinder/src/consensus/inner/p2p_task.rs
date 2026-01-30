@@ -10,7 +10,7 @@
 //! 5. caches proposals that we received from other validators and may need to
 //!    be proposed by us in another round at the same height
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -38,12 +38,10 @@ use pathfinder_consensus::{
     SignedVote,
 };
 use pathfinder_executor::{BlockExecutor, BlockExecutorExt};
-use pathfinder_storage::consensus::ConsensusStorage;
 use pathfinder_storage::{Storage, Transaction, TransactionBehavior};
 use tokio::sync::{mpsc, watch};
 
 use super::gossip_retry::{GossipHandler, GossipRetryConfig};
-use super::persist_proposals::ConsensusProposals;
 use super::{integration_testing, ConsensusTaskEvent, ConsensusValue, P2PTaskConfig, P2PTaskEvent};
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::consensus::inner::batch_execution::{
@@ -100,7 +98,6 @@ pub fn spawn(
     mut rx_from_sync: mpsc::Receiver<SyncMessageToConsensus>,
     info_watch_tx: watch::Sender<ConsensusInfo>,
     main_storage: Storage,
-    consensus_storage: ConsensusStorage,
     data_directory: &Path,
     verify_tree_hashes: bool,
     gas_price_provider: Option<L1GasPriceProvider>,
@@ -130,9 +127,6 @@ pub fn spawn(
         let mut main_db_conn = main_storage
             .connection()
             .context("Creating main database connection")?;
-        let mut cons_db_conn = consensus_storage
-            .connection()
-            .context("Creating consensus database connection")?;
         let gossip_handler = GossipHandler::new(validator_address, GossipRetryConfig::default());
 
         let validator_cache = ValidatorCache::new();
@@ -143,90 +137,43 @@ pub fn spawn(
         //    already in storage so the parsing logic would fail if we loaded the parts
         //    buffer from the DB on each new part).
         let mut handled_proposal_parts = HashMap::new();
-        // Validators are long-lived but not persisted, and the recovery process
-        // right now works by re-executing all last proposals from the database
-        // for all heights found in the database. We do this by replaying all proposal
-        // parts for all last rounds from all heights.
-        let mut events_to_replay = tokio::task::block_in_place(|| {
-            tracing::info!(
-                "🖧  🔧 {validator_address} Building list of proposal parts to replay ..."
-            );
-            let proposals_db = cons_db_conn
-                .transaction_with_behavior(TransactionBehavior::Immediate)
-                .map(ConsensusProposals::new)
-                .context("Create consensus database transaction")?;
-            let stopwatch = std::time::Instant::now();
-            let all_last_parts = proposals_db
-                .all_last_parts(&validator_address)
-                .map_err(ProposalHandlingError::fatal)?;
-
-            tracing::trace!(
-                "🖧  🔧 {validator_address} Proposal parts to replay: {all_last_parts:#?}"
-            );
-
-            let fake_source_for_replay = PeerId::random();
-            let events_to_replay = all_last_parts
-                .into_iter()
-                .flat_map(|(height, round, parts)| {
-                    parts.into_iter().map(move |part| {
-                        P2PTaskEvent::P2PEvent(Event {
-                            source: fake_source_for_replay,
-                            kind: EventKind::Proposal(HeightAndRound::new(height, round), part),
-                        })
-                    })
-                })
-                .collect::<VecDeque<_>>();
-
-            tracing::info!(
-                "🖧  🔧 {validator_address} List of proposal parts to replay built in {} ms",
-                stopwatch.elapsed().as_millis()
-            );
-            anyhow::Ok(events_to_replay)
-        })
-        .context("Recovering events to replay")?;
 
         loop {
-            // Replay recovered events first. And only then handle new incoming events.
-            let (p2p_task_event, is_replayed) = if let Some(event) = events_to_replay.pop_front() {
-                (event, true)
-            } else {
-                let p2p_task_event = tokio::select! {
-                    _ = peer_score_decay_timer.tick() => {
-                        p2p_client.decay_peer_scores();
-                        continue;
-                    }
-                    p2p_event = p2p_event_rx.recv() => {
-                        // Unbounded channel size monitoring.
-                        let channel_size = p2p_event_rx.len();
-                        if channel_size > EVENT_CHANNEL_SIZE_LIMIT {
-                            if !channel_size_warning_emitted {
-                                tracing::warn!(%channel_size, "Event channel size exceeded limit");
-                                channel_size_warning_emitted = true;
-                            }
-                        } else {
-                            channel_size_warning_emitted = false;
+            let p2p_task_event = tokio::select! {
+                _ = peer_score_decay_timer.tick() => {
+                    p2p_client.decay_peer_scores();
+                    continue;
+                }
+                p2p_event = p2p_event_rx.recv() => {
+                    // Unbounded channel size monitoring.
+                    let channel_size = p2p_event_rx.len();
+                    if channel_size > EVENT_CHANNEL_SIZE_LIMIT {
+                        if !channel_size_warning_emitted {
+                            tracing::warn!(%channel_size, "Event channel size exceeded limit");
+                            channel_size_warning_emitted = true;
                         }
+                    } else {
+                        channel_size_warning_emitted = false;
+                    }
 
-                        match p2p_event {
-                            Some(event) => P2PTaskEvent::P2PEvent(event),
-                            None => {
-                                tracing::warn!("P2P event receiver was dropped, exiting P2P task");
-                                anyhow::bail!("P2P event receiver was dropped, exiting P2P task");
-                            }
-                        }
-                    }
-                    from_consensus = rx_from_consensus.recv() => {
-                        from_consensus.expect("Receiver not to be dropped")
-                    }
-                    from_sync = rx_from_sync.recv() => match from_sync {
-                        Some(request) => P2PTaskEvent::SyncRequest(request),
+                    match p2p_event {
+                        Some(event) => P2PTaskEvent::P2PEvent(event),
                         None => {
-                            tracing::warn!("Sync request receiver was dropped, exiting P2P task");
-                            anyhow::bail!("Sync request receiver was dropped, exiting P2P task");
+                            tracing::warn!("P2P event receiver was dropped, exiting P2P task");
+                            anyhow::bail!("P2P event receiver was dropped, exiting P2P task");
                         }
                     }
-                };
-                (p2p_task_event, false)
+                }
+                from_consensus = rx_from_consensus.recv() => {
+                    from_consensus.expect("Receiver not to be dropped")
+                }
+                from_sync = rx_from_sync.recv() => match from_sync {
+                    Some(request) => P2PTaskEvent::SyncRequest(request),
+                    None => {
+                        tracing::warn!("Sync request receiver was dropped, exiting P2P task");
+                        anyhow::bail!("Sync request receiver was dropped, exiting P2P task");
+                    }
+                }
             };
 
             let success = tokio::task::block_in_place(|| {
@@ -234,18 +181,9 @@ pub fn spawn(
                 let mut main_db_tx = main_db_conn
                     .transaction_with_behavior(TransactionBehavior::Immediate)
                     .context("Create main database transaction")?;
-                let proposals_db = cons_db_conn
-                    .transaction_with_behavior(TransactionBehavior::Immediate)
-                    .map(ConsensusProposals::new)
-                    .context("Create consensus database transaction")?;
 
                 let success = match p2p_task_event {
                     P2PTaskEvent::P2PEvent(event) => {
-                        tracing::info!(
-                            "🖧  💌 {validator_address} incoming p2p event \
-                             (is_replayed={is_replayed}): {event:?}"
-                        );
-
                         // Even though rebroadcast certificates are not implemented yet, it still
                         // does make sense to keep `history_depth` larger than 0. This is due to
                         // race conditions that occur between the current height, which is being
