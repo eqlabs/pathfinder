@@ -49,7 +49,7 @@ axum = "0.8.4"
 base64 = "0.22.1"
 bincode = "2.0.1"
 bitvec = "1.0.1"
-blockifier = { git = "https://github.com/starkware-libs/sequencer", rev = "be54aeea510ddfe1190c742e902acbd8103ff941", features = [
+blockifier = { version = "0.18.0-dev.0", features = [
     "node_api",
     "reexecution",
 ] }
@@ -129,7 +129,7 @@ smallvec = "1.15.1"
 # This one needs to match the version used by blockifier
 starknet-types-core = "=0.2.4"
 # This one needs to match the version used by blockifier
-starknet_api = { git = "https://github.com/starkware-libs/sequencer", rev = "be54aeea510ddfe1190c742e902acbd8103ff941" }
+starknet_api = { version = "0.18.0-dev.0" }
 syn = "1.0"
 tempfile = "3.8"
 test-log = { version = "0.2.12", features = ["trace"] }
