@@ -23,6 +23,7 @@ mod test {
     use std::vec;
 
     use futures::future::Either;
+    use futures::StreamExt;
     use pathfinder_lib::config::integration_testing::{InjectFailureConfig, InjectFailureTrigger};
     use rstest::rstest;
 
@@ -53,11 +54,8 @@ mod test {
     #[rstest]
     #[case::happy_path(None)]
     #[case::fail_on_proposal_init_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalInitRx }))]
-    #[ignore = "Cannot trigger, empty proposals don't contain block info."]
     #[case::fail_on_block_info_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::BlockInfoRx }))]
-    #[ignore = "Cannot trigger, empty proposals don't contain transaction batches."]
     #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::TransactionBatchRx }))]
-    #[ignore = "Cannot trigger, empty proposals don't contain executed transaction counts."]
     #[case::fail_on_executed_transaction_count_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ExecutedTransactionCountRx }))]
     #[case::fail_on_proposal_fin_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalFinRx }))]
     #[ignore = "FIXME: Bob gets ahead of Alice and Charlie at H=13 and the network stalls."]
@@ -70,13 +68,15 @@ mod test {
     async fn consensus_3_nodes_with_failures(
         #[case] inject_failure: Option<InjectFailureConfig>,
     ) -> anyhow::Result<()> {
+        use tokio::sync::mpsc;
+
         const NUM_NODES: usize = 3;
         // System contracts start to matter after block 10
         const HEIGHT: u64 = 15;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
         const TEST_TIMEOUT: Duration = Duration::from_secs(120);
         const POLL_READY: Duration = Duration::from_millis(500);
-        const POLL_HEIGHT: Duration = Duration::from_secs(1);
+        const POLL_HEIGHT: Duration = Duration::from_millis(500);
 
         let (configs, stopwatch) = utils::setup(NUM_NODES)?;
 
@@ -136,9 +136,12 @@ mod test {
         // - No need to load proposals from the DB on startup.
         // - No need to replay stored proposals on restart.
 
-        let alice_decided = wait_for_height(&alice, HEIGHT, POLL_HEIGHT);
-        let bob_decided = wait_for_height(&bob, HEIGHT, POLL_HEIGHT);
-        let charlie_decided = wait_for_height(&charlie, HEIGHT, POLL_HEIGHT);
+        let (tx, rx) = mpsc::channel(HEIGHT as usize * 3);
+        let rx = tokio_stream::wrappers::ReceiverStream::new(rx);
+
+        let alice_decided = wait_for_height(&alice, HEIGHT, POLL_HEIGHT, Some(tx));
+        let bob_decided = wait_for_height(&bob, HEIGHT, POLL_HEIGHT, None);
+        let charlie_decided = wait_for_height(&charlie, HEIGHT, POLL_HEIGHT, None);
         let alice_committed = wait_for_block_exists(&alice, HEIGHT, POLL_HEIGHT);
         let bob_committed = wait_for_block_exists(&bob, HEIGHT, POLL_HEIGHT);
         let charlie_committed = wait_for_block_exists(&charlie, HEIGHT, POLL_HEIGHT);
@@ -155,7 +158,7 @@ mod test {
             None => Either::Right(bob),
         };
 
-        utils::join_all(
+        let result = utils::join_all(
             vec![
                 alice_decided,
                 bob_decided,
@@ -166,7 +169,14 @@ mod test {
             ],
             TEST_TIMEOUT,
         )
-        .await
+        .await;
+
+        let decided_hnrs = rx.collect::<Vec<_>>().await;
+        if let Some(x) = decided_hnrs.iter().find(|hnr| hnr.round() > 0) {
+            eprintln!("Network failed to recover in round 0: {x}");
+        }
+
+        result
     }
 
     #[tokio::test]
@@ -178,7 +188,7 @@ mod test {
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
         const TEST_TIMEOUT: Duration = Duration::from_secs(120);
         const POLL_READY: Duration = Duration::from_millis(500);
-        const POLL_HEIGHT: Duration = Duration::from_secs(1);
+        const POLL_HEIGHT: Duration = Duration::from_millis(500);
 
         let (configs, stopwatch) = utils::setup(NUM_NODES)?;
 
@@ -225,9 +235,10 @@ mod test {
         utils::log_elapsed(stopwatch);
 
         // Use channels to send and update the rpc port
-        let alice_decided = wait_for_height(&alice, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
-        let bob_decided = wait_for_height(&bob, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
-        let charlie_decided = wait_for_height(&charlie, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
+        let alice_decided = wait_for_height(&alice, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT, None);
+        let bob_decided = wait_for_height(&bob, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT, None);
+        let charlie_decided =
+            wait_for_height(&charlie, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT, None);
         let alice_committed = wait_for_block_exists(&alice, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
         let bob_committed = wait_for_block_exists(&bob, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
         let charlie_committed =
@@ -251,10 +262,10 @@ mod test {
         let dan = PathfinderInstance::spawn(dan_cfg.clone())?;
         dan.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
 
-        let alice_decided = wait_for_height(&alice, FINAL_HEIGHT, POLL_HEIGHT);
-        let bob_decided = wait_for_height(&bob, FINAL_HEIGHT, POLL_HEIGHT);
-        let charlie_decided = wait_for_height(&charlie, FINAL_HEIGHT, POLL_HEIGHT);
-        let dan_decided = wait_for_height(&dan, FINAL_HEIGHT, POLL_HEIGHT);
+        let alice_decided = wait_for_height(&alice, FINAL_HEIGHT, POLL_HEIGHT, None);
+        let bob_decided = wait_for_height(&bob, FINAL_HEIGHT, POLL_HEIGHT, None);
+        let charlie_decided = wait_for_height(&charlie, FINAL_HEIGHT, POLL_HEIGHT, None);
+        let dan_decided = wait_for_height(&dan, FINAL_HEIGHT, POLL_HEIGHT, None);
         let alice_committed = wait_for_block_exists(&alice, FINAL_HEIGHT, POLL_HEIGHT);
         let bob_committed = wait_for_block_exists(&bob, FINAL_HEIGHT, POLL_HEIGHT);
         let charlie_committed = wait_for_block_exists(&charlie, FINAL_HEIGHT, POLL_HEIGHT);
@@ -312,7 +323,7 @@ mod test {
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
         const TEST_TIMEOUT: Duration = Duration::from_secs(60);
         const POLL_READY: Duration = Duration::from_millis(500);
-        const POLL_HEIGHT: Duration = Duration::from_secs(1);
+        const POLL_HEIGHT: Duration = Duration::from_millis(500);
 
         const LAST_VALID_HEIGHT: u64 = 6;
 
@@ -359,9 +370,9 @@ mod test {
         utils::log_elapsed(stopwatch);
 
         // Wait until all three nodes reach `LAST_VALID_HEIGHT`..
-        let alice_decided = wait_for_height(&alice, LAST_VALID_HEIGHT, POLL_HEIGHT);
-        let bob_decided = wait_for_height(&bob, LAST_VALID_HEIGHT, POLL_HEIGHT);
-        let charlie_decided = wait_for_height(&charlie, LAST_VALID_HEIGHT, POLL_HEIGHT);
+        let alice_decided = wait_for_height(&alice, LAST_VALID_HEIGHT, POLL_HEIGHT, None);
+        let bob_decided = wait_for_height(&bob, LAST_VALID_HEIGHT, POLL_HEIGHT, None);
+        let charlie_decided = wait_for_height(&charlie, LAST_VALID_HEIGHT, POLL_HEIGHT, None);
         let alice_committed = wait_for_block_exists(&alice, LAST_VALID_HEIGHT, POLL_HEIGHT);
         let bob_committed = wait_for_block_exists(&bob, LAST_VALID_HEIGHT, POLL_HEIGHT);
         let charlie_committed = wait_for_block_exists(&charlie, LAST_VALID_HEIGHT, POLL_HEIGHT);
@@ -383,9 +394,9 @@ mod test {
         // ..then wait a bit more for the next height, which should never become decided
         // upon because one of the nodes is sabotaging the consensus network (sending
         // outdated votes) and getting punished by the other two nodes.
-        let alice_decided = wait_for_height(&alice, LAST_VALID_HEIGHT + 1, POLL_HEIGHT);
-        let bob_decided = wait_for_height(&bob, LAST_VALID_HEIGHT + 1, POLL_HEIGHT);
-        let charlie_decided = wait_for_height(&charlie, LAST_VALID_HEIGHT + 1, POLL_HEIGHT);
+        let alice_decided = wait_for_height(&alice, LAST_VALID_HEIGHT + 1, POLL_HEIGHT, None);
+        let bob_decided = wait_for_height(&bob, LAST_VALID_HEIGHT + 1, POLL_HEIGHT, None);
+        let charlie_decided = wait_for_height(&charlie, LAST_VALID_HEIGHT + 1, POLL_HEIGHT, None);
 
         let err = utils::join_all(
             vec![alice_decided, bob_decided, charlie_decided],
