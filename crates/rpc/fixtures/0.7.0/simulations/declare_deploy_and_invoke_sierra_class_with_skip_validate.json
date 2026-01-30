@@ -57,6 +57,38 @@
           "0x1"
         ]
       },
+      "state_diff": {
+        "declared_classes": [
+          {
+            "class_hash": "0x544b92d358447cb9e50b65092b7169f931d29e05c1404a2cd08c6fd7e32ba90",
+            "compiled_class_hash": "0x69032ff71f77284e1a0864a573007108ca5cc08089416af50f03260f5d6d4d8"
+          }
+        ],
+        "deployed_contracts": [],
+        "deprecated_declared_classes": [],
+        "nonces": [
+          {
+            "contract_address": "0xc01",
+            "nonce": "0x1"
+          }
+        ],
+        "replaced_classes": [],
+        "storage_diffs": [
+          {
+            "address": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+            "storage_entries": [
+              {
+                "key": "0x32a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e",
+                "value": "0xfffffffffffffffffffffffffb12"
+              },
+              {
+                "key": "0x5496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a",
+                "value": "0x4ee"
+              }
+            ]
+          }
+        ]
+      },
       "type": "DECLARE"
     }
   },
@@ -209,6 +241,38 @@
           "0x1"
         ]
       },
+      "state_diff": {
+        "declared_classes": [],
+        "deployed_contracts": [
+          {
+            "address": "0x12592426632af714f43ccb05536b6044fc3e897fa55288f658731f93590e7e7",
+            "class_hash": "0x544b92d358447cb9e50b65092b7169f931d29e05c1404a2cd08c6fd7e32ba90"
+          }
+        ],
+        "deprecated_declared_classes": [],
+        "nonces": [
+          {
+            "contract_address": "0xc01",
+            "nonce": "0x2"
+          }
+        ],
+        "replaced_classes": [],
+        "storage_diffs": [
+          {
+            "address": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+            "storage_entries": [
+              {
+                "key": "0x32a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e",
+                "value": "0xfffffffffffffffffffffffff940"
+              },
+              {
+                "key": "0x5496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a",
+                "value": "0x6c0"
+              }
+            ]
+          }
+        ]
+      },
       "type": "INVOKE"
     }
   },
@@ -317,6 +381,33 @@
           "0x1"
         ]
       },
+      "state_diff": {
+        "declared_classes": [],
+        "deployed_contracts": [],
+        "deprecated_declared_classes": [],
+        "nonces": [
+          {
+            "contract_address": "0xc01",
+            "nonce": "0x3"
+          }
+        ],
+        "replaced_classes": [],
+        "storage_diffs": [
+          {
+            "address": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+            "storage_entries": [
+              {
+                "key": "0x32a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e",
+                "value": "0xfffffffffffffffffffffffff833"
+              },
+              {
+                "key": "0x5496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a",
+                "value": "0x7cd"
+              }
+            ]
+          }
+        ]
+      },
       "type": "INVOKE"
     }
   },
@@ -423,6 +514,33 @@
         "messages": [],
         "result": [
           "0x1"
+        ]
+      },
+      "state_diff": {
+        "declared_classes": [],
+        "deployed_contracts": [],
+        "deprecated_declared_classes": [],
+        "nonces": [
+          {
+            "contract_address": "0xc01",
+            "nonce": "0x4"
+          }
+        ],
+        "replaced_classes": [],
+        "storage_diffs": [
+          {
+            "address": "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+            "storage_entries": [
+              {
+                "key": "0x32a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e",
+                "value": "0xfffffffffffffffffffffffffee6"
+              },
+              {
+                "key": "0x5496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a",
+                "value": "0x11a"
+              }
+            ]
+          }
         ]
       },
       "type": "INVOKE"

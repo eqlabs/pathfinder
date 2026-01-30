@@ -1532,9 +1532,11 @@ pub(crate) mod tests {
     async fn test_trace_block_transactions_return_initial_reads(
         #[case] rpc_version: RpcVersion,
     ) -> anyhow::Result<()> {
-        fn fixture(rpc_version: RpcVersion, trace_flags: &crate::dto::TraceFlags) -> &'static str {
-            match rpc_version {
-                RpcVersion::V06 => include_str!("../../fixtures/0.6.0/traces/multiple_txs.json"),
+        fn fixture(
+            rpc_version: RpcVersion,
+            trace_flags: &crate::dto::TraceFlags,
+        ) -> serde_json::Result<serde_json::Value> {
+            let fixture_str = match rpc_version {
                 RpcVersion::V07 => include_str!("../../fixtures/0.7.0/traces/multiple_txs.json"),
                 RpcVersion::V08 => include_str!("../../fixtures/0.8.0/traces/multiple_txs.json"),
                 RpcVersion::V09 => include_str!("../../fixtures/0.9.0/traces/multiple_txs.json"),
@@ -1547,8 +1549,9 @@ pub(crate) mod tests {
                         include_str!("../../fixtures/0.10.0/traces/multiple_txs.json")
                     }
                 }
-                _ => unreachable!(),
-            }
+                RpcVersion::V06 | RpcVersion::PathfinderV01 => unreachable!("no such test case"),
+            };
+            serde_json::from_str(fixture_str)
         }
 
         let (context, next_block_header, _) = setup_multi_tx_trace_test().await?;
@@ -1559,15 +1562,14 @@ pub(crate) mod tests {
         };
 
         // First test without `RETURN_INITIAL_READS`.
-        let output = trace_block_transactions(context.clone(), input.clone(), rpc_version)
+        let output_json = trace_block_transactions(context.clone(), input.clone(), rpc_version)
             .await
             .unwrap()
             .serialize(Serializer {
                 version: rpc_version,
             })?;
-        let expected = fixture(rpc_version, &input.trace_flags);
-        let expected_json: serde_json::Value = serde_json::from_str(expected).unwrap();
-        pretty_assertions_sorted::assert_eq!(output, expected_json);
+        let expected_json = fixture(rpc_version, &input.trace_flags)?;
+        pretty_assertions_sorted::assert_eq!(output_json, expected_json);
 
         // Then, for RpcVersion that support `RETURN_INITIAL_READS` (i.e. after
         // RpcVersion::V10), test with the flag enabled.
@@ -1586,8 +1588,7 @@ pub(crate) mod tests {
                 .serialize(Serializer {
                     version: rpc_version,
                 })?;
-            let expected = fixture(rpc_version, &input.trace_flags);
-            let expected_json: serde_json::Value = serde_json::from_str(expected).unwrap();
+            let expected_json = fixture(rpc_version, &input.trace_flags)?;
             pretty_assertions_sorted::assert_eq!(output_json, expected_json);
         }
 
