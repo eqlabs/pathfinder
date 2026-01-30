@@ -41,9 +41,7 @@ use rand::seq::SliceRandom as _;
 use rand::Rng as _;
 
 use crate::consensus::inner::batch_execution::BatchExecutionManager;
-use crate::consensus::inner::open_consensus_storage;
 use crate::consensus::inner::p2p_task::{handle_incoming_proposal_part, ValidatorCache};
-use crate::consensus::inner::persist_proposals::ConsensusProposals;
 use crate::consensus::ProposalHandlingError;
 use crate::validator::{deployed_address, TransactionExt};
 
@@ -55,11 +53,6 @@ proptest! {
         let validator_cache = ValidatorCache::<MockExecutor>::new();
         let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
         let main_storage = StorageBuilder::in_tempdir().unwrap();
-        let consensus_storage_tempdir = tempfile::tempdir().unwrap();
-        let consensus_storage = open_consensus_storage(consensus_storage_tempdir.path()).unwrap();
-        let mut consensus_db_conn = consensus_storage.connection().unwrap();
-        let consensus_db_tx = consensus_db_conn.transaction().unwrap();
-        let proposals_db = ConsensusProposals::new(consensus_db_tx);
         let mut batch_execution_manager = BatchExecutionManager::new(None);
 
         let (proposal_parts, expect_success) = match proposal_type {
@@ -85,7 +78,8 @@ proptest! {
         let proposal_parts_len = proposal_parts.len();
         let no_fin = proposal_parts.iter().all(|part| !part.is_proposal_fin());
         let debug_info = debug_info(&proposal_parts);
-        let mut handled_proposal_parts = HashMap::new();
+        let mut incoming_proposal_parts = HashMap::new();
+        let mut finalized_blocks = HashMap::new();
 
         for (proposal_part, is_last) in proposal_parts
             .into_iter()
@@ -96,12 +90,11 @@ proptest! {
                     ChainId::SEPOLIA_TESTNET,
                     HeightAndRound::new(0, 0),
                     proposal_part,
-                    false,
-                    &mut handled_proposal_parts,
+                    &mut incoming_proposal_parts,
+                    &mut finalized_blocks,
                     validator_cache.clone(),
                     deferred_executions.clone(),
                     main_storage.clone(),
-                    &proposals_db,
                     &mut batch_execution_manager,
                     // Utilized by failure injection which is not happening in this test, so we can
                     // safely use an empty path
