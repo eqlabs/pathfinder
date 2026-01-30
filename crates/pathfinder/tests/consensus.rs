@@ -33,19 +33,20 @@ mod test {
 
     // TODO Test cases that should be supported by the integration tests:
     // - proposals:
-    //   - [ ] non-empty proposals (L1 handlers + transactions that modify storage):
+    //   - [x] non-empty proposals (L1 handlers + transactions that modify storage):
     //      - ProposalInit,
     //      - BlockInfo,
     //      - TransactionBatch(/*Non-empty vec of transactions*/),
     //      - ExecutedTransactionCount,
     //      - ProposalFin,
-    //   - [x] empty proposals, which follow the spec, ie. no transaction batches:
+    //   - [ ] empty proposals, which follow the spec, ie. no transaction batches:
     //      - ProposalInit,
     //      - ProposalFin,
     // - node set sizes:
     //   - [x] 3 nodes, network stalls if 1 node fails,
-    //   - [ ] 4 nodes, network continues if 1 node fails, catchup via sync
-    //     mechanism is activated,
+    //   - [x] 4 nodes, network continues if 1 node fails, catchup via sync
+    //     mechanism is activated (`fourth_node_joins_late_can_catch_up` is
+    //     sufficient here),
     // - [x] failure injection (tests recovery from crashes/terminations at
     //   different stages),
     // - [ ] ??? any missing significant failure injection points ???.
@@ -120,23 +121,21 @@ mod test {
         utils::log_elapsed(stopwatch);
 
         // TODO Looking at how the tests perform it turns out that proposal recovery
-        // doesn't work. In all the passing failure scenarios (except the happy path,
-        // which is not a failure scenario), the network recovers by reproposing
-        // in the next round (ie. round 1 instead of round 0), either at H=13 or H=14,
-        // and then continues as normal. From this perspective the only recovery that
-        // does work is keeping the WAL so that the node know which height it was at.
-        //
-        // TODO In order to prove the above point, assert that at exactly once, at H>12
-        // the network decides in R=1.
+        // doesn't work. In almost all the passing failure scenarios (usually 9/10), the
+        // network recovers by reproposing in the next round (ie. round 1 instead of
+        // round 0), either at H=13 or H=14, and then continues as normal. From
+        // this perspective the only recovery that does work is the WAL so that
+        // the node know which height it was at and can hopefully catch up
+        // faster.
         //
         // Removing the complex recovery mechanism that doesn't work but is based on
         // storing the proposals in the database would dramtically simplify the
         // consensus code:
         // - No need to persist proposals to the DB.
+        // - No need to persist consensus finalized blocks to the DB.
         // - No need to load proposals from the DB on startup.
         // - No need to replay stored proposals on restart.
 
-        // Use channels to send and update of the rpc port
         let alice_decided = wait_for_height(&alice, HEIGHT, POLL_HEIGHT);
         let bob_decided = wait_for_height(&bob, HEIGHT, POLL_HEIGHT);
         let charlie_decided = wait_for_height(&charlie, HEIGHT, POLL_HEIGHT);
