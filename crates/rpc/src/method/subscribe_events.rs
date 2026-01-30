@@ -20,7 +20,7 @@ pub struct SubscribeEvents;
 
 #[derive(Debug, Clone, Default)]
 pub struct Params {
-    from_address: Option<ContractAddress>,
+    from_addresses: HashSet<ContractAddress>,
     keys: Option<Vec<Vec<EventKey>>>,
     block_id: Option<SubscriptionBlockId>,
     finality_status: NewTxnFinalityStatus,
@@ -28,10 +28,8 @@ pub struct Params {
 
 impl Params {
     fn matches(&self, event: &pathfinder_common::event::Event) -> bool {
-        if let Some(from_address) = self.from_address {
-            if event.from_address != from_address {
-                return false;
-            }
+        if !self.from_addresses.is_empty() && !self.from_addresses.contains(&event.from_address) {
+            return false;
         }
         if let Some(keys) = &self.keys {
             let no_key_constraints = keys.iter().flatten().count() == 0;
@@ -52,11 +50,8 @@ impl Params {
     }
 
     fn get_addresses(&self) -> Vec<ContractAddress> {
-        let mut addresses = Vec::new();
-        if let Some(address) = self.from_address {
-            addresses.push(address);
-        }
-
+        let mut addresses: Vec<ContractAddress> = self.from_addresses.iter().cloned().collect();
+        addresses.sort();
         addresses
     }
 }
@@ -69,6 +64,16 @@ impl crate::dto::DeserializeForVersion for Option<Params> {
         }
         let version = value.version;
         value.deserialize_map(|value| {
+            let raw_addresses = if version >= RpcVersion::V10 {
+                value.deserialize_optional_array_or_scalar("from_address", |v| v.deserialize())?
+            } else {
+                let mut opt_address = vec![];
+                if let Some(addr) = value.deserialize_optional("from_address")? {
+                    opt_address.push(addr);
+                }
+
+                opt_address
+            };
             let finality_status = if version < RpcVersion::V09 {
                 NewTxnFinalityStatus::default()
             } else {
@@ -77,9 +82,7 @@ impl crate::dto::DeserializeForVersion for Option<Params> {
                     .unwrap_or_default()
             };
             Ok(Some(Params {
-                from_address: value
-                    .deserialize_optional("from_address")?
-                    .map(ContractAddress),
+                from_addresses: HashSet::from_iter(raw_addresses.into_iter().map(ContractAddress)),
                 keys: value.deserialize_optional_array("keys", |value| {
                     value.deserialize_array(|value| Ok(EventKey(value.deserialize()?)))
                 })?,
@@ -490,6 +493,7 @@ mod tests {
     use pathfinder_common::L2Block;
     use pathfinder_crypto::Felt;
     use pathfinder_storage::StorageBuilder;
+    use pretty_assertions_sorted::assert_eq;
     use starknet_gateway_types::reply::{PendingBlock, PreConfirmedBlock};
     use tokio::sync::mpsc;
 
@@ -700,15 +704,16 @@ mod tests {
 
     #[tokio::test]
     async fn filter_from_address_and_keys() {
+        let rpc_version = RpcVersion::V10;
         let (router, _pending_data_tx) =
-            setup(SubscribeEvents::CATCH_UP_BATCH_SIZE + 10, RpcVersion::V08).await;
+            setup(SubscribeEvents::CATCH_UP_BATCH_SIZE + 10, rpc_version).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
         let params = serde_json::json!(
             {
                 "block_id": {"block_number": 0},
-                "from_address": "0xdc",
+                "from_address": ["0xfe", "0xdc"],
                 "keys": [["0x16"], [], ["0x17", "0x18"]],
             }
         );
@@ -735,7 +740,7 @@ mod tests {
             }
             _ => panic!("Expected text message"),
         };
-        let expected = sample_event_message(0x16, subscription_id, RpcVersion::V08);
+        let expected = sample_event_message(0x16, subscription_id, rpc_version);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -757,7 +762,7 @@ mod tests {
             .l2_blocks
             .send(sample_block(0x16).into())
             .unwrap();
-        let expected = sample_event_message(0x16, subscription_id, RpcVersion::V08);
+        let expected = sample_event_message(0x16, subscription_id, rpc_version);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -1366,6 +1371,10 @@ mod tests {
         });
         if version >= RpcVersion::V09 {
             result["finality_status"] = "ACCEPTED_ON_L2".into();
+        }
+        if version >= RpcVersion::V10 {
+            result["transaction_index"] = 0.into();
+            result["event_index"] = 0.into();
         }
         serde_json::json!({
             "jsonrpc":"2.0",

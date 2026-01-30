@@ -101,8 +101,6 @@ where
         &self,
         checkpoint: EthereumStateUpdate,
     ) -> Result<(BlockNumber, BlockHash), SyncError> {
-        use pathfinder_ethereum::EthereumApi;
-
         let local_state = LocalState::from_db(self.storage.clone(), checkpoint)
             .await
             .context("Querying local state")?;

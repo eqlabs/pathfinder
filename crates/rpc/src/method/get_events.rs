@@ -75,7 +75,9 @@ pub struct EventFilter {
 
 impl EventFilter {
     fn get_addresses(&self) -> Vec<ContractAddress> {
-        self.addresses.iter().cloned().collect()
+        let mut addresses: Vec<ContractAddress> = self.addresses.iter().cloned().collect();
+        addresses.sort();
+        addresses
     }
 }
 

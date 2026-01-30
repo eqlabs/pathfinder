@@ -770,8 +770,9 @@ checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
 
 [[package]]
 name = "apollo_compilation_utils"
-version = "0.0.0"
-source = "git+https://github.com/starkware-libs/sequencer?rev=be54aeea510ddfe1190c742e902acbd8103ff941#be54aeea510ddfe1190c742e902acbd8103ff941"
+version = "0.18.0-dev.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23db1530a560ca55c76526ee820f56163ea35e28c1153963cddc426f4b3e61ff"
 dependencies = [
  "apollo_infra_utils",
  "cairo-lang-sierra 2.14.1-dev.3",
@@ -788,8 +789,9 @@ dependencies = [
 
 [[package]]
 name = "apollo_compile_to_native"
-version = "0.0.0"
-source = "git+https://github.com/starkware-libs/sequencer?rev=be54aeea510ddfe1190c742e902acbd8103ff941#be54aeea510ddfe1190c742e902acbd8103ff941"
+version = "0.18.0-dev.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25d5a3d91802e1d4626fadefb83a429a61dd6d416981fc1d5970d02613a80745"
 dependencies = [
  "apollo_compilation_utils",
  "apollo_compile_to_native_types",
@@ -801,8 +803,9 @@ dependencies = [
 
 [[package]]
 name = "apollo_compile_to_native_types"
-version = "0.0.0"
-source = "git+https://github.com/starkware-libs/sequencer?rev=be54aeea510ddfe1190c742e902acbd8103ff941#be54aeea510ddfe1190c742e902acbd8103ff941"
+version = "0.18.0-dev.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e93e92c17f5eb85afced46462346b1f9e24bf6998393619d35a52822e34b87f"
 dependencies = [
  "apollo_config",
  "serde",
@@ -811,8 +814,9 @@ dependencies = [
 
 [[package]]
 name = "apollo_config"
-version = "0.0.0"
-source = "git+https://github.com/starkware-libs/sequencer?rev=be54aeea510ddfe1190c742e902acbd8103ff941#be54aeea510ddfe1190c742e902acbd8103ff941"
+version = "0.18.0-dev.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "03a1fc393247712b453c889ab2a88df59c1c01ee7a1c9ea1681b600fdbb67123"
 dependencies = [
  "apollo_infra_utils",
  "clap",
@@ -829,13 +833,15 @@ dependencies = [
 
 [[package]]
 name = "apollo_infra_utils"
-version = "0.0.0"
-source = "git+https://github.com/starkware-libs/sequencer?rev=be54aeea510ddfe1190c742e902acbd8103ff941#be54aeea510ddfe1190c742e902acbd8103ff941"
+version = "0.18.0-dev.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48df5e49ca88f94af7634032053a8ef9f04f712212775d8c6a05e60ee622efa2"
 dependencies = [
  "apollo_proc_macros",
  "assert-json-diff",
  "colored 3.0.0",
  "num_enum",
+ "regex",
  "serde",
  "serde_json",
  "socket2 0.5.10",
@@ -851,8 +857,9 @@ dependencies = [
 
 [[package]]
 name = "apollo_metrics"
-version = "0.0.0"
-source = "git+https://github.com/starkware-libs/sequencer?rev=be54aeea510ddfe1190c742e902acbd8103ff941#be54aeea510ddfe1190c742e902acbd8103ff941"
+version = "0.18.0-dev.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e90b3f8d427ba699cc4e658653bb43613fa7f82137ff4078713b6f79be12399a"
 dependencies = [
  "indexmap 2.12.0",
  "metrics",
@@ -863,8 +870,9 @@ dependencies = [
 
 [[package]]
 name = "apollo_proc_macros"
-version = "0.0.0"
-source = "git+https://github.com/starkware-libs/sequencer?rev=be54aeea510ddfe1190c742e902acbd8103ff941#be54aeea510ddfe1190c742e902acbd8103ff941"
+version = "0.18.0-dev.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74df2f7b2f132dea0d04dc9306eb70e874546b503740fc380a614518c349ca09"
 dependencies = [
  "lazy_static",
  "proc-macro2",
@@ -874,8 +882,9 @@ dependencies = [
 
 [[package]]
 name = "apollo_sizeof"
-version = "0.0.0"
-source = "git+https://github.com/starkware-libs/sequencer?rev=be54aeea510ddfe1190c742e902acbd8103ff941#be54aeea510ddfe1190c742e902acbd8103ff941"
+version = "0.18.0-dev.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7faef4374bf1607a3447661e2c273450190f6d9d4966150f58ee5a244ada1731"
 dependencies = [
  "apollo_sizeof_macros",
  "starknet-types-core",
@@ -883,8 +892,9 @@ dependencies = [
 
 [[package]]
 name = "apollo_sizeof_macros"
-version = "0.0.0"
-source = "git+https://github.com/starkware-libs/sequencer?rev=be54aeea510ddfe1190c742e902acbd8103ff941#be54aeea510ddfe1190c742e902acbd8103ff941"
+version = "0.18.0-dev.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c1511f9ef1a10bfc6b4e7dbf34e9a67420eb0df395178bf574f72b9a108eebc"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1861,8 +1871,9 @@ dependencies = [
 
 [[package]]
 name = "blockifier"
-version = "0.0.0"
-source = "git+https://github.com/starkware-libs/sequencer?rev=be54aeea510ddfe1190c742e902acbd8103ff941#be54aeea510ddfe1190c742e902acbd8103ff941"
+version = "0.18.0-dev.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e55e2461b9f866e84202cbae62c6884c1eb371ebbfc9a31a1e1c56ecaa489d6f"
 dependencies = [
  "anyhow",
  "apollo_compilation_utils",
@@ -1909,8 +1920,9 @@ dependencies = [
 
 [[package]]
 name = "blockifier_test_utils"
-version = "0.0.0"
-source = "git+https://github.com/starkware-libs/sequencer?rev=be54aeea510ddfe1190c742e902acbd8103ff941#be54aeea510ddfe1190c742e902acbd8103ff941"
+version = "0.18.0-dev.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "891bfd98df5e67a4e37803d64375bc37014648d5bd31d8f0f8cc7aa9c8229639"
 dependencies = [
  "apollo_infra_utils",
  "cairo-lang-starknet-classes",
@@ -10901,8 +10913,9 @@ dependencies = [
 
 [[package]]
 name = "starknet_api"
-version = "0.0.0"
-source = "git+https://github.com/starkware-libs/sequencer?rev=be54aeea510ddfe1190c742e902acbd8103ff941#be54aeea510ddfe1190c742e902acbd8103ff941"
+version = "0.18.0-dev.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c769fe7a8363c926c5087185649e5d937d87e165a115b4b7752564dce7b3007"
 dependencies = [
  "apollo_infra_utils",
  "apollo_sizeof",
