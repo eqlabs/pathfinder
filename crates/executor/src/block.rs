@@ -38,21 +38,7 @@ pub trait BlockExecutorExt {
     where
         Self: Sized;
 
-    /// Create a new BlockExecutor from a StateUpdate
-    /// This allows reconstructing an executor from a stored state diff
-    /// checkpoint
-    fn new_with_pending_state(
-        chain_id: ChainId,
-        block_info: BlockInfo,
-        eth_fee_address: ContractAddress,
-        strk_fee_address: ContractAddress,
-        db_conn: pathfinder_storage::Connection,
-        pending_state: std::sync::Arc<pathfinder_common::StateUpdate>,
-    ) -> anyhow::Result<Self>
-    where
-        Self: Sized;
-
-    /// Evecute a batch of transactions in the current block.
+    /// Execute a batch of transactions in the current block.
     fn execute(
         &mut self,
         txns: Vec<Transaction>,
@@ -169,43 +155,7 @@ impl BlockExecutorExt for BlockExecutor {
         })
     }
 
-    /// Create a new BlockExecutor from a StateUpdate
-    /// This allows reconstructing an executor from a stored state diff
-    /// checkpoint
-    fn new_with_pending_state(
-        chain_id: ChainId,
-        block_info: BlockInfo,
-        eth_fee_address: ContractAddress,
-        strk_fee_address: ContractAddress,
-        db_conn: pathfinder_storage::Connection,
-        pending_state: std::sync::Arc<pathfinder_common::StateUpdate>,
-    ) -> anyhow::Result<Self> {
-        let execution_state = ExecutionState::validation(
-            chain_id,
-            block_info,
-            Some(pending_state),
-            Default::default(),
-            eth_fee_address,
-            strk_fee_address,
-            None,
-        );
-        let storage_adapter = ConcurrentStorageAdapter::new(db_conn);
-        let executor = create_executor(storage_adapter, execution_state)?;
-        let initial_state = executor
-            .block_state
-            .as_ref()
-            .expect(BLOCK_STATE_ACCESS_ERR)
-            .clone();
-
-        Ok(Self {
-            executor,
-            initial_state,
-            declared_deprecated_classes: Vec::new(),
-            next_txn_idx: 0,
-        })
-    }
-
-    /// Evecute a batch of transactions in the current block.
+    /// Execute a batch of transactions in the current block.
     fn execute(
         &mut self,
         txns: Vec<Transaction>,

@@ -37,7 +37,7 @@ use pathfinder_consensus::{
     SignedProposal,
     SignedVote,
 };
-use pathfinder_executor::{BlockExecutor, BlockExecutorExt};
+use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
 use pathfinder_storage::consensus::ConsensusStorage;
 use pathfinder_storage::{Storage, Transaction, TransactionBehavior};
 use tokio::sync::{mpsc, watch};
@@ -60,11 +60,10 @@ use crate::validator::{
     TransactionExt,
     ValidatorBlockInfoStage,
     ValidatorStage,
+    ValidatorWorkerPool,
 };
 use crate::SyncMessageToConsensus;
 
-#[cfg(test)]
-mod handler_proptest;
 #[cfg(test)]
 mod p2p_task_tests;
 
@@ -111,9 +110,12 @@ pub fn spawn(
     // Contains transaction batches and proposal finalizations that are
     // waiting for previous block to be committed before they can be executed.
     let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
-    // Manages batch execution with checkpoint-based rollback for
-    // ExecutedTransactionCount support
-    let mut batch_execution_manager = BatchExecutionManager::new(gas_price_provider.clone());
+    // Create worker pool for concurrent transaction execution
+    let worker_pool: ValidatorWorkerPool =
+        ExecutorWorkerPool::<ConcurrentStateReader>::auto().get();
+    // Manages batch execution with concurrent execution support
+    let mut batch_execution_manager =
+        BatchExecutionManager::new(gas_price_provider.clone(), worker_pool.clone());
     // Keep track of whether we've already emitted a warning about the
     // event channel size exceeding the limit, to avoid spamming the logs.
     let mut channel_size_warning_emitted = false;
@@ -276,10 +278,7 @@ pub fn spawn(
                             EventKind::Proposal(height_and_round, proposal_part) => {
                                 let vcache = validator_cache.clone();
                                 let dex = deferred_executions.clone();
-                                let result = handle_incoming_proposal_part::<
-                                    BlockExecutor,
-                                    ProdTransactionMapper,
-                                >(
+                                let result = handle_incoming_proposal_part::<ProdTransactionMapper>(
                                     chain_id,
                                     height_and_round,
                                     proposal_part,
@@ -293,6 +292,7 @@ pub fn spawn(
                                     &data_directory,
                                     gas_price_provider.clone(),
                                     inject_failure,
+                                    worker_pool.clone(),
                                 );
                                 match result {
                                     Ok(Some(commitment)) => {
@@ -424,6 +424,7 @@ pub fn spawn(
                                     &proposals_db,
                                     number,
                                     gas_price_provider.clone(),
+                                    worker_pool.clone(),
                                 )?;
                                 Ok(success)
                             }
@@ -744,6 +745,7 @@ pub fn spawn(
                                 &proposals_db,
                                 block_number,
                                 gas_price_provider.clone(),
+                                worker_pool.clone(),
                             )?;
 
                             Ok(success)
@@ -813,13 +815,14 @@ pub fn spawn(
 #[allow(clippy::too_many_arguments)]
 fn on_finalized_block_committed(
     validator_address: ContractAddress,
-    validator_cache: &ValidatorCache<BlockExecutor>,
+    validator_cache: &ValidatorCache,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
     main_db: Storage,
     proposals_db: &ConsensusProposals<'_>,
     number: pathfinder_common::BlockNumber,
     gas_price_provider: Option<L1GasPriceProvider>,
+    worker_pool: ValidatorWorkerPool,
 ) -> Result<ComputationSuccess, anyhow::Error> {
     // In practice this should only remove the finalized block for the last round at
     // the height, because lower rounds were already removed when the proposal
@@ -831,7 +834,7 @@ fn on_finalized_block_committed(
          commit confirmation",
         number.get()
     );
-    let exec_success = execute_deferred_for_next_height::<BlockExecutor, ProdTransactionMapper>(
+    let exec_success = execute_deferred_for_next_height::<ProdTransactionMapper>(
         number.get(),
         validator_cache.clone(),
         deferred_executions.clone(),
@@ -839,6 +842,7 @@ fn on_finalized_block_committed(
         main_db,
         proposals_db,
         gas_price_provider,
+        worker_pool,
     )?;
 
     let success = match exec_success {
@@ -850,25 +854,25 @@ fn on_finalized_block_committed(
     Ok(success)
 }
 
-struct ValidatorCache<E>(Arc<Mutex<HashMap<HeightAndRound, ValidatorStage<E>>>>);
+struct ValidatorCache(Arc<Mutex<HashMap<HeightAndRound, ValidatorStage>>>);
 
-impl<E> Clone for ValidatorCache<E> {
+impl Clone for ValidatorCache {
     fn clone(&self) -> Self {
         Self(Arc::clone(&self.0))
     }
 }
 
-impl<E> ValidatorCache<E> {
+impl ValidatorCache {
     fn new() -> Self {
         Self(Arc::new(Mutex::new(HashMap::new())))
     }
 
-    fn insert(&self, hnr: HeightAndRound, stage: ValidatorStage<E>) {
+    fn insert(&self, hnr: HeightAndRound, stage: ValidatorStage) {
         let mut cache = self.0.lock().unwrap();
         cache.insert(hnr, stage);
     }
 
-    fn remove(&self, hnr: &HeightAndRound) -> Result<ValidatorStage<E>, ProposalHandlingError> {
+    fn remove(&self, hnr: &HeightAndRound) -> Result<ValidatorStage, ProposalHandlingError> {
         let mut cache = self.0.lock().unwrap();
         cache.remove(hnr).ok_or_else(|| {
             ProposalHandlingError::Recoverable(ProposalError::ValidatorStageNotFound {
@@ -878,14 +882,16 @@ impl<E> ValidatorCache<E> {
     }
 }
 
-fn execute_deferred_for_next_height<E: BlockExecutorExt, T: TransactionExt>(
+#[allow(clippy::too_many_arguments)]
+fn execute_deferred_for_next_height<T: TransactionExt>(
     height: u64,
-    validator_cache: ValidatorCache<E>,
+    validator_cache: ValidatorCache,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
     main_db: Storage,
     proposals_db: &ConsensusProposals<'_>,
     gas_price_provider: Option<L1GasPriceProvider>,
+    worker_pool: ValidatorWorkerPool,
 ) -> anyhow::Result<Option<(HeightAndRound, ProposalCommitmentWithOrigin)>> {
     // Retrieve and execute any deferred transactions or proposal finalizations
     // for the next height, if any. Sort by (height, round) in ascending order.
@@ -915,6 +921,7 @@ fn execute_deferred_for_next_height<E: BlockExecutorExt, T: TransactionExt>(
                 main_db,
                 gas_price_provider,
                 None, // TODO: Add L1ToFriValidator when oracle is available
+                worker_pool,
             )
             .map(Box::new)?;
 
@@ -923,7 +930,7 @@ fn execute_deferred_for_next_height<E: BlockExecutorExt, T: TransactionExt>(
             // Parent block is now committed, so we can execute directly without deferral
             // checks
             if !deferred.transactions.is_empty() {
-                batch_execution_manager.execute_batch::<E, T>(
+                batch_execution_manager.execute_batch::<T>(
                     hnr,
                     deferred.transactions,
                     &mut validator,
@@ -939,7 +946,7 @@ fn execute_deferred_for_next_height<E: BlockExecutorExt, T: TransactionExt>(
                 // transactions were non-empty). If transactions were empty,
                 // execute_batch handles marking execution as started, so we can
                 // process ExecutedTransactionCount immediately.
-                batch_execution_manager.process_executed_transaction_count::<E, T>(
+                batch_execution_manager.process_executed_transaction_count::<T>(
                     hnr,
                     executed_transaction_count,
                     &mut validator,
@@ -1093,13 +1100,13 @@ async fn send_proposal_to_consensus(
 ///
 /// The [spec](https://github.com/starknet-io/starknet-p2p-specs/blob/main/p2p/proto/consensus/consensus.md#order-of-messages) is more restrictive.
 #[allow(clippy::too_many_arguments)]
-fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
+fn handle_incoming_proposal_part<T: TransactionExt>(
     chain_id: ChainId,
     height_and_round: HeightAndRound,
     proposal_part: ProposalPart,
     is_replayed: bool,
     handled_proposal_parts: &mut HashMap<HeightAndRound, Vec<ProposalPart>>,
-    mut validator_cache: ValidatorCache<E>,
+    mut validator_cache: ValidatorCache,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     main_readonly_storage: Storage,
     proposals_db: &ConsensusProposals<'_>,
@@ -1107,6 +1114,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
     data_directory: &Path,
     gas_price_provider: Option<L1GasPriceProvider>,
     inject_failure_config: Option<InjectFailureConfig>,
+    worker_pool: ValidatorWorkerPool,
 ) -> Result<Option<ProposalCommitmentWithOrigin>, ProposalHandlingError> {
     let parts_for_height_and_round = handled_proposal_parts.entry(height_and_round).or_default();
 
@@ -1213,6 +1221,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                 main_readonly_storage,
                 gas_price_provider,
                 None, // TODO: Add L1ToFriValidator when oracle is available
+                worker_pool,
             )?;
             validator_cache.insert(
                 height_and_round,
@@ -1271,7 +1280,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
 
             // Use BatchExecutionManager to handle optimistic execution with checkpoints and
             // deferral
-            let next_stage = batch_execution_manager.process_batch_with_deferral::<E, T>(
+            let next_stage = batch_execution_manager.process_batch_with_deferral::<T>(
                 height_and_round,
                 tx_batch,
                 validator_stage,
@@ -1346,7 +1355,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
 
                     let valid_round =
                         valid_round_from_parts(parts_for_height_and_round, &height_and_round)?;
-                    let proposal_commitment = defer_or_execute_proposal_fin::<E, T>(
+                    let proposal_commitment = defer_or_execute_proposal_fin::<T>(
                         height_and_round,
                         proposal_commitment,
                         proposer_address,
@@ -1357,6 +1366,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                         proposals_db,
                         &mut validator_cache,
                         gas_price_provider.clone(),
+                        worker_pool,
                     )
                     // Note: We classify as recoverable by default, but storage errors in the
                     // chain are automatically detected and converted to fatal.
@@ -1450,7 +1460,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                     .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
 
                 // Execution has started - process ExecutedTransactionCount immediately
-                batch_execution_manager.process_executed_transaction_count::<E, T>(
+                batch_execution_manager.process_executed_transaction_count::<T>(
                     height_and_round,
                     executed_txn_count,
                     &mut validator,
@@ -1544,7 +1554,7 @@ fn append_and_persist_part(
 /// execution is performed, any previously deferred transactions for the height
 /// and round are executed first, then the proposal is finalized.
 #[allow(clippy::too_many_arguments)]
-fn defer_or_execute_proposal_fin<E: BlockExecutorExt, T: TransactionExt>(
+fn defer_or_execute_proposal_fin<T: TransactionExt>(
     height_and_round: HeightAndRound,
     proposal_commitment: Hash,
     proposer_address: ContractAddress,
@@ -1553,8 +1563,9 @@ fn defer_or_execute_proposal_fin<E: BlockExecutorExt, T: TransactionExt>(
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
     proposals_db: &ConsensusProposals<'_>,
-    validator_cache: &mut ValidatorCache<E>,
+    validator_cache: &mut ValidatorCache,
     gas_price_provider: Option<L1GasPriceProvider>,
+    worker_pool: ValidatorWorkerPool,
 ) -> anyhow::Result<Option<ProposalCommitmentWithOrigin>> {
     let commitment = ProposalCommitmentWithOrigin {
         proposal_commitment: ProposalCommitment(proposal_commitment.0),
@@ -1599,6 +1610,7 @@ fn defer_or_execute_proposal_fin<E: BlockExecutorExt, T: TransactionExt>(
                         main_db.clone(),
                         gas_price_provider,
                         None, // TODO: Add L1ToFriValidator when oracle is available
+                        worker_pool,
                     )
                     .map(Box::new)?
             } else {
@@ -1617,7 +1629,7 @@ fn defer_or_execute_proposal_fin<E: BlockExecutorExt, T: TransactionExt>(
             }
 
             if !deferred.transactions.is_empty() {
-                batch_execution_manager.execute_batch::<E, T>(
+                batch_execution_manager.execute_batch::<T>(
                     height_and_round,
                     deferred.transactions,
                     &mut validator,
@@ -1632,7 +1644,7 @@ fn defer_or_execute_proposal_fin<E: BlockExecutorExt, T: TransactionExt>(
                 );
                 // Execution has started at this point (from execute_batch),
                 // so we can process ExecutedTransactionCount immediately
-                batch_execution_manager.process_executed_transaction_count::<E, T>(
+                batch_execution_manager.process_executed_transaction_count::<T>(
                     height_and_round,
                     executed_transaction_count,
                     &mut validator,
