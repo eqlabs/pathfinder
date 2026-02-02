@@ -127,12 +127,15 @@ impl BatchExecutionManager {
 
         let mut all_transactions = transactions;
         let mut validator = if let Some(DeferredExecution {
-            transactions: deferred_txns,
+            transactions: mut deferred_txns,
             block_info: deferred_block_info,
             ..
         }) = deferred
         {
-            all_transactions.extend(deferred_txns);
+            // Deferred transactions arrived first, so they should be executed first.
+            // Prepend them to the new transactions.
+            deferred_txns.extend(all_transactions);
+            all_transactions = deferred_txns;
             if let Some(block_info) = deferred_block_info {
                 validator_stage
                     .try_into_block_info_stage()
