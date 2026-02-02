@@ -16,12 +16,8 @@ pub use error::{ProposalError, ProposalHandlingError};
 #[cfg(feature = "p2p")]
 mod inner;
 
-#[cfg(all(
-    feature = "p2p",
-    feature = "consensus-integration-tests",
-    debug_assertions
-))]
-pub use inner::ConsensusProposals;
+#[cfg(feature = "p2p")]
+pub use inner::persist_proposals::ConsensusProposals;
 
 pub type ConsensusP2PEventProcessingTaskHandle = tokio::task::JoinHandle<anyhow::Result<()>>;
 pub type ConsensusEngineTaskHandle = tokio::task::JoinHandle<anyhow::Result<()>>;

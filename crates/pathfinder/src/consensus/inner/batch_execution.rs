@@ -10,13 +10,18 @@ use std::collections::{HashMap, HashSet};
 use anyhow::Context;
 use p2p::consensus::HeightAndRound;
 use p2p_proto::consensus as proto_consensus;
-use pathfinder_common::{BlockId, BlockNumber};
 use pathfinder_executor::BlockExecutorExt;
-use pathfinder_storage::{Storage, Transaction};
+use pathfinder_storage::Storage;
 
+use crate::consensus::inner::persist_proposals::ConsensusProposals;
 use crate::consensus::ProposalHandlingError;
 use crate::gas_price::L1GasPriceProvider;
-use crate::validator::{TransactionExt, ValidatorStage, ValidatorTransactionBatchStage};
+use crate::validator::{
+    should_defer_validation,
+    TransactionExt,
+    ValidatorStage,
+    ValidatorTransactionBatchStage,
+};
 
 /// Manages batch execution with rollback support for ExecutedTransactionCount
 #[derive(Debug, Clone)]
@@ -85,6 +90,7 @@ impl BatchExecutionManager {
         transactions: Vec<proto_consensus::Transaction>,
         validator_stage: ValidatorStage<E>,
         main_db: Storage,
+        proposals_db: &ConsensusProposals<'_>,
         deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
     ) -> Result<ValidatorStage<E>, ProposalHandlingError> {
         let mut main_db_conn = main_db
@@ -96,7 +102,7 @@ impl BatchExecutionManager {
             .context("Creating database transaction for batch execution with deferral")
             .map_err(ProposalHandlingError::Fatal)?;
         // Check if execution should be deferred
-        if should_defer_execution(height_and_round, &main_db_tx)? {
+        if should_defer_validation(height_and_round, &main_db_tx, proposals_db)? {
             tracing::debug!(
                 "🖧  ⚙️ transaction batch execution for height and round {height_and_round} is \
                  deferred"
@@ -140,6 +146,7 @@ impl BatchExecutionManager {
                     .validate_block_info(
                         block_info,
                         main_db.clone(),
+                        proposals_db,
                         self.gas_price_provider.clone(),
                         None, // TODO: Add L1ToFriValidator when oracle is available
                     )
@@ -337,47 +344,78 @@ impl Default for ProposalCommitmentWithOrigin {
     }
 }
 
-/// Determine whether execution of proposal parts for `height_and_round` should
-/// be deferred because the previous block is not committed yet.
-pub fn should_defer_execution(
-    height_and_round: HeightAndRound,
-    main_db_tx: &Transaction<'_>,
-) -> Result<bool, ProposalHandlingError> {
-    let parent_block = height_and_round.height().checked_sub(1);
-    let defer = if let Some(parent_block) = parent_block {
-        let parent_block = BlockNumber::new(parent_block)
-            .context("Block number is larger than i64::MAX")
-            .map_err(ProposalHandlingError::Fatal)?;
-        let parent_block = BlockId::Number(parent_block);
-        let parent_committed = main_db_tx
-            .block_exists(parent_block)
-            .map_err(ProposalHandlingError::Fatal)?;
-        !parent_committed
-    } else {
-        false
-    };
-    Ok(defer)
-}
-
 #[cfg(test)]
 mod tests {
-    use pathfinder_common::ContractAddress;
+    use pathfinder_common::{BlockId, ContractAddress};
     use pathfinder_crypto::Felt;
     use pathfinder_executor::BlockExecutor;
+    use pathfinder_storage::consensus::ConsensusStorage;
+    use pathfinder_storage::StorageBuilder;
 
     use super::*;
+    use crate::consensus::inner::persist_proposals::ConsensusProposals;
     use crate::consensus::inner::test_helpers::create_test_proposal;
     use crate::validator::{ProdTransactionMapper, ValidatorBlockInfoStage};
 
+    fn setup_test_dbs() -> (Storage, ConsensusStorage) {
+        let main_db = StorageBuilder::in_tempdir().expect("Failed to create temp main DB");
+        let cons_db = ConsensusStorage::in_tempdir().expect("Failed to create temp consensus DB");
+
+        let mut cons_conn = cons_db.connection().unwrap();
+        let cons_tx = cons_conn.transaction().unwrap();
+        cons_tx.ensure_consensus_proposals_table_exists().unwrap();
+        cons_tx
+            .ensure_consensus_finalized_blocks_table_exists()
+            .unwrap();
+        cons_tx.commit().unwrap();
+
+        (main_db, cons_db)
+    }
+
     /// Helper function to create a committed parent block in storage
-    fn create_committed_parent_block(
+    fn create_finalized_decided_block(
+        cons_db: &pathfinder_storage::consensus::ConsensusStorage,
+        height: u64,
+        round: u32,
+    ) -> anyhow::Result<()> {
+        use pathfinder_common::prelude::*;
+        use pathfinder_storage::TransactionBehavior;
+
+        let mut cons_conn = cons_db.connection()?;
+        let proposals_db = cons_conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map(ConsensusProposals::new)?;
+
+        // Check if block is already finalized and decided
+        if proposals_db
+            .read_consensus_finalized_and_decided_block(height)?
+            .is_some()
+        {
+            return Ok(());
+        }
+
+        let finalized_block = pathfinder_common::ConsensusFinalizedL2Block {
+            header: pathfinder_common::ConsensusFinalizedBlockHeader {
+                number: BlockNumber::new_or_panic(height),
+                timestamp: BlockTimestamp::new_or_panic(1000),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        proposals_db.persist_consensus_finalized_block(height, round, finalized_block)?;
+        proposals_db.mark_consensus_finalized_block_as_decided(height, round)?;
+        proposals_db.commit()?;
+        Ok(())
+    }
+
+    fn create_committed_block(
         storage: &pathfinder_storage::Storage,
-        parent_height: u64,
+        height: u64,
     ) -> anyhow::Result<()> {
         use pathfinder_common::prelude::*;
         let mut db_conn = storage.connection()?;
         let db_tx = db_conn.transaction()?;
-        let block_id = BlockId::Number(BlockNumber::new_or_panic(parent_height));
+        let block_id = BlockId::Number(BlockNumber::new_or_panic(height));
 
         // Check if block already exists
         if db_tx.block_exists(block_id)? {
@@ -385,14 +423,14 @@ mod tests {
         }
 
         // Create a unique hash for this block to avoid conflicts
-        let hash = BlockHash(Felt::from_hex_str(&format!("0x{parent_height:064x}")).unwrap());
-        let parent_header = BlockHeader::builder()
-            .number(BlockNumber::new_or_panic(parent_height))
+        let hash = BlockHash(Felt::from_hex_str(&format!("0x{height:064x}")).unwrap());
+        let header = BlockHeader::builder()
+            .number(BlockNumber::new_or_panic(height))
             .timestamp(BlockTimestamp::new_or_panic(1000))
             .calculated_state_commitment(StorageCommitment(Felt::ZERO), ClassCommitment(Felt::ZERO))
             .sequencer_address(SequencerAddress::ZERO)
             .finalize_with_hash(hash);
-        db_tx.insert_block_header(&parent_header)?;
+        db_tx.insert_block_header(&header)?;
         db_tx.commit()?;
         Ok(())
     }
@@ -535,31 +573,17 @@ mod tests {
     #[tokio::test]
     async fn test_executed_transaction_count_before_any_batch() {
         use p2p::consensus::HeightAndRound;
-        use pathfinder_common::prelude::*;
-        use pathfinder_common::{BlockNumber, BlockTimestamp, ChainId, SequencerAddress};
-        use pathfinder_storage::StorageBuilder;
+        use pathfinder_common::ChainId;
 
         use crate::consensus::inner::test_helpers::create_transaction_batch;
 
-        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let (main_db, cons_db) = setup_test_dbs();
         let chain_id = ChainId::SEPOLIA_TESTNET;
 
-        // Create and commit parent block (height 1) so height 2 won't be deferred
-        {
-            let mut db_conn = storage.connection().unwrap();
-            let db_tx = db_conn.transaction().unwrap();
-            let parent_header = BlockHeader::builder()
-                .number(BlockNumber::new_or_panic(1))
-                .timestamp(BlockTimestamp::new_or_panic(1000))
-                .calculated_state_commitment(
-                    StorageCommitment(Felt::ZERO),
-                    ClassCommitment(Felt::ZERO),
-                )
-                .sequencer_address(SequencerAddress::ZERO)
-                .finalize_with_hash(BlockHash(Felt::ZERO));
-            db_tx.insert_block_header(&parent_header).unwrap();
-            db_tx.commit().unwrap();
-        }
+        // Create, finalize and commit parent block (height 1) so height 2 won't be
+        // deferred
+        create_finalized_decided_block(&cons_db, 1, 0).unwrap();
+        create_committed_block(&main_db, 1).unwrap();
 
         let height_and_round = HeightAndRound::new(2, 1);
         let proposer_address = p2p_proto::common::Address(Felt::from_hex_str("0x456").unwrap());
@@ -629,6 +653,15 @@ mod tests {
             .map(ValidatorStage::BlockInfo)
             .expect("Failed to create validator stage");
 
+        let mut cons_conn = cons_db
+            .connection()
+            .expect("Failed to create consensus DB connection");
+
+        let proposals_db = cons_conn
+            .transaction()
+            .map(ConsensusProposals::new)
+            .expect("Failed to create consensus DB transaction");
+
         // Step 2: TransactionBatch arrives and executes
         let transactions = create_transaction_batch(0, 5, chain_id);
         let next_stage = batch_execution_manager
@@ -636,7 +669,8 @@ mod tests {
                 height_and_round,
                 transactions,
                 validator_stage,
-                storage.clone(),
+                main_db.clone(),
+                &proposals_db,
                 &mut deferred_executions,
             )
             .expect("Failed to process batch");
@@ -665,19 +699,25 @@ mod tests {
 
     /// Test deferral and immediate execution of transaction batches.
     /// A few things are covered here:
-    /// - deferral when parent not committed,
-    /// - immediate execution when parent committed
+    /// - deferral when parent not finalized,
+    /// - immediate execution when parent finalized
     /// - deferred batch execution
     /// - multiple batches with mixed deferral
     #[tokio::test]
     async fn test_deferral_and_execution() {
         use p2p::consensus::HeightAndRound;
         use pathfinder_common::ChainId;
-        use pathfinder_storage::StorageBuilder;
 
         use crate::consensus::inner::test_helpers::create_transaction_batch;
 
-        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let (main_db, cons_db) = setup_test_dbs();
+
+        let mut cons_conn = cons_db.connection().unwrap();
+        let proposals_db = cons_conn
+            .transaction()
+            .map(ConsensusProposals::new)
+            .unwrap();
+
         let chain_id = ChainId::SEPOLIA_TESTNET;
 
         let height_and_round = HeightAndRound::new(2, 1);
@@ -710,7 +750,8 @@ mod tests {
                     height_and_round,
                     transactions,
                     validator_stage,
-                    storage.clone(),
+                    main_db.clone(),
+                    &proposals_db,
                     &mut deferred_executions,
                 )
                 .expect("Failed to process batch");
@@ -718,7 +759,7 @@ mod tests {
             // Verify deferral: transactions stored, execution NOT started
             assert!(
                 !batch_execution_manager.is_executing(&height_and_round),
-                "Execution should NOT have started when parent not committed"
+                "Execution should NOT have started when parent not finalized"
             );
             assert!(
                 deferred_executions
@@ -739,9 +780,10 @@ mod tests {
             next_stage
         };
 
-        // Test 2: Commit parent block and execute deferred batch
+        // Test 2: Finalize and commit parent block and execute deferred batch
         // Create parent block at height 1 (required for height 2 to execute)
-        create_committed_parent_block(&storage, 1).expect("Failed to create parent block");
+        create_finalized_decided_block(&cons_db, 1, 0).expect("Failed to create finalized block");
+        create_committed_block(&main_db, 1).expect("Failed to create committed block");
 
         {
             let transactions = create_transaction_batch(3, 2, chain_id);
@@ -751,7 +793,8 @@ mod tests {
                     height_and_round,
                     transactions,
                     next_stage,
-                    storage.clone(),
+                    main_db.clone(),
+                    &proposals_db,
                     &mut deferred_executions,
                 )
                 .expect("Failed to process batch");
@@ -777,13 +820,14 @@ mod tests {
         let validator_stage_2 = ValidatorTransactionBatchStage::<BlockExecutor>::new(
             chain_id,
             create_test_block_info(2),
-            storage.clone(),
+            main_db.clone(),
         )
         .map(Box::new)
         .map(ValidatorStage::TransactionBatch)
         .expect("Failed to create validator stage");
 
-        create_committed_parent_block(&storage, 2).expect("Failed to create parent block");
+        create_finalized_decided_block(&cons_db, 2, 0).expect("Failed to create finalized block");
+        create_committed_block(&main_db, 2).expect("Failed to create committed block");
 
         {
             let mut next_stage = validator_stage_2;
@@ -795,7 +839,8 @@ mod tests {
                         height_and_round_2,
                         transactions,
                         next_stage,
-                        storage.clone(),
+                        main_db.clone(),
+                        &proposals_db,
                         &mut deferred_executions,
                     )
                     .expect("Failed to process batch");

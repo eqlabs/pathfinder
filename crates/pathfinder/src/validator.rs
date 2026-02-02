@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::Context;
+use p2p::consensus::HeightAndRound;
 use p2p::sync::client::conv::TryFromDto;
 use p2p_proto::class::Cairo1Class;
 use p2p_proto::consensus::{BlockInfo, ProposalInit, TransactionVariant as ConsensusVariant};
@@ -30,11 +31,11 @@ use pathfinder_common::{
 use pathfinder_executor::types::{to_starknet_api_transaction, BlockInfoPriceConverter};
 use pathfinder_executor::{BlockExecutorExt, ClassInfo, IntoStarkFelt};
 use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
-use pathfinder_storage::Storage;
+use pathfinder_storage::{Storage, Transaction as DbTransaction};
 use rayon::prelude::*;
 use tracing::debug;
 
-use crate::consensus::ProposalHandlingError;
+use crate::consensus::{ConsensusProposals, ProposalHandlingError};
 use crate::gas_price::{
     L1GasPriceProvider,
     L1GasPriceValidationResult,
@@ -52,6 +53,42 @@ pub enum ValidationResult {
     Valid,
     Invalid,
     Error(anyhow::Error),
+}
+
+pub fn should_defer_validation(
+    height_and_round: HeightAndRound,
+    main_db_tx: &DbTransaction<'_>,
+    proposals_db: &ConsensusProposals<'_>,
+) -> Result<bool, ProposalHandlingError> {
+    let Some(parent_height) = height_and_round.height().checked_sub(1) else {
+        // Genesis block - no deferral needed.
+        return Ok(false);
+    };
+
+    let decided_parent = proposals_db
+        .read_consensus_finalized_and_decided_block(parent_height)
+        .context("Querying latest finalized height")
+        .map_err(ProposalHandlingError::Fatal)?;
+
+    let defer = match decided_parent {
+        // The node observed parent block get decided - no deferral needed.
+        Some(_) => false,
+        // The node did not observe parent block get decided - either it has not been
+        // decided on yet, or the node joined the network too late to observe it. Fall
+        // back to checking the committed blocks in main DB.
+        None => {
+            let parent_block = BlockNumber::new(parent_height)
+                .context("Block number is larger than i64::MAX")
+                .map_err(ProposalHandlingError::Fatal)?;
+            let parent_block = BlockId::Number(parent_block);
+            let parent_committed = main_db_tx
+                .block_exists(parent_block)
+                .map_err(ProposalHandlingError::Fatal)?;
+            !parent_committed
+        }
+    };
+
+    Ok(defer)
 }
 
 pub fn new(
@@ -94,7 +131,8 @@ impl ValidatorBlockInfoStage {
     pub fn validate_block_info<E>(
         self,
         block_info: BlockInfo,
-        main_storage: Storage,
+        main_db: Storage,
+        proposals_db: &ConsensusProposals<'_>,
         gas_price_provider: Option<L1GasPriceProvider>,
         l1_to_fri_validator: Option<&L1ToFriValidator>,
     ) -> Result<ValidatorTransactionBatchStage<E>, ProposalHandlingError> {
@@ -118,7 +156,22 @@ impl ValidatorBlockInfoStage {
             )));
         }
 
-        validate_block_info_timestamp(block_info.height, block_info.timestamp, &main_storage)?;
+        let mut main_db_conn = main_db
+            .connection()
+            .context("Creating main DB connection")
+            .map_err(ProposalHandlingError::fatal)?;
+
+        let main_db_tx = main_db_conn
+            .transaction()
+            .context("Creating main DB transaction")
+            .map_err(ProposalHandlingError::fatal)?;
+
+        validate_block_info_timestamp(
+            block_info.height,
+            block_info.timestamp,
+            &main_db_tx,
+            proposals_db,
+        )?;
 
         // Validate L1 gas prices if a provider is available
         if let Some(ref provider) = gas_price_provider {
@@ -186,7 +239,7 @@ impl ValidatorBlockInfoStage {
             cumulative_state_updates: Vec::new(),
             batch_sizes: Vec::new(),
             batch_p2p_transactions: Vec::new(),
-            main_storage,
+            main_storage: main_db,
         })
     }
 }
@@ -194,33 +247,40 @@ impl ValidatorBlockInfoStage {
 fn validate_block_info_timestamp(
     height: u64,
     proposal_timestamp: u64,
-    main_storage: &Storage,
+    main_db_tx: &DbTransaction<'_>,
+    proposals_db: &ConsensusProposals<'_>,
 ) -> Result<(), ProposalHandlingError> {
     let Some(parent_height) = height.checked_sub(1) else {
         // Genesis block, no parent to validate against.
         return Ok(());
     };
 
-    let mut db_conn = main_storage
-        .connection()
-        .context("Creating database connection for timestamp validation")
-        .map_err(ProposalHandlingError::fatal)?;
-    let db_tx = db_conn
-        .transaction()
-        .context("Creating DB transaction for timestamp validation")
-        .map_err(ProposalHandlingError::fatal)?;
-
-    let block_num = BlockNumber::new_or_panic(parent_height);
-    let parent_header = db_tx
-        .block_header(BlockId::Number(block_num))
-        .context("Fetching block header for timestamp validation")
+    let parent_block_num = BlockNumber::new_or_panic(parent_height);
+    let parent_block_id = BlockId::Number(parent_block_num);
+    let committed_parent_timestamp = main_db_tx
+        .block_header(parent_block_id)
+        .context("Fetching parent block header for timestamp validation")
         .map_err(ProposalHandlingError::fatal)?
-        .expect("BlockInfo validation should be deferred until parent block is committed");
+        .map(|header| header.timestamp);
 
-    if proposal_timestamp <= parent_header.timestamp.get() {
+    let parent_timestamp = match committed_parent_timestamp {
+        Some(ts) => ts,
+        None => proposals_db
+            .read_consensus_finalized_and_decided_block(parent_height)
+            .context("Fetching decided parent block for timestamp validation")
+            .map_err(ProposalHandlingError::Fatal)?
+            .map(|block| block.header.timestamp)
+            .expect(
+                "BlockInfo validation should be deferred until parent block is decided or \
+                 committed",
+            ),
+    };
+
+    if proposal_timestamp <= parent_timestamp.get() {
         let msg = format!(
             "Proposal timestamp must be strictly greater than parent block timestamp: {} <= {}",
-            proposal_timestamp, parent_header.timestamp
+            proposal_timestamp,
+            parent_timestamp.get()
         );
         return Err(ProposalHandlingError::recoverable_msg(msg));
     }
@@ -1071,9 +1131,6 @@ mod tests {
     use p2p_proto::consensus::TransactionVariant;
     use p2p_proto::transaction::L1HandlerV0;
     use pathfinder_common::{
-        block_hash_bytes,
-        BlockHash,
-        BlockHeader,
         BlockNumber,
         BlockTimestamp,
         ChainId,
@@ -1085,11 +1142,27 @@ mod tests {
     use pathfinder_crypto::Felt;
     use pathfinder_executor::types::BlockInfo;
     use pathfinder_executor::BlockExecutor;
-    use pathfinder_storage::StorageBuilder;
+    use pathfinder_storage::consensus::ConsensusStorage;
+    use pathfinder_storage::{StorageBuilder, TransactionBehavior};
     use rstest::rstest;
 
     use super::*;
     use crate::consensus::ProposalError;
+
+    fn setup_test_dbs() -> (Storage, ConsensusStorage) {
+        let main_db = StorageBuilder::in_tempdir().expect("Failed to create temp main DB");
+        let cons_db = ConsensusStorage::in_tempdir().expect("Failed to create temp consensus DB");
+
+        let mut cons_conn = cons_db.connection().unwrap();
+        let cons_tx = cons_conn.transaction().unwrap();
+        cons_tx.ensure_consensus_proposals_table_exists().unwrap();
+        cons_tx
+            .ensure_consensus_finalized_blocks_table_exists()
+            .unwrap();
+        cons_tx.commit().unwrap();
+
+        (main_db, cons_db)
+    }
 
     fn create_test_transaction(index: usize) -> p2p_proto::consensus::Transaction {
         let txn = TransactionVariant::L1HandlerV0(L1HandlerV0 {
@@ -1502,7 +1575,8 @@ mod tests {
     /// an empty state diff.
     #[test]
     fn test_empty_proposal_finalization() {
-        let main_storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let main_db = StorageBuilder::in_tempdir().expect("Failed to create temp main DB");
+        let cons_db = ConsensusStorage::in_tempdir().expect("Failed to create temp consensus DB");
         let chain_id = ChainId::SEPOLIA_TESTNET;
 
         let hnr = HeightAndRound::new(0, 0);
@@ -1531,8 +1605,23 @@ mod tests {
         let validator_block_info = ValidatorBlockInfoStage::new(chain_id, proposal_init)
             .expect("Failed to create ValidatorBlockInfoStage");
 
+        let mut cons_conn = cons_db
+            .connection()
+            .expect("Failed to get consensus DB connection");
+
+        let proposals_db = cons_conn
+            .transaction()
+            .map(ConsensusProposals::new)
+            .expect("Failed to create proposals DB transaction");
+
         let validator_transaction_batch = validator_block_info
-            .validate_block_info::<BlockExecutor>(block_info, main_storage.clone(), None, None)
+            .validate_block_info::<BlockExecutor>(
+                block_info,
+                main_db.clone(),
+                &proposals_db,
+                None,
+                None,
+            )
             .expect("Failed to validate block info");
 
         // Verify the validator is in the expected empty state
@@ -1606,24 +1695,39 @@ mod tests {
         #[case] proposal_timestamp: u64,
         #[case] expected_error_message: Option<String>,
     ) {
-        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
-        let mut db_conn = storage.connection().expect("Failed to get DB connection");
-        let db_tx = db_conn
-            .transaction()
-            .expect("Failed to begin DB transaction");
+        let (main_db, cons_db) = setup_test_dbs();
 
-        // Insert parent header.
-        let header0 = BlockHeader {
-            hash: block_hash_bytes!(b"block hash 0"),
-            parent_hash: BlockHash::default(),
-            number: BlockNumber::new_or_panic(0),
-            timestamp: BlockTimestamp::new_or_panic(1000),
+        let mut cons_conn = cons_db
+            .connection()
+            .expect("Failed to get consensus DB connection");
+
+        // Insert finalized parent block.
+        let finalized_block0 = ConsensusFinalizedL2Block {
+            header: ConsensusFinalizedBlockHeader {
+                number: BlockNumber::new_or_panic(0),
+                timestamp: BlockTimestamp::new_or_panic(1000),
+                ..Default::default()
+            },
             ..Default::default()
         };
-        db_tx
-            .insert_block_header(&header0)
-            .expect("Failed to insert block header 0");
-        db_tx.commit().expect("Failed to commit DB transaction");
+        let proposals_db = cons_conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map(ConsensusProposals::new)
+            .expect("Failed to create proposals DB transaction");
+        proposals_db
+            .persist_consensus_finalized_block(0, 0, finalized_block0)
+            .expect("Failed to persist finalized block 0");
+        proposals_db
+            .mark_consensus_finalized_block_as_decided(0, 0)
+            .expect("Failed to mark finalized block 0 as decided");
+        proposals_db
+            .commit()
+            .expect("Failed to commit proposals DB transaction");
+
+        let proposals_db = cons_conn
+            .transaction()
+            .map(ConsensusProposals::new)
+            .expect("Failed to create proposals DB transaction");
 
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let proposal_init1 = p2p_proto::consensus::ProposalInit {
@@ -1648,7 +1752,8 @@ mod tests {
         };
         let result = validator_block_info1.validate_block_info::<BlockExecutor>(
             block_info1,
-            storage,
+            main_db,
+            &proposals_db,
             None,
             None,
         );
@@ -1670,11 +1775,22 @@ mod tests {
     #[rstest]
     #[case(BlockNumber::GENESIS)]
     #[should_panic(
-        expected = "BlockInfo validation should be deferred until parent block is committed"
+        expected = "BlockInfo validation should be deferred until parent block is decided or \
+                    committed"
     )]
     #[case(BlockNumber::new_or_panic(42))]
     fn timestamp_validation_parent_block_not_found(#[case] proposal_height: BlockNumber) {
-        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let (main_db, cons_db) = setup_test_dbs();
+
+        let mut cons_conn = cons_db
+            .connection()
+            .expect("Failed to get consensus DB connection");
+
+        let proposals_db = cons_conn
+            .transaction()
+            .map(ConsensusProposals::new)
+            .expect("Failed to create proposals DB transaction");
+
         let chain_id = ChainId::SEPOLIA_TESTNET;
 
         let proposal_init = p2p_proto::consensus::ProposalInit {
@@ -1703,13 +1819,25 @@ mod tests {
             // parent.
             assert!(
                 validator_block_info
-                    .validate_block_info::<BlockExecutor>(block_info, storage, None, None)
+                    .validate_block_info::<BlockExecutor>(
+                        block_info,
+                        main_db,
+                        &proposals_db,
+                        None,
+                        None
+                    )
                     .is_ok(),
                 "Genesis block timestamp validation should pass even without parent"
             );
         } else {
             let err = validator_block_info
-                .validate_block_info::<BlockExecutor>(block_info, storage, None, None)
+                .validate_block_info::<BlockExecutor>(
+                    block_info,
+                    main_db,
+                    &proposals_db,
+                    None,
+                    None,
+                )
                 .unwrap_err();
             let expected_err_message = format!(
                 "Parent block header not found for height {}",
