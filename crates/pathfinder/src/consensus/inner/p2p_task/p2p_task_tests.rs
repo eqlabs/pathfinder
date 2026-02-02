@@ -26,7 +26,7 @@ use pathfinder_common::{
 use pathfinder_consensus::ConsensusCommand;
 use pathfinder_crypto::Felt;
 use pathfinder_storage::consensus::ConsensusStorage;
-use pathfinder_storage::{Storage, StorageBuilder};
+use pathfinder_storage::{Storage, StorageBuilder, TransactionBehavior};
 use tokio::sync::{mpsc, watch};
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
@@ -146,24 +146,30 @@ impl TestEnvironment {
         db_tx.commit().unwrap();
     }
 
-    fn create_uncommitted_finalized_block(&self, height: u64, round: u32) {
+    fn create_finalized_decided_block(&self, height: u64, round: u32) {
         let block_id_felt = Felt::from(height);
-        let mut consensus_db_conn = self.consensus_storage.connection().unwrap();
-        let consensus_db_tx = consensus_db_conn.transaction().unwrap();
-        let proposals_db = ConsensusProposals::new(consensus_db_tx);
-        let block = ConsensusFinalizedL2Block {
+        let mut cons_conn = self.consensus_storage.connection().unwrap();
+        let proposals_db = cons_conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map(ConsensusProposals::new)
+            .unwrap();
+
+        let finalized_block = ConsensusFinalizedL2Block {
             header: ConsensusFinalizedBlockHeader {
                 number: BlockNumber::new_or_panic(height),
                 timestamp: BlockTimestamp::new_or_panic(1000),
                 state_diff_commitment: StateDiffCommitment(block_id_felt),
+                sequencer_address: SequencerAddress::ZERO,
                 ..Default::default()
             },
-            state_update: Default::default(),
-            transactions_and_receipts: vec![],
-            events: vec![],
+            ..Default::default()
         };
+
         proposals_db
-            .persist_consensus_finalized_block(height, round, block)
+            .persist_consensus_finalized_block(height, round, finalized_block)
+            .unwrap();
+        proposals_db
+            .mark_consensus_finalized_block_as_decided(height, round)
             .unwrap();
         proposals_db.commit().unwrap();
     }
@@ -484,36 +490,37 @@ fn verify_transaction_count(
     );
 }
 
-/// ProposalFin deferred until parent block is committed.
+/// ProposalFin deferred until parent block is decided.
 ///
-/// **Scenario**: ProposalFin arrives before the parent block is committed.
-/// Execution has started (TransactionBatch received), so ProposalFin must be
-/// deferred until the parent block is committed, then finalization can proceed.
+/// **Scenario**: ProposalFin arrives before the parent block is decided.
+/// Execution has started (TransactionBatch received), so ProposalFin must
+/// be deferred until the parent block is decided (or committed, covered by
+/// [test_proposal_fin_deferred_until_parent_block_committed]), then
+/// finalization can proceed.
 ///
 /// **Test**: Send Init → BlockInfo → TransactionBatch →
-/// ExecutedTransactionCount → ProposalFin → CommitBlock(parent).
+/// ExecutedTransactionCount → ProposalFin → MarkBlockAsDecided(parent).
 ///
 /// Verify ProposalFin is deferred (no proposal event), then verify
-/// finalization occurs after parent block is committed. Also verify
+/// finalization occurs after parent block is decided. Also verify
 /// ProposalFin is persisted in the database even when deferred.
 #[rstest::rstest]
 #[case::consensus_ahead_of_fgw(true)]
 #[case::fgw_ahead_of_consensus(false)]
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
-async fn test_proposal_fin_deferred_until_parent_block_committed(
+async fn test_proposal_fin_deferred_until_parent_block_decided(
     #[case] consensus_ahead_of_fgw: bool,
 ) {
     let chain_id = ChainId::SEPOLIA_TESTNET;
     let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
     let mut env = TestEnvironment::new(chain_id, validator_address);
-    env.create_committed_block(0);
+    env.create_finalized_decided_block(0, 0);
     if !consensus_ahead_of_fgw {
         // Simulate the case where FGW magically has the block which consensus has not
         // produced yet. We don't care if this is possible in reality, we just want our
         // storage to be consistent against all odds.
         env.create_committed_block(1);
     }
-    env.create_uncommitted_finalized_block(1, 0);
     env.wait_for_task_initialization().await;
 
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
@@ -612,7 +619,9 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
         }
     }
 
-    // Step 6: Send CommitBlock for parent block (should trigger finalization)
+    // Step 6: Send MarkBlockAsDecidedAndCleanUp for parent block (should trigger
+    // finalization)
+    env.create_finalized_decided_block(1, 0);
     env.tx_to_p2p
         .send(
             crate::consensus::inner::P2PTaskEvent::MarkBlockAsDecidedAndCleanUp(
@@ -621,7 +630,7 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
             ),
         )
         .await
-        .expect("Failed to send CommitBlock");
+        .expect("Failed to send MarkBlockAsDecidedAndCleanUp");
     env.verify_task_alive().await;
 
     // Make sure the above message is consumed before proceeding, otherwise we can
@@ -675,6 +684,157 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
     env.verify_task_alive().await;
 }
 
+/// ProposalFin deferred until parent block is committed.
+///
+/// **Scenario**: ProposalFin arrives before the parent block is committed.
+/// Additionally, node has missed the opportunity to observe the parent block
+/// being decided upon (it will never mark it as decided).
+/// Execution has started (TransactionBatch received), so ProposalFin must be
+/// deferred until the parent block is committed (or decided, covered by
+/// [test_proposal_fin_deferred_until_parent_block_decided]), then finalization
+/// can proceed.
+///
+/// **Test**: Send Init → BlockInfo → TransactionBatch →
+/// ExecutedTransactionCount → ProposalFin → CommitBlock(parent).
+///
+/// Verify ProposalFin is deferred (no proposal event), then verify
+/// finalization occurs after parent block is committed. Also verify
+/// ProposalFin is persisted in the database even when deferred.
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+async fn test_proposal_fin_deferred_until_parent_block_committed() {
+    let chain_id = ChainId::SEPOLIA_TESTNET;
+    let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
+    let mut env = TestEnvironment::new(chain_id, validator_address);
+    env.create_committed_block(0);
+    env.wait_for_task_initialization().await;
+
+    let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
+    let height_and_round = HeightAndRound::new(2, 1);
+    let transactions = create_transaction_batch(0, 5, chain_id);
+    let (proposal_init, block_info) =
+        create_test_proposal(chain_id, 2, 1, proposer_address, transactions.clone());
+
+    // Focus is on batch execution and deferral logic, not commitment validation.
+    // Using a dummy commitment...
+    let proposal_commitment = ProposalCommitment(Felt::ZERO);
+
+    // Step 1: Send ProposalInit
+    env.p2p_tx
+        .send(Event {
+            source: PeerId::random(),
+            kind: EventKind::Proposal(height_and_round, ProposalPart::Init(proposal_init)),
+        })
+        .expect("Failed to send ProposalInit");
+    env.verify_task_alive().await;
+
+    // Step 2: Send BlockInfo
+    env.p2p_tx
+        .send(Event {
+            source: PeerId::random(),
+            kind: EventKind::Proposal(height_and_round, ProposalPart::BlockInfo(block_info)),
+        })
+        .expect("Failed to send BlockInfo");
+    env.verify_task_alive().await;
+
+    // Step 3: Send TransactionBatch (execution should start)
+    env.p2p_tx
+        .send(Event {
+            source: PeerId::random(),
+            kind: EventKind::Proposal(
+                height_and_round,
+                ProposalPart::TransactionBatch(transactions),
+            ),
+        })
+        .expect("Failed to send TransactionBatch");
+    env.verify_task_alive().await;
+
+    // Verify: No proposal event yet (execution started, but not finalized)
+    verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
+
+    // Step 4: Send ExecutedTransactionCount
+    env.p2p_tx
+        .send(Event {
+            source: PeerId::random(),
+            kind: EventKind::Proposal(height_and_round, ProposalPart::ExecutedTransactionCount(5)),
+        })
+        .expect("Failed to send ExecutedTransactionCount");
+    env.verify_task_alive().await;
+
+    // Step 5: Send ProposalFin
+    env.p2p_tx
+        .send(Event {
+            source: PeerId::random(),
+            kind: EventKind::Proposal(
+                height_and_round,
+                ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
+                    proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
+                }),
+            ),
+        })
+        .expect("Failed to send ProposalFin");
+    env.verify_task_alive().await;
+
+    // Verify: Still no proposal event
+    verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
+
+    // Check what's in the database right after ProposalFin
+    #[cfg(debug_assertions)]
+    {
+        let mut db_conn = env.consensus_storage.connection().unwrap();
+        let db_tx = db_conn.transaction().unwrap();
+        let proposals = ConsensusProposals::new(db_tx);
+        let parts_after_proposal_fin = proposals
+            .foreign_parts(2, 1, &validator_address)
+            .unwrap()
+            .unwrap_or_default();
+        eprintln!(
+            "Parts in database after ProposalFin (before ExecutedTransactionCount): {}",
+            parts_after_proposal_fin.len()
+        );
+        for (i, part) in parts_after_proposal_fin.iter().enumerate() {
+            eprintln!("  Part {}: {:?}", i, std::mem::discriminant(part));
+        }
+    }
+
+    // Step 8: At some point sync sends SyncMessageToConsensus::GetFinalizedBlock
+    // for H=1, and then confirms committing the block with
+    // SyncMessageToConsensus::ConfirmFinalizedBlockCommitted
+    env.create_committed_block(1);
+    env.tx_sync_to_consensus
+        .send(SyncMessageToConsensus::ConfirmBlockCommitted {
+            number: BlockNumber::new_or_panic(1),
+        })
+        .await
+        .expect("Failed to send ConfirmFinalizedBlockCommitted");
+    env.verify_task_alive().await;
+
+    // Verify: Proposal event should be sent now
+    let proposal_cmd = wait_for_proposal_event(&mut env.rx_from_p2p, Duration::from_secs(3))
+        .await
+        .expect("Expected proposal event after ExecutedTransactionCount");
+    verify_proposal_event(proposal_cmd, 2, proposal_commitment);
+
+    // Verify proposal parts persisted
+    // Query with validator_address (receiver) to get foreign proposals
+    // Expected: Init, BlockInfo, TransactionBatch, ExecutedTransactionCount,
+    // ProposalFin (5 parts)
+    verify_proposal_parts_persisted(
+        &env.consensus_storage,
+        2,
+        1,
+        &validator_address,
+        5,
+        true, // expect_transaction_batch
+    );
+
+    env.verify_task_alive().await;
+
+    // Verify transaction count matches ExecutedTransactionCount
+    verify_transaction_count(&env.consensus_storage, 2, 1, &validator_address, 5);
+
+    env.verify_task_alive().await;
+}
+
 /// Full proposal flow in normal order.
 ///
 /// **Scenario**: Complete proposal flow with all parts arriving in the
@@ -691,7 +851,7 @@ async fn test_full_proposal_flow_normal_order() {
     let chain_id = ChainId::SEPOLIA_TESTNET;
     let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
     let mut env = TestEnvironment::new(chain_id, validator_address);
-    env.create_committed_block(1);
+    env.create_finalized_decided_block(1, 0);
     env.wait_for_task_initialization().await;
 
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
@@ -866,7 +1026,7 @@ async fn test_executed_transaction_count_deferred_when_execution_not_started() {
     verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
 
     // Step 5: Now we commit the parent block
-    env.create_committed_block(1);
+    env.create_finalized_decided_block(1, 0);
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Step 6: Send another TransactionBatch
@@ -945,7 +1105,7 @@ async fn test_multiple_batches_execution() {
     let chain_id = ChainId::SEPOLIA_TESTNET;
     let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
     let mut env = TestEnvironment::new(chain_id, validator_address);
-    env.create_committed_block(1);
+    env.create_finalized_decided_block(1, 0);
     env.wait_for_task_initialization().await;
 
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
@@ -1083,7 +1243,7 @@ async fn test_executed_transaction_count_rollback() {
     let chain_id = ChainId::SEPOLIA_TESTNET;
     let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
     let mut env = TestEnvironment::new(chain_id, validator_address);
-    env.create_committed_block(1);
+    env.create_finalized_decided_block(1, 0);
     env.wait_for_task_initialization().await;
 
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
@@ -1228,7 +1388,7 @@ async fn test_empty_batch_is_rejected() {
     let chain_id = ChainId::SEPOLIA_TESTNET;
     let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
     let mut env = TestEnvironment::new(chain_id, validator_address);
-    env.create_committed_block(1);
+    env.create_finalized_decided_block(1, 0);
     env.wait_for_task_initialization().await;
 
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
@@ -1289,7 +1449,7 @@ async fn test_executed_transaction_count_exceeds_actually_executed() {
     let chain_id = ChainId::SEPOLIA_TESTNET;
     let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
     let mut env = TestEnvironment::new(chain_id, validator_address);
-    env.create_committed_block(1);
+    env.create_finalized_decided_block(1, 0);
     env.wait_for_task_initialization().await;
 
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
@@ -1387,7 +1547,7 @@ async fn test_executed_transaction_count_before_any_batch() {
     let chain_id = ChainId::SEPOLIA_TESTNET;
     let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
     let mut env = TestEnvironment::new(chain_id, validator_address);
-    env.create_committed_block(1);
+    env.create_finalized_decided_block(1, 0);
     env.wait_for_task_initialization().await;
 
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
@@ -1494,7 +1654,7 @@ async fn test_empty_proposal_per_spec() {
     let chain_id = ChainId::SEPOLIA_TESTNET;
     let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
     let mut env = TestEnvironment::new(chain_id, validator_address);
-    env.create_committed_block(1);
+    env.create_finalized_decided_block(1, 0);
     env.wait_for_task_initialization().await;
 
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
@@ -1567,7 +1727,7 @@ async fn recv_outdated_event_changes_peer_score() {
     let mut env = TestEnvironment::new(chain_id, validator_address);
     // Latest height (the only in this case) must be higher than the proposal height
     // + history.
-    env.create_committed_block(TestEnvironment::HISTORY_DEPTH + 4);
+    env.create_finalized_decided_block(TestEnvironment::HISTORY_DEPTH + 4, 0);
     let proposal_height_and_round = HeightAndRound::new(2, 1);
 
     env.wait_for_task_initialization().await;

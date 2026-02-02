@@ -6,12 +6,11 @@ use std::path::Path;
 
 use anyhow::Context;
 use pathfinder_common::ContractAddress;
-use rusqlite::TransactionBehavior;
 
 use crate::error::StorageError;
 use crate::prelude::*;
 use crate::pruning::BlockchainHistoryMode;
-use crate::{Connection, JournalMode, Storage, StorageBuilder, TriePruneMode};
+use crate::{Connection, JournalMode, Storage, StorageBuilder, TransactionBehavior, TriePruneMode};
 
 /// The inner storage is not pub on purpose because we want to disallow
 /// utilization of non-consensus specific database APIs.

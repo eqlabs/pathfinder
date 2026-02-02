@@ -47,7 +47,6 @@ use super::persist_proposals::ConsensusProposals;
 use super::{integration_testing, ConsensusTaskEvent, ConsensusValue, P2PTaskConfig, P2PTaskEvent};
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::consensus::inner::batch_execution::{
-    should_defer_execution,
     BatchExecutionManager,
     DeferredExecution,
     ProposalCommitmentWithOrigin,
@@ -56,6 +55,7 @@ use crate::consensus::inner::create_empty_block;
 use crate::consensus::{ProposalError, ProposalHandlingError};
 use crate::gas_price::L1GasPriceProvider;
 use crate::validator::{
+    should_defer_validation,
     ProdTransactionMapper,
     TransactionExt,
     ValidatorBlockInfoStage,
@@ -621,69 +621,14 @@ pub fn spawn(
                         // scenarios except for when the node is chosen as a proposer and needs
                         // to cache the proposal for later.
                         tracing::info!(
-                            "🖧  💾 {validator_address} Finalizing and committing block at \
-                             {height_and_round} to the database ...",
+                            "🖧  💾 {validator_address} Marking block for {height_and_round} as \
+                             decided..."
                         );
-                        let stopwatch = std::time::Instant::now();
-
-                        let block: Option<pathfinder_common::ConsensusFinalizedL2Block> =
-                            proposals_db.read_consensus_finalized_block(
-                                height_and_round.height(),
-                                height_and_round.round(),
-                            )?;
-
-                        // The block will not be in the consensus DB if it has already been
-                        // downloaded from the feeder gateway and committed to the main DB by the
-                        // sync task. This can happen in fast local testnets where the FGw is
-                        // sometimes serving blocks from the proposers faster than the consensus
-                        // engine internally notifies Pathfinder about a positive decision on the
-                        // executed proposal.
-                        if let Some(block) = block {
-                            assert_eq!(
-                                value.0 .0, block.header.state_diff_commitment.0,
-                                "Proposal commitment mismatch"
-                            );
-
-                            proposals_db.mark_consensus_finalized_block_as_decided(
-                                height_and_round.height(),
-                                height_and_round.round(),
-                            )?;
-                        }
-
-                        info_watch_tx.send_if_modified(|info| {
-                            let do_update = match info.highest_decision {
-                                None => true,
-                                Some(decision) => {
-                                    let new_height =
-                                        height_and_round.height() > decision.height.get();
-                                    let new_value = value.0 != decision.value;
-                                    new_height || new_value
-                                }
-                            };
-                            if do_update {
-                                let height = BlockNumber::new_or_panic(height_and_round.height());
-                                *info = ConsensusInfo {
-                                    highest_decision: Some(DecisionInfo {
-                                        height,
-                                        round: height_and_round.round(),
-                                        value: value.0,
-                                    }),
-                                    ..*info
-                                };
-                            }
-                            do_update
-                        });
 
                         integration_testing::debug_fail_on_proposal_committed(
                             height_and_round.height(),
                             inject_failure,
                             &data_directory,
-                        );
-
-                        tracing::info!(
-                            "🖧  💾 {validator_address} Finalized and prepared block for \
-                             committing to the database at {height_and_round} in {} ms",
-                            stopwatch.elapsed().as_millis()
                         );
 
                         // Remove all finalized blocks for previous rounds at this height
@@ -717,36 +662,98 @@ pub fn spawn(
                             height_and_round.height()
                         );
 
-                        // Consistency of our storage is more important than any irrational
-                        // scenarios that in theory cannot occur. In the abnormal case that
-                        // the FGw is actually ahead of consensus, we can check if the finalized
-                        // block has already been committed to the main DB without waiting for a
-                        // commit confirmation which had already arrived in the past and will result
-                        // in finalized blocks for last rounds piling up without ever being removed.
-                        let block_number = BlockNumber::new(height_and_round.height())
+                        info_watch_tx.send_if_modified(|info| {
+                            let do_update = match info.highest_decision {
+                                None => true,
+                                Some(decision) => {
+                                    let new_height =
+                                        height_and_round.height() > decision.height.get();
+                                    let new_value = value.0 != decision.value;
+                                    new_height || new_value
+                                }
+                            };
+                            if do_update {
+                                let height = BlockNumber::new_or_panic(height_and_round.height());
+                                *info = ConsensusInfo {
+                                    highest_decision: Some(DecisionInfo {
+                                        height,
+                                        round: height_and_round.round(),
+                                        value: value.0,
+                                    }),
+                                    ..*info
+                                };
+                            }
+                            do_update
+                        });
+
+                        // The block will not be in the consensus DB if it has already been
+                        // downloaded from the feeder gateway and committed to the main DB by the
+                        // sync task. This can happen in fast local testnets where the FGw is
+                        // sometimes serving blocks from the proposers faster than the consensus
+                        // engine internally notifies Pathfinder about a positive decision on the
+                        // executed proposal.
+                        let maybe_finalized_block = proposals_db.read_consensus_finalized_block(
+                            height_and_round.height(),
+                            height_and_round.round(),
+                        )?;
+
+                        let block_num = BlockNumber::new(height_and_round.height())
                             .context("height exceeds i64::MAX")?;
-                        let is_already_committed =
-                            main_db_tx.block_exists(BlockId::Number(block_number))?;
-                        if is_already_committed {
-                            tracing::trace!(
-                                number=%block_number, "🖧  📥 {validator_address} finalized block is already committed"
-                            );
+                        let success = match maybe_finalized_block {
+                            Some(finalized_block) => {
+                                assert_eq!(
+                                    value.0 .0, finalized_block.header.state_diff_commitment.0,
+                                    "Proposal commitment mismatch"
+                                );
 
-                            let success = on_finalized_block_committed(
-                                validator_address,
-                                &validator_cache,
-                                deferred_executions.clone(),
-                                &mut batch_execution_manager,
-                                main_readonly_storage.clone(),
-                                &proposals_db,
-                                block_number,
-                                gas_price_provider.clone(),
-                            )?;
+                                proposals_db.mark_consensus_finalized_block_as_decided(
+                                    height_and_round.height(),
+                                    height_and_round.round(),
+                                )?;
 
-                            Ok(success)
-                        } else {
-                            Ok(ComputationSuccess::Continue)
-                        }
+                                on_finalized_block_decided(
+                                    &validator_cache,
+                                    deferred_executions.clone(),
+                                    &mut batch_execution_manager,
+                                    main_readonly_storage.clone(),
+                                    &proposals_db,
+                                    block_num,
+                                    gas_price_provider.clone(),
+                                )?
+                            }
+                            None => {
+                                let block_id = BlockId::Number(block_num);
+                                // Consistency of our storage is more important than any irrational
+                                // scenarios that in theory cannot occur. In the abnormal case that
+                                // the FGw is actually ahead of consensus, we can check if the
+                                // finalized block has already been committed to the main DB without
+                                // waiting for a commit confirmation which had already arrived in
+                                // the past and will result in finalized blocks for last rounds
+                                // piling up without ever being removed.
+                                let is_already_committed = main_db_tx.block_exists(block_id)?;
+                                if is_already_committed {
+                                    tracing::trace!(
+                                        number=%block_num,
+                                        "🖧  📥 {validator_address} finalized block is already committed"
+                                    );
+
+                                    on_finalized_block_committed(
+                                        validator_address,
+                                        &validator_cache,
+                                        deferred_executions.clone(),
+                                        &mut batch_execution_manager,
+                                        main_readonly_storage.clone(),
+                                        &proposals_db,
+                                        block_num,
+                                        gas_price_provider.clone(),
+                                    )?
+                                } else {
+                                    ComputationSuccess::Continue
+                                }
+                            }
+                        };
+
+                        Ok(success)
                     }
                 }?;
 
@@ -804,6 +811,36 @@ pub fn spawn(
             }
         }
     })
+}
+
+/// Handle decision confirmation for a finalized block at given height.
+#[allow(clippy::too_many_arguments)]
+fn on_finalized_block_decided(
+    validator_cache: &ValidatorCache<BlockExecutor>,
+    deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
+    batch_execution_manager: &mut BatchExecutionManager,
+    main_db: Storage,
+    proposals_db: &ConsensusProposals<'_>,
+    number: pathfinder_common::BlockNumber,
+    gas_price_provider: Option<L1GasPriceProvider>,
+) -> Result<ComputationSuccess, anyhow::Error> {
+    let exec_success = execute_deferred_for_next_height::<BlockExecutor, ProdTransactionMapper>(
+        number.get(),
+        validator_cache.clone(),
+        deferred_executions.clone(),
+        batch_execution_manager,
+        main_db,
+        proposals_db,
+        gas_price_provider,
+    )?;
+
+    let success = match exec_success {
+        Some((hnr, commitment)) => {
+            ComputationSuccess::PreviouslyDeferredProposalIsFinalized(hnr, commitment)
+        }
+        None => ComputationSuccess::Continue,
+    };
+    Ok(success)
 }
 
 /// Handle commit confirmation for a finalized block at given height.
@@ -910,6 +947,7 @@ fn execute_deferred_for_next_height<E: BlockExecutorExt, T: TransactionExt>(
             .validate_block_info(
                 block_info,
                 main_db,
+                proposals_db,
                 gas_price_provider,
                 None, // TODO: Add L1ToFriValidator when oracle is available
             )
@@ -1191,7 +1229,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                 let db_tx = db_conn.transaction().context(
                     "Creating DB transaction for deferral check in block info validation",
                 )?;
-                should_defer_validation(block_info.height, &db_tx)?
+                should_defer_validation(height_and_round, &db_tx, proposals_db)?
             };
             if defer {
                 tracing::debug!(
@@ -1208,6 +1246,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
             let new_validator = validator.validate_block_info(
                 block_info,
                 main_readonly_storage,
+                proposals_db,
                 gas_price_provider,
                 None, // TODO: Add L1ToFriValidator when oracle is available
             )?;
@@ -1273,6 +1312,7 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
                 tx_batch,
                 validator_stage,
                 main_readonly_storage.clone(),
+                proposals_db,
                 &mut deferred_executions.lock().unwrap(),
             )?;
             validator_cache.insert(height_and_round, next_stage);
@@ -1488,28 +1528,6 @@ fn handle_incoming_proposal_part<E: BlockExecutorExt, T: TransactionExt>(
     }
 }
 
-/// Determine whether validation of proposal parts for the given height should
-/// be deferred because the previous block is not committed yet.
-fn should_defer_validation(
-    height: u64,
-    main_db_tx: &Transaction<'_>,
-) -> Result<bool, ProposalHandlingError> {
-    let parent_block = height.checked_sub(1);
-    let defer = if let Some(parent_block) = parent_block {
-        let parent_block = BlockNumber::new(parent_block)
-            .context("Block number is larger than i64::MAX")
-            .map_err(ProposalHandlingError::Fatal)?;
-        let parent_block = BlockId::Number(parent_block);
-        let parent_committed = main_db_tx
-            .block_exists(parent_block)
-            .map_err(ProposalHandlingError::Fatal)?;
-        !parent_committed
-    } else {
-        false
-    };
-    Ok(defer)
-}
-
 /// Appends the given proposal part to the list of parts. Also persists the
 /// parts list unless the part is replayed, which assumes that the part is
 /// already in storage.
@@ -1562,7 +1580,7 @@ fn defer_or_execute_proposal_fin<E: BlockExecutorExt, T: TransactionExt>(
     let mut main_db_conn = main_db.connection()?;
     let main_db_tx = main_db_conn.transaction()?;
 
-    if should_defer_execution(height_and_round, &main_db_tx)? {
+    if should_defer_validation(height_and_round, &main_db_tx, proposals_db)? {
         // The proposal cannot be finalized yet, because the previous
         // block is not committed yet. Defer its finalization.
         tracing::debug!(
@@ -1594,6 +1612,7 @@ fn defer_or_execute_proposal_fin<E: BlockExecutorExt, T: TransactionExt>(
                     .validate_block_info(
                         block_info,
                         main_db.clone(),
+                        proposals_db,
                         gas_price_provider,
                         None, // TODO: Add L1ToFriValidator when oracle is available
                     )
