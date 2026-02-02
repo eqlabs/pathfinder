@@ -106,16 +106,33 @@ impl Transaction<'_> {
         block_number: BlockNumber,
         contract: ContractAddress,
     ) -> anyhow::Result<Option<ContractRoot>> {
-        self.inner()
+        let root_index = self.inner()
         .query_row(
-            r"SELECT hash FROM trie_contracts WHERE idx = (
+            r"
                 SELECT root_index FROM contract_roots WHERE block_number <= ? AND contract_address = ? ORDER BY block_number DESC LIMIT 1
-            )",
+            ",
             params![&block_number, &contract],
-            |row| row.get_contract_root(0),
+            |row| row.get_i64(0),
         )
-        .optional()
-        .map_err(Into::into)
+        .optional()?;
+
+        if let Some(root_index) = root_index {
+            let root = self
+                .rocksdb()
+                .get_pinned_cf(
+                    &self.rocksdb_get_column(&TRIE_CONTRACT_HASH_COLUMN),
+                    root_index.to_be_bytes().as_slice(),
+                )?
+                .map(|v| {
+                    Felt::from_be_slice(v.as_ref())
+                        .context("Decoding contract root hash from RocksDB")
+                })
+                .transpose()?
+                .map(ContractRoot);
+            Ok(root)
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn insert_class_root(
