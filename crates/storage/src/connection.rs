@@ -48,7 +48,6 @@ pub struct Connection {
     event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
-    trie_storage_index: Arc<std::sync::atomic::AtomicU64>,
     pub blockchain_history_mode: BlockchainHistoryMode,
 }
 
@@ -59,7 +58,6 @@ impl Connection {
         event_filter_cache: Arc<AggregateBloomCache>,
         running_event_filter: Arc<Mutex<RunningEventFilter>>,
         trie_prune_mode: TriePruneMode,
-        trie_storage_index: Arc<std::sync::atomic::AtomicU64>,
         blockchain_history_mode: BlockchainHistoryMode,
     ) -> Self {
         Self {
@@ -68,7 +66,6 @@ impl Connection {
             event_filter_cache,
             running_event_filter,
             trie_prune_mode,
-            trie_storage_index,
             blockchain_history_mode,
         }
     }
@@ -78,7 +75,6 @@ impl Connection {
         Ok(Transaction {
             transaction: tx,
             rocksdb: Arc::clone(&self.rocksdb),
-            trie_storage_index: Arc::clone(&self.trie_storage_index),
             event_filter_cache: self.event_filter_cache.clone(),
             running_event_filter: self.running_event_filter.clone(),
             trie_prune_mode: self.trie_prune_mode,
@@ -94,7 +90,6 @@ impl Connection {
         Ok(Transaction {
             transaction: tx,
             rocksdb: Arc::clone(&self.rocksdb),
-            trie_storage_index: Arc::clone(&self.trie_storage_index),
             event_filter_cache: self.event_filter_cache.clone(),
             running_event_filter: self.running_event_filter.clone(),
             trie_prune_mode: self.trie_prune_mode,
@@ -114,7 +109,6 @@ impl Connection {
 pub struct Transaction<'inner> {
     transaction: rusqlite::Transaction<'inner>,
     rocksdb: Arc<RocksDB>,
-    trie_storage_index: Arc<std::sync::atomic::AtomicU64>,
     event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,

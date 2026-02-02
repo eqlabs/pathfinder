@@ -168,21 +168,17 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                     .hash(*idx)
                     .context("Fetching stored node's hash")?
                     .context("Stored node's hash is missing")?;
-                tracing::warn!(%idx, %hash, "Committing unresolved node");
                 (hash, Some(NodeRef::StorageIndex(*idx)))
             }
             InternalNode::Leaf => {
                 let hash = if let Some(value) = self.leaves.get(&path) {
                     *value
                 } else {
-                    tracing::warn!(%path, "Fetching leaf node");
-
                     storage
                         .leaf(&path)
                         .context("Fetching leaf value from storage")?
                         .context("Leaf value missing from storage")?
                 };
-                tracing::warn!(%hash, ?path, "Committing leaf node");
                 (hash, None)
             }
             InternalNode::Binary(binary) => {
@@ -205,7 +201,6 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                     right_path,
                 )?;
                 let hash = BinaryNode::calculate_hash::<H>(left_hash, right_hash);
-                tracing::warn!(%left_hash, %right_hash, %hash, "Committing binary node");
 
                 let persisted_node = match (left_child, right_child) {
                     (None, None) => Node::LeafBinary,
@@ -238,7 +233,6 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 )?;
 
                 let hash = EdgeNode::calculate_hash::<H>(child_hash, &edge.path);
-                tracing::warn!(%child_hash, path=?edge.path, %hash, "Committing edge node");
 
                 let persisted_node = match child {
                     None => Node::LeafEdge {
@@ -396,7 +390,6 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             }
         }
 
-        tracing::warn!(?key, %value, "Setting leaf node");
         self.leaves.insert(key, value);
 
         Ok(())

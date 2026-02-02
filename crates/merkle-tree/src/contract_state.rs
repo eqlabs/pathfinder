@@ -119,21 +119,12 @@ pub fn calculate_contract_state_hash(
     nonce: ContractNonce,
 ) -> ContractStateHash {
     const CONTRACT_STATE_HASH_VERSION: Felt = Felt::ZERO;
-    let class_hash = hash;
 
     // The contract state hash is defined as H(H(H(hash, root), nonce),
     // CONTRACT_STATE_HASH_VERSION)
     let hash = pedersen_hash(hash.0, root.0);
     let hash = pedersen_hash(hash, nonce.0);
     let hash = pedersen_hash(hash, CONTRACT_STATE_HASH_VERSION);
-
-    tracing::warn!(
-        %hash,
-        %class_hash,
-        %root,
-        %nonce,
-        "Calculating contract state hash"
-    );
 
     // Compare this with the HashChain construction used in the contract_hash: the
     // number of elements is not hashed to this hash, and this is supposed to be

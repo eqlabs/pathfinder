@@ -65,11 +65,6 @@ pub fn update_starknet_state(
     let contract_update_results = recv.recv().context("Panic on rayon thread")??;
 
     for contract_update_result in contract_update_results.into_iter() {
-        tracing::warn!(
-            ?contract_update_result.contract_address,
-            ?contract_update_result.state_hash,
-            "Contract state updated"
-        );
         storage_commitment_tree
             .set(
                 contract_update_result.contract_address,
@@ -110,7 +105,6 @@ pub fn update_starknet_state(
     let root_idx = transaction
         .insert_storage_trie(&trie_update, block)
         .context("Persisting storage trie")?;
-    tracing::warn!(?root_idx, %storage_commitment, ?trie_update, "Storage committed");
 
     transaction
         .insert_storage_root(block, root_idx)
