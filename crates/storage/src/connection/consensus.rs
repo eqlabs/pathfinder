@@ -64,8 +64,11 @@ pub fn open_consensus_storage_readonly(data_directory: &Path) -> anyhow::Result<
 
 impl ConsensusStorage {
     pub fn in_tempdir() -> anyhow::Result<ConsensusStorage> {
-        let tempdir = tempfile::tempdir()?.keep();
-        let consensus_storage = open_consensus_storage(&tempdir)?;
+        // Note: it is ok to drop the tempdir object and hence delete the tempdir right
+        // after opening the storage, because the connection pool keeps the inode alive
+        // for the lifetime of the storage anyway.
+        let tempdir = tempfile::tempdir()?;
+        let consensus_storage = open_consensus_storage(tempdir.path())?;
         Ok(consensus_storage)
     }
 

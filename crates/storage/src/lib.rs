@@ -278,9 +278,11 @@ impl StorageBuilder {
     /// connections and shared cache causes locking errors if the connection
     /// pool is larger than 1 and timeouts otherwise.
     pub fn in_tempdir() -> anyhow::Result<Storage> {
-        let mut db_path = tempfile::TempDir::new()?.keep();
-        db_path.push("db.sqlite");
-        crate::StorageBuilder::file(db_path)
+        // Note: it is ok to drop the tempdir object and hence delete the tempdir right
+        // after opening the storage, because the connection pool keeps the inode alive
+        // for the lifetime of the storage anyway.
+        let tempdir = tempfile::tempdir()?;
+        crate::StorageBuilder::file(tempdir.path().join("db.sqlite"))
             .migrate()
             .unwrap()
             .create_pool(NonZeroU32::new(32).unwrap())
@@ -292,9 +294,11 @@ impl StorageBuilder {
         trie_prune_mode: TriePruneMode,
         pool_size: NonZeroU32,
     ) -> anyhow::Result<Storage> {
-        let mut db_path = tempfile::TempDir::new()?.keep();
-        db_path.push("db.sqlite");
-        crate::StorageBuilder::file(db_path)
+        // Note: it is ok to drop the tempdir object and hence delete the tempdir right
+        // after opening the storage, because the connection pool keeps the inode alive
+        // for the lifetime of the storage anyway.
+        let tempdir = tempfile::tempdir()?;
+        crate::StorageBuilder::file(tempdir.path().join("db.sqlite"))
             .trie_prune_mode(Some(trie_prune_mode))
             .migrate()
             .unwrap()
