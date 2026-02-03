@@ -253,7 +253,6 @@ pub fn spawn(
                                             );
                                             // Purge the proposal from storage
                                             incoming_proposal_parts.remove(&height_and_round);
-                                            // TODO no need to remove the finalized block here???
                                             Ok(ComputationSuccess::Continue)
                                         } else {
                                             tracing::error!(
