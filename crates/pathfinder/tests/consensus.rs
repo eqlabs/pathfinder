@@ -58,16 +58,16 @@ mod test {
     // - [ ] ??? any missing significant failure injection points ???.
     #[rstest]
     #[case::happy_path(None)]
-    #[case::fail_on_proposal_init_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalInitRx }))]
-    #[case::fail_on_block_info_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::BlockInfoRx }))]
-    #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::TransactionBatchRx }))]
-    #[case::fail_on_executed_transaction_count_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ExecutedTransactionCountRx }))]
-    #[case::fail_on_proposal_fin_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalFinRx }))]
-    #[case::fail_on_entire_proposal_persisted(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalFinalized }))]
-    #[case::fail_on_prevote_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::PrevoteRx }))]
-    #[case::fail_on_precommit_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::PrecommitRx }))]
-    #[case::fail_on_proposal_decided(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalDecided }))]
-    #[case::fail_on_proposal_committed(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalCommitted }))]
+    #[case::fail_on_proposal_init_rx(Some(InjectFailureConfig { height: 1, trigger: InjectFailureTrigger::ProposalInitRx }))]
+    #[case::fail_on_block_info_rx(Some(InjectFailureConfig { height: 1, trigger: InjectFailureTrigger::BlockInfoRx }))]
+    #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig { height: 1, trigger: InjectFailureTrigger::TransactionBatchRx }))]
+    #[case::fail_on_executed_transaction_count_rx(Some(InjectFailureConfig { height: 1, trigger: InjectFailureTrigger::ExecutedTransactionCountRx }))]
+    #[case::fail_on_proposal_fin_rx(Some(InjectFailureConfig { height: 1, trigger: InjectFailureTrigger::ProposalFinRx }))]
+    #[case::fail_on_entire_proposal_persisted(Some(InjectFailureConfig { height: 1, trigger: InjectFailureTrigger::ProposalFinalized }))]
+    #[case::fail_on_prevote_rx(Some(InjectFailureConfig { height: 1, trigger: InjectFailureTrigger::PrevoteRx }))]
+    #[case::fail_on_precommit_rx(Some(InjectFailureConfig { height: 1, trigger: InjectFailureTrigger::PrecommitRx }))]
+    #[case::fail_on_proposal_decided(Some(InjectFailureConfig { height: 1, trigger: InjectFailureTrigger::ProposalDecided }))]
+    #[case::fail_on_proposal_committed(Some(InjectFailureConfig { height: 1, trigger: InjectFailureTrigger::ProposalCommitted }))]
     #[tokio::test]
     async fn consensus_3_nodes_with_failures(
         #[case] inject_failure: Option<InjectFailureConfig>,
@@ -75,9 +75,10 @@ mod test {
         use tokio::sync::mpsc;
 
         const NUM_NODES: usize = 3;
-        const HEIGHT: u64 = 10;
+        // System contracts start to matter after block 10
+        const HEIGHT: u64 = 3;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
-        const TEST_TIMEOUT: Duration = Duration::from_secs(150);
+        const TEST_TIMEOUT: Duration = Duration::from_secs(30);
         const POLL_READY: Duration = Duration::from_millis(500);
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
@@ -186,10 +187,10 @@ mod test {
     async fn consensus_3_nodes_fourth_node_joins_late_can_catch_up() -> anyhow::Result<()> {
         const NUM_NODES: usize = 4;
         // System contracts start to matter after block 10
-        const HEIGHT_TO_ADD_FOURTH_NODE: u64 = 8;
-        const FINAL_HEIGHT: u64 = 12;
+        const HEIGHT_TO_ADD_FOURTH_NODE: u64 = 2;
+        const FINAL_HEIGHT: u64 = 4;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
-        const TEST_TIMEOUT: Duration = Duration::from_secs(150);
+        const TEST_TIMEOUT: Duration = Duration::from_secs(40);
         const POLL_READY: Duration = Duration::from_millis(500);
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
@@ -324,7 +325,7 @@ mod test {
     async fn consensus_3_nodes_outdated_votes_lead_to_peer_score_changes() {
         const NUM_NODES: usize = 3;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
-        const TEST_TIMEOUT: Duration = Duration::from_secs(90);
+        const UNTIL_VALID_TIMEOUT: Duration = Duration::from_secs(20);
         const POLL_READY: Duration = Duration::from_millis(500);
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
@@ -389,7 +390,7 @@ mod test {
                 bob_committed,
                 charlie_committed,
             ],
-            TEST_TIMEOUT,
+            UNTIL_VALID_TIMEOUT,
         )
         .await
         .unwrap();
