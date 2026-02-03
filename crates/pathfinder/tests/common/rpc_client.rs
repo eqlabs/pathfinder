@@ -219,9 +219,9 @@ pub async fn get_cached_artifacts_info(
         };
     let JsonRpcReply {
         result: Output { mut cached, .. },
-    } = get_consensus_info(name, rpc_port).await.expect(&format!(
-        "Couldn't get consensus info for {name} (pid: {pid})"
-    ));
+    } = get_consensus_info(name, rpc_port)
+        .await
+        .unwrap_or_else(|_| panic!("Couldn't get consensus info for {name} (pid: {pid})"));
     cached.retain(|CachedItem { height, .. }| *height < less_than_height);
     cached
 }
