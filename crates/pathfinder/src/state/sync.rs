@@ -1324,7 +1324,11 @@ fn l2_update(
         storage,
     )
     .context("Updating Starknet state")?;
-    let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+    let state_commitment = StateCommitment::calculate(
+        storage_commitment,
+        class_commitment,
+        block.starknet_version(),
+    );
 
     if let Some(expected_state_commitment) = block.state_commitment() {
         // Ensure that roots match.. what should we do if it doesn't? For now the whole

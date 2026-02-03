@@ -93,7 +93,11 @@ impl BlockHeaderBuilder {
         storage_commitment: StorageCommitment,
         class_commitment: ClassCommitment,
     ) -> Self {
-        self.0.state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+        self.0.state_commitment = StateCommitment::calculate(
+            storage_commitment,
+            class_commitment,
+            self.0.starknet_version,
+        );
         self
     }
 
