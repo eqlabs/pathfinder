@@ -1583,7 +1583,7 @@ fn update_info_watch(
                 .proposals
                 .push(consensus_info::ProposalParts {
                     round: hnr.round(),
-                    proposer: proposer_address_from_parts(parts, &hnr)?,
+                    proposer: proposer_address_from_parts(parts, hnr)?,
                     parts_len: parts.len(),
                 });
             Ok(())
