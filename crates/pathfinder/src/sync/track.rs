@@ -810,7 +810,11 @@ impl ProcessStage for StoreBlock {
         .with_context(|| format!("Updating Starknet state, block_number {block_number}"))?;
 
         // Ensure that roots match.
-        let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+        let state_commitment = StateCommitment::calculate(
+            storage_commitment,
+            class_commitment,
+            header.starknet_version,
+        );
         let expected_state_commitment = header.state_commitment;
         if state_commitment != expected_state_commitment {
             tracing::debug!(

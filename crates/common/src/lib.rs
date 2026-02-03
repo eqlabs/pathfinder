@@ -89,30 +89,42 @@ impl EntryPoint {
 }
 
 impl StateCommitment {
-    /// Calculates  global state commitment by combining the storage and class
+    /// Calculates global state commitment by combining the storage and class
     /// commitment.
     ///
     /// See
     /// <https://github.com/starkware-libs/cairo-lang/blob/12ca9e91bbdc8a423c63280949c7e34382792067/src/starkware/starknet/core/os/state.cairo#L125>
     /// for details.
+    ///
+    /// Starting from Starknet 0.14.0, the state commitment always uses the
+    /// Poseidon hash formula, even when `class_commitment` is zero. For older
+    /// versions, when `class_commitment` is zero, the state commitment equals
+    /// the storage commitment directly.
     pub fn calculate(
         storage_commitment: StorageCommitment,
         class_commitment: ClassCommitment,
+        version: StarknetVersion,
     ) -> Self {
-        if class_commitment == ClassCommitment::ZERO {
-            Self(storage_commitment.0)
-        } else {
-            const GLOBAL_STATE_VERSION: Felt = felt_bytes!(b"STARKNET_STATE_V0");
-
-            StateCommitment(
-                pathfinder_crypto::hash::poseidon::poseidon_hash_many(&[
-                    GLOBAL_STATE_VERSION.into(),
-                    storage_commitment.0.into(),
-                    class_commitment.0.into(),
-                ])
-                .into(),
-            )
+        if class_commitment == ClassCommitment::ZERO
+            && storage_commitment == StorageCommitment::ZERO
+        {
+            return StateCommitment::ZERO;
         }
+
+        if class_commitment == ClassCommitment::ZERO && version < StarknetVersion::V_0_14_0 {
+            return Self(storage_commitment.0);
+        }
+
+        const GLOBAL_STATE_VERSION: Felt = felt_bytes!(b"STARKNET_STATE_V0");
+
+        StateCommitment(
+            pathfinder_crypto::hash::poseidon::poseidon_hash_many(&[
+                GLOBAL_STATE_VERSION.into(),
+                storage_commitment.0.into(),
+                class_commitment.0.into(),
+            ])
+            .into(),
+        )
     }
 }
 
@@ -489,6 +501,9 @@ impl StarknetVersion {
     // TODO: version at which block hash definition changes taken from
     // Starkware implementation but might yet change
     pub const V_0_13_4: Self = Self::new(0, 13, 4, 0);
+    // A version at which the state commitment formula changed to always use the
+    // Poseidon hash, even when `class_commitment` is zero.
+    pub const V_0_14_0: Self = Self::new(0, 14, 0, 0);
 }
 
 impl FromStr for StarknetVersion {

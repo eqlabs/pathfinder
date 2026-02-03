@@ -34,7 +34,11 @@ pub fn revert_starknet_state(
     let storage_commitment = revert_contract_updates(transaction, head, target_block)?;
     let class_commitment = revert_class_updates(transaction, head, target_block)?;
 
-    let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+    let state_commitment = StateCommitment::calculate(
+        storage_commitment,
+        class_commitment,
+        target_header.starknet_version,
+    );
     if state_commitment != target_header.state_commitment {
         anyhow::bail!(
             "State commitment mismatch: expected {}, calculated {}",

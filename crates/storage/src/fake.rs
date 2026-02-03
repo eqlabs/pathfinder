@@ -520,7 +520,11 @@ pub mod generate {
                 dummy_storage.clone(),
             )
             .unwrap();
-            let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+            let state_commitment = StateCommitment::calculate(
+                storage_commitment,
+                class_commitment,
+                header.header.starknet_version,
+            );
             header.header.state_commitment = state_commitment;
             state_update.state_commitment = state_commitment;
         }

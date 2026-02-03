@@ -108,6 +108,13 @@ impl L2BlockToCommit {
             L2BlockToCommit::FromFgw(block) => &block.state_update,
         }
     }
+
+    pub fn starknet_version(&self) -> StarknetVersion {
+        match self {
+            L2BlockToCommit::FromConsensus(block) => block.header.starknet_version,
+            L2BlockToCommit::FromFgw(block) => block.header.starknet_version,
+        }
+    }
 }
 
 impl ConsensusFinalizedBlockHeader {

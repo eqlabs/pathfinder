@@ -275,7 +275,13 @@ pub async fn batch_update_starknet_state(
                 error.context(format!("Updating Starknet state, tail {tail}")),
             )),
         })?;
-        let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+        let starknet_version = db
+            .block_header(tail.into())
+            .context("Querying block header for starknet version")?
+            .context("Block header not found")?
+            .starknet_version;
+        let state_commitment =
+            StateCommitment::calculate(storage_commitment, class_commitment, starknet_version);
         let expected_state_commitment = db
             .state_commitment(tail.into())
             .context("Querying state commitment")?
