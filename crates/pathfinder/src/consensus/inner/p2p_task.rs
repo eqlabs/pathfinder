@@ -1800,10 +1800,17 @@ mod tests {
 
     use pathfinder_common::{BlockHash, ConsensusFinalizedL2Block, StateCommitment};
     use pathfinder_crypto::Felt;
+    use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
     use pathfinder_storage::StorageBuilder;
 
     use super::*;
     use crate::consensus::inner::dummy_proposal::{create, ProposalCreationConfig};
+    use crate::validator::ValidatorWorkerPool;
+
+    /// Creates a worker pool for tests.
+    fn create_test_worker_pool() -> ValidatorWorkerPool {
+        ExecutorWorkerPool::<ConcurrentStateReader>::new(1).get()
+    }
 
     /// Requirements to reproduce:
     /// - `H >= 10`
@@ -1815,11 +1822,12 @@ mod tests {
         let mut consensus_db_conn = consensus_storage.connection().unwrap();
         let consensus_db_tx = consensus_db_conn.transaction().unwrap();
         let proposals_db = ConsensusProposals::new(consensus_db_tx);
-        let mut batch_execution_manager = BatchExecutionManager::new(None);
+        let worker_pool = create_test_worker_pool();
+        let mut batch_execution_manager = BatchExecutionManager::new(None, worker_pool.clone());
         let dummy_data_dir = PathBuf::new();
 
         let mut handled_proposal_parts = HashMap::new();
-        let validator_cache = ValidatorCache::<BlockExecutor>::new();
+        let validator_cache = ValidatorCache::new();
         let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
 
         for h in 0..20 {
@@ -1839,23 +1847,23 @@ mod tests {
 
             for proposal_part in proposal_parts {
                 let is_fin = proposal_part.is_proposal_fin();
-                let proposal_commitment =
-                    handle_incoming_proposal_part::<BlockExecutor, ProdTransactionMapper>(
-                        ChainId::SEPOLIA_TESTNET,
-                        HeightAndRound::new(h, 0),
-                        proposal_part,
-                        false,
-                        &mut handled_proposal_parts,
-                        validator_cache.clone(),
-                        deferred_executions.clone(),
-                        main_storage.clone(),
-                        &proposals_db,
-                        &mut batch_execution_manager,
-                        &dummy_data_dir,
-                        None,
-                        None,
-                    )
-                    .unwrap();
+                let proposal_commitment = handle_incoming_proposal_part::<ProdTransactionMapper>(
+                    ChainId::SEPOLIA_TESTNET,
+                    HeightAndRound::new(h, 0),
+                    proposal_part,
+                    false,
+                    &mut handled_proposal_parts,
+                    validator_cache.clone(),
+                    deferred_executions.clone(),
+                    main_storage.clone(),
+                    &proposals_db,
+                    &mut batch_execution_manager,
+                    &dummy_data_dir,
+                    None,
+                    None,
+                    worker_pool.clone(),
+                )
+                .unwrap();
                 if is_fin {
                     assert_eq!(
                         proposal_commitment.unwrap().proposal_commitment.0,
