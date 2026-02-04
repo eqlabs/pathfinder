@@ -147,11 +147,7 @@ impl Transaction<'_> {
         &self,
         column: &crate::columns::Column,
     ) -> Arc<rust_rocksdb::BoundColumnFamily<'_>> {
-        let name = column.name;
-        match self.rocksdb().cf_handle(name) {
-            Some(column) => column,
-            None => panic!("RocksDB column {name} missing"),
-        }
+        self.rocksdb.get_column(column)
     }
 
     pub fn commit(self) -> anyhow::Result<()> {

@@ -1316,6 +1316,7 @@ fn l2_update(
     // parallel contract state updates
     storage: Storage,
 ) -> anyhow::Result<L2Block> {
+    let start_trie_update = std::time::Instant::now();
     let (storage_commitment, class_commitment) = update_starknet_state(
         transaction,
         block.state_update().as_ref(),
@@ -1324,6 +1325,9 @@ fn l2_update(
         storage,
     )
     .context("Updating Starknet state")?;
+
+    let duration_trie_update = start_trie_update.elapsed();
+
     let state_commitment = StateCommitment::calculate(
         storage_commitment,
         class_commitment,
@@ -1368,6 +1372,8 @@ fn l2_update(
         }
         L2BlockToCommit::FromFgw(block) => block,
     };
+
+    let start_db_update = std::time::Instant::now();
 
     // Update L2 database. These types shouldn't be options at this level,
     // but for now the unwraps are "safe" in that these should only ever be
@@ -1416,6 +1422,15 @@ fn l2_update(
             }
         }
     }
+
+    let duration_db_update = start_db_update.elapsed();
+
+    tracing::info!(
+        block_number=%block.header.number,
+        ?duration_trie_update,
+        ?duration_db_update,
+        "L2 block committed to database"
+    );
 
     Ok(block)
 }

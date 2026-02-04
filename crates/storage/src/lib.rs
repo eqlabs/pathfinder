@@ -119,6 +119,12 @@ impl RocksDBInner {
         };
         TrieStorageIndex(next_index)
     }
+
+    fn get_column(&self, column: &Column) -> Arc<rust_rocksdb::BoundColumnFamily<'_>> {
+        self.rocksdb
+            .cf_handle(column.name)
+            .expect("RocksDB column family missing")
+    }
 }
 
 pub struct StorageManager {
@@ -360,6 +366,16 @@ impl StorageBuilder {
     /// and passed to the various components which require access to the
     /// database.
     pub fn migrate(self) -> anyhow::Result<StorageManager> {
+        let rocksdb_path = if self.database_path.starts_with("file:memdb") {
+            // in-memory database
+            // FIXME: make sure we clean this up after use
+            let tmpdir = tempfile::Builder::new().disable_cleanup(true).tempdir()?;
+            tmpdir.path().to_path_buf()
+        } else {
+            self.database_path.with_extension("rocksdb")
+        };
+        let rocksdb = Arc::new(Self::open_rocksdb(&rocksdb_path)?);
+
         let mut open_flags = OpenFlags::default();
         open_flags.remove(OpenFlags::SQLITE_OPEN_CREATE);
         let (mut connection, is_new_database) =
@@ -384,7 +400,7 @@ impl StorageBuilder {
         setup_connection(&mut connection, JournalMode::Rollback)
             .context("Setting up database connection")?;
 
-        migrate_database(&mut connection).context("Migrate database")?;
+        migrate_database(&mut connection, &rocksdb).context("Migrate database")?;
 
         // Set the journal mode to the desired value.
         setup_journal_mode(&mut connection, self.journal_mode).context("Setting journal mode")?;
@@ -412,16 +428,6 @@ impl StorageBuilder {
             .close()
             .map_err(|(_connection, error)| error)
             .context("Closing DB after migration")?;
-
-        let rocksdb_path = if self.database_path.starts_with("file:memdb") {
-            // in-memory database
-            // FIXME: make sure we clean this up after use
-            let tmpdir = tempfile::Builder::new().disable_cleanup(true).tempdir()?;
-            tmpdir.path().to_path_buf()
-        } else {
-            self.database_path.with_extension("rocksdb")
-        };
-        let rocksdb = Arc::new(Self::open_rocksdb(&rocksdb_path)?);
 
         Ok(StorageManager {
             database_path: self.database_path,
@@ -855,7 +861,10 @@ fn setup_connection(
 
 /// Migrates the database to the latest version. This __MUST__ be called
 /// at the beginning of the application.
-fn migrate_database(connection: &mut rusqlite::Connection) -> anyhow::Result<()> {
+fn migrate_database(
+    connection: &mut rusqlite::Connection,
+    rocksdb: &RocksDBInner,
+) -> anyhow::Result<()> {
     let mut current_revision = schema_version(connection)?;
     let migrations = schema::migrations();
 
@@ -918,7 +927,7 @@ fn migrate_database(connection: &mut rusqlite::Connection) -> anyhow::Result<()>
                 let transaction = connection
                     .transaction()
                     .context("Create database transaction")?;
-                migration(&transaction)?;
+                migration(&transaction, rocksdb)?;
                 transaction
                     .pragma_update(None, VERSION_KEY, current_revision)
                     .context("Failed to update the schema version number")?;
