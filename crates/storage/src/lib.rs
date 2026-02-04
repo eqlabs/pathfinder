@@ -44,6 +44,8 @@ pub use transaction::dto::{
     TransactionV3,
 };
 
+use crate::columns::Column;
+
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";
 
@@ -74,17 +76,55 @@ struct Inner {
     /// Uses [`Arc`] to allow _shallow_ [Storage] cloning
     database_path: Arc<PathBuf>,
     pool: Pool<SqliteConnectionManager>,
-    rocksdb: Arc<RocksDB>,
+    rocksdb: Arc<RocksDBInner>,
     event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
     blockchain_history_mode: BlockchainHistoryMode,
 }
 
+struct RocksDBInner {
+    rocksdb: RocksDB,
+    trie_class_next_index: std::sync::atomic::AtomicU64,
+    trie_contract_next_index: std::sync::atomic::AtomicU64,
+    trie_storage_next_index: std::sync::atomic::AtomicU64,
+}
+
+impl RocksDBInner {
+    fn next_trie_storage_index(
+        &self,
+        column: &Column,
+        number_of_indices_to_allocate: usize,
+    ) -> TrieStorageIndex {
+        let next_index = match column.name {
+            name if name == crate::connection::TRIE_CLASS_NODE_COLUMN.name => {
+                self.trie_class_next_index.fetch_add(
+                    number_of_indices_to_allocate as u64,
+                    std::sync::atomic::Ordering::SeqCst,
+                )
+            }
+            name if name == crate::connection::TRIE_CONTRACT_NODE_COLUMN.name => {
+                self.trie_contract_next_index.fetch_add(
+                    number_of_indices_to_allocate as u64,
+                    std::sync::atomic::Ordering::SeqCst,
+                )
+            }
+            name if name == crate::connection::TRIE_STORAGE_NODE_COLUMN.name => {
+                self.trie_storage_next_index.fetch_add(
+                    number_of_indices_to_allocate as u64,
+                    std::sync::atomic::Ordering::SeqCst,
+                )
+            }
+            _ => panic!("Invalid column for trie storage index generation"),
+        };
+        TrieStorageIndex(next_index)
+    }
+}
+
 pub struct StorageManager {
     database_path: PathBuf,
     journal_mode: JournalMode,
-    rocksdb: Arc<RocksDB>,
+    rocksdb: Arc<RocksDBInner>,
     event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
@@ -475,7 +515,7 @@ impl StorageBuilder {
         }))
     }
 
-    fn open_rocksdb(path: &Path) -> anyhow::Result<RocksDB> {
+    fn open_rocksdb(path: &Path) -> anyhow::Result<RocksDBInner> {
         let available_parallelism = std::thread::available_parallelism()
             .map(|e| e.get() as i32)
             .unwrap_or(1);
@@ -514,7 +554,46 @@ impl StorageBuilder {
             .map(|column| ColumnFamilyDescriptor::new(column.name, column.options()));
 
         let db = RocksDB::open_cf_descriptors(&options, path, cfs)?;
-        Ok(db)
+
+        let (trie_class_next_index, trie_contract_next_index, trie_storage_next_index) =
+            Self::rocksdb_fetch_next_trie_storage_indices(&db)?;
+
+        let db_inner = RocksDBInner {
+            rocksdb: db,
+            trie_class_next_index: std::sync::atomic::AtomicU64::new(trie_class_next_index),
+            trie_contract_next_index: std::sync::atomic::AtomicU64::new(trie_contract_next_index),
+            trie_storage_next_index: std::sync::atomic::AtomicU64::new(trie_storage_next_index),
+        };
+        Ok(db_inner)
+    }
+
+    fn rocksdb_fetch_next_trie_storage_indices(db: &RocksDB) -> anyhow::Result<(u64, u64, u64)> {
+        let trie_class_last_index =
+            Self::trie_last_index(db, &crate::connection::TRIE_CLASS_NODE_COLUMN)?;
+        let trie_contract_last_index =
+            Self::trie_last_index(db, &crate::connection::TRIE_CONTRACT_NODE_COLUMN)?;
+        let trie_storage_last_index =
+            Self::trie_last_index(db, &crate::connection::TRIE_STORAGE_NODE_COLUMN)?;
+        Ok((
+            trie_class_last_index + 1,
+            trie_contract_last_index + 1,
+            trie_storage_last_index + 1,
+        ))
+    }
+
+    fn trie_last_index(db: &RocksDB, column: &Column) -> anyhow::Result<u64> {
+        let column_handle = db
+            .cf_handle(column.name)
+            .context("Getting RocksDB column for fetching next trie storage index")?;
+        let mut iter = db.raw_iterator_cf(&column_handle);
+        iter.seek_to_last();
+        let last_index = if iter.valid() {
+            let key = iter.key().context("RocksDB iterator key is missing")?;
+            u64::from_be_bytes(key.try_into()?)
+        } else {
+            0
+        };
+        Ok(last_index)
     }
 
     /// - If there is no explicitly requested configuration, assumes the user

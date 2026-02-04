@@ -112,9 +112,10 @@ impl Transaction<'_> {
                 SELECT root_index FROM contract_roots WHERE block_number <= ? AND contract_address = ? ORDER BY block_number DESC LIMIT 1
             ",
             params![&block_number, &contract],
-            |row| row.get_i64(0),
+            |row| row.get_optional_i64(0),
         )
-        .optional()?;
+        .optional()?
+        .flatten();
 
         if let Some(root_index) = root_index {
             let root = self
@@ -595,13 +596,6 @@ impl Transaction<'_> {
             }
         }
 
-        let mut stmt = self
-            .inner()
-            .prepare_cached(&format!(
-                "INSERT INTO {table} (hash, data) VALUES(?, ?) RETURNING idx",
-            ))
-            .context("Creating insert statement")?;
-
         let mut to_insert = Vec::new();
         let mut to_process = vec![NodeRef::Index(update.nodes_added.len() - 1)];
 
@@ -641,6 +635,10 @@ impl Transaction<'_> {
         // Reusable (and oversized) buffer for encoding.
         let mut buffer = [0u8; 256];
 
+        let mut storage_idx = self
+            .rocksdb
+            .next_trie_storage_index(rocksdb_node_column, to_insert.len());
+
         // Insert nodes in reverse to ensure children always have an assigned index for
         // the parent to use.
         for idx in to_insert.into_iter().rev() {
@@ -650,25 +648,20 @@ impl Transaction<'_> {
 
             let length = node.encode(&mut buffer).context("Encoding node")?;
 
-            let storage_idx: u64 = stmt
-                .query_row(
-                    params![&hash.as_be_bytes().as_slice(), &&buffer[..length]],
-                    |row| row.get(0),
-                )
-                .context("Inserting node")?;
-
             indices.insert(idx, storage_idx.into());
 
             batch.put_cf(
                 &hash_column,
-                storage_idx.to_be_bytes().as_slice(),
+                storage_idx.0.to_be_bytes().as_slice(),
                 hash.as_be_bytes().as_slice(),
             );
             batch.put_cf(
                 &node_column,
-                storage_idx.to_be_bytes().as_slice(),
+                storage_idx.0.to_be_bytes().as_slice(),
                 &buffer[..length],
             );
+
+            storage_idx.0 += 1;
 
             metrics::counter!(METRIC_TRIE_NODES_ADDED, "table" => table).increment(1);
         }

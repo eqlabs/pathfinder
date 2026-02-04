@@ -308,7 +308,6 @@ pub trait RowExt {
     row_felt_wrapper!(get_state_commitment, StateCommitment);
     row_felt_wrapper!(get_state_diff_commitment, StateDiffCommitment);
     row_felt_wrapper!(get_sequencer_address, SequencerAddress);
-    row_felt_wrapper!(get_contract_root, ContractRoot);
     row_felt_wrapper!(get_contract_nonce, ContractNonce);
     row_felt_wrapper!(get_storage_value, StorageValue);
     row_felt_wrapper!(get_transaction_hash, TransactionHash);

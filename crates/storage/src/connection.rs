@@ -38,13 +38,13 @@ pub(crate) use trie::{
 
 use crate::bloom::AggregateBloomCache;
 use crate::params::RowExt;
-use crate::{RocksDB, StorageError, VERSION_KEY};
+use crate::{RocksDB, RocksDBInner, StorageError, VERSION_KEY};
 
 type PooledConnection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
 
 pub struct Connection {
     connection: PooledConnection,
-    rocksdb: Arc<RocksDB>,
+    rocksdb: Arc<RocksDBInner>,
     event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
@@ -54,7 +54,7 @@ pub struct Connection {
 impl Connection {
     pub(crate) fn new(
         connection: PooledConnection,
-        rocksdb: Arc<RocksDB>,
+        rocksdb: Arc<RocksDBInner>,
         event_filter_cache: Arc<AggregateBloomCache>,
         running_event_filter: Arc<Mutex<RunningEventFilter>>,
         trie_prune_mode: TriePruneMode,
@@ -108,7 +108,7 @@ impl Connection {
 
 pub struct Transaction<'inner> {
     transaction: rusqlite::Transaction<'inner>,
-    rocksdb: Arc<RocksDB>,
+    rocksdb: Arc<super::RocksDBInner>,
     event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
@@ -140,7 +140,7 @@ impl Transaction<'_> {
     }
 
     pub(crate) fn rocksdb(&self) -> &RocksDB {
-        &self.rocksdb
+        &self.rocksdb.rocksdb
     }
 
     pub(crate) fn rocksdb_get_column(
@@ -148,7 +148,7 @@ impl Transaction<'_> {
         column: &crate::columns::Column,
     ) -> Arc<rust_rocksdb::BoundColumnFamily<'_>> {
         let name = column.name;
-        match self.rocksdb.cf_handle(name) {
+        match self.rocksdb().cf_handle(name) {
             Some(column) => column,
             None => panic!("RocksDB column {name} missing"),
         }
