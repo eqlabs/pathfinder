@@ -1286,6 +1286,7 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
                 validator_stage,
                 main_readonly_storage.clone(),
                 &mut deferred_executions.lock().unwrap(),
+                is_replayed,
             )?;
             validator_cache.insert(height_and_round, next_stage);
 
