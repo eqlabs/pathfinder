@@ -85,7 +85,9 @@ pub struct BlockId {
     pub hash: Hash,
 }
 
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Dummy)]
+#[derive(
+    Debug, Default, Copy, Clone, PartialEq, Eq, Dummy, serde::Serialize, serde::Deserialize,
+)]
 pub enum L1DataAvailabilityMode {
     #[default]
     Calldata,

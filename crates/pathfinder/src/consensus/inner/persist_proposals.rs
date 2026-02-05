@@ -41,13 +41,7 @@ impl<'tx> ConsensusProposals<'tx> {
         proposer: &ContractAddress,
         parts: &[ProposalPart],
     ) -> Result<bool, StorageError> {
-        let serde_parts = parts
-            .iter()
-            .map(|p| dto::ProposalPart::try_into_dto(p.clone()))
-            .collect::<Result<Vec<dto::ProposalPart>, _>>()?;
-        let proposal_parts = dto::ProposalParts::V0(serde_parts);
-        let buf = bincode::serde::encode_to_vec(proposal_parts, bincode::config::standard())
-            .context("Serializing proposal parts")?;
+        let buf = Self::encode_proposal_parts(&parts).context("Serializing proposal parts")?;
         let updated =
             self.tx
                 .persist_consensus_proposal_parts(height, round, proposer, &buf[..])?;
@@ -143,10 +137,7 @@ impl<'tx> ConsensusProposals<'tx> {
         round: u32,
         block: ConsensusFinalizedL2Block,
     ) -> Result<bool, StorageError> {
-        let serde_block = dto::ConsensusFinalizedBlock::try_into_dto(block)?;
-        let finalized_block = dto::PersistentConsensusFinalizedBlock::V0(serde_block);
-        let buf = bincode::serde::encode_to_vec(finalized_block, bincode::config::standard())
-            .context("Serializing finalized block")?;
+        let buf = Self::encode_finalized_block(&block).context("Serializing finalized block")?;
         let updated = self
             .tx
             .persist_consensus_finalized_block(height, round, &buf[..])?;
@@ -203,6 +194,25 @@ impl<'tx> ConsensusProposals<'tx> {
     /// Remove all finalized blocks for a given height.
     pub fn remove_consensus_finalized_blocks(&self, height: u64) -> Result<(), StorageError> {
         self.tx.remove_consensus_finalized_blocks(height)
+    }
+
+    fn encode_proposal_parts(parts: &[ProposalPart]) -> anyhow::Result<Vec<u8>> {
+        let serde_parts = parts
+            .iter()
+            .map(|p| dto::ProposalPart::try_into_dto(p.clone()))
+            .collect::<Result<Vec<dto::ProposalPart>, _>>()?;
+        let proposal_parts = dto::ProposalParts::V0(serde_parts);
+        let buf = bincode::serde::encode_to_vec(proposal_parts, bincode::config::standard())
+            .context("Serializing proposal parts")?;
+        Ok(buf)
+    }
+
+    fn encode_finalized_block(block: &ConsensusFinalizedL2Block) -> anyhow::Result<Vec<u8>> {
+        let serde_block = dto::ConsensusFinalizedBlock::try_into_dto(block.clone())?;
+        let finalized_block = dto::PersistentConsensusFinalizedBlock::V0(serde_block);
+        let buf = bincode::serde::encode_to_vec(finalized_block, bincode::config::standard())
+            .context("Serializing finalized block")?;
+        Ok(buf)
     }
 
     fn decode_proposal_parts(buf: &[u8]) -> anyhow::Result<Vec<ProposalPart>> {

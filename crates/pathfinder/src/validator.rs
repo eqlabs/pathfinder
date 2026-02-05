@@ -747,6 +747,17 @@ impl<E: BlockExecutorExt> ValidatorTransactionBatchStage<E> {
         if actual_proposal_commitment.0 == expected_proposal_commitment.0 {
             Ok(next_stage)
         } else {
+            tracing::error!(
+                "State diff H={} {:#?}",
+                next_stage.header.number,
+                next_stage.state_update
+            );
+
+            eprintln!(
+                "State diff H={} {:#?}",
+                next_stage.header.number, next_stage.state_update
+            );
+
             Err(ProposalHandlingError::recoverable_msg(format!(
                 "proposal commitment mismatch at height {height}, expected \
                  {expected_proposal_commitment}, actual {actual_proposal_commitment}"

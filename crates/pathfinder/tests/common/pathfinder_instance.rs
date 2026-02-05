@@ -125,6 +125,7 @@ impl PathfinderInstance {
             "--consensus.history-depth=2",
             "--consensus.l1-gas-price-tolerance=100",
             "--consensus.l1-gas-price-max-time-gap=3600",
+            "--consensus.generate-dummy-proposals=10",
             format!("--p2p.consensus.identity-config-file={}", id_file.display()).as_str(),
             "--p2p.consensus.listen-on=/ip4/127.0.0.1/tcp/0",
             "--p2p.consensus.experimental.direct-connection-timeout=1",

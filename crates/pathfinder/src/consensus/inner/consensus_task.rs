@@ -52,6 +52,11 @@ pub fn spawn(
     let data_directory = data_directory.to_path_buf();
 
     util::task::spawn(async move {
+        let fixtures = util::task::spawn_blocking(move |_| {
+            dummy_proposal::create_proposal_fixtures(config.num_generated_proposals as usize)
+        })
+        .await??;
+        // let fixtures = dummy_proposal::get_proposal_fixtures()?;
         let highest_committed = highest_committed(&main_storage)
             .context("Failed to read highest committed block at startup")?;
         // Get the validator address and validator set provider
@@ -127,74 +132,125 @@ pub fn spawn(
                                  {round}",
                             );
 
-                            dummy_proposal::wait_for_parent_committed(
-                                height,
-                                main_storage.clone(),
-                                Duration::from_millis(50),
-                            )
-                            .await
-                            .context("Waiting for parent block to be committed")?;
+                            {
+                                let (wire_proposal, finalized_block) =
+                                    fixtures.get(height as usize).cloned().context(format!(
+                                        "No proposal fixture found for height {height}"
+                                    ))?;
 
-                            match dummy_proposal::create(
-                                height,
-                                round.into(),
-                                validator_address,
-                                main_storage.clone(),
-                                None, // Randomize
-                            ) {
-                                Ok((wire_proposal, finalized_block)) => {
-                                    let ProposalFin {
-                                        proposal_commitment,
-                                    } = wire_proposal
-                                        .last()
-                                        .and_then(ProposalPart::as_fin)
-                                        .context(format!(
-                                            "Proposal for height {height} round {round} is \
-                                             missing ProposalFin part"
-                                        ))?;
+                                let ProposalFin {
+                                    proposal_commitment,
+                                } = wire_proposal
+                                    .last()
+                                    .and_then(ProposalPart::as_fin)
+                                    .context(format!(
+                                        "Proposal for height {height} round {round} is missing \
+                                         ProposalFin part"
+                                    ))?;
 
-                                    let value =
-                                        ConsensusValue(ProposalCommitment(proposal_commitment.0));
+                                let value =
+                                    ConsensusValue(ProposalCommitment(proposal_commitment.0));
 
-                                    tx_to_p2p
-                                        .send(P2PTaskEvent::CacheProposal(
-                                            HeightAndRound::new(height, round),
-                                            wire_proposal,
-                                            finalized_block,
-                                        ))
-                                        .await
-                                        .expect("Cache proposal receiver not to be dropped");
+                                tx_to_p2p
+                                    .send(P2PTaskEvent::CacheProposal(
+                                        HeightAndRound::new(height, round),
+                                        wire_proposal,
+                                        finalized_block,
+                                    ))
+                                    .await
+                                    .expect("Cache proposal receiver not to be dropped");
 
-                                    let proposal = Proposal {
-                                        height,
-                                        round: round.into(),
-                                        proposer: validator_address,
-                                        pol_round: Round::nil(),
-                                        value,
-                                    };
+                                let proposal = Proposal {
+                                    height,
+                                    round: round.into(),
+                                    proposer: validator_address,
+                                    pol_round: Round::nil(),
+                                    value,
+                                };
 
-                                    tracing::info!(
-                                        "🧠 ⚙️  {validator_address} handling command \
-                                         Propose({proposal:?})"
-                                    );
+                                tracing::info!(
+                                    "🧠 ⚙️  {validator_address} handling command \
+                                     Propose({proposal:?})"
+                                );
 
-                                    consensus.handle_command(ConsensusCommand::Propose(proposal));
-                                }
-                                Err(e) => {
-                                    // Proposal creation failed - skip this round but continue
-                                    // consensus (we can still vote on other validators' proposals)
-                                    //
-                                    // NOTE: The consensus engine is event-driven and doesn't block
-                                    // waiting for our proposal. If we're the designated proposer
-                                    // and don't propose, the round will timeout and move to the
-                                    // next round.
-                                    tracing::warn!(
-                                        validator = %validator_address,
-                                        height = height,
-                                        round = round,
-                                        error = %e,
-                                        "Failed to create proposal - skipping this round."
-                                    );
+                                consensus.handle_command(ConsensusCommand::Propose(proposal));
+                            }
+
+                            #[cfg(disabled)]
+                            {
+                                dummy_proposal::wait_for_parent_committed(
+                                    height,
+                                    main_storage.clone(),
+                                    Duration::from_millis(50),
+                                )
+                                .await
+                                .context("Waiting for parent block to be committed")?;
+
+                                match dummy_proposal::create(
+                                    height,
+                                    round.into(),
+                                    validator_address,
+                                    main_storage.clone(),
+                                    None, // Randomize
+                                ) {
+                                    Ok((wire_proposal, finalized_block)) => {
+                                        let ProposalFin {
+                                            proposal_commitment,
+                                        } = wire_proposal
+                                            .last()
+                                            .and_then(ProposalPart::as_fin)
+                                            .context(format!(
+                                                "Proposal for height {height} round {round} is \
+                                                 missing ProposalFin part"
+                                            ))?;
+
+                                        let value = ConsensusValue(ProposalCommitment(
+                                            proposal_commitment.0,
+                                        ));
+
+                                        tx_to_p2p
+                                            .send(P2PTaskEvent::CacheProposal(
+                                                HeightAndRound::new(height, round),
+                                                wire_proposal,
+                                                finalized_block,
+                                            ))
+                                            .await
+                                            .expect("Cache proposal receiver not to be dropped");
+
+                                        let proposal = Proposal {
+                                            height,
+                                            round: round.into(),
+                                            proposer: validator_address,
+                                            pol_round: Round::nil(),
+                                            value,
+                                        };
+
+                                        tracing::info!(
+                                            "🧠 ⚙️  {validator_address} handling command \
+                                             Propose({proposal:?})"
+                                        );
+
+                                        consensus
+                                            .handle_command(ConsensusCommand::Propose(proposal));
+                                    }
+                                    Err(e) => {
+                                        // Proposal creation failed - skip this round but continue
+                                        // consensus (we can still vote on other validators'
+                                        // proposals)
+                                        //
+                                        // NOTE: The consensus engine is event-driven and doesn't
+                                        // block waiting for
+                                        // our proposal. If we're the designated proposer
+                                        // and don't propose, the round will timeout and move to the
+                                        // next round.
+                                        tracing::warn!(
+                                            validator = %validator_address,
+                                            height = height,
+                                            round = round,
+                                            error = %e,
+                                            "Failed to create proposal - skipping this round."
+                                        );
+                                    }
                                 }
                             }
                         }

@@ -1786,17 +1786,109 @@ mod tests {
     use std::num::NonZeroUsize;
     use std::path::PathBuf;
 
-    use pathfinder_common::{BlockHash, ConsensusFinalizedL2Block, StateCommitment};
+    use pathfinder_common::{
+        BlockHash,
+        ConsensusFinalizedL2Block,
+        StarknetVersion,
+        StateCommitment,
+    };
     use pathfinder_crypto::Felt;
+    use pathfinder_merkle_tree::starknet_state::update_starknet_state;
     use pathfinder_storage::StorageBuilder;
 
     use super::*;
     use crate::consensus::inner::dummy_proposal::{create, ProposalCreationConfig};
+    use crate::state::block_hash::compute_final_hash;
 
+    #[cfg(disabled)]
+    mod killme {
+        /// Requirements to reproduce:
+        /// - `H >= 10`
+        /// - rollback to batch `B`, `B > 0`
+        #[test]
+        fn regression_rollback_to_nonzero_batch_from_h10_onwards_clears_system_contract_0x1() {
+            let main_storage = StorageBuilder::in_tempdir().unwrap();
+            let consensus_storage = ConsensusStorage::in_tempdir().unwrap();
+            let mut consensus_db_conn = consensus_storage.connection().unwrap();
+            let consensus_db_tx = consensus_db_conn.transaction().unwrap();
+            let proposals_db = ConsensusProposals::new(consensus_db_tx);
+            let mut batch_execution_manager = BatchExecutionManager::new(None);
+            let dummy_data_dir = PathBuf::new();
+
+            let mut handled_proposal_parts = HashMap::new();
+            let validator_cache = ValidatorCache::<BlockExecutor>::new();
+            let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
+
+            for h in 0..20 {
+                let (proposal_parts, block) = create(
+                    h,
+                    Round::new(0),
+                    ContractAddress::ZERO,
+                    main_storage.clone(),
+                    // The smallest config that reproduced the issue until it was fixed
+                    Some(ProposalCreationConfig {
+                        num_batches: NonZeroUsize::new(3).unwrap(),
+                        batch_len: NonZeroUsize::new(1).unwrap(),
+                        num_executed_txns: NonZeroUsize::new(2).unwrap(),
+                    }),
+                )
+                .unwrap();
+
+                for proposal_part in proposal_parts {
+                    let is_fin = proposal_part.is_proposal_fin();
+                    let proposal_commitment =
+                        handle_incoming_proposal_part::<BlockExecutor, ProdTransactionMapper>(
+                            ChainId::SEPOLIA_TESTNET,
+                            HeightAndRound::new(h, 0),
+                            proposal_part,
+                            false,
+                            &mut handled_proposal_parts,
+                            validator_cache.clone(),
+                            deferred_executions.clone(),
+                            main_storage.clone(),
+                            &proposals_db,
+                            &mut batch_execution_manager,
+                            &dummy_data_dir,
+                            None,
+                            None,
+                        )
+                        .unwrap();
+                    if is_fin {
+                        assert_eq!(
+                            proposal_commitment.unwrap().proposal_commitment.0,
+                            block.header.state_diff_commitment.0,
+                            "height={h}"
+                        );
+                    }
+                }
+
+                // Commit block at `h`, otherwise h+1 will be deferred
+                let mut main_db_conn = main_storage.connection().unwrap();
+                let main_db_tx = main_db_conn.transaction().unwrap();
+                let ConsensusFinalizedL2Block {
+                    header,
+                    state_update,
+                    ..
+                } = block;
+                // Fake trie updates - we don't care about actual trie state in this test
+                let header = header.compute_hash(
+                    BlockHash(Felt::from_u64(h.saturating_sub(1))),
+                    StateCommitment::ZERO,
+                    |_| BlockHash(Felt::from_u64(h)),
+                );
+
+                main_db_tx.insert_block_header(&header).unwrap();
+                main_db_tx
+                    .insert_state_update_data(header.number, &state_update)
+                    .unwrap();
+                main_db_tx.commit().unwrap();
+            }
+        }
+    }
     /// Requirements to reproduce:
     /// - `H >= 10`
     /// - rollback to batch `B`, `B > 0`
-    #[test]
+    #[test_log::test]
     fn regression_rollback_to_nonzero_batch_from_h10_onwards_clears_system_contract_0x1() {
         let main_storage = StorageBuilder::in_tempdir().unwrap();
         let consensus_storage = ConsensusStorage::in_tempdir().unwrap();
@@ -1810,27 +1902,18 @@ mod tests {
         let validator_cache = ValidatorCache::<BlockExecutor>::new();
         let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
 
-        for h in 0..20 {
-            let (proposal_parts, block) = create(
-                h,
-                Round::new(0),
-                ContractAddress::ZERO,
-                main_storage.clone(),
-                // The smallest config that reproduced the issue until it was fixed
-                Some(ProposalCreationConfig {
-                    num_batches: NonZeroUsize::new(3).unwrap(),
-                    batch_len: NonZeroUsize::new(1).unwrap(),
-                    num_executed_txns: NonZeroUsize::new(2).unwrap(),
-                }),
-            )
-            .unwrap();
+        let fixtures =
+            crate::consensus::inner::dummy_proposal::create_proposal_fixtures(20).unwrap();
+
+        for height in 0u64..20 {
+            let (proposal_parts, block) = fixtures.get(height as usize).unwrap().clone();
 
             for proposal_part in proposal_parts {
                 let is_fin = proposal_part.is_proposal_fin();
                 let proposal_commitment =
                     handle_incoming_proposal_part::<BlockExecutor, ProdTransactionMapper>(
                         ChainId::SEPOLIA_TESTNET,
-                        HeightAndRound::new(h, 0),
+                        HeightAndRound::new(height, 0),
                         proposal_part,
                         false,
                         &mut handled_proposal_parts,
@@ -1848,7 +1931,7 @@ mod tests {
                     assert_eq!(
                         proposal_commitment.unwrap().proposal_commitment.0,
                         block.header.state_diff_commitment.0,
-                        "height={h}"
+                        "height={height}"
                     );
                 }
             }
@@ -1861,11 +1944,33 @@ mod tests {
                 state_update,
                 ..
             } = block;
-            // Fake trie updates - we don't care about actual trie state in this test
-            let header = header.compute_hash(
-                BlockHash(Felt::from_u64(h.saturating_sub(1))),
-                StateCommitment::ZERO,
-                |_| BlockHash(Felt::from_u64(h)),
+
+            let (storage_commitment, class_commitment) = update_starknet_state(
+                &main_db_tx,
+                (&state_update).into(),
+                true,
+                BlockNumber::new_or_panic(height),
+                main_storage.clone(),
+            )
+            .unwrap();
+
+            let parent_hash = if height == 0 {
+                BlockHash::ZERO
+            } else {
+                main_db_tx
+                    .block_hash(BlockId::Number(BlockNumber::new_or_panic(height - 1)))
+                    .unwrap()
+                    .unwrap()
+            };
+
+            let header = header.clone().compute_hash(
+                parent_hash,
+                StateCommitment::calculate(
+                    storage_commitment,
+                    class_commitment,
+                    StarknetVersion::V_0_14_0,
+                ),
+                compute_final_hash,
             );
 
             main_db_tx.insert_block_header(&header).unwrap();
