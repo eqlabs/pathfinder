@@ -125,22 +125,6 @@ mod test {
 
         utils::log_elapsed(stopwatch);
 
-        // TODO Looking at how the tests perform it turns out that proposal recovery
-        // doesn't work. In almost all the passing failure scenarios (usually 9/10), the
-        // network recovers by reproposing in the next round (ie. round 1 instead of
-        // round 0), either at H=13 or H=14, and then continues as normal. From
-        // this perspective the only recovery that does work is the WAL so that
-        // the node know which height it was at and can hopefully catch up
-        // faster.
-        //
-        // Removing the complex recovery mechanism that doesn't work but is based on
-        // storing the proposals in the database would dramtically simplify the
-        // consensus code:
-        // - No need to persist proposals to the DB.
-        // - No need to persist consensus finalized blocks to the DB.
-        // - No need to load proposals from the DB on startup.
-        // - No need to replay stored proposals on restart.
-
         let (tx, rx) = mpsc::channel(HEIGHT as usize * 3);
         let rx = tokio_stream::wrappers::ReceiverStream::new(rx);
 
