@@ -880,6 +880,30 @@ impl ValidatorCache {
             })
         })
     }
+
+    /// Removes all validators for older rounds at the given height.
+    fn remove_older_rounds_for_height(
+        &self,
+        height: u64,
+        current_round: u32,
+    ) -> Vec<HeightAndRound> {
+        let mut cache = self.0.lock().unwrap();
+        let old_rounds: Vec<HeightAndRound> = cache
+            .keys()
+            .filter(|hnr| hnr.height() == height && hnr.round() < current_round)
+            .cloned()
+            .collect();
+
+        for hnr in &old_rounds {
+            if let Some(_validator) = cache.remove(hnr) {
+                tracing::debug!(
+                    "🖧  ⚙️ cleaned up validator for old round {hnr} (new round {current_round})"
+                );
+            }
+        }
+
+        old_rounds
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1116,6 +1140,25 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
     inject_failure_config: Option<InjectFailureConfig>,
     worker_pool: ValidatorWorkerPool,
 ) -> Result<Option<ProposalCommitmentWithOrigin>, ProposalHandlingError> {
+    // When receiving a new ProposalInit, clean up validators and execution state
+    // for older rounds at this height BEFORE taking any references to
+    // handled_proposal_parts. This is necessary to release resources (like
+    // ConcurrentBlockExecutor handles) held by validators from previous rounds
+    // that will never complete. Without this cleanup, after a crash and
+    // restart, replayed proposals from old rounds would hold executor resources
+    // that may block new rounds.
+    if let ProposalPart::Init(_) = &proposal_part {
+        let height = height_and_round.height();
+        let current_round = height_and_round.round();
+        let old_rounds = validator_cache.remove_older_rounds_for_height(height, current_round);
+
+        for old_hnr in old_rounds {
+            batch_execution_manager.cleanup(&old_hnr);
+            handled_proposal_parts.remove(&old_hnr);
+            deferred_executions.lock().unwrap().remove(&old_hnr);
+        }
+    }
+
     let parts_for_height_and_round = handled_proposal_parts.entry(height_and_round).or_default();
 
     let has_executed_txn_count = parts_for_height_and_round
