@@ -177,9 +177,6 @@ pub struct InitialReads<'a> {
 impl<'a> crate::dto::SerializeForVersion for InitialReads<'a> {
     fn serialize(&self, serializer: super::Serializer) -> Result<super::Ok, super::Error> {
         let mut serializer = serializer.serialize_struct()?;
-
-        let x = self.maps.storage.iter().map(StorageValue);
-
         serializer.serialize_iter(
             "storage",
             self.maps.storage.len(),
