@@ -63,7 +63,7 @@ mod test {
     #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::TransactionBatchRx }))]
     #[case::fail_on_executed_transaction_count_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ExecutedTransactionCountRx }))]
     #[case::fail_on_proposal_fin_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ProposalFinRx }))]
-    #[case::fail_on_entire_proposal_persisted(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ProposalFinalized }))]
+    #[case::fail_on_proposal_finalized(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ProposalFinalized }))]
     #[case::fail_on_prevote_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::PrevoteRx }))]
     #[case::fail_on_precommit_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::PrecommitRx }))]
     #[case::fail_on_proposal_decided(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ProposalDecided }))]
