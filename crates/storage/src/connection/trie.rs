@@ -542,8 +542,8 @@ impl Transaction<'_> {
                 .context("Decoding indices")?;
                 for idx in indices.iter() {
                     let key = idx.to_be_bytes();
-                    batch.delete_cf(&hash_column, &key);
-                    batch.delete_cf(&node_column, &key);
+                    batch.delete_cf(&hash_column, key);
+                    batch.delete_cf(&node_column, key);
                 }
                 metrics::counter!(METRIC_TRIE_NODES_REMOVED, "table" => table)
                     .increment(indices.len() as u64);
@@ -648,7 +648,7 @@ impl Transaction<'_> {
 
             let length = node.encode(&mut buffer).context("Encoding node")?;
 
-            indices.insert(idx, storage_idx.into());
+            indices.insert(idx, storage_idx);
 
             batch.put_cf(
                 &hash_column,

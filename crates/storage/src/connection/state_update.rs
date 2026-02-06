@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::num::NonZeroUsize;
-use std::u32;
 
 use anyhow::Context;
 use pathfinder_common::prelude::*;
@@ -19,7 +18,8 @@ use crate::columns::Column;
 use crate::connection::dto::MinimalFelt;
 use crate::prelude::*;
 
-/// Prefix length for storage update keys: contract_address (32) + storage_address (32).
+/// Prefix length for storage update keys: contract_address (32) +
+/// storage_address (32).
 const STORAGE_UPDATES_PREFIX_LEN: usize = 2 * size_of::<Felt>();
 
 pub const STORAGE_UPDATES_COLUMN: Column =
@@ -202,7 +202,7 @@ impl Transaction<'_> {
                 )?;
                 batch.put_cf(
                     &nonce_updates_column,
-                    &nonce_update_key(block_number, address),
+                    nonce_update_key(block_number, address),
                     &buffer[..encoded_length],
                 );
             }
@@ -215,7 +215,7 @@ impl Transaction<'_> {
                 )?;
                 batch.put_cf(
                     &storage_updates_column,
-                    &storage_update_key(block_number, address, key),
+                    storage_update_key(block_number, address, key),
                     &buffer[..encoded_length],
                 );
             }
@@ -230,7 +230,7 @@ impl Transaction<'_> {
                 )?;
                 batch.put_cf(
                     &storage_updates_column,
-                    &storage_update_key(block_number, address, key),
+                    storage_update_key(block_number, address, key),
                     &buffer[..encoded_length],
                 );
             }
@@ -348,9 +348,7 @@ impl Transaction<'_> {
             return Ok(None);
         };
 
-        let state_update_data = self
-            .state_update_data(block_number)?
-            .unwrap_or_default();
+        let state_update_data = self.state_update_data(block_number)?.unwrap_or_default();
 
         Ok(Some(StateUpdate {
             block_hash,
@@ -522,7 +520,7 @@ impl Transaction<'_> {
         let mut iter = self
             .rocksdb()
             .raw_iterator_cf_opt(&storage_update_column, read_options);
-        iter.seek(&key);
+        iter.seek(key);
         if !iter.valid() {
             return Ok(None);
         }
@@ -532,7 +530,7 @@ impl Transaction<'_> {
         let (value, _): (MinimalFelt, _) =
             bincode::serde::decode_from_slice(value, bincode::config::standard())
                 .context("Decoding storage update value")?;
-        Ok(Some(StorageValue(value.0.into())))
+        Ok(Some(StorageValue(value.0)))
     }
 
     pub fn contract_exists(
@@ -581,7 +579,9 @@ impl Transaction<'_> {
         contract_address: ContractAddress,
         block_id: BlockId,
     ) -> anyhow::Result<Option<ContractNonce>> {
-        let Some(block_number) = self.block_number(block_id).context("Querying block number")?
+        let Some(block_number) = self
+            .block_number(block_id)
+            .context("Querying block number")?
         else {
             return Ok(None);
         };
@@ -594,7 +594,7 @@ impl Transaction<'_> {
         let mut iter = self
             .rocksdb()
             .raw_iterator_cf_opt(&nonce_updates_column, read_options);
-        iter.seek(&key);
+        iter.seek(key);
         if !iter.valid() {
             return Ok(None);
         }
@@ -604,7 +604,7 @@ impl Transaction<'_> {
         let (value, _): (MinimalFelt, _) =
             bincode::serde::decode_from_slice(value, bincode::config::standard())
                 .context("Decoding nonce update value")?;
-        Ok(Some(ContractNonce(value.0.into())))
+        Ok(Some(ContractNonce(value.0)))
     }
 
     pub fn contract_class_hash(
@@ -740,12 +740,12 @@ impl Transaction<'_> {
             let block_number = BlockNumber::new_or_panic(block_num);
             if let Some(data) = self.state_update_data(block_number)? {
                 for (addr, update) in &data.contract_updates {
-                    for (key, _) in &update.storage {
+                    for key in update.storage.keys() {
                         changed.insert((*addr, *key));
                     }
                 }
                 for (addr, update) in &data.system_contract_updates {
-                    for (key, _) in &update.storage {
+                    for key in update.storage.keys() {
                         changed.insert((*addr, *key));
                     }
                 }
@@ -763,7 +763,7 @@ impl Transaction<'_> {
             let mut iter = self
                 .rocksdb()
                 .raw_iterator_cf_opt(&storage_update_column, read_options);
-            iter.seek(&key);
+            iter.seek(key);
 
             let old_value = if iter.valid() {
                 let value = iter
@@ -772,7 +772,7 @@ impl Transaction<'_> {
                 let (value, _): (MinimalFelt, _) =
                     bincode::serde::decode_from_slice(value, bincode::config::standard())
                         .context("Decoding storage update value")?;
-                StorageValue(value.0.into())
+                StorageValue(value.0)
             } else {
                 StorageValue::ZERO
             };
@@ -815,7 +815,7 @@ impl Transaction<'_> {
             let mut iter = self
                 .rocksdb()
                 .raw_iterator_cf_opt(&nonce_updates_column, read_options);
-            iter.seek(&key);
+            iter.seek(key);
 
             let old_nonce = if iter.valid() {
                 let value = iter
@@ -824,7 +824,7 @@ impl Transaction<'_> {
                 let (value, _): (MinimalFelt, _) =
                     bincode::serde::decode_from_slice(value, bincode::config::standard())
                         .context("Decoding nonce update value")?;
-                Some(ContractNonce(value.0.into()))
+                Some(ContractNonce(value.0))
             } else {
                 None
             };

@@ -78,8 +78,8 @@ fn migrate_trie(
     for (i, trie_result) in trie_iter.enumerate() {
         let (idx, hash, data) = trie_result?;
         let idx = idx.to_be_bytes();
-        batch.put_cf(&hash_column, &idx, &hash);
-        batch.put_cf(&node_column, &idx, &data);
+        batch.put_cf(&hash_column, idx, hash);
+        batch.put_cf(&node_column, idx, &data);
 
         if i % BATCH_SIZE == BATCH_SIZE - 1 {
             rocksdb.rocksdb.write(&batch)?;

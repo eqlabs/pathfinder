@@ -535,9 +535,9 @@ impl StorageBuilder {
         options.set_max_subcompactions(available_parallelism as _);
         options.set_max_write_buffer_number(5);
         options.set_min_write_buffer_number_to_merge(2);
-        options.set_bytes_per_sync(1 * 1024 * 1024 as u64);
-        options.set_wal_bytes_per_sync(512 * 1024 as u64);
-        options.set_max_log_file_size(10 * 1024 * 1024);
+        options.set_bytes_per_sync(1024 * 1024_u64);
+        options.set_wal_bytes_per_sync(512 * 1024_u64);
+        options.set_max_log_file_size(10 * 1024 * 1024_usize);
         options.set_max_open_files(2048);
         options.set_keep_log_file_num(3);
         options.set_log_level(rust_rocksdb::LogLevel::Warn);
@@ -982,7 +982,11 @@ mod tests {
     fn full_migration() {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         setup_connection(&mut conn, JournalMode::Rollback).unwrap();
-        migrate_database(&mut conn).unwrap();
+
+        let rocksdb_dir = tempfile::TempDir::new().unwrap();
+        let rocksdb = StorageBuilder::open_rocksdb(rocksdb_dir.path()).unwrap();
+
+        migrate_database(&mut conn, &rocksdb).unwrap();
         let version = schema_version(&conn).unwrap();
         let expected = schema::migrations().len() + schema::BASE_SCHEMA_REVISION;
         assert_eq!(version, expected);
@@ -993,13 +997,16 @@ mod tests {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         setup_connection(&mut conn, JournalMode::Rollback).unwrap();
 
+        let rocksdb_dir = tempfile::TempDir::new().unwrap();
+        let rocksdb = StorageBuilder::open_rocksdb(rocksdb_dir.path()).unwrap();
+
         // Force the schema to a newer version
         let current_version = schema::migrations().len();
         conn.pragma_update(None, VERSION_KEY, current_version + 1)
             .unwrap();
 
         // Migration should fail.
-        migrate_database(&mut conn).unwrap_err();
+        migrate_database(&mut conn, &rocksdb).unwrap_err();
     }
 
     #[test]
