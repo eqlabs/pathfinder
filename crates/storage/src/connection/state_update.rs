@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::num::NonZeroUsize;
+use std::u32;
 
 use anyhow::Context;
 use pathfinder_common::prelude::*;
@@ -11,10 +12,79 @@ use pathfinder_common::state_update::{
     SystemContractUpdate,
 };
 use pathfinder_common::BlockId;
+use pathfinder_crypto::Felt;
+use rust_rocksdb::{DBIterator, IteratorMode, ReadOptions};
 
+use crate::columns::Column;
+use crate::connection::dto::MinimalFelt;
 use crate::prelude::*;
 
+pub const STORAGE_UPDATES_COLUMN: Column = Column::new("storage_updates");
+
 type StorageUpdates = Vec<(StorageAddress, StorageValue)>;
+
+const NONCE_UPDATE_PREFIX_LEN: usize = size_of::<Felt>();
+const NONCE_UPDATE_KEY_LEN: usize = NONCE_UPDATE_PREFIX_LEN + size_of::<u32>();
+
+/// Constructs a key used in our RocksDB column family for nonce updates.
+///
+/// Format is the following:
+/// [contract_address (32 bytes)] [inverted block number (4 bytes)]
+///
+/// We're using an inverted block number to allow for efficient retrieval of the
+/// latest nonce for a given contract address using forward iteration.
+fn nonce_update_key(
+    block_number: BlockNumber,
+    contract_address: &ContractAddress,
+) -> [u8; NONCE_UPDATE_KEY_LEN] {
+    let block_number: u32 = block_number
+        .get()
+        .try_into()
+        .expect("block number fits into u32");
+    let block_number = u32::MAX - block_number;
+
+    let mut key = [0; NONCE_UPDATE_KEY_LEN];
+    key[..32].copy_from_slice(contract_address.0.as_be_bytes());
+    key[32..].copy_from_slice(&block_number.to_be_bytes());
+    key
+}
+
+pub const NONCE_UPDATES_COLUMN: Column =
+    Column::new("nonce_updates").with_prefix_length(NONCE_UPDATE_PREFIX_LEN);
+
+const STORAGE_UPDATE_PREFIX_LEN: usize = size_of::<Felt>();
+const STORAGE_UPDATE_KEY_LEN: usize =
+    STORAGE_UPDATE_PREFIX_LEN + size_of::<Felt>() + size_of::<u32>();
+
+/// Constructs a key used in our RocksDB column family for storage updates.
+///
+/// Format is the following:
+/// [contract_address (32 bytes)] [storage_address (32 bytes)] [inverted block
+/// number (4 bytes)]
+///
+/// We're using an inverted block number to allow for efficient retrieval of the
+/// latest storage value for a given contract address and storage address using
+/// forward iteration.
+fn storage_update_key(
+    block_number: BlockNumber,
+    contract_address: &ContractAddress,
+    storage_address: &StorageAddress,
+) -> [u8; STORAGE_UPDATE_KEY_LEN] {
+    let block_number: u32 = block_number
+        .get()
+        .try_into()
+        .expect("block number fits into u32");
+    let block_number = u32::MAX - block_number;
+
+    let mut key = [0; STORAGE_UPDATE_KEY_LEN];
+    key[..32].copy_from_slice(contract_address.0.as_be_bytes());
+    key[32..64].copy_from_slice(storage_address.0.as_be_bytes());
+    key[64..].copy_from_slice(&block_number.to_be_bytes());
+    key
+}
+
+pub const STATE_UPDATES_COLUMN: Column =
+    Column::new("state_updates").with_prefix_length(STORAGE_UPDATE_PREFIX_LEN);
 
 impl Transaction<'_> {
     /// Inserts a canonical [StateUpdate] into storage.
@@ -57,43 +127,21 @@ impl Transaction<'_> {
         declared_sierra_classes: &HashMap<SierraHash, CasmHash>,
         migrated_compiled_classes: &HashMap<SierraHash, CasmHash>,
     ) -> anyhow::Result<()> {
-        let mut query_contract_address = self
-            .inner()
-            .prepare_cached("SELECT id FROM contract_addresses WHERE contract_address = ?")
-            .context("Preparing contract address query statement")?;
-        let mut insert_contract_address = self
-            .inner()
-            .prepare_cached(
-                "INSERT INTO contract_addresses (contract_address) VALUES (?) RETURNING id",
-            )
-            .context("Preparing contract address insert statement")?;
-
-        let mut query_storage_address = self
-            .inner()
-            .prepare_cached("SELECT id FROM storage_addresses WHERE storage_address = ?")
-            .context("Preparing storage address query statement")?;
-        let mut insert_storage_address = self
-            .inner()
-            .prepare_cached(
-                "INSERT INTO storage_addresses (storage_address) VALUES (?) RETURNING id",
-            )
-            .context("Preparing storage address insert statement")?;
-
-        let mut insert_nonce = self
-            .inner()
-            .prepare_cached(
-                "INSERT INTO nonce_updates (block_number, contract_address_id, nonce) VALUES (?, \
-                 ?, ?)",
-            )
-            .context("Preparing nonce insert statement")?;
-
-        let mut insert_storage = self
-            .inner()
-            .prepare_cached(
-                "INSERT INTO storage_updates (block_number, contract_address_id, \
-                 storage_address_id, storage_value) VALUES (?, ?, ?, ?)",
-            )
-            .context("Preparing nonce insert statement")?;
+        // Insert serialized state update
+        let state_updates_column = self.rocksdb_get_column(&STATE_UPDATES_COLUMN);
+        let key = block_number.get().to_be_bytes();
+        let state_update_data = StateUpdateData {
+            contract_updates: contract_updates.clone(),
+            system_contract_updates: system_contract_updates.clone(),
+            declared_cairo_classes: declared_cairo_classes.clone(),
+            declared_sierra_classes: declared_sierra_classes.clone(),
+            migrated_compiled_classes: migrated_compiled_classes.clone(),
+        };
+        let state_update_data = dto::StateUpdateData::from(state_update_data);
+        let data = bincode::serde::encode_to_vec(state_update_data, bincode::config::standard())?;
+        self.rocksdb()
+            .put_cf(&state_updates_column, key, data)
+            .context("Inserting state update into RocksDB")?;
 
         let mut insert_contract = self
             .inner()
@@ -130,6 +178,11 @@ impl Transaction<'_> {
             )
             .context("Preparing casm hash insert statement")?;
 
+        let nonce_updates_column = self.rocksdb_get_column(&NONCE_UPDATES_COLUMN);
+        let storage_updates_column = self.rocksdb_get_column(&STORAGE_UPDATES_COLUMN);
+        let mut batch = rust_rocksdb::WriteBatch::default();
+        let mut buffer = [0u8; 64];
+
         for (address, update) in contract_updates {
             if let Some(class_update) = &update.class {
                 insert_contract
@@ -137,67 +190,45 @@ impl Transaction<'_> {
                     .context("Inserting deployed contract")?;
             }
 
-            let contract_address_id = query_contract_address
-                .query_map(params![address], |row| row.get::<_, i64>(0))
-                .context("Querying contract address")?
-                .next()
-                .unwrap_or_else(|| {
-                    insert_contract_address.query_row(params![address], |row| row.get::<_, i64>(0))
-                })
-                .context("Inserting contract address")?;
-
             if let Some(nonce) = &update.nonce {
-                insert_nonce
-                    .execute(params![&block_number, &contract_address_id, nonce])
-                    .context("Inserting nonce update")?;
+                let encoded_length = bincode::serde::encode_into_slice(
+                    MinimalFelt::from(nonce.0),
+                    &mut buffer,
+                    bincode::config::standard(),
+                )?;
+                batch.put_cf(
+                    &nonce_updates_column,
+                    &nonce_update_key(block_number, address),
+                    &buffer[..encoded_length],
+                );
             }
 
             for (key, value) in &update.storage {
-                let storage_address_id = query_storage_address
-                    .query_map(params![key], |row| row.get::<_, i64>(0))
-                    .context("Querying storage address")?
-                    .next()
-                    .unwrap_or_else(|| {
-                        insert_storage_address.query_row(params![key], |row| row.get::<_, i64>(0))
-                    })
-                    .context("Inserting storage address")?;
-                insert_storage
-                    .execute(params![
-                        &block_number,
-                        &contract_address_id,
-                        &storage_address_id,
-                        value
-                    ])
-                    .context("Inserting storage update")?;
+                let encoded_length = bincode::serde::encode_into_slice(
+                    MinimalFelt::from(value.0),
+                    &mut buffer,
+                    bincode::config::standard(),
+                )?;
+                batch.put_cf(
+                    &storage_updates_column,
+                    &storage_update_key(block_number, address, key),
+                    &buffer[..encoded_length],
+                );
             }
         }
 
         for (address, update) in system_contract_updates {
-            let contract_address_id = query_contract_address
-                .query_map(params![address], |row| row.get::<_, i64>(0))
-                .context("Querying contract address")?
-                .next()
-                .unwrap_or_else(|| {
-                    insert_contract_address.query_row(params![address], |row| row.get::<_, i64>(0))
-                })
-                .context("Inserting contract address")?;
             for (key, value) in &update.storage {
-                let storage_address_id = query_storage_address
-                    .query_map(params![key], |row| row.get::<_, i64>(0))
-                    .context("Querying storage address")?
-                    .next()
-                    .unwrap_or_else(|| {
-                        insert_storage_address.query_row(params![key], |row| row.get::<_, i64>(0))
-                    })
-                    .context("Inserting storage address")?;
-                insert_storage
-                    .execute(params![
-                        &block_number,
-                        &contract_address_id,
-                        &storage_address_id,
-                        value
-                    ])
-                    .context("Inserting system storage update")?;
+                let encoded_length = bincode::serde::encode_into_slice(
+                    MinimalFelt::from(value.0),
+                    &mut buffer,
+                    bincode::config::standard(),
+                )?;
+                batch.put_cf(
+                    &storage_updates_column,
+                    &storage_update_key(block_number, address, key),
+                    &buffer[..encoded_length],
+                );
             }
         }
 
@@ -626,57 +657,29 @@ impl Transaction<'_> {
         contract_address: ContractAddress,
         key: StorageAddress,
     ) -> anyhow::Result<Option<StorageValue>> {
-        match block {
-            BlockId::Latest => {
-                let mut stmt = self.inner().prepare_cached(
-                    r"
-                    SELECT storage_value
-                    FROM storage_updates
-                    JOIN contract_addresses ON contract_addresses.id = storage_updates.contract_address_id
-                    JOIN storage_addresses ON storage_addresses.id = storage_updates.storage_address_id
-                    WHERE contract_address = ? AND storage_address = ?
-                    ORDER BY block_number DESC LIMIT 1
-                    ",
-                )?;
-                stmt.query_row(params![&contract_address, &key], |row| {
-                    row.get_storage_value(0)
-                })
-            }
-            BlockId::Number(number) => {
-                let mut stmt = self.inner().prepare_cached(
-                    r"
-                    SELECT storage_value
-                    FROM storage_updates
-                    JOIN contract_addresses ON contract_addresses.id = storage_updates.contract_address_id
-                    JOIN storage_addresses ON storage_addresses.id = storage_updates.storage_address_id
-                    WHERE contract_address = ? AND storage_address = ? AND block_number <= ?
-                    ORDER BY block_number DESC LIMIT 1
-                    ",
-                )?;
-                stmt.query_row(params![&contract_address, &key, &number], |row| {
-                    row.get_storage_value(0)
-                })
-            }
-            BlockId::Hash(hash) => {
-                let mut stmt = self.inner().prepare_cached(
-                    r"
-                    SELECT storage_value
-                    FROM storage_updates
-                    JOIN contract_addresses ON contract_addresses.id = storage_updates.contract_address_id
-                    JOIN storage_addresses ON storage_addresses.id = storage_updates.storage_address_id
-                    WHERE contract_address = ? AND storage_address = ? AND block_number <= (
-                        SELECT number FROM block_headers WHERE hash = ?
-                    )
-                    ORDER BY block_number DESC LIMIT 1
-                    ",
-                )?;
-                stmt.query_row(params![&contract_address, &key, &hash], |row| {
-                    row.get_storage_value(0)
-                })
-            }
+        let Some(block_number) = self.block_number(block).context("Querying block number")? else {
+            return Ok(None);
+        };
+
+        let key = storage_update_key(block_number, &contract_address, &key);
+        let storage_update_column = self.rocksdb_get_column(&STORAGE_UPDATES_COLUMN);
+
+        let mut read_options = ReadOptions::default();
+        read_options.set_prefix_same_as_start(true);
+        let mut iter = self
+            .rocksdb()
+            .raw_iterator_cf_opt(&storage_update_column, read_options);
+        iter.seek(&key);
+        if !iter.valid() {
+            return Ok(None);
         }
-        .optional()
-        .map_err(|e| e.into())
+        let value = iter
+            .value()
+            .context("Reading storage update value from RocksDB")?;
+        let (value, _): (MinimalFelt, _) =
+            bincode::serde::decode_from_slice(value, bincode::config::standard())
+                .context("Decoding storage update value")?;
+        Ok(Some(StorageValue(value.0.into())))
     }
 
     pub fn contract_exists(
@@ -1044,6 +1047,238 @@ impl Transaction<'_> {
 
         rows.collect::<Result<Vec<_>, _>>()
             .context("Iterating over reverse Sierra declarations")
+    }
+}
+
+mod dto {
+    use std::collections::{HashMap, HashSet};
+
+    use pathfinder_common::prelude::*;
+
+    use crate::connection::dto::MinimalFelt;
+
+    #[derive(serde::Deserialize, serde::Serialize, Debug, PartialEq)]
+    pub enum StateUpdateData {
+        V0(StateUpdateDataV0),
+    }
+
+    impl From<pathfinder_common::state_update::StateUpdateData> for StateUpdateData {
+        fn from(value: pathfinder_common::state_update::StateUpdateData) -> Self {
+            StateUpdateData::V0(StateUpdateDataV0::from(value))
+        }
+    }
+
+    impl From<StateUpdateData> for pathfinder_common::state_update::StateUpdateData {
+        fn from(value: StateUpdateData) -> Self {
+            match value {
+                StateUpdateData::V0(v0) => {
+                    pathfinder_common::state_update::StateUpdateData::from(v0)
+                }
+            }
+        }
+    }
+
+    #[derive(serde::Deserialize, serde::Serialize, Default, Debug, PartialEq)]
+    pub struct StateUpdateDataV0 {
+        pub contract_updates: HashMap<MinimalFelt, ContractUpdate>,
+        pub system_contract_updates: HashMap<MinimalFelt, SystemContractUpdate>,
+        pub declared_cairo_classes: HashSet<MinimalFelt>,
+        pub declared_sierra_classes: HashMap<MinimalFelt, MinimalFelt>,
+        pub migrated_compiled_classes: HashMap<MinimalFelt, MinimalFelt>,
+    }
+
+    impl From<pathfinder_common::state_update::StateUpdateData> for StateUpdateDataV0 {
+        fn from(value: pathfinder_common::state_update::StateUpdateData) -> Self {
+            let contract_updates = value
+                .contract_updates
+                .into_iter()
+                .map(|(k, v)| (MinimalFelt::from(k.0), ContractUpdate::from(v)))
+                .collect();
+
+            let system_contract_updates = value
+                .system_contract_updates
+                .into_iter()
+                .map(|(k, v)| (MinimalFelt::from(k.0), SystemContractUpdate::from(v)))
+                .collect();
+
+            let declared_cairo_classes = value
+                .declared_cairo_classes
+                .into_iter()
+                .map(|h| MinimalFelt::from(h.0))
+                .collect();
+
+            let declared_sierra_classes = value
+                .declared_sierra_classes
+                .into_iter()
+                .map(|(k, v)| (MinimalFelt::from(k.0), MinimalFelt::from(v.0)))
+                .collect();
+
+            let migrated_compiled_classes = value
+                .migrated_compiled_classes
+                .into_iter()
+                .map(|(k, v)| (MinimalFelt::from(k.0), MinimalFelt::from(v.0)))
+                .collect();
+
+            StateUpdateDataV0 {
+                contract_updates,
+                system_contract_updates,
+                declared_cairo_classes,
+                declared_sierra_classes,
+                migrated_compiled_classes,
+            }
+        }
+    }
+
+    impl From<StateUpdateDataV0> for pathfinder_common::state_update::StateUpdateData {
+        fn from(value: StateUpdateDataV0) -> Self {
+            let contract_updates = value
+                .contract_updates
+                .into_iter()
+                .map(|(k, v)| (ContractAddress(k.0), ContractUpdate::into(v)))
+                .collect();
+
+            let system_contract_updates = value
+                .system_contract_updates
+                .into_iter()
+                .map(|(k, v)| (ContractAddress(k.0), SystemContractUpdate::into(v)))
+                .collect();
+
+            let declared_cairo_classes = value
+                .declared_cairo_classes
+                .into_iter()
+                .map(|h| ClassHash(h.0))
+                .collect();
+
+            let declared_sierra_classes = value
+                .declared_sierra_classes
+                .into_iter()
+                .map(|(k, v)| (SierraHash(k.0), CasmHash(v.0)))
+                .collect();
+
+            let migrated_compiled_classes = value
+                .migrated_compiled_classes
+                .into_iter()
+                .map(|(k, v)| (SierraHash(k.0), CasmHash(v.0)))
+                .collect();
+
+            pathfinder_common::state_update::StateUpdateData {
+                contract_updates,
+                system_contract_updates,
+                declared_cairo_classes,
+                declared_sierra_classes,
+                migrated_compiled_classes,
+            }
+        }
+    }
+
+    #[derive(serde::Deserialize, serde::Serialize, Default, Debug, PartialEq)]
+    pub struct ContractUpdate {
+        pub storage: HashMap<MinimalFelt, MinimalFelt>,
+        /// The class associated with this update as the result of either a
+        /// deploy or class replacement transaction.
+        pub class: Option<ContractClassUpdate>,
+        pub nonce: Option<MinimalFelt>,
+    }
+
+    impl From<pathfinder_common::state_update::ContractUpdate> for ContractUpdate {
+        fn from(value: pathfinder_common::state_update::ContractUpdate) -> Self {
+            let storage = value
+                .storage
+                .into_iter()
+                .map(|(k, v)| (MinimalFelt::from(k.0), MinimalFelt::from(v.0)))
+                .collect();
+
+            let class = value.class.map(ContractClassUpdate::from);
+
+            let nonce = value.nonce.map(|n| MinimalFelt::from(n.0));
+
+            ContractUpdate {
+                storage,
+                class,
+                nonce,
+            }
+        }
+    }
+
+    impl From<ContractUpdate> for pathfinder_common::state_update::ContractUpdate {
+        fn from(value: ContractUpdate) -> Self {
+            let storage = value
+                .storage
+                .into_iter()
+                .map(|(k, v)| (StorageAddress(k.0), StorageValue(v.0)))
+                .collect();
+
+            let class = value.class.map(ContractClassUpdate::into);
+
+            let nonce = value.nonce.map(|n| ContractNonce(n.0));
+
+            pathfinder_common::state_update::ContractUpdate {
+                storage,
+                class,
+                nonce,
+            }
+        }
+    }
+
+    #[derive(serde::Deserialize, serde::Serialize, Default, Debug, PartialEq)]
+    pub struct SystemContractUpdate {
+        pub storage: HashMap<MinimalFelt, MinimalFelt>,
+    }
+
+    impl From<pathfinder_common::state_update::SystemContractUpdate> for SystemContractUpdate {
+        fn from(value: pathfinder_common::state_update::SystemContractUpdate) -> Self {
+            let storage = value
+                .storage
+                .into_iter()
+                .map(|(k, v)| (MinimalFelt::from(k.0), MinimalFelt::from(v.0)))
+                .collect();
+
+            SystemContractUpdate { storage }
+        }
+    }
+
+    impl From<SystemContractUpdate> for pathfinder_common::state_update::SystemContractUpdate {
+        fn from(value: SystemContractUpdate) -> Self {
+            let storage = value
+                .storage
+                .into_iter()
+                .map(|(k, v)| (StorageAddress(k.0), StorageValue(v.0)))
+                .collect();
+
+            pathfinder_common::state_update::SystemContractUpdate { storage }
+        }
+    }
+
+    #[derive(serde::Deserialize, serde::Serialize, Debug, PartialEq)]
+    pub enum ContractClassUpdate {
+        Deploy(MinimalFelt),
+        Replace(MinimalFelt),
+    }
+
+    impl From<pathfinder_common::state_update::ContractClassUpdate> for ContractClassUpdate {
+        fn from(value: pathfinder_common::state_update::ContractClassUpdate) -> Self {
+            match value {
+                pathfinder_common::state_update::ContractClassUpdate::Deploy(hash) => {
+                    ContractClassUpdate::Deploy(MinimalFelt::from(hash.0))
+                }
+                pathfinder_common::state_update::ContractClassUpdate::Replace(hash) => {
+                    ContractClassUpdate::Replace(MinimalFelt::from(hash.0))
+                }
+            }
+        }
+    }
+
+    impl From<ContractClassUpdate> for pathfinder_common::state_update::ContractClassUpdate {
+        fn from(value: ContractClassUpdate) -> Self {
+            match value {
+                ContractClassUpdate::Deploy(hash) => {
+                    pathfinder_common::state_update::ContractClassUpdate::Deploy(ClassHash(hash.0))
+                }
+                ContractClassUpdate::Replace(hash) => {
+                    pathfinder_common::state_update::ContractClassUpdate::Replace(ClassHash(hash.0))
+                }
+            }
+        }
     }
 }
 

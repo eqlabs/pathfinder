@@ -25,6 +25,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
 pub use connection::*;
+pub use dto::MinimalFelt;
 pub use error::StorageError;
 use event::RunningEventFilter;
 pub use event::EVENT_KEY_FILTER_LIMIT;
@@ -38,7 +39,6 @@ pub use transaction::dto::{
     DeployAccountTransactionV4,
     InvokeTransactionV5,
     L1HandlerTransactionV0,
-    MinimalFelt,
     ResourceBound,
     ResourceBoundsV1,
     TransactionV3,

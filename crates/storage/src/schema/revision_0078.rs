@@ -49,7 +49,7 @@ pub(crate) fn migrate(
     Ok(())
 }
 
-const BATCH_SIZE: usize = 100000;
+const BATCH_SIZE: usize = 1000000;
 
 fn migrate_trie(
     sqlite_txn: &rusqlite::Transaction,
