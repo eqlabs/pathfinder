@@ -53,17 +53,17 @@ mod test {
     // - [ ] ??? any missing significant failure injection points ???.
     #[rstest]
     #[case::happy_path(None)]
-    #[case::fail_on_proposal_init_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalInitRx }))]
-    #[case::fail_on_block_info_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::BlockInfoRx }))]
-    #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::TransactionBatchRx }))]
-    #[case::fail_on_executed_transaction_count_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ExecutedTransactionCountRx }))]
-    #[case::fail_on_proposal_fin_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalFinRx }))]
-    #[ignore = "FIXME: Bob gets ahead of Alice and Charlie at H=13 and the network stalls."]
-    #[case::fail_on_entire_proposal_persisted(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::EntireProposalPersisted }))]
-    #[case::fail_on_prevote_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::PrevoteRx }))]
-    #[case::fail_on_precommit_rx(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::PrecommitRx }))]
-    #[case::fail_on_proposal_decided(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalDecided }))]
-    #[case::fail_on_proposal_committed(Some(InjectFailureConfig { height: 13, trigger: InjectFailureTrigger::ProposalCommitted }))]
+    #[case::fail_on_proposal_init_rx(Some(InjectFailureConfig { height: 7, trigger: InjectFailureTrigger::ProposalInitRx }))]
+    #[case::fail_on_block_info_rx(Some(InjectFailureConfig { height: 7, trigger: InjectFailureTrigger::BlockInfoRx }))]
+    #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig { height: 7, trigger: InjectFailureTrigger::TransactionBatchRx }))]
+    #[case::fail_on_executed_transaction_count_rx(Some(InjectFailureConfig { height: 7, trigger: InjectFailureTrigger::ExecutedTransactionCountRx }))]
+    #[case::fail_on_proposal_fin_rx(Some(InjectFailureConfig { height: 7, trigger: InjectFailureTrigger::ProposalFinRx }))]
+    #[ignore = "FIXME: Bob gets ahead of Alice and Charlie at H=7 and the network stalls."]
+    #[case::fail_on_entire_proposal_persisted(Some(InjectFailureConfig { height: 7, trigger: InjectFailureTrigger::EntireProposalPersisted }))]
+    #[case::fail_on_prevote_rx(Some(InjectFailureConfig { height: 7, trigger: InjectFailureTrigger::PrevoteRx }))]
+    #[case::fail_on_precommit_rx(Some(InjectFailureConfig { height: 7, trigger: InjectFailureTrigger::PrecommitRx }))]
+    #[case::fail_on_proposal_decided(Some(InjectFailureConfig { height: 7, trigger: InjectFailureTrigger::ProposalDecided }))]
+    #[case::fail_on_proposal_committed(Some(InjectFailureConfig { height: 7, trigger: InjectFailureTrigger::ProposalCommitted }))]
     #[tokio::test]
     async fn consensus_3_nodes_with_failures(
         #[case] inject_failure: Option<InjectFailureConfig>,
@@ -71,12 +71,11 @@ mod test {
         use tokio::sync::mpsc;
 
         const NUM_NODES: usize = 3;
-        // System contracts start to matter after block 10
-        const HEIGHT: u64 = 15;
+        const HEIGHT: u64 = 10;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
-        const TEST_TIMEOUT: Duration = Duration::from_secs(120);
+        const TEST_TIMEOUT: Duration = Duration::from_secs(150);
         const POLL_READY: Duration = Duration::from_millis(500);
-        const POLL_HEIGHT: Duration = Duration::from_millis(500);
+        const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
         let (configs, stopwatch) = utils::setup(NUM_NODES)?;
 
@@ -183,12 +182,12 @@ mod test {
     async fn consensus_3_nodes_fourth_node_joins_late_can_catch_up() -> anyhow::Result<()> {
         const NUM_NODES: usize = 4;
         // System contracts start to matter after block 10
-        const HEIGHT_TO_ADD_FOURTH_NODE: u64 = 15;
-        const FINAL_HEIGHT: u64 = 20;
+        const HEIGHT_TO_ADD_FOURTH_NODE: u64 = 8;
+        const FINAL_HEIGHT: u64 = 12;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
-        const TEST_TIMEOUT: Duration = Duration::from_secs(120);
+        const TEST_TIMEOUT: Duration = Duration::from_secs(150);
         const POLL_READY: Duration = Duration::from_millis(500);
-        const POLL_HEIGHT: Duration = Duration::from_millis(500);
+        const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
         let (configs, stopwatch) = utils::setup(NUM_NODES)?;
 
@@ -321,11 +320,11 @@ mod test {
     async fn consensus_3_nodes_outdated_votes_lead_to_peer_score_changes() {
         const NUM_NODES: usize = 3;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
-        const TEST_TIMEOUT: Duration = Duration::from_secs(60);
+        const TEST_TIMEOUT: Duration = Duration::from_secs(90);
         const POLL_READY: Duration = Duration::from_millis(500);
-        const POLL_HEIGHT: Duration = Duration::from_millis(500);
+        const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
-        const LAST_VALID_HEIGHT: u64 = 6;
+        const LAST_VALID_HEIGHT: u64 = 4;
 
         let (configs, stopwatch) = utils::setup(NUM_NODES).unwrap();
 

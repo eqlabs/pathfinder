@@ -237,7 +237,7 @@ impl ExecutionState {
         };
 
         let chain_info = self.chain_info()?;
-        let block_info = self.block_info()?;
+        let block_info = self.starknet_block_info()?;
 
         // Perform system contract updates if we are executing on top of a parent block.
         // Currently this is only the block hash from 10 blocks ago.
@@ -292,7 +292,7 @@ impl ExecutionState {
         })
     }
 
-    fn chain_info(&self) -> anyhow::Result<ChainInfo> {
+    pub(crate) fn chain_info(&self) -> anyhow::Result<ChainInfo> {
         let eth_fee_token_address = starknet_api::core::ContractAddress(
             PatriciaKey::try_from(self.eth_fee_address.0.into_starkfelt())
                 .expect("ETH fee token address overflow"),
@@ -327,7 +327,7 @@ impl ExecutionState {
         })
     }
 
-    fn block_info(&self) -> anyhow::Result<starknet_api::block::BlockInfo> {
+    pub(crate) fn starknet_block_info(&self) -> anyhow::Result<starknet_api::block::BlockInfo> {
         let eth_l1_gas_price =
             NonzeroGasPrice::new(GasPrice(if self.block_info.eth_l1_gas_price.0 == 0 {
                 // Bad API design - the genesis block has 0 gas price, but

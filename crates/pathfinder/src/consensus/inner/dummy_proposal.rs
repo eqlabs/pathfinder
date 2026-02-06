@@ -20,11 +20,11 @@ use pathfinder_common::{
 };
 use pathfinder_consensus::Round;
 use pathfinder_crypto::Felt;
-use pathfinder_executor::BlockExecutor;
+use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
 use pathfinder_storage::Storage;
 use rand::{thread_rng, Rng, SeedableRng};
 
-use crate::validator::{ProdTransactionMapper, ValidatorBlockInfoStage};
+use crate::validator::{ProdTransactionMapper, ValidatorBlockInfoStage, ValidatorWorkerPool};
 
 /// Blocks consensus tasks's processing loop until the parent block of height is
 /// committed in main storage without blocking the async runtime.
@@ -79,6 +79,11 @@ pub(crate) async fn wait_for_parent_committed(
     .await??;
 
     Ok(())
+}
+
+/// Creates a worker pool for tests.
+fn create_test_worker_pool() -> ValidatorWorkerPool {
+    ExecutorWorkerPool::<ConcurrentStateReader>::new(1).get()
 }
 
 #[derive(Debug)]
@@ -169,8 +174,9 @@ pub(crate) fn create(
     parts.push(ProposalPart::BlockInfo(block_info.clone()));
 
     let validator = ValidatorBlockInfoStage::new(ChainId::SEPOLIA_TESTNET, proposal_init).unwrap();
+    let worker_pool = create_test_worker_pool();
     let mut validator = validator
-        .validate_block_info::<BlockExecutor>(block_info.clone(), main_storage, None, None)
+        .validate_block_info(block_info.clone(), main_storage, None, None, worker_pool)
         .unwrap();
 
     let num_executed_txns = config
