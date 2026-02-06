@@ -331,8 +331,7 @@ fn verify_proposal_event(
 /// ExecutedTransactionCount → ProposalFin → CommitBlock(parent).
 ///
 /// Verify ProposalFin is deferred (no proposal event), then verify
-/// finalization occurs after parent block is committed. Also verify
-/// ProposalFin is persisted in the database even when deferred.
+/// finalization occurs after parent block is committed.
 #[rstest::rstest]
 #[case::consensus_ahead_of_fgw(true)]
 #[case::fgw_ahead_of_consensus(false)]
@@ -495,7 +494,7 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
 /// ExecutedTransactionCount → ProposalFin.
 ///
 /// Verify proposal event is sent immediately after ProposalFin (no
-/// deferral), and verify all parts are persisted correctly.
+/// deferral).
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn test_full_proposal_flow_normal_order() {
     let chain_id = ChainId::SEPOLIA_TESTNET;
@@ -716,9 +715,7 @@ async fn test_executed_transaction_count_deferred_when_execution_not_started() {
 /// TransactionBatch 2 → TransactionBatch 3 → ExecutedTransactionCount →
 /// ProposalFin.
 ///
-/// Verify proposal event is sent after ProposalFin, and verify all batches
-/// are persisted (combined into a single TransactionBatch part in the
-/// database).
+/// Verify proposal event is sent after ProposalFin.
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn test_multiple_batches_execution() {
     let chain_id = ChainId::SEPOLIA_TESTNET;
@@ -1186,8 +1183,7 @@ async fn test_executed_transaction_count_before_any_batch() {
 /// ExecutedTransactionCount).
 ///
 /// Verify ProposalFin proceeds immediately (not deferred, since execution
-/// never started), proposal event is sent, and all parts are persisted
-/// correctly.
+/// never started), proposal event is sent.
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn test_empty_proposal_per_spec() {
     let chain_id = ChainId::SEPOLIA_TESTNET;
