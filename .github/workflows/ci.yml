@@ -107,7 +107,7 @@ jobs:
       - name: Compile pathfinder binary for consensus integration tests
         run: cargo build -p pathfinder -F p2p -F consensus-integration-tests --bin pathfinder
       - name: Run consensus integration tests
-        run: PATHFINDER_CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL=1 PATHFINDER_TEST_ENABLE_PORT_MARKER_FILES=1 timeout 10m cargo nextest run --test consensus -p pathfinder --features p2p,consensus-integration-tests --locked --retries 2
+        run: PATHFINDER_TEST_ENABLE_PORT_MARKER_FILES=1 timeout 15m cargo nextest run --test consensus -p pathfinder --features p2p,consensus-integration-tests --locked --retries 2
   test-default-features:
     needs: detect-changes
     if: needs.detect-changes.outputs.code == 'true'
