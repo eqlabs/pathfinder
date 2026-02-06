@@ -27,7 +27,7 @@ use pathfinder_common::{BlockNumber, TransactionHash, TransactionIndex};
 use pruning::BlockchainHistoryMode;
 // Re-export this so users don't require rusqlite as a direct dep.
 pub use rusqlite::TransactionBehavior;
-pub(crate) use state_update::{STATE_UPDATES_COLUMN, STORAGE_UPDATES_COLUMN};
+pub(crate) use state_update::{NONCE_UPDATES_COLUMN, STATE_UPDATES_COLUMN, STORAGE_UPDATES_COLUMN};
 pub use trie::{Node, NodeRef, RootIndexUpdate, StoredNode, TrieStorageIndex, TrieUpdate};
 pub(crate) use trie::{
     TRIE_CLASS_HASH_COLUMN,

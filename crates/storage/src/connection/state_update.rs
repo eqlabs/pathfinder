@@ -13,13 +13,17 @@ use pathfinder_common::state_update::{
 };
 use pathfinder_common::BlockId;
 use pathfinder_crypto::Felt;
-use rust_rocksdb::{DBIterator, IteratorMode, ReadOptions};
+use rust_rocksdb::ReadOptions;
 
 use crate::columns::Column;
 use crate::connection::dto::MinimalFelt;
 use crate::prelude::*;
 
-pub const STORAGE_UPDATES_COLUMN: Column = Column::new("storage_updates");
+/// Prefix length for storage update keys: contract_address (32) + storage_address (32).
+const STORAGE_UPDATES_PREFIX_LEN: usize = 2 * size_of::<Felt>();
+
+pub const STORAGE_UPDATES_COLUMN: Column =
+    Column::new("storage_updates").with_prefix_length(STORAGE_UPDATES_PREFIX_LEN);
 
 type StorageUpdates = Vec<(StorageAddress, StorageValue)>;
 
@@ -285,6 +289,10 @@ impl Transaction<'_> {
                 .context("Inserting migrated CASM hash")?;
         }
 
+        self.rocksdb()
+            .write(&batch)
+            .context("Writing nonce and storage updates to RocksDB")?;
+
         Ok(())
     }
 
@@ -340,196 +348,41 @@ impl Transaction<'_> {
             return Ok(None);
         };
 
-        let mut state_update = StateUpdate::default()
-            .with_block_hash(block_hash)
-            .with_state_commitment(state_commitment)
-            .with_parent_state_commitment(parent_state_commitment);
+        let state_update_data = self
+            .state_update_data(block_number)?
+            .unwrap_or_default();
 
-        let mut stmt = self
-            .inner()
-            .prepare_cached(
-                r"
-                SELECT contract_address, nonce FROM nonce_updates
-                JOIN contract_addresses ON contract_addresses.id = nonce_updates.contract_address_id
-                WHERE block_number = ?
-                ",
-            )
-            .context("Preparing nonce update query statement")?;
+        Ok(Some(StateUpdate {
+            block_hash,
+            parent_state_commitment,
+            state_commitment,
+            contract_updates: state_update_data.contract_updates,
+            system_contract_updates: state_update_data.system_contract_updates,
+            declared_cairo_classes: state_update_data.declared_cairo_classes,
+            declared_sierra_classes: state_update_data.declared_sierra_classes,
+            migrated_compiled_classes: state_update_data.migrated_compiled_classes,
+        }))
+    }
 
-        let mut nonces = stmt
-            .query_map(params![&block_number], |row| {
-                let contract_address = row.get_contract_address(0)?;
-                let nonce = row.get_contract_nonce(1)?;
-
-                Ok((contract_address, nonce))
-            })
-            .context("Querying nonce updates")?;
-
-        while let Some((address, nonce)) = nonces
-            .next()
-            .transpose()
-            .context("Iterating over nonce query rows")?
-        {
-            state_update = state_update.with_contract_nonce(address, nonce);
-        }
-
-        let mut stmt = self
-            .inner()
-            .prepare_cached(
-                r"
-                SELECT contract_address, storage_address, storage_value
-                FROM storage_updates
-                JOIN contract_addresses ON contract_addresses.id = storage_updates.contract_address_id
-                JOIN storage_addresses ON storage_addresses.id = storage_updates.storage_address_id
-                WHERE block_number = ?
-                ",
-            )
-            .context("Preparing storage update query statement")?;
-        let mut storage_diffs = stmt
-            .query_map(params![&block_number], |row| {
-                let address: ContractAddress = row.get_contract_address(0)?;
-                let key: StorageAddress = row.get_storage_address(1)?;
-                let value: StorageValue = row.get_storage_value(2)?;
-
-                Ok((address, key, value))
-            })
-            .context("Querying storage updates")?;
-
-        while let Some((address, key, value)) = storage_diffs
-            .next()
-            .transpose()
-            .context("Iterating over storage query rows")?
-        {
-            state_update = if address.is_system_contract() {
-                state_update.with_system_storage_update(address, key, value)
-            } else {
-                state_update.with_storage_update(address, key, value)
-            };
-        }
-
-        let mut stmt = self
-            .inner()
-            .prepare_cached(
-                r"SELECT
-                class_definitions.hash AS class_hash,
-                casm_class_hashes.compiled_class_hash AS compiled_class_hash
-            FROM
-                class_definitions
-            LEFT OUTER JOIN
-                casm_class_hashes ON casm_class_hashes.hash = class_definitions.hash AND casm_class_hashes.block_number = class_definitions.block_number
-            WHERE
-                class_definitions.block_number = ?",
-            )
-            .context("Preparing class declaration query statement")?;
-
-        let mut declared_classes = stmt
-            .query_map(params![&block_number], |row| {
-                let class_hash: ClassHash = row.get_class_hash(0)?;
-                let casm_hash = row.get_optional_casm_hash(1)?;
-
-                Ok((class_hash, casm_hash))
-            })
-            .context("Querying class declarations")?;
-
-        while let Some((class_hash, casm)) = declared_classes
-            .next()
-            .transpose()
-            .context("Iterating over class declaration query rows")?
-        {
-            state_update = match casm {
-                Some(casm) => {
-                    state_update.with_declared_sierra_class(SierraHash(class_hash.0), casm)
-                }
-                None => state_update.with_declared_cairo_class(class_hash),
-            };
-        }
-
-        let mut stmt = self
-            .inner()
-            .prepare_cached(r"SELECT class_hash FROM redeclared_classes WHERE block_number = ?")
-            .context("Preparing re-declared class query statement")?;
-
-        let mut redeclared_classes = stmt
-            .query_map(params![&block_number], |row| row.get_class_hash(0))
-            .context("Querying re-declared classes")?;
-        while let Some(class_hash) = redeclared_classes
-            .next()
-            .transpose()
-            .context("Iterating over re-declared classes")?
-        {
-            state_update = state_update.with_declared_cairo_class(class_hash);
-        }
-
-        let mut stmt = self
-            .inner()
-            .prepare_cached(
-                r"
-            SELECT
-                ch1.hash AS class_hash,
-                ch1.compiled_class_hash AS casm_hash
-            FROM 
-                casm_class_hashes ch1
-            LEFT OUTER JOIN
-                casm_class_hashes ch2 ON ch1.hash = ch2.hash AND ch2.block_number < ch1.block_number
-            WHERE
-                ch1.block_number = ? AND ch2.block_number IS NOT NULL
-            ",
-            )
-            .context("Preparing migrated compiled class query statement")?;
-        let mut migrated_compiled_classes = stmt
-            .query_map(params![&block_number], |row| {
-                let class_hash: ClassHash = row.get_class_hash(0)?;
-                let casm_hash: CasmHash = row.get_casm_hash(1)?;
-
-                Ok((SierraHash(class_hash.0), casm_hash))
-            })
-            .context("Querying migrated compiled classes")?;
-        while let Some((sierra_hash, casm_hash)) = migrated_compiled_classes
-            .next()
-            .transpose()
-            .context("Iterating over migrated compiled class query rows")?
-        {
-            state_update = state_update.with_migrated_compiled_class(sierra_hash, casm_hash);
-        }
-
-        let mut stmt = self
-        .inner().prepare_cached(
-            r"SELECT
-                cu1.contract_address AS contract_address,
-                cu1.class_hash AS class_hash,
-                cu2.block_number IS NOT NULL AS is_replaced
-            FROM
-                contract_updates cu1
-            LEFT OUTER JOIN
-                contract_updates cu2 ON cu1.contract_address = cu2.contract_address AND cu2.block_number < cu1.block_number
-            WHERE
-                cu1.block_number = ?",
-        )
-        .context("Preparing contract update query statement")?;
-
-        let mut deployed_and_replaced_contracts = stmt
-            .query_map(params![&block_number], |row| {
-                let address: ContractAddress = row.get_contract_address(0)?;
-                let class_hash: ClassHash = row.get_class_hash(1)?;
-                let is_replaced: bool = row.get(2)?;
-
-                Ok((address, class_hash, is_replaced))
-            })
-            .context("Querying contract deployments")?;
-
-        while let Some((address, class_hash, is_replaced)) = deployed_and_replaced_contracts
-            .next()
-            .transpose()
-            .context("Iterating over contract deployment query rows")?
-        {
-            state_update = if is_replaced {
-                state_update.with_replaced_class(address, class_hash)
-            } else {
-                state_update.with_deployed_contract(address, class_hash)
-            };
-        }
-
-        Ok(Some(state_update))
+    fn state_update_data(
+        &self,
+        block_number: BlockNumber,
+    ) -> anyhow::Result<Option<StateUpdateData>> {
+        let state_updates_column = self.rocksdb_get_column(&STATE_UPDATES_COLUMN);
+        let key = block_number.get().to_be_bytes();
+        let Some(data) = self
+            .rocksdb()
+            .get_pinned_cf(&state_updates_column, key)
+            .context("Reading state update from RocksDB")?
+        else {
+            return Ok(None);
+        };
+        let (state_update_data, _): (dto::StateUpdateData, _) =
+            bincode::serde::decode_from_slice(&data, bincode::config::standard())
+                .context("Decoding state update data")?;
+        Ok(Some(
+            pathfinder_common::state_update::StateUpdateData::from(state_update_data),
+        ))
     }
 
     pub fn highest_block_with_state_update(&self) -> anyhow::Result<Option<BlockNumber>> {
@@ -728,49 +581,30 @@ impl Transaction<'_> {
         contract_address: ContractAddress,
         block_id: BlockId,
     ) -> anyhow::Result<Option<ContractNonce>> {
-        match block_id {
-            BlockId::Latest => {
-                let mut stmt = self.inner().prepare_cached(
-                    r"
-                    SELECT nonce FROM nonce_updates
-                    JOIN contract_addresses ON contract_addresses.id = nonce_updates.contract_address_id
-                    WHERE contract_address = ?
-                    ORDER BY block_number DESC LIMIT 1
-                    ",
-                )?;
-                stmt.query_row(params![&contract_address], |row| row.get_contract_nonce(0))
-            }
-            BlockId::Number(number) => {
-                let mut stmt = self.inner().prepare_cached(
-                    r"
-                    SELECT nonce FROM nonce_updates
-                    JOIN contract_addresses ON contract_addresses.id = nonce_updates.contract_address_id
-                    WHERE contract_address = ? AND block_number <= ?
-                    ORDER BY block_number DESC LIMIT 1
-                    ",
-                )?;
-                stmt.query_row(params![&contract_address, &number], |row| {
-                    row.get_contract_nonce(0)
-                })
-            }
-            BlockId::Hash(hash) => {
-                let mut stmt = self.inner().prepare_cached(
-                    r"
-                    SELECT nonce FROM nonce_updates
-                    JOIN contract_addresses ON contract_addresses.id = nonce_updates.contract_address_id
-                    WHERE contract_address = ? AND block_number <= (
-                        SELECT number FROM block_headers WHERE hash = ?
-                    )
-                    ORDER BY block_number DESC LIMIT 1
-                    ",
-                )?;
-                stmt.query_row(params![&contract_address, &hash], |row| {
-                    row.get_contract_nonce(0)
-                })
-            }
+        let Some(block_number) = self.block_number(block_id).context("Querying block number")?
+        else {
+            return Ok(None);
+        };
+
+        let key = nonce_update_key(block_number, &contract_address);
+        let nonce_updates_column = self.rocksdb_get_column(&NONCE_UPDATES_COLUMN);
+
+        let mut read_options = ReadOptions::default();
+        read_options.set_prefix_same_as_start(true);
+        let mut iter = self
+            .rocksdb()
+            .raw_iterator_cf_opt(&nonce_updates_column, read_options);
+        iter.seek(&key);
+        if !iter.valid() {
+            return Ok(None);
         }
-        .optional()
-        .map_err(|e| e.into())
+        let value = iter
+            .value()
+            .context("Reading nonce update value from RocksDB")?;
+        let (value, _): (MinimalFelt, _) =
+            bincode::serde::decode_from_slice(value, bincode::config::standard())
+                .context("Decoding nonce update value")?;
+        Ok(Some(ContractNonce(value.0.into())))
     }
 
     pub fn contract_class_hash(
@@ -899,61 +733,54 @@ impl Transaction<'_> {
         from_block: BlockNumber,
         to_block: BlockNumber,
     ) -> anyhow::Result<HashMap<ContractAddress, StorageUpdates>> {
-        let mut stmt = self.inner().prepare_cached(
-            r"
-            WITH
-                updated_addresses(contract_address, storage_address, contract_address_id, storage_address_id) AS (
-                    SELECT DISTINCT
-                    contract_address,
-                    storage_address,
-                    contract_address_id,
-                    storage_address_id
-                    FROM storage_updates
-                    JOIN contract_addresses ON contract_addresses.id = storage_updates.contract_address_id
-                    JOIN storage_addresses ON storage_addresses.id = storage_updates.storage_address_id
-                    WHERE
-                        block_number > ?2 AND block_number <= ?1
-                )
-            SELECT
-                contract_address,
-                storage_address,
-                (
-                    SELECT storage_value
-                    FROM storage_updates
-                    WHERE
-                    contract_address_id=updated_addresses.contract_address_id AND storage_address_id=updated_addresses.storage_address_id AND block_number <= ?2
-                    ORDER BY block_number DESC
-                    LIMIT 1
-                ) AS old_storage_value
-            FROM updated_addresses
-            "
-        )?;
+        // Collect all (contract, storage_key) pairs changed in (to_block, from_block]
+        // by reading StateUpdateData from RocksDB for each block in the range.
+        let mut changed: HashSet<(ContractAddress, StorageAddress)> = HashSet::new();
+        for block_num in (to_block.get() + 1)..=from_block.get() {
+            let block_number = BlockNumber::new_or_panic(block_num);
+            if let Some(data) = self.state_update_data(block_number)? {
+                for (addr, update) in &data.contract_updates {
+                    for (key, _) in &update.storage {
+                        changed.insert((*addr, *key));
+                    }
+                }
+                for (addr, update) in &data.system_contract_updates {
+                    for (key, _) in &update.storage {
+                        changed.insert((*addr, *key));
+                    }
+                }
+            }
+        }
 
-        let mut rows = stmt
-            .query_map(params![&from_block, &to_block], |row| {
-                let contract_address = row.get_contract_address(0)?;
-                let storage_address = row.get_storage_address(1)?;
-                let old_storage_value = row.get_optional_storage_value(2)?;
+        // For each changed pair, look up the value at to_block.
+        let storage_update_column = self.rocksdb_get_column(&STORAGE_UPDATES_COLUMN);
+        let mut storage_updates: HashMap<ContractAddress, Vec<_>> = Default::default();
 
-                Ok((
-                    contract_address,
-                    (
-                        storage_address,
-                        old_storage_value.unwrap_or(StorageValue::ZERO),
-                    ),
-                ))
-            })
-            .context("Querying reverse storage updates")?;
+        for (contract_address, storage_address) in changed {
+            let key = storage_update_key(to_block, &contract_address, &storage_address);
+            let mut read_options = ReadOptions::default();
+            read_options.set_prefix_same_as_start(true);
+            let mut iter = self
+                .rocksdb()
+                .raw_iterator_cf_opt(&storage_update_column, read_options);
+            iter.seek(&key);
 
-        let mut storage_updates: HashMap<_, Vec<_>> = Default::default();
+            let old_value = if iter.valid() {
+                let value = iter
+                    .value()
+                    .context("Reading storage update value from RocksDB")?;
+                let (value, _): (MinimalFelt, _) =
+                    bincode::serde::decode_from_slice(value, bincode::config::standard())
+                        .context("Decoding storage update value")?;
+                StorageValue(value.0.into())
+            } else {
+                StorageValue::ZERO
+            };
 
-        while let Some((contract_address, (storage_address, old_storage_value))) = rows
-            .next()
-            .transpose()
-            .context("Iterating over reverse storage updates")?
-        {
-            let entry = storage_updates.entry(contract_address).or_default();
-            entry.push((storage_address, old_storage_value));
+            storage_updates
+                .entry(contract_address)
+                .or_default()
+                .push((storage_address, old_value));
         }
 
         Ok(storage_updates)
@@ -964,39 +791,48 @@ impl Transaction<'_> {
         from_block: BlockNumber,
         to_block: BlockNumber,
     ) -> anyhow::Result<Vec<(ContractAddress, Option<ContractNonce>)>> {
-        let mut stmt = self.inner().prepare_cached(
-            r"WITH
-                updated_nonces(contract_address_id, contract_address) AS (
-                    SELECT DISTINCT contract_address_id, contract_address
-                    FROM nonce_updates
-                    JOIN contract_addresses ON contract_addresses.id = nonce_updates.contract_address_id
-                    WHERE
-                        block_number > ?2 AND block_number <= ?1
-                )
-            SELECT
-                contract_address,
-                (
-                    SELECT nonce
-                    FROM nonce_updates
-                    WHERE
-                        contract_address_id=updated_nonces.contract_address_id AND block_number <= ?2
-                    ORDER BY block_number DESC
-                    LIMIT 1
-                ) AS old_nonce
-            FROM updated_nonces",
-        )?;
+        // Collect all contract addresses with nonce changes in (to_block, from_block].
+        let mut changed: HashSet<ContractAddress> = HashSet::new();
+        for block_num in (to_block.get() + 1)..=from_block.get() {
+            let block_number = BlockNumber::new_or_panic(block_num);
+            if let Some(data) = self.state_update_data(block_number)? {
+                for (addr, update) in &data.contract_updates {
+                    if update.nonce.is_some() {
+                        changed.insert(*addr);
+                    }
+                }
+            }
+        }
 
-        let rows = stmt
-            .query_map(params![&from_block, &to_block], |row| {
-                let contract_address = row.get_contract_address(0)?;
-                let old_nonce = row.get_optional_nonce(1)?;
+        // For each changed address, look up the nonce at to_block.
+        let nonce_updates_column = self.rocksdb_get_column(&NONCE_UPDATES_COLUMN);
+        let mut result = Vec::with_capacity(changed.len());
 
-                Ok((contract_address, old_nonce))
-            })
-            .context("Querying reverse nonce updates")?;
+        for contract_address in changed {
+            let key = nonce_update_key(to_block, &contract_address);
+            let mut read_options = ReadOptions::default();
+            read_options.set_prefix_same_as_start(true);
+            let mut iter = self
+                .rocksdb()
+                .raw_iterator_cf_opt(&nonce_updates_column, read_options);
+            iter.seek(&key);
 
-        rows.collect::<Result<Vec<_>, _>>()
-            .context("Iterating over reverse nonce updates")
+            let old_nonce = if iter.valid() {
+                let value = iter
+                    .value()
+                    .context("Reading nonce update value from RocksDB")?;
+                let (value, _): (MinimalFelt, _) =
+                    bincode::serde::decode_from_slice(value, bincode::config::standard())
+                        .context("Decoding nonce update value")?;
+                Some(ContractNonce(value.0.into()))
+            } else {
+                None
+            };
+
+            result.push((contract_address, old_nonce));
+        }
+
+        Ok(result)
     }
 
     /// Returns the list of changes to be made to revert Sierra class
