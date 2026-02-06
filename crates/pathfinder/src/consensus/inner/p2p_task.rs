@@ -257,7 +257,7 @@ pub fn spawn(
                                                 error = %error.error_message(),
                                                 "Invalid proposal part from peer - skipping, continuing operation"
                                             );
-                                            // Purge the proposal from storage
+                                            // Purge the proposal
                                             incoming_proposal_parts.remove(&height_and_round);
                                             Ok(ComputationSuccess::Continue)
                                         } else {
