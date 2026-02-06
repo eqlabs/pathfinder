@@ -3,7 +3,7 @@
 //! Maintains a rolling buffer of L1 gas prices and computes rolling averages
 //! for validating consensus proposals.
 
-use std::collections::VecDeque;
+use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
 
 use pathfinder_common::L1BlockNumber;
@@ -15,7 +15,7 @@ use crate::config::ConsensusConfig;
 /// Configuration for L1 gas price validation.
 #[derive(Debug, Clone)]
 pub struct L1GasPriceConfig {
-    /// Maximum number of samples to store in the ring buffer.
+    /// Maximum number of samples to store in the buffer.
     /// Default: 1000 (~3.5 hours of blocks at 12s/block)
     pub storage_limit: usize,
 
@@ -125,7 +125,7 @@ pub struct L1GasPriceProvider {
 }
 
 struct L1GasPriceProviderInner {
-    buffer: RwLock<VecDeque<L1GasPriceData>>,
+    buffer: RwLock<BTreeMap<L1BlockNumber, L1GasPriceData>>,
     config: L1GasPriceConfig,
 }
 
@@ -144,7 +144,7 @@ impl L1GasPriceProvider {
     pub fn new(config: L1GasPriceConfig) -> Self {
         Self {
             inner: Arc::new(L1GasPriceProviderInner {
-                buffer: RwLock::new(VecDeque::with_capacity(config.storage_limit)),
+                buffer: RwLock::new(BTreeMap::new()),
                 config,
             }),
         }
@@ -166,41 +166,28 @@ impl L1GasPriceProvider {
             .buffer
             .read()
             .unwrap()
-            .back()
-            .map(|d| d.block_number)
+            .last_key_value()
+            .map(|pair| *pair.0)
     }
 
     /// Adds a new gas price sample to the buffer.
-    ///
-    /// Samples are expected to be added in sequential block order.
-    pub fn add_sample(&self, data: L1GasPriceData) -> Result<(), anyhow::Error> {
+    pub fn add_sample(&self, data: L1GasPriceData) {
         let mut buffer = self.inner.buffer.write().unwrap();
 
-        if let Some(last) = buffer.back() {
-            let expected = last.block_number.get() + 1;
-            if data.block_number.get() != expected {
-                anyhow::bail!(
-                    "Non-sequential block: expected {}, got {}",
-                    expected,
-                    data.block_number.get()
-                );
-            }
-        }
-
         if buffer.len() >= self.inner.config.storage_limit {
-            buffer.pop_front();
+            buffer.pop_first();
         }
 
-        buffer.push_back(data);
-        Ok(())
+        // If the samples repeat, use the newer one (this can actually
+        // happen after reorg).
+        buffer.insert(data.block_number, data);
     }
 
-    /// Adds multiple samples in bulk (used in initialization).
-    pub fn add_samples(&self, samples: Vec<L1GasPriceData>) -> Result<(), anyhow::Error> {
+    /// Adds multiple samples in bulk (used in initialization)
+    pub fn add_samples(&self, samples: Vec<L1GasPriceData>) {
         for sample in samples {
-            self.add_sample(sample)?;
+            self.add_sample(sample);
         }
-        Ok(())
     }
 
     /// Computes the rolling average of gas prices for the given timestamp.
@@ -219,7 +206,7 @@ impl L1GasPriceProvider {
             });
         }
 
-        let latest = buffer.back().unwrap();
+        let latest = buffer.last_key_value().map(|pair| *pair.1).unwrap();
 
         if timestamp > latest.timestamp + self.inner.config.max_time_gap_seconds {
             return Err(L1GasPriceValidationError::StaleData {
@@ -231,19 +218,14 @@ impl L1GasPriceProvider {
 
         let target_timestamp = timestamp.saturating_sub(self.inner.config.lag_margin_seconds);
 
-        let last_index = buffer
+        // Find the blocks we want to use
+        let good_samples: Vec<&L1GasPriceData> = buffer
             .iter()
-            .rposition(|data| data.timestamp <= target_timestamp);
+            .map(|pair| pair.1)
+            .filter(|value| value.timestamp <= target_timestamp)
+            .collect();
 
-        let last_index = match last_index {
-            Some(idx) => idx + 1,
-            None => {
-                return Err(L1GasPriceValidationError::NoDataAvailable {
-                    timestamp,
-                    lag_seconds: self.inner.config.lag_margin_seconds,
-                });
-            }
-        };
+        let last_index = good_samples.len();
 
         let first_index = last_index.saturating_sub(self.inner.config.blocks_for_mean);
         let actual_count = last_index - first_index;
@@ -266,7 +248,7 @@ impl L1GasPriceProvider {
         let mut base_fee_sum: u128 = 0;
         let mut blob_fee_sum: u128 = 0;
 
-        for data in buffer.range(first_index..last_index) {
+        for data in good_samples.iter().skip(first_index) {
             base_fee_sum = base_fee_sum.saturating_add(data.base_fee_per_gas);
             blob_fee_sum = blob_fee_sum.saturating_add(data.blob_fee);
         }
@@ -343,20 +325,22 @@ mod tests {
             L1GasPriceValidationResult::InsufficientData
         ));
 
-        provider.add_sample(sample(100, 1000, 100, 10)).unwrap();
-        provider.add_sample(sample(101, 1012, 110, 11)).unwrap();
+        provider.add_sample(sample(100, 1000, 100, 10));
+        provider.add_sample(sample(101, 1012, 110, 11));
         assert_eq!(provider.sample_count(), 2);
 
-        assert!(provider.add_sample(sample(105, 1060, 150, 15)).is_err());
+        provider.add_sample(sample(105, 1060, 150, 15));
+        assert_eq!(provider.sample_count(), 3);
+    }
 
+    #[test]
+    fn test_buffer_overflow() {
         let small_provider = L1GasPriceProvider::new(L1GasPriceConfig {
             storage_limit: 3,
             ..Default::default()
         });
         for i in 0..5 {
-            small_provider
-                .add_sample(sample(i, i * 12, 100, 10))
-                .unwrap();
+            small_provider.add_sample(sample(i, i * 12, 100, 10));
         }
         assert_eq!(small_provider.sample_count(), 3);
         assert_eq!(
@@ -376,10 +360,10 @@ mod tests {
         };
         let provider = L1GasPriceProvider::new(config);
 
-        provider.add_sample(sample(0, 100, 100, 10)).unwrap();
-        provider.add_sample(sample(1, 112, 200, 20)).unwrap();
-        provider.add_sample(sample(2, 124, 300, 30)).unwrap();
-        provider.add_sample(sample(3, 136, 400, 40)).unwrap();
+        provider.add_sample(sample(0, 100, 100, 10));
+        provider.add_sample(sample(1, 112, 200, 20));
+        provider.add_sample(sample(2, 124, 300, 30));
+        provider.add_sample(sample(3, 136, 400, 40));
 
         let (avg_base, avg_blob) = provider.get_average_prices(136).unwrap();
         assert_eq!(avg_base, 150);
@@ -397,9 +381,9 @@ mod tests {
         };
         let provider = L1GasPriceProvider::new(config);
 
-        provider.add_sample(sample(0, 100, 100, 10)).unwrap();
-        provider.add_sample(sample(1, 112, 100, 10)).unwrap();
-        provider.add_sample(sample(2, 124, 100, 10)).unwrap();
+        provider.add_sample(sample(0, 100, 100, 10));
+        provider.add_sample(sample(1, 112, 100, 10));
+        provider.add_sample(sample(2, 124, 100, 10));
 
         assert!(matches!(
             provider.validate(124, 100, 10),
