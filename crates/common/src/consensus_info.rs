@@ -5,7 +5,7 @@ use serde::Deserialize;
 use crate::{BlockNumber, ContractAddress, ProposalCommitment};
 
 #[derive(Default, Debug, Clone)]
-pub struct Consensus {
+pub struct ConsensusInfo {
     /// Highest decided height and value.
     pub highest_decision: Option<Decision>,
     /// Track the number of times peer scores were changed.

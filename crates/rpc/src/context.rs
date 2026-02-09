@@ -96,7 +96,7 @@ pub struct RpcContext {
     pub ethereum: EthereumClient,
     pub config: RpcConfig,
     pub native_class_cache: Option<NativeClassCache>,
-    pub consensus_info_watch: Option<watch::Receiver<consensus_info::Consensus>>,
+    pub consensus_info_watch: Option<watch::Receiver<consensus_info::ConsensusInfo>>,
 }
 
 impl RpcContext {
@@ -170,7 +170,7 @@ impl RpcContext {
 
     pub fn with_consensus_info_watch(
         self,
-        consensus_info_watch: watch::Receiver<consensus_info::Consensus>,
+        consensus_info_watch: watch::Receiver<consensus_info::ConsensusInfo>,
     ) -> Self {
         Self {
             consensus_info_watch: Some(consensus_info_watch),

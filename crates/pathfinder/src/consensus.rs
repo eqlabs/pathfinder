@@ -29,7 +29,7 @@ pub struct ConsensusTaskHandles {
 #[derive(Clone)]
 pub struct ConsensusChannels {
     /// Watcher for the latest [consensus_info::Consensus].
-    pub consensus_info_watch: watch::Receiver<consensus_info::Consensus>,
+    pub consensus_info_watch: watch::Receiver<consensus_info::ConsensusInfo>,
     /// Channel for the sync task to send requests to consensus.
     pub sync_to_consensus_tx: mpsc::Sender<SyncMessageToConsensus>,
 }

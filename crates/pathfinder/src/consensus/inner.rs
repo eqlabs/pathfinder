@@ -59,7 +59,7 @@ pub fn start(
     let (sync_to_consensus_tx, sync_to_consensus_rx) = mpsc::channel::<SyncMessageToConsensus>(10);
 
     let (info_watch_tx, consensus_info_watch) =
-        watch::channel(consensus_info::Consensus::default());
+        watch::channel(consensus_info::ConsensusInfo::default());
     let finalized_blocks = HashMap::new();
 
     let consensus_p2p_event_processing_handle = p2p_task::spawn(

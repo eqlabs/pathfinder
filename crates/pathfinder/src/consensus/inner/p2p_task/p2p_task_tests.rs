@@ -55,7 +55,7 @@ struct TestEnvironment {
     handle: Arc<Mutex<Option<tokio::task::JoinHandle<anyhow::Result<()>>>>>,
 
     // Keep these alive to prevent receiver from being dropped
-    _info_watch_rx: watch::Receiver<consensus_info::Consensus>,
+    _info_watch_rx: watch::Receiver<consensus_info::ConsensusInfo>,
 }
 
 impl TestEnvironment {
@@ -80,7 +80,8 @@ impl TestEnvironment {
         let (tx_to_consensus, rx_from_p2p) = mpsc::channel(Self::TX_TO_CONSENSUS_CHANNEL_SIZE);
         let (tx_to_p2p, rx_from_consensus) = mpsc::channel(Self::TX_TO_P2P_CHANNEL_SIZE);
         let (tx_sync_to_consensus, rx_from_sync) = mpsc::channel(1);
-        let (info_watch_tx, info_watch_rx) = watch::channel(consensus_info::Consensus::default());
+        let (info_watch_tx, info_watch_rx) =
+            watch::channel(consensus_info::ConsensusInfo::default());
 
         // Create mock Client (used for receiving events in these tests)
         let keypair = Keypair::generate_ed25519();

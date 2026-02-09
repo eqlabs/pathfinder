@@ -95,7 +95,7 @@ pub fn spawn(
     tx_to_consensus: mpsc::Sender<ConsensusTaskEvent>,
     mut rx_from_consensus: mpsc::Receiver<P2PTaskEvent>,
     mut rx_from_sync: mpsc::Receiver<SyncMessageToConsensus>,
-    info_watch_tx: watch::Sender<consensus_info::Consensus>,
+    info_watch_tx: watch::Sender<consensus_info::ConsensusInfo>,
     main_storage: Storage,
     mut finalized_blocks: HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
     data_directory: &Path,
@@ -1575,7 +1575,7 @@ fn update_info_watch(
     own_proposal_parts: &HashMap<HeightAndRound, Vec<ProposalPart>>,
     finalized_blocks: &HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
     decided_blocks: &HashMap<u64, (u32, ConsensusFinalizedL2Block)>,
-    info_watch_tx: &watch::Sender<consensus_info::Consensus>,
+    info_watch_tx: &watch::Sender<consensus_info::ConsensusInfo>,
 ) -> Result<(), ProposalHandlingError> {
     let mut cached = BTreeMap::<u64, consensus_info::CachedAtHeight>::new();
     incoming_proposal_parts
