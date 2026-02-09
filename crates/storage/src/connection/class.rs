@@ -19,6 +19,13 @@ impl Transaction<'_> {
         // Blake2 hash of the compiled class definition
         casm_hash_v2: &CasmHash,
     ) -> anyhow::Result<()> {
+        eprintln!(
+            "Inserting Sierra class {sierra_hash} casm v2 hash {casm_hash_v2} sierra_def_len {} \
+             casm_def_len {}",
+            sierra_definition.len(),
+            casm_definition.len()
+        );
+
         let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
         let sierra_definition = compressor
             .compress(sierra_definition)
@@ -26,6 +33,13 @@ impl Transaction<'_> {
         let casm_definition = compressor
             .compress(casm_definition)
             .context("Compressing casm definition")?;
+
+        eprintln!(
+            "Inserting Sierra class {sierra_hash} casm v2 hash {casm_hash_v2} \
+             compressed_sierra_def_len {} compressed_casm_def_len {}",
+            sierra_definition.len(),
+            casm_definition.len()
+        );
 
         self.inner()
             .execute(

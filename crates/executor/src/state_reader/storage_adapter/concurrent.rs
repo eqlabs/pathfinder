@@ -125,6 +125,8 @@ impl StorageAdapter for ConcurrentStorageAdapter {
     }
 
     fn casm_definition(&self, class_hash: ClassHash) -> Result<Option<Vec<u8>>, StateError> {
+        eprintln!("ConcurrentStorageAdapter::casm_definition {class_hash}");
+
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
             .send(Command::CasmDefinition(class_hash, tx))
@@ -136,6 +138,8 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         &self,
         class_hash: ClassHash,
     ) -> Result<Option<(Option<BlockNumber>, Vec<u8>)>, StateError> {
+        eprintln!("ConcurrentStorageAdapter::class_definition_with_block_number {class_hash}");
+
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
             .send(Command::ClassDefinitionWithBlockNumber(class_hash, tx))
@@ -148,6 +152,8 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         block_id: BlockId,
         class_hash: ClassHash,
     ) -> Result<Option<Vec<u8>>, StateError> {
+        eprintln!("ConcurrentStorageAdapter::casm_definition_at {block_id:?} {class_hash}");
+
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
             .send(Command::CasmDefinitionAt(block_id, class_hash, tx))
@@ -160,6 +166,11 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         block_id: BlockId,
         class_hash: ClassHash,
     ) -> Result<Option<(BlockNumber, Vec<u8>)>, StateError> {
+        eprintln!(
+            "ConcurrentStorageAdapter::class_definition_at_with_block_number {block_id:?} \
+             {class_hash}"
+        );
+
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
             .send(Command::ClassDefinitionAtWithBlockNumber(
