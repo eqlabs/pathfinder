@@ -706,6 +706,28 @@ struct ConsensusCli {
         env = "PATHFINDER_CONSENSUS_HISTORY_DEPTH",
     )]
     history_depth: u64,
+
+    #[arg(
+        long = "consensus.l1-gas-price-tolerance",
+        value_name = "Percentage",
+        long_help = "Maximum allowed tolerance for L1 gas price changes from the rolling average when validating new proposals.",
+        action = clap::ArgAction::Set,
+        default_value = "20",
+        value_parser = clap::value_parser!(u8).range(0..=100),
+        env = "PATHFINDER_CONSENSUS_L1_GAS_PRICE_TOLERANCE",
+    )]
+    l1_gas_price_tolerance: u8,
+
+    #[arg(
+        long = "consensus.l1-gas-price-max-time-gap",
+        value_name = "Seconds",
+        long_help = "Maximum allowed time gap between the requested timestamp and the latest L1 gas price sample when validating new proposals. If exceeded, the data is considered stale.",
+        action = clap::ArgAction::Set,
+        default_value = "600",
+        value_parser = clap::value_parser!(u64),
+        env = "PATHFINDER_CONSENSUS_L1_GAS_PRICE_MAX_TIME_GAP",
+    )]
+    l1_gas_price_max_time_gap: u64,
 }
 
 #[derive(clap::ValueEnum, Clone, serde::Deserialize)]
@@ -952,6 +974,13 @@ pub struct ConsensusConfig {
     /// How many historical consensus engines (ie. those prior to the current
     /// one) to keep enabled.
     pub history_depth: u64,
+    /// Maximum allowed tolerance for L1 gas price changes from the rolling
+    /// average when validating new proposals.
+    pub l1_gas_price_tolerance: f64,
+    /// Maximum allowed time gap between the requested timestamp and the latest
+    /// L1 gas price sample when validating new proposals. If exceeded, the data
+    /// is considered stale.
+    pub l1_gas_price_max_time_gap: u64,
 }
 
 #[cfg(not(feature = "p2p"))]
@@ -1124,6 +1153,8 @@ impl ConsensusConfig {
                     .map(ContractAddress)
                     .collect(),
                 history_depth: consensus_cli.history_depth,
+                l1_gas_price_tolerance: consensus_cli.l1_gas_price_tolerance as f64 / 100.0,
+                l1_gas_price_max_time_gap: consensus_cli.l1_gas_price_max_time_gap,
             }
         })
     }

@@ -685,7 +685,11 @@ mod tests {
             sequencer_address: sequencer_address_bytes!(b"sequencer address genesis"),
             starknet_version: StarknetVersion::default(),
             event_commitment: event_commitment_bytes!(b"event commitment genesis"),
-            state_commitment: StateCommitment::calculate(storage_commitment, class_commitment),
+            state_commitment: StateCommitment::calculate(
+                storage_commitment,
+                class_commitment,
+                StarknetVersion::default(),
+            ),
             transaction_commitment: transaction_commitment_bytes!(b"tx commitment genesis"),
             transaction_count: 37,
             event_count: 40,

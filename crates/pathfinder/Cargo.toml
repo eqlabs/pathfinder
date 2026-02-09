@@ -55,6 +55,7 @@ pathfinder-storage = { path = "../storage" }
 pathfinder-version = { path = "../version" }
 primitive-types = { workspace = true }
 rand = { workspace = true }
+rand_chacha = { workspace = true }
 rayon = { workspace = true }
 reqwest = { workspace = true }
 rustls = { workspace = true }
@@ -98,7 +99,6 @@ pathfinder-storage = { path = "../storage", features = [
 ] }
 pretty_assertions_sorted = { workspace = true }
 proptest = { workspace = true }
-rand_chacha = { workspace = true }
 rstest = { workspace = true }
 rusqlite = { workspace = true, features = ["bundled"] }
 serde_with = { workspace = true }

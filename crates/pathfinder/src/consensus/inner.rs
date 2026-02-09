@@ -16,8 +16,7 @@ mod persist_proposals;
 ))]
 pub use persist_proposals::ConsensusProposals;
 
-#[cfg(test)]
-mod test_helpers;
+mod dummy_proposal;
 
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -186,6 +185,10 @@ impl HeightExt for NetworkMessage<ConsensusValue, ContractAddress> {
 /// the validator logic and storage usage patterns currently require a finalized
 /// block to be created even for empty proposals. For now, we create a (mostly)
 /// default block header with the necessary fields filled in.
+///
+/// NOTE: Until timestamps become part of an empty proposal, disseminating an
+/// empty proposal will cause timestamp discrepancies between nodes and
+/// validation errors.
 pub(crate) fn create_empty_block(height: u64) -> ConsensusFinalizedL2Block {
     let timestamp = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
