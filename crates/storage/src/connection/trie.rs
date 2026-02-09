@@ -1730,7 +1730,7 @@ mod tests {
                 BlockNumber::GENESIS,
             )
             .unwrap();
-        assert_eq!(root_update, RootIndexUpdate::Updated(1.into()));
+        assert_eq!(root_update, RootIndexUpdate::Updated(0.into()));
     }
 
     #[test]

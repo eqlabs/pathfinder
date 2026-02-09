@@ -362,6 +362,52 @@ impl Transaction<'_> {
         }))
     }
 
+    /// Deletes nonce and storage update entries from RocksDB for the given
+    /// block.
+    pub fn purge_state_update_data(&self, block_number: BlockNumber) -> anyhow::Result<()> {
+        let Some(data) = self.state_update_data(block_number)? else {
+            return Ok(());
+        };
+
+        let nonce_updates_column = self.rocksdb_get_column(&NONCE_UPDATES_COLUMN);
+        let storage_updates_column = self.rocksdb_get_column(&STORAGE_UPDATES_COLUMN);
+        let state_updates_column = self.rocksdb_get_column(&STATE_UPDATES_COLUMN);
+
+        let mut batch = rust_rocksdb::WriteBatch::default();
+
+        for (address, update) in &data.contract_updates {
+            if update.nonce.is_some() {
+                batch.delete_cf(&nonce_updates_column, nonce_update_key(block_number, address));
+            }
+            for (key, _) in &update.storage {
+                batch.delete_cf(
+                    &storage_updates_column,
+                    storage_update_key(block_number, address, key),
+                );
+            }
+        }
+
+        for (address, update) in &data.system_contract_updates {
+            for (key, _) in &update.storage {
+                batch.delete_cf(
+                    &storage_updates_column,
+                    storage_update_key(block_number, address, key),
+                );
+            }
+        }
+
+        batch.delete_cf(
+            &state_updates_column,
+            block_number.get().to_be_bytes(),
+        );
+
+        self.rocksdb()
+            .write(&batch)
+            .context("Deleting state update data from RocksDB")?;
+
+        Ok(())
+    }
+
     fn state_update_data(
         &self,
         block_number: BlockNumber,
@@ -384,16 +430,39 @@ impl Transaction<'_> {
     }
 
     pub fn highest_block_with_state_update(&self) -> anyhow::Result<Option<BlockNumber>> {
+        // Find the highest block in RocksDB STATE_UPDATES_COLUMN.
+        let state_updates_column = self.rocksdb_get_column(&STATE_UPDATES_COLUMN);
+        let mut read_options = ReadOptions::default();
+        read_options.set_total_order_seek(true);
+        let mut iter = self
+            .rocksdb()
+            .raw_iterator_cf_opt(&state_updates_column, read_options);
+        iter.seek_to_last();
+        let rocksdb_highest = if iter.valid() {
+            let key = iter
+                .key()
+                .context("RocksDB iterator key is missing")?;
+            let block_number = u64::from_be_bytes(
+                key.try_into()
+                    .map_err(|_| anyhow::anyhow!("Invalid key length in STATE_UPDATES_COLUMN"))?,
+            );
+            Some(BlockNumber::new_or_panic(block_number))
+        } else {
+            None
+        };
+
+        // Also check class_definitions in SQLite.
         let mut stmt = self.inner().prepare_cached(
-            r"
-            SELECT max(storage_update.last_block, nonce_update.last_block, class_definition.last_block) 
-            FROM
-                (SELECT max(block_number) last_block FROM storage_updates) storage_update,
-                (SELECT max(block_number) last_block FROM nonce_updates) nonce_update,
-                (SELECT max(block_number) last_block FROM class_definitions) class_definition",
+            "SELECT max(block_number) FROM class_definitions",
         )?;
-        stmt.query_row([], |row| row.get_optional_block_number(0))
-            .context("Querying highest storage update")
+        let sqlite_highest: Option<BlockNumber> = stmt
+            .query_row([], |row| row.get_optional_block_number(0))
+            .context("Querying highest class definition block")?;
+
+        Ok(match (rocksdb_highest, sqlite_highest) {
+            (Some(a), Some(b)) => Some(Ord::max(a, b)),
+            (a, b) => a.or(b),
+        })
     }
 
     pub fn state_diff_lengths(
