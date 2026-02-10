@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use p2p::consensus::Event;
-use pathfinder_common::{ChainId, ConsensusInfo};
+use pathfinder_common::{consensus_info, ChainId};
 use pathfinder_storage::Storage;
 use tokio::sync::{mpsc, watch};
 
@@ -16,13 +16,6 @@ pub use error::{ProposalError, ProposalHandlingError};
 #[cfg(feature = "p2p")]
 mod inner;
 
-#[cfg(all(
-    feature = "p2p",
-    feature = "consensus-integration-tests",
-    debug_assertions
-))]
-pub use inner::ConsensusProposals;
-
 pub type ConsensusP2PEventProcessingTaskHandle = tokio::task::JoinHandle<anyhow::Result<()>>;
 pub type ConsensusEngineTaskHandle = tokio::task::JoinHandle<anyhow::Result<()>>;
 
@@ -35,8 +28,8 @@ pub struct ConsensusTaskHandles {
 /// Various channels used to communicate with the consensus engine.
 #[derive(Clone)]
 pub struct ConsensusChannels {
-    /// Watcher for the latest [ConsensusInfo].
-    pub consensus_info_watch: watch::Receiver<ConsensusInfo>,
+    /// Watcher for the latest [consensus_info::ConsensusInfo].
+    pub consensus_info_watch: watch::Receiver<consensus_info::ConsensusInfo>,
     /// Channel for the sync task to send requests to consensus.
     pub sync_to_consensus_tx: mpsc::Sender<SyncMessageToConsensus>,
 }

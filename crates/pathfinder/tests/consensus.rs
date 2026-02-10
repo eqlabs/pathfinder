@@ -29,7 +29,12 @@ mod test {
 
     use crate::common::feeder_gateway::FeederGateway;
     use crate::common::pathfinder_instance::{respawn_on_fail, PathfinderInstance};
-    use crate::common::rpc_client::{get_consensus_info, wait_for_block_exists, wait_for_height};
+    use crate::common::rpc_client::{
+        get_cached_artifacts_info,
+        get_consensus_info,
+        wait_for_block_exists,
+        wait_for_height,
+    };
     use crate::common::utils;
 
     // TODO Test cases that should be supported by the integration tests:
@@ -53,17 +58,16 @@ mod test {
     // - [ ] ??? any missing significant failure injection points ???.
     #[rstest]
     #[case::happy_path(None)]
-    #[case::fail_on_proposal_init_rx(Some(InjectFailureConfig { height: 7, trigger: InjectFailureTrigger::ProposalInitRx }))]
-    #[case::fail_on_block_info_rx(Some(InjectFailureConfig { height: 7, trigger: InjectFailureTrigger::BlockInfoRx }))]
-    #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig { height: 7, trigger: InjectFailureTrigger::TransactionBatchRx }))]
-    #[case::fail_on_executed_transaction_count_rx(Some(InjectFailureConfig { height: 7, trigger: InjectFailureTrigger::ExecutedTransactionCountRx }))]
-    #[case::fail_on_proposal_fin_rx(Some(InjectFailureConfig { height: 7, trigger: InjectFailureTrigger::ProposalFinRx }))]
-    #[ignore = "FIXME: Bob gets ahead of Alice and Charlie at H=7 and the network stalls."]
-    #[case::fail_on_entire_proposal_persisted(Some(InjectFailureConfig { height: 7, trigger: InjectFailureTrigger::EntireProposalPersisted }))]
-    #[case::fail_on_prevote_rx(Some(InjectFailureConfig { height: 7, trigger: InjectFailureTrigger::PrevoteRx }))]
-    #[case::fail_on_precommit_rx(Some(InjectFailureConfig { height: 7, trigger: InjectFailureTrigger::PrecommitRx }))]
-    #[case::fail_on_proposal_decided(Some(InjectFailureConfig { height: 7, trigger: InjectFailureTrigger::ProposalDecided }))]
-    #[case::fail_on_proposal_committed(Some(InjectFailureConfig { height: 7, trigger: InjectFailureTrigger::ProposalCommitted }))]
+    #[case::fail_on_proposal_init_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ProposalInitRx }))]
+    #[case::fail_on_block_info_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::BlockInfoRx }))]
+    #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::TransactionBatchRx }))]
+    #[case::fail_on_executed_transaction_count_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ExecutedTransactionCountRx }))]
+    #[case::fail_on_proposal_fin_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ProposalFinRx }))]
+    #[case::fail_on_proposal_finalized(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ProposalFinalized }))]
+    #[case::fail_on_prevote_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::PrevoteRx }))]
+    #[case::fail_on_precommit_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::PrecommitRx }))]
+    #[case::fail_on_proposal_decided(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ProposalDecided }))]
+    #[case::fail_on_proposal_committed(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ProposalCommitted }))]
     #[tokio::test]
     async fn consensus_3_nodes_with_failures(
         #[case] inject_failure: Option<InjectFailureConfig>,
@@ -71,9 +75,11 @@ mod test {
         use tokio::sync::mpsc;
 
         const NUM_NODES: usize = 3;
-        const HEIGHT: u64 = 10;
+        // System contracts start to matter after block 10 but we have a separate
+        // regression test for that, which checks that rollback at H>10 works correctly.
+        const HEIGHT: u64 = 4;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
-        const TEST_TIMEOUT: Duration = Duration::from_secs(150);
+        const TEST_TIMEOUT: Duration = Duration::from_secs(120);
         const POLL_READY: Duration = Duration::from_millis(500);
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
@@ -119,22 +125,6 @@ mod test {
 
         utils::log_elapsed(stopwatch);
 
-        // TODO Looking at how the tests perform it turns out that proposal recovery
-        // doesn't work. In almost all the passing failure scenarios (usually 9/10), the
-        // network recovers by reproposing in the next round (ie. round 1 instead of
-        // round 0), either at H=13 or H=14, and then continues as normal. From
-        // this perspective the only recovery that does work is the WAL so that
-        // the node know which height it was at and can hopefully catch up
-        // faster.
-        //
-        // Removing the complex recovery mechanism that doesn't work but is based on
-        // storing the proposals in the database would dramtically simplify the
-        // consensus code:
-        // - No need to persist proposals to the DB.
-        // - No need to persist consensus finalized blocks to the DB.
-        // - No need to load proposals from the DB on startup.
-        // - No need to replay stored proposals on restart.
-
         let (tx, rx) = mpsc::channel(HEIGHT as usize * 3);
         let rx = tokio_stream::wrappers::ReceiverStream::new(rx);
 
@@ -172,7 +162,7 @@ mod test {
 
         let decided_hnrs = rx.collect::<Vec<_>>().await;
         if let Some(x) = decided_hnrs.iter().find(|hnr| hnr.round() > 0) {
-            eprintln!("Network failed to recover in round 0: {x}");
+            println!("Network failed to recover in round 0 at (h:r): {x}");
         }
 
         result
@@ -182,10 +172,11 @@ mod test {
     async fn consensus_3_nodes_fourth_node_joins_late_can_catch_up() -> anyhow::Result<()> {
         const NUM_NODES: usize = 4;
         // System contracts start to matter after block 10
-        const HEIGHT_TO_ADD_FOURTH_NODE: u64 = 8;
-        const FINAL_HEIGHT: u64 = 12;
+        const HEIGHT_TO_ADD_FOURTH_NODE: u64 = 2;
+        const FINAL_HEIGHT: u64 = 4;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
-        const TEST_TIMEOUT: Duration = Duration::from_secs(150);
+        const RUNUP_TIMEOUT: Duration = Duration::from_secs(60);
+        const CATCHUP_TIMEOUT: Duration = Duration::from_secs(60);
         const POLL_READY: Duration = Duration::from_millis(500);
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
@@ -252,7 +243,7 @@ mod test {
                 bob_committed,
                 charlie_committed,
             ],
-            TEST_TIMEOUT,
+            RUNUP_TIMEOUT,
         )
         .await?;
 
@@ -281,32 +272,32 @@ mod test {
                 charlie_committed,
                 dan_committed,
             ],
-            TEST_TIMEOUT,
+            CATCHUP_TIMEOUT,
         )
         .await;
 
-        let alice_artifacts = alice.consensus_db_artifacts(FINAL_HEIGHT);
+        let alice_artifacts = get_cached_artifacts_info(&alice, FINAL_HEIGHT).await;
         assert!(
             alice_artifacts.is_empty(),
-            "Alice should not have leftover consensus data: {alice_artifacts:#?}"
+            "Alice should not have leftover cached consensus data: {alice_artifacts:#?}"
         );
 
-        let bob_artifacts = bob.consensus_db_artifacts(FINAL_HEIGHT);
+        let bob_artifacts = get_cached_artifacts_info(&bob, FINAL_HEIGHT).await;
         assert!(
             bob_artifacts.is_empty(),
-            "Bob should not have leftover consensus data: {bob_artifacts:#?}"
+            "Bob should not have leftover cached consensus data: {bob_artifacts:#?}"
         );
 
-        let charlie_artifacts = charlie.consensus_db_artifacts(FINAL_HEIGHT);
+        let charlie_artifacts = get_cached_artifacts_info(&charlie, FINAL_HEIGHT).await;
         assert!(
             charlie_artifacts.is_empty(),
-            "Charlie should not have leftover consensus data: {charlie_artifacts:#?}"
+            "Charlie should not have leftover cached consensus data: {charlie_artifacts:#?}"
         );
 
-        let dan_artifacts = dan.consensus_db_artifacts(FINAL_HEIGHT);
+        let dan_artifacts = get_cached_artifacts_info(&dan, FINAL_HEIGHT).await;
         assert!(
             dan_artifacts.is_empty(),
-            "Dan should not have leftover consensus data: {dan_artifacts:#?}"
+            "Dan should not have leftover cached consensus data: {dan_artifacts:#?}"
         );
 
         join_result
@@ -320,7 +311,7 @@ mod test {
     async fn consensus_3_nodes_outdated_votes_lead_to_peer_score_changes() {
         const NUM_NODES: usize = 3;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
-        const TEST_TIMEOUT: Duration = Duration::from_secs(90);
+        const RUNUP_TIMEOUT: Duration = Duration::from_secs(60);
         const POLL_READY: Duration = Duration::from_millis(500);
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
@@ -385,7 +376,7 @@ mod test {
                 bob_committed,
                 charlie_committed,
             ],
-            TEST_TIMEOUT,
+            RUNUP_TIMEOUT,
         )
         .await
         .unwrap();
@@ -416,22 +407,22 @@ mod test {
             "At least one node should have changed peer scores after punishing the sabotaging node"
         );
 
-        let alice_artifacts = alice.consensus_db_artifacts(LAST_VALID_HEIGHT);
+        let alice_artifacts = get_cached_artifacts_info(&alice, LAST_VALID_HEIGHT).await;
         assert!(
             alice_artifacts.is_empty(),
-            "Alice should not have leftover consensus data: {alice_artifacts:#?}"
+            "Alice should not have leftover cached consensus data: {alice_artifacts:#?}"
         );
 
-        let bob_artifacts = bob.consensus_db_artifacts(LAST_VALID_HEIGHT);
+        let bob_artifacts = get_cached_artifacts_info(&bob, LAST_VALID_HEIGHT).await;
         assert!(
             bob_artifacts.is_empty(),
-            "Bob should not have leftover consensus data: {bob_artifacts:#?}"
+            "Bob should not have leftover cached consensus data: {bob_artifacts:#?}"
         );
 
-        let charlie_artifacts = charlie.consensus_db_artifacts(LAST_VALID_HEIGHT);
+        let charlie_artifacts = get_cached_artifacts_info(&charlie, LAST_VALID_HEIGHT).await;
         assert!(
             charlie_artifacts.is_empty(),
-            "Charlie should not have leftover consensus data: {charlie_artifacts:#?}"
+            "Charlie should not have leftover cached consensus data: {charlie_artifacts:#?}"
         );
     }
 

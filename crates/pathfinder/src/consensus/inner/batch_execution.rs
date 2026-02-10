@@ -33,9 +33,6 @@ pub struct BatchExecutionManager {
     /// processed. An entry exists here if ExecutedTransactionCount has been
     /// successfully processed for this height/round.
     executed_transaction_count_processed: HashSet<HeightAndRound>,
-    /// Tracks which proposals (height/round) had their execution started from
-    /// replay.
-    replayed_execution: HashSet<HeightAndRound>,
     /// Gas price provider for block info validation.
     gas_price_provider: Option<L1GasPriceProvider>,
     /// Worker pool for concurrent execution.
@@ -51,7 +48,6 @@ impl BatchExecutionManager {
         Self {
             executing: HashSet::new(),
             executed_transaction_count_processed: HashSet::new(),
-            replayed_execution: HashSet::new(),
             gas_price_provider,
             worker_pool,
         }
@@ -86,18 +82,6 @@ impl BatchExecutionManager {
     ///
     /// Note: This is in its own method to prevent drift with tests.
     pub fn should_defer_proposal_fin(&self, height_and_round: &HeightAndRound) -> bool {
-        // Don't defer if ANY round at this height was replayed!
-        // ExecutedTransactionCount may have never been persisted before the
-        // crash. This handles the case where the network moved to a new round
-        // while we were restarting.
-        let height = height_and_round.height();
-        if self
-            .replayed_execution
-            .iter()
-            .any(|hr| hr.height() == height)
-        {
-            return false;
-        }
         self.is_executing(height_and_round)
             && !self.is_executed_transaction_count_processed(height_and_round)
     }
@@ -112,7 +96,6 @@ impl BatchExecutionManager {
         validator_stage: ValidatorStage,
         main_db: Storage,
         deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
-        is_replayed: bool,
     ) -> Result<ValidatorStage, ProposalHandlingError> {
         let mut main_db_conn = main_db
             .connection()
@@ -191,10 +174,6 @@ impl BatchExecutionManager {
 
         // Mark that execution has started for this height/round
         self.executing.insert(height_and_round);
-
-        if is_replayed {
-            self.replayed_execution.insert(height_and_round);
-        }
 
         tracing::debug!(
             "Transaction batch execution for height and round {height_and_round} is complete, \
@@ -328,8 +307,7 @@ impl BatchExecutionManager {
         let had_transactions_fin = self
             .executed_transaction_count_processed
             .remove(height_and_round);
-        let had_replayed = self.replayed_execution.remove(height_and_round);
-        if had_execution || had_transactions_fin || had_replayed {
+        if had_execution || had_transactions_fin {
             tracing::debug!("Cleaned up execution state for {height_and_round}");
         }
     }
@@ -674,7 +652,6 @@ mod tests {
                 validator_stage,
                 storage.clone(),
                 &mut deferred_executions,
-                false,
             )
             .expect("Failed to process batch");
 
@@ -749,7 +726,6 @@ mod tests {
                     validator_stage,
                     storage.clone(),
                     &mut deferred_executions,
-                    false,
                 )
                 .expect("Failed to process batch");
 
@@ -791,7 +767,6 @@ mod tests {
                     next_stage,
                     storage.clone(),
                     &mut deferred_executions,
-                    false,
                 )
                 .expect("Failed to process batch");
 
@@ -840,7 +815,6 @@ mod tests {
                         next_stage,
                         storage.clone(),
                         &mut deferred_executions,
-                        false,
                     )
                     .expect("Failed to process batch");
             }

@@ -2,10 +2,10 @@
 //!
 //! These tests verify the full integration flow of p2p_task, including proposal
 //! processing, deferral logic (when ExecutedTransactionCount or ProposalFin
-//! arrive out of order), rollback scenarios, and database persistence. They
-//! test the complete path from receiving P2P events to sending consensus
-//! commands.
+//! arrive out of order), rollback scenarios. They test the complete path from
+//! receiving P2P events to sending consensus commands.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -16,16 +16,15 @@ use p2p::libp2p::PeerId;
 use p2p_proto::consensus::ProposalPart;
 use pathfinder_common::prelude::*;
 use pathfinder_common::{
+    consensus_info,
     ChainId,
     ConsensusFinalizedBlockHeader,
     ConsensusFinalizedL2Block,
-    ConsensusInfo,
     ContractAddress,
     ProposalCommitment,
 };
 use pathfinder_consensus::ConsensusCommand;
 use pathfinder_crypto::Felt;
-use pathfinder_storage::consensus::ConsensusStorage;
 use pathfinder_storage::{Storage, StorageBuilder};
 use tokio::sync::{mpsc, watch};
 use tokio::time::error::Elapsed;
@@ -35,7 +34,6 @@ use crate::consensus::inner::dummy_proposal::{
     create_test_proposal_init,
     create_transaction_batch,
 };
-use crate::consensus::inner::persist_proposals::ConsensusProposals;
 use crate::consensus::inner::{
     p2p_task,
     ConsensusTaskEvent,
@@ -49,7 +47,6 @@ use crate::SyncMessageToConsensus;
 /// channels, mock client)
 struct TestEnvironment {
     main_storage: Storage,
-    consensus_storage: ConsensusStorage,
     p2p_client_receiver: mpsc::UnboundedReceiver<p2p::core::Command<p2p::consensus::Command>>,
     p2p_tx: mpsc::UnboundedSender<Event>,
     tx_to_p2p: mpsc::Sender<P2PTaskEvent>,
@@ -58,7 +55,7 @@ struct TestEnvironment {
     handle: Arc<Mutex<Option<tokio::task::JoinHandle<anyhow::Result<()>>>>>,
 
     // Keep these alive to prevent receiver from being dropped
-    _info_watch_rx: watch::Receiver<crate::consensus::ConsensusInfo>,
+    _info_watch_rx: watch::Receiver<consensus_info::ConsensusInfo>,
 }
 
 impl TestEnvironment {
@@ -67,17 +64,24 @@ impl TestEnvironment {
     const TX_TO_P2P_CHANNEL_SIZE: usize = 100;
 
     fn new(chain_id: ChainId, validator_address: ContractAddress) -> Self {
+        Self::with_finalized_blocks(chain_id, validator_address, HashMap::new())
+    }
+
+    fn with_finalized_blocks(
+        chain_id: ChainId,
+        validator_address: ContractAddress,
+        finalized_blocks: HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
+    ) -> Self {
         // Initialize temp pathfinder and consensus databases
         let main_storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
-        let consensus_storage =
-            ConsensusStorage::in_tempdir().expect("Failed to create consensus temp database");
 
         // Mock channels for p2p communication
         let (p2p_tx, p2p_rx) = mpsc::unbounded_channel();
         let (tx_to_consensus, rx_from_p2p) = mpsc::channel(Self::TX_TO_CONSENSUS_CHANNEL_SIZE);
         let (tx_to_p2p, rx_from_consensus) = mpsc::channel(Self::TX_TO_P2P_CHANNEL_SIZE);
         let (tx_sync_to_consensus, rx_from_sync) = mpsc::channel(1);
-        let (info_watch_tx, info_watch_rx) = watch::channel(ConsensusInfo::default());
+        let (info_watch_tx, info_watch_rx) =
+            watch::channel(consensus_info::ConsensusInfo::default());
 
         // Create mock Client (used for receiving events in these tests)
         let keypair = Keypair::generate_ed25519();
@@ -98,7 +102,7 @@ impl TestEnvironment {
             rx_from_sync,
             info_watch_tx,
             main_storage.clone(),
-            consensus_storage.clone(),
+            finalized_blocks,
             // Only used for failure injection, which does not happen in these tests
             &PathBuf::default(),
             true,
@@ -108,7 +112,6 @@ impl TestEnvironment {
 
         Self {
             main_storage,
-            consensus_storage,
             p2p_client_receiver: client_receiver,
             p2p_tx,
             tx_to_p2p,
@@ -124,7 +127,7 @@ impl TestEnvironment {
         let mut db_conn = self.main_storage.connection().unwrap();
         let db_tx = db_conn.transaction().unwrap();
 
-        let parent_header = BlockHeader::builder()
+        let header = BlockHeader::builder()
             .number(BlockNumber::new_or_panic(height))
             .timestamp(BlockTimestamp::new_or_panic(1000))
             .calculated_state_commitment(
@@ -134,30 +137,8 @@ impl TestEnvironment {
             .sequencer_address(SequencerAddress::ZERO)
             .finalize_with_hash(BlockHash(block_id_felt));
 
-        db_tx.insert_block_header(&parent_header).unwrap();
+        db_tx.insert_block_header(&header).unwrap();
         db_tx.commit().unwrap();
-    }
-
-    fn create_uncommitted_finalized_block(&self, height: u64, round: u32) {
-        let block_id_felt = Felt::from(height);
-        let mut consensus_db_conn = self.consensus_storage.connection().unwrap();
-        let consensus_db_tx = consensus_db_conn.transaction().unwrap();
-        let proposals_db = ConsensusProposals::new(consensus_db_tx);
-        let block = ConsensusFinalizedL2Block {
-            header: ConsensusFinalizedBlockHeader {
-                number: BlockNumber::new_or_panic(height),
-                timestamp: BlockTimestamp::new_or_panic(1000),
-                state_diff_commitment: StateDiffCommitment(block_id_felt),
-                ..Default::default()
-            },
-            state_update: Default::default(),
-            transactions_and_receipts: vec![],
-            events: vec![],
-        };
-        proposals_db
-            .persist_consensus_finalized_block(height, round, block)
-            .unwrap();
-        proposals_db.commit().unwrap();
     }
 
     async fn wait_for_task_initialization(&self) {
@@ -341,141 +322,6 @@ fn verify_proposal_event(
     }
 }
 
-/// Helper: Verify proposal parts are persisted in database
-///
-/// Verifies that the expected part types are present:
-/// - Init (required)
-/// - BlockInfo (optional, if `expect_transaction_batch` is true)
-/// - TransactionBatch (optional, if `expect_transaction_batch` is true)
-/// - ExecutedTransactionCount (optional, if `expect_transaction_batch` is true)
-/// - Fin (required)
-///
-/// Also verifies the total count matches `expected_count`.
-fn verify_proposal_parts_persisted(
-    consensus_storage: &ConsensusStorage,
-    height: u64,
-    round: u32,
-    validator_address: &ContractAddress, // Query with validator address (receiver)
-    expected_count: usize,
-    expect_transaction_batch: bool,
-) {
-    let mut db_conn = consensus_storage.connection().unwrap();
-    let proposals_db = db_conn.transaction().map(ConsensusProposals::new).unwrap();
-    // seems like foreign_parts queries by validator_address to get
-    // proposals from foreign validators (proposals where proposer !=
-    // validator)
-    let parts = proposals_db
-        .foreign_parts(height, round, validator_address)
-        .unwrap()
-        .unwrap_or_default();
-
-    // Part types for error message
-    let part_types: Vec<String> = parts
-        .iter()
-        .map(|part| format!("{:?}", std::mem::discriminant(part)))
-        .collect();
-
-    // ----- Debug output for proposal parts -----
-    #[cfg(debug_assertions)]
-    {
-        eprintln!(
-            "Found {} proposal parts in database for height {} round {} (querying with validator \
-             {})",
-            parts.len(),
-            height,
-            round,
-            validator_address.0
-        );
-        for (i, part) in parts.iter().enumerate() {
-            eprintln!("  Part {}: {:?}", i, std::mem::discriminant(part));
-        }
-    }
-    // ----- End debug output for proposal parts -----
-
-    // Verify required parts are present
-    use p2p_proto::consensus::ProposalPart as P2PProposalPart;
-    let has_init = parts.iter().any(|p| matches!(p, P2PProposalPart::Init(_)));
-    let has_block_info = parts
-        .iter()
-        .any(|p| matches!(p, P2PProposalPart::BlockInfo(_)));
-    let has_transaction_batch = parts
-        .iter()
-        .any(|p| matches!(p, P2PProposalPart::TransactionBatch(_)));
-    let has_executed_transaction_count = parts
-        .iter()
-        .any(|p| matches!(p, P2PProposalPart::ExecutedTransactionCount(_)));
-    let has_fin = parts.iter().any(|p| matches!(p, P2PProposalPart::Fin(_)));
-
-    assert!(
-        has_init,
-        "Expected Init part to be persisted. Persisted parts: [{}]",
-        part_types.join(", ")
-    );
-    assert!(
-        has_fin,
-        "Expected Fin part to be persisted. Persisted parts: [{}]",
-        part_types.join(", ")
-    );
-    if expect_transaction_batch {
-        assert!(
-            has_block_info,
-            "Expected BlockInfo part to be persisted. Persisted parts: [{}]",
-            part_types.join(", ")
-        );
-        assert!(
-            has_transaction_batch,
-            "Expected TransactionBatch part to be persisted. Persisted parts: [{}]",
-            part_types.join(", ")
-        );
-        assert!(
-            has_executed_transaction_count,
-            "Expected ExecutedTransactionCount part to be persisted. Persisted parts: [{}]",
-            part_types.join(", ")
-        );
-    }
-
-    // Verify total count
-    assert_eq!(
-        parts.len(),
-        expected_count,
-        "Expected {} proposal parts, got {}. Persisted parts: [{}]",
-        expected_count,
-        parts.len(),
-        part_types.join(", ")
-    );
-}
-
-/// Helper: Verify transaction count from persisted proposal parts
-fn verify_transaction_count(
-    consensus_storage: &ConsensusStorage,
-    height: u64,
-    round: u32,
-    validator_address: &ContractAddress,
-    expected_count: usize,
-) {
-    let mut db_conn = consensus_storage.connection().unwrap();
-    let db_tx = db_conn.transaction().unwrap();
-    let proposals = ConsensusProposals::new(db_tx);
-    let parts = proposals
-        .foreign_parts(height, round, validator_address)
-        .unwrap()
-        .unwrap_or_default();
-
-    // Count transactions from all TransactionBatch parts
-    let mut total_transactions = 0;
-    for part in &parts {
-        if let ProposalPart::TransactionBatch(transactions) = part {
-            total_transactions += transactions.len();
-        }
-    }
-
-    assert_eq!(
-        total_transactions, expected_count,
-        "Expected {expected_count} transactions in persisted proposal parts, found \
-         {total_transactions}",
-    );
-}
-
 /// ProposalFin deferred until parent block is committed.
 ///
 /// **Scenario**: ProposalFin arrives before the parent block is committed.
@@ -486,8 +332,7 @@ fn verify_transaction_count(
 /// ExecutedTransactionCount → ProposalFin → CommitBlock(parent).
 ///
 /// Verify ProposalFin is deferred (no proposal event), then verify
-/// finalization occurs after parent block is committed. Also verify
-/// ProposalFin is persisted in the database even when deferred.
+/// finalization occurs after parent block is committed.
 #[rstest::rstest]
 #[case::consensus_ahead_of_fgw(true)]
 #[case::fgw_ahead_of_consensus(false)]
@@ -497,7 +342,21 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
 ) {
     let chain_id = ChainId::SEPOLIA_TESTNET;
     let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
-    let mut env = TestEnvironment::new(chain_id, validator_address);
+    let finalized_blocks = [(
+        HeightAndRound::new(1, 0),
+        ConsensusFinalizedL2Block {
+            header: ConsensusFinalizedBlockHeader {
+                number: BlockNumber::GENESIS,
+                timestamp: BlockTimestamp::new_or_panic(1000),
+                state_diff_commitment: StateDiffCommitment(Felt::ONE),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    )]
+    .into();
+    let mut env =
+        TestEnvironment::with_finalized_blocks(chain_id, validator_address, finalized_blocks);
     env.create_committed_block(0);
     if !consensus_ahead_of_fgw {
         // Simulate the case where FGW magically has the block which consensus has not
@@ -505,7 +364,6 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
         // storage to be consistent against all odds.
         env.create_committed_block(1);
     }
-    env.create_uncommitted_finalized_block(1, 0);
     env.wait_for_task_initialization().await;
 
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
@@ -584,25 +442,6 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
         verify_proposal_event(proposal_cmd, 2, proposal_commitment);
     }
 
-    // Check what's in the database right after ProposalFin
-    #[cfg(debug_assertions)]
-    {
-        let mut db_conn = env.consensus_storage.connection().unwrap();
-        let db_tx = db_conn.transaction().unwrap();
-        let proposals = ConsensusProposals::new(db_tx);
-        let parts_after_proposal_fin = proposals
-            .foreign_parts(2, 1, &validator_address)
-            .unwrap()
-            .unwrap_or_default();
-        eprintln!(
-            "Parts in database after ProposalFin (before ExecutedTransactionCount): {}",
-            parts_after_proposal_fin.len()
-        );
-        for (i, part) in parts_after_proposal_fin.iter().enumerate() {
-            eprintln!("  Part {}: {:?}", i, std::mem::discriminant(part));
-        }
-    }
-
     // Step 6: Send CommitBlock for parent block (should trigger finalization)
     env.tx_to_p2p
         .send(
@@ -639,30 +478,10 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
             .expect("Expected proposal event after ExecutedTransactionCount");
         verify_proposal_event(proposal_cmd, 2, proposal_commitment);
     } else {
-        // Step 8: It turns out that for some unknown reason the feeder
-        // gateway has already produced the block for H=1 that
-        // the consensus has just agreed upon.
-        env.verify_task_alive().await;
+        // Step 8: It turns out that the feeder gateway was faster to get the
+        // block for H=1 from the proposer than the node under test figured out
+        // that the very block was decided upon.
     }
-
-    // Verify proposal parts persisted
-    // Query with validator_address (receiver) to get foreign proposals
-    // Expected: Init, BlockInfo, TransactionBatch, ExecutedTransactionCount,
-    // ProposalFin (5 parts)
-    verify_proposal_parts_persisted(
-        &env.consensus_storage,
-        2,
-        1,
-        &validator_address,
-        5,
-        true, // expect_transaction_batch
-    );
-
-    env.verify_task_alive().await;
-
-    // Verify transaction count matches ExecutedTransactionCount
-    verify_transaction_count(&env.consensus_storage, 2, 1, &validator_address, 5);
-
     env.verify_task_alive().await;
 }
 
@@ -676,7 +495,7 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
 /// ExecutedTransactionCount → ProposalFin.
 ///
 /// Verify proposal event is sent immediately after ProposalFin (no
-/// deferral), and verify all parts are persisted correctly.
+/// deferral).
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn test_full_proposal_flow_normal_order() {
     let chain_id = ChainId::SEPOLIA_TESTNET;
@@ -760,20 +579,7 @@ async fn test_full_proposal_flow_normal_order() {
         .await
         .expect("Expected proposal event after ProposalFin");
     verify_proposal_event(proposal_cmd, 2, proposal_commitment);
-
-    // Verify proposal parts persisted
-    // Query with validator_address (receiver) to get foreign proposals
-    verify_proposal_parts_persisted(
-        &env.consensus_storage,
-        2,
-        1,
-        &validator_address,
-        5,
-        true, // expect_transaction_batch
-    );
-
-    // Verify transaction count matches ExecutedTransactionCount
-    verify_transaction_count(&env.consensus_storage, 2, 1, &validator_address, 5);
+    env.verify_task_alive().await;
 }
 
 /// ExecutedTransactionCount deferred when execution not started.
@@ -897,18 +703,7 @@ async fn test_executed_transaction_count_deferred_when_execution_not_started() {
         .await
         .expect("Expected proposal event after deferred ExecutedTransactionCount was processed");
     verify_proposal_event(proposal_cmd, 2, proposal_commitment);
-
-    // Verify proposal parts persisted
-    // Expected: Init, BlockInfo, TransactionBatch (2 batches), ProposalFin (5
-    // parts)
-    verify_proposal_parts_persisted(
-        &env.consensus_storage,
-        2,
-        1,
-        &validator_address,
-        6,    // 2 TransactionBatch parts
-        true, // expect_transaction_batch
-    );
+    env.verify_task_alive().await;
 }
 
 /// Multiple TransactionBatch messages are executed correctly.
@@ -921,9 +716,7 @@ async fn test_executed_transaction_count_deferred_when_execution_not_started() {
 /// TransactionBatch 2 → TransactionBatch 3 → ExecutedTransactionCount →
 /// ProposalFin.
 ///
-/// Verify proposal event is sent after ProposalFin, and verify all batches
-/// are persisted (combined into a single TransactionBatch part in the
-/// database).
+/// Verify proposal event is sent after ProposalFin.
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn test_multiple_batches_execution() {
     let chain_id = ChainId::SEPOLIA_TESTNET;
@@ -1023,24 +816,7 @@ async fn test_multiple_batches_execution() {
         .await
         .expect("Expected proposal event after ProposalFin");
     verify_proposal_event(proposal_cmd, 2, proposal_commitment);
-
-    // Verify all batches persisted
-    // Query with validator_address (receiver) to get foreign proposals
-    // Expected: Init, BlockInfo, TransactionBatch (3 batches),
-    // ExecutedTransactionCount, ProposalFin (7 parts)
-    verify_proposal_parts_persisted(
-        &env.consensus_storage,
-        2,
-        1,
-        &validator_address,
-        7,    // 3 TransactionBatch parts
-        true, // expect_transaction_batch
-    );
-
-    // Verify transaction count matches ExecutedTransactionCount
-    // Multiple batches are persisted as separate TransactionBatch parts, so we
-    // count the transactions from all persisted parts
-    verify_transaction_count(&env.consensus_storage, 2, 1, &validator_address, 7);
+    env.verify_task_alive().await;
 }
 
 /// ExecutedTransactionCount triggers rollback when count is less than executed.
@@ -1153,32 +929,7 @@ async fn test_executed_transaction_count_rollback() {
         .await
         .expect("Expected proposal event after ProposalFin");
     verify_proposal_event(proposal_cmd, 2, proposal_commitment);
-
-    // Verify proposal parts persisted
-    // Query with validator_address (receiver) to get foreign proposals
-    // Expected: Init, BlockInfo, TransactionBatch (2 batches),
-    // ExecutedTransactionCount, ProposalFin (6 parts)
-    verify_proposal_parts_persisted(
-        &env.consensus_storage,
-        2,
-        1,
-        &validator_address,
-        6,    // 2 TransactionBatch parts
-        true, // expect_transaction_batch
-    );
-
-    // Note: Persisted proposal parts contain the original transactions (10), not
-    // the rolled-back count (7). Rollback happens in the validator's
-    // execution state at runtime, but the persisted parts reflect what was
-    // received from the network. The rollback verification (that execution
-    // state has 7 transactions) is covered in unit tests. Here we verify
-    // that all original batches are persisted.
-    //
-    // This means that if the process crashes and recovers from persisted parts, it
-    // would restore 10 transactions instead of the rolled-back count of 7. Recovery
-    // logic should take ExecutedTransactionCount into account to ensure the correct
-    // transaction count is restored after rollback.
-    verify_transaction_count(&env.consensus_storage, 2, 1, &validator_address, 10);
+    env.verify_task_alive().await;
 }
 
 /// Empty TransactionBatch execution (non-spec edge case).
@@ -1326,19 +1077,7 @@ async fn test_executed_transaction_count_exceeds_actually_executed() {
         .await
         .expect("Expected proposal event after ProposalFin");
     verify_proposal_event(proposal_cmd, 2, proposal_commitment);
-
-    verify_proposal_parts_persisted(
-        &env.consensus_storage,
-        2,
-        1,
-        &validator_address,
-        5,
-        true, // expect_transaction_batch
-    );
-
-    // Verify transaction count matches what was actually received (5 transactions).
-    // Persisted proposal parts should reflect what was received from the network.
-    verify_transaction_count(&env.consensus_storage, 2, 1, &validator_address, 5);
+    env.verify_task_alive().await;
 }
 
 /// ExecutedTransactionCount arrives before any TransactionBatch.
@@ -1431,18 +1170,7 @@ async fn test_executed_transaction_count_before_any_batch() {
         .await
         .expect("Expected proposal event after ProposalFin");
     verify_proposal_event(proposal_cmd, 2, proposal_commitment);
-
-    verify_proposal_parts_persisted(
-        &env.consensus_storage,
-        2,
-        1,
-        &validator_address,
-        5,
-        true, // expect_transaction_batch
-    );
-
-    // Verify transaction count matches ExecutedTransactionCount count
-    verify_transaction_count(&env.consensus_storage, 2, 1, &validator_address, 5);
+    env.verify_task_alive().await;
 }
 
 /// Empty proposal per spec (no TransactionBatch, no ExecutedTransactionCount).
@@ -1456,8 +1184,7 @@ async fn test_executed_transaction_count_before_any_batch() {
 /// ExecutedTransactionCount).
 ///
 /// Verify ProposalFin proceeds immediately (not deferred, since execution
-/// never started), proposal event is sent, and all parts are persisted
-/// correctly.
+/// never started), proposal event is sent.
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn test_empty_proposal_per_spec() {
     let chain_id = ChainId::SEPOLIA_TESTNET;
@@ -1513,17 +1240,7 @@ async fn test_empty_proposal_per_spec() {
         .await
         .expect("Expected proposal event after ProposalFin for empty proposal");
     verify_proposal_event(proposal_cmd, 2, proposal_commitment);
-
-    // Verify proposal parts persisted
-    // Expected: Init, ProposalFin (2 parts)
-    verify_proposal_parts_persisted(
-        &env.consensus_storage,
-        2,
-        1,
-        &validator_address,
-        2,
-        false, // expect_transaction_batch (empty proposal)
-    );
+    env.verify_task_alive().await;
 }
 
 /// Make sure that receiving an outdated P2P message results in a command
