@@ -7,7 +7,12 @@ use pathfinder_common::transaction::Transaction as StarknetTransaction;
 use pathfinder_common::{BlockHash, BlockId, BlockNumber, TransactionHash, TransactionIndex};
 
 use super::{EventsForBlock, TransactionDataForBlock, TransactionWithReceipt};
+use crate::columns::Column;
 use crate::prelude::*;
+
+pub const TRANSACTIONS_AND_RECEIPTS_COLUMN: Column = Column::new("transactions_and_receipts");
+pub const EVENTS_COLUMN: Column = Column::new("events");
+pub const TRANSACTION_HASHES_COLUMN: Column = Column::new("transaction_hashes");
 
 pub(crate) mod compression {
     use std::sync::LazyLock;
@@ -106,29 +111,7 @@ impl Transaction<'_> {
             return Ok(());
         }
 
-        let mut insert_transaction_stmt = self
-            .inner()
-            .prepare_cached(
-                "INSERT INTO transactions (block_number, transactions, events) VALUES \
-                 (:block_number, :transactions, :events)",
-            )
-            .context("Preparing insert transaction statement")?;
-        let mut insert_transaction_hash_stmt = self
-            .inner()
-            .prepare_cached(
-                "INSERT INTO transaction_hashes (hash, block_number, idx) VALUES (:hash, \
-                 :block_number, :idx)",
-            )
-            .context("Preparing insert transaction hash statement")?;
-
-        for (idx, (transaction, ..)) in transactions.iter().enumerate() {
-            let idx: i64 = idx.try_into()?;
-            insert_transaction_hash_stmt.execute(named_params![
-                ":hash": &transaction.hash,
-                ":block_number": &block_number,
-                ":idx": &idx,
-            ])?;
-        }
+        // Encode transactions and receipts.
         let transactions_with_receipts: Vec<_> = transactions
             .iter()
             .map(|(transaction, receipt)| dto::TransactionWithReceiptV4 {
@@ -146,6 +129,7 @@ impl Transaction<'_> {
             compression::compress_transactions(&transactions_with_receipts)
                 .context("Compressing transaction")?;
 
+        // Encode events.
         let encoded_events = events
             .map(|evts| {
                 let events = dto::EventsForBlock::V0 {
@@ -160,13 +144,35 @@ impl Transaction<'_> {
             })
             .transpose()?;
 
-        insert_transaction_stmt
-            .execute(named_params![
-                ":block_number": &block_number,
-                ":transactions": &transactions_with_receipts,
-                ":events": &encoded_events,
-            ])
-            .context("Inserting transaction data")?;
+        let mut batch = self.batch.lock().expect("Batch lock poisoned");
+        let block_number_key = block_number.get().to_be_bytes();
+
+        let transactions_and_receipts_column =
+            self.rocksdb_get_column(&TRANSACTIONS_AND_RECEIPTS_COLUMN);
+        batch.put_cf(
+            &transactions_and_receipts_column,
+            &block_number_key,
+            &transactions_with_receipts,
+        );
+
+        let events_column = self.rocksdb_get_column(&EVENTS_COLUMN);
+        if let Some(encoded_events) = encoded_events {
+            batch.put_cf(&events_column, &block_number_key, &encoded_events);
+        }
+
+        let transaction_hashes_column = self.rocksdb_get_column(&TRANSACTION_HASHES_COLUMN);
+        for (idx, (transaction, ..)) in transactions.iter().enumerate() {
+            let idx: u16 = idx.try_into()?;
+            let mut buffer = [0u8; 10];
+            buffer[..8].copy_from_slice(&block_number_key);
+            buffer[8..].copy_from_slice(&idx.to_be_bytes());
+
+            batch.put_cf(
+                &transaction_hashes_column,
+                transaction.hash.0.as_be_bytes(),
+                &buffer,
+            );
+        }
 
         Ok(())
     }

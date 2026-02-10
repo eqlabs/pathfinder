@@ -5,17 +5,48 @@ use bitvec::prelude::Msb0;
 use bitvec::vec::BitVec;
 use pathfinder_common::prelude::*;
 use pathfinder_crypto::Felt;
+use rust_rocksdb::ReadOptions;
 
 use crate::columns::Column;
 use crate::prelude::*;
 use crate::TriePruneMode;
 
-pub const TRIE_CLASS_HASH_COLUMN: Column = Column::new("trie_class_hash").with_point_lookup();
-pub const TRIE_CLASS_NODE_COLUMN: Column = Column::new("trie_class_node").with_point_lookup();
-pub const TRIE_CONTRACT_HASH_COLUMN: Column = Column::new("trie_contract_hash").with_point_lookup();
-pub const TRIE_CONTRACT_NODE_COLUMN: Column = Column::new("trie_contract_node").with_point_lookup();
-pub const TRIE_STORAGE_HASH_COLUMN: Column = Column::new("trie_storage_hash").with_point_lookup();
-pub const TRIE_STORAGE_NODE_COLUMN: Column = Column::new("trie_storage_node").with_point_lookup();
+pub const TRIE_CLASS_HASH_COLUMN: Column = Column::new("trie_class_hash");
+pub const TRIE_CLASS_NODE_COLUMN: Column = Column::new("trie_class_node");
+pub const TRIE_CONTRACT_HASH_COLUMN: Column = Column::new("trie_contract_hash");
+pub const TRIE_CONTRACT_NODE_COLUMN: Column = Column::new("trie_contract_node");
+pub const TRIE_STORAGE_HASH_COLUMN: Column = Column::new("trie_storage_hash");
+pub const TRIE_STORAGE_NODE_COLUMN: Column = Column::new("trie_storage_node");
+
+const CONTRACT_STATE_HASHES_PREFIX_LENGTH: usize = size_of::<Felt>();
+const CONTRACT_STATE_HASHES_KEY_LENGTH: usize =
+    CONTRACT_STATE_HASHES_PREFIX_LENGTH + size_of::<u32>();
+
+pub const CONTRACT_STATE_HASHES_COLUMN: Column =
+    Column::new("contract_state_hashes").with_prefix_length(CONTRACT_STATE_HASHES_PREFIX_LENGTH);
+
+/// Constructs the key for a contract state hash entry.
+///
+/// Format is the following:
+/// [contract_address (32 bytes)][inverted block number (4 bytes)]
+///
+/// We're using an inverted block number to allow for efficient retrieval of the
+/// latest state hash for a given contract address using forward iteration.
+fn contract_state_hashes_key(
+    block_number: BlockNumber,
+    contract_address: &ContractAddress,
+) -> [u8; CONTRACT_STATE_HASHES_KEY_LENGTH] {
+    let mut key = [0u8; CONTRACT_STATE_HASHES_KEY_LENGTH];
+    let block_number: u32 = block_number
+        .get()
+        .try_into()
+        .expect("block number fits into u32");
+    let block_number: u32 = u32::MAX - block_number;
+
+    key[..CONTRACT_STATE_HASHES_PREFIX_LENGTH].copy_from_slice(contract_address.0.as_be_bytes());
+    key[CONTRACT_STATE_HASHES_PREFIX_LENGTH..].copy_from_slice(&block_number.to_be_bytes());
+    key
+}
 
 impl Transaction<'_> {
     pub fn class_root_index(
@@ -190,11 +221,12 @@ impl Transaction<'_> {
         contract: ContractAddress,
         state_hash: ContractStateHash,
     ) -> anyhow::Result<()> {
-        self.inner().execute(
-            "INSERT OR REPLACE INTO contract_state_hashes(block_number, contract_address, \
-             state_hash) VALUES(?,?,?)",
-            params![&block_number, &contract, &state_hash],
-        )?;
+        let column = self.rocksdb_get_column(&CONTRACT_STATE_HASHES_COLUMN);
+        self.batch.lock().expect("Batch lock poisoned").put_cf(
+            &column,
+            contract_state_hashes_key(block_number, &contract),
+            state_hash.0.as_be_bytes(),
+        );
 
         if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
             if let Some(block_number) = block_number.checked_sub(num_blocks_kept) {
@@ -210,25 +242,26 @@ impl Transaction<'_> {
         contract: ContractAddress,
         before_block: BlockNumber,
     ) -> anyhow::Result<()> {
-        let mut stmt = self.inner().prepare_cached(
-            "SELECT block_number
-            FROM contract_state_hashes
-            WHERE contract_address = ? AND block_number <= ?
-            ORDER BY block_number DESC
-            LIMIT 1",
-        )?;
-        let last_block_with_contract_state_hash = stmt
-            .query_row(params![&contract, &before_block], |row| {
-                row.get_block_number(0)
-            })
-            .optional()?;
+        let column = self.rocksdb_get_column(&CONTRACT_STATE_HASHES_COLUMN);
+        let key = contract_state_hashes_key(before_block, &contract);
 
-        if let Some(last_block_with_contract_state_hash) = last_block_with_contract_state_hash {
-            let mut stmt = self.inner().prepare_cached(
-                "DELETE FROM contract_state_hashes WHERE contract_address = ? AND block_number < ?",
-            )?;
-            stmt.execute(params![&contract, &last_block_with_contract_state_hash])?;
+        let mut read_options = ReadOptions::default();
+        read_options.set_prefix_same_as_start(true);
+        let mut iter = self.rocksdb().raw_iterator_cf_opt(&column, read_options);
+        iter.seek(key);
+        if !iter.valid() {
+            // No entries for this contract, nothing to delete.
+            return Ok(());
         }
+
+        // Skip _last_ entry and remove the rest.
+        let mut batch = self.batch.lock().expect("Batch lock poisoned");
+        iter.next();
+        while iter.valid() {
+            batch.delete_cf(&column, iter.key().unwrap());
+            iter.next();
+        }
+
         Ok(())
     }
 
@@ -237,15 +270,22 @@ impl Transaction<'_> {
         block_number: BlockNumber,
         contract: ContractAddress,
     ) -> anyhow::Result<Option<ContractStateHash>> {
-        self.inner()
-            .query_row(
-                "SELECT state_hash FROM contract_state_hashes WHERE contract_address = ? AND \
-                 block_number <= ? ORDER BY block_number DESC LIMIT 1",
-                params![&contract, &block_number],
-                |row| row.get_contract_state_hash(0),
-            )
-            .optional()
-            .map_err(Into::into)
+        let column = self.rocksdb_get_column(&CONTRACT_STATE_HASHES_COLUMN);
+        let key = contract_state_hashes_key(block_number, &contract);
+
+        let mut read_options = ReadOptions::default();
+        read_options.set_prefix_same_as_start(true);
+        let mut iter = self.rocksdb().raw_iterator_cf_opt(&column, read_options);
+        iter.seek(key);
+        if !iter.valid() {
+            return Ok(None);
+        }
+
+        let value = iter
+            .value()
+            .context("Reading contract state hash value from RocksDB")?;
+        let value = Felt::from_be_slice(value).context("Parsing contract state hash value")?;
+        Ok(Some(ContractStateHash(value)))
     }
 
     pub fn insert_storage_root(
@@ -532,7 +572,7 @@ impl Transaction<'_> {
             let hash_column = self.rocksdb_get_column(rocksdb_hash_column);
             let node_column = self.rocksdb_get_column(rocksdb_node_column);
 
-            let mut batch = crate::RocksDBBatch::default();
+            let mut batch = self.batch.lock().expect("Batch lock poisoned");
 
             while let Some(row) = rows.next().context("Iterating over rows")? {
                 let (indices, _) = bincode::decode_from_slice::<Vec<u64>, _>(
@@ -628,7 +668,6 @@ impl Transaction<'_> {
 
         let hash_column = self.rocksdb_get_column(rocksdb_hash_column);
         let node_column = self.rocksdb_get_column(rocksdb_node_column);
-        let mut batch = crate::RocksDBBatch::default();
 
         let mut indices = HashMap::new();
 
@@ -638,6 +677,8 @@ impl Transaction<'_> {
         let mut storage_idx = self
             .rocksdb
             .next_trie_storage_index(rocksdb_node_column, to_insert.len());
+
+        let mut batch = self.batch.lock().expect("Batch lock poisoned");
 
         // Insert nodes in reverse to ensure children always have an assigned index for
         // the parent to use.
@@ -665,10 +706,6 @@ impl Transaction<'_> {
 
             metrics::counter!(METRIC_TRIE_NODES_ADDED, "table" => table).increment(1);
         }
-
-        self.rocksdb()
-            .write(&batch)
-            .context("Writing trie nodes to RocksDB")?;
 
         Ok(RootIndexUpdate::Updated(
             *indices

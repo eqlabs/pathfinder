@@ -28,8 +28,14 @@ use pruning::BlockchainHistoryMode;
 // Re-export this so users don't require rusqlite as a direct dep.
 pub use rusqlite::TransactionBehavior;
 pub(crate) use state_update::{NONCE_UPDATES_COLUMN, STATE_UPDATES_COLUMN, STORAGE_UPDATES_COLUMN};
+pub(crate) use transaction::{
+    EVENTS_COLUMN,
+    TRANSACTIONS_AND_RECEIPTS_COLUMN,
+    TRANSACTION_HASHES_COLUMN,
+};
 pub use trie::{Node, NodeRef, RootIndexUpdate, StoredNode, TrieStorageIndex, TrieUpdate};
 pub(crate) use trie::{
+    CONTRACT_STATE_HASHES_COLUMN,
     TRIE_CLASS_HASH_COLUMN,
     TRIE_CLASS_NODE_COLUMN,
     TRIE_CONTRACT_HASH_COLUMN,
@@ -77,6 +83,7 @@ impl Connection {
         Ok(Transaction {
             transaction: tx,
             rocksdb: Arc::clone(&self.rocksdb),
+            batch: Mutex::new(crate::RocksDBBatch::default()),
             event_filter_cache: self.event_filter_cache.clone(),
             running_event_filter: self.running_event_filter.clone(),
             trie_prune_mode: self.trie_prune_mode,
@@ -92,6 +99,7 @@ impl Connection {
         Ok(Transaction {
             transaction: tx,
             rocksdb: Arc::clone(&self.rocksdb),
+            batch: Mutex::new(crate::RocksDBBatch::default()),
             event_filter_cache: self.event_filter_cache.clone(),
             running_event_filter: self.running_event_filter.clone(),
             trie_prune_mode: self.trie_prune_mode,
@@ -111,6 +119,7 @@ impl Connection {
 pub struct Transaction<'inner> {
     transaction: rusqlite::Transaction<'inner>,
     rocksdb: Arc<super::RocksDBInner>,
+    batch: Mutex<crate::RocksDBBatch>,
     event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
@@ -153,6 +162,8 @@ impl Transaction<'_> {
     }
 
     pub fn commit(self) -> anyhow::Result<()> {
+        let batch = self.batch.lock().expect("Batch lock poisoned");
+        self.rocksdb().write(&batch)?;
         Ok(self.transaction.commit()?)
     }
 

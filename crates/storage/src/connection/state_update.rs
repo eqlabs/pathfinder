@@ -587,7 +587,6 @@ impl Transaction<'_> {
             .value()
             .context("Reading storage update value from RocksDB")?;
         let value = Felt::from_be_slice(value).context("Parsing storage update value")?;
-        tracing::trace!(?value, key=?iter.key(), "Found storage value in RocksDB");
         Ok(Some(StorageValue(value)))
     }
 
