@@ -50,6 +50,7 @@ pub(crate) fn migrate(
         DROP TABLE trie_class;
         DROP TABLE trie_contracts;
         DROP TABLE trie_storage;
+        DROP TABLE contract_state_hashes;
         ",
     )?;
     Ok(())
