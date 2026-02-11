@@ -167,7 +167,7 @@ impl ProposalPartsValidator {
         &mut self,
         part: &ProposalPart,
     ) -> Result<ValidationResult, ProposalHandlingError> {
-        if !self.parts.get(1).is_some_and(|p| p.is_block_info()) {
+        if !self.has_block_info {
             return Err(ProposalHandlingError::Recoverable(
                 ProposalError::UnexpectedProposalPart {
                     message: format!(
@@ -208,20 +208,14 @@ impl ProposalPartsValidator {
         }
 
         // Empty proposal: Init + Fin
-        if self.parts.len() == 1
-            && self
-                .parts
-                .first()
-                .expect("part to exist")
-                .is_proposal_init()
-        {
+        if self.parts.len() == 1 && self.has_init {
             self.has_fin = true;
             self.parts.push(part.clone());
             return Ok(ValidationResult::EmptyProposal);
         }
 
         // Non-empty proposal: at least Init + BlockInfo + 2 content parts before Fin
-        if self.parts.len() >= 4 && self.parts.get(1).expect("part to exist").is_block_info() {
+        if self.parts.len() >= 4 && self.has_block_info {
             self.has_fin = true;
             self.parts.push(part.clone());
             return Ok(ValidationResult::NonEmptyProposal);
