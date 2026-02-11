@@ -162,9 +162,11 @@ impl Transaction<'_> {
     }
 
     pub fn commit(self) -> anyhow::Result<()> {
-        let batch = self.batch.lock().expect("Batch lock poisoned");
-        self.rocksdb().write(&batch)?;
-        Ok(self.transaction.commit()?)
+        let transaction = self.transaction;
+        let rocksdb = self.rocksdb;
+        let batch = self.batch.into_inner().expect("Batch lock poisoned");
+        rocksdb.rocksdb.write(&batch)?;
+        Ok(transaction.commit()?)
     }
 
     pub fn trie_pruning_enabled(&self) -> bool {
