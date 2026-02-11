@@ -590,10 +590,6 @@ impl Transaction<'_> {
                     .increment(indices.len() as u64);
             }
 
-            self.rocksdb()
-                .write(&batch)
-                .context("Removing trie nodes from RocksDB")?;
-
             // Delete the removal markers.
             let mut delete_stmt = self
                 .inner()
