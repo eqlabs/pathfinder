@@ -636,11 +636,14 @@ impl Transaction<'_> {
         contract_address: ContractAddress,
         block_id: BlockId,
     ) -> anyhow::Result<Option<ContractNonce>> {
-        let Some(block_number) = self
-            .block_number(block_id)
-            .context("Querying block number")?
-        else {
-            return Ok(None);
+        let block_number = match block_id {
+            BlockId::Number(number) => Some(number),
+            BlockId::Hash(_) | BlockId::Latest => self
+                .block_number(block_id)
+                .context("Querying block number")?,
+        };
+        let Some(block_number) = block_number else {
+            return Err(anyhow::anyhow!("Block not found"));
         };
 
         let key = nonce_update_key(block_number, &contract_address);
