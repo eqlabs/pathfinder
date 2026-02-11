@@ -515,6 +515,47 @@ async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyh
             }
         });
 
+    #[derive(Debug, Deserialize)]
+    struct CompiledClassHashParam {
+        #[serde(rename = "classHash")]
+        class_hash: ClassHash,
+    }
+
+    let get_compiled_class_by_hash = warp::path("get_compiled_class_by_class_hash")
+        .and(warp::query::<CompiledClassHashParam>())
+        .then({
+            let storage_rx = storage_rx.clone();
+
+            move |compiled_class_hash: CompiledClassHashParam| {
+                let storage_rx = storage_rx.clone();
+
+                async move {
+                    let Some(storage) = maybe_storage(storage_rx) else {
+                        return Ok(storage_unavailable_response());
+                    };
+
+                    let compiled_class = tokio::task::spawn_blocking(move || {
+                        let mut connection = storage.connection().unwrap();
+                        let tx = connection.transaction().unwrap();
+
+                        resolve_compiled_class(&tx, compiled_class_hash.class_hash)
+                    }).await.context("Joining blocking task").and_then(|res| res);
+
+                    match compiled_class {
+                        Ok(compiled_class) => {
+                            let response = warp::http::Response::builder().header("content-type", "application/json").body(compiled_class).unwrap();
+                            Result::<_, Infallible>::Ok(response)
+                        },
+                        Err(_) => {
+                            let error = r#"{"code": "StarknetErrorCode.UNDECLARED_CLASS", "message": "Class not found"}"#;
+                            let response = warp::http::Response::builder().status(warp::http::StatusCode::BAD_REQUEST).body(error.as_bytes().to_owned()).unwrap();
+                            Ok(response)
+                        }
+                    }
+                }
+            }
+        });
+
     let handler = warp::get()
         .and(warp::path("feeder_gateway"))
         .and(
@@ -522,6 +563,7 @@ async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyh
                 .or(get_state_update)
                 .or(get_contract_addresses)
                 .or(get_class_by_hash)
+                .or(get_compiled_class_by_hash)
                 .or(get_signature)
                 .or(get_public_key),
         )
@@ -782,6 +824,19 @@ fn resolve_class(
     let definition = tx
         .class_definition(class_hash)
         .context("Reading class definition from database")?
+        .context("No such class found")?;
+
+    Ok(definition)
+}
+
+#[tracing::instrument(level = "trace", skip(tx))]
+fn resolve_compiled_class(
+    tx: &pathfinder_storage::Transaction<'_>,
+    compiled_class_hash: ClassHash,
+) -> anyhow::Result<Vec<u8>> {
+    let definition = tx
+        .casm_definition(compiled_class_hash)
+        .context("Reading compiled class definition from database")?
         .context("No such class found")?;
 
     Ok(definition)
