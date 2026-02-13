@@ -8,6 +8,7 @@ members = [
     "crates/consensus",
     "crates/consensus-fetcher",
     "crates/crypto",
+    "crates/devnet",
     "crates/ethereum",
     "crates/executor",
     "crates/feeder-gateway",
