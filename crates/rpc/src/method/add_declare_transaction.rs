@@ -31,6 +31,7 @@ pub enum AddDeclareTransactionError {
     UnsupportedTransactionVersion,
     UnsupportedContractClassVersion,
     UnexpectedError(String),
+    ForwardedError(reqwest::Error),
 }
 
 impl From<AddDeclareTransactionError> for crate::error::ApplicationError {
@@ -63,6 +64,7 @@ impl From<AddDeclareTransactionError> for crate::error::ApplicationError {
                 Self::UnsupportedContractClassVersion
             }
             AddDeclareTransactionError::UnexpectedError(data) => Self::UnexpectedError { data },
+            AddDeclareTransactionError::ForwardedError(error) => Self::ForwardedError(error),
         }
     }
 }
@@ -133,6 +135,11 @@ impl From<SequencerError> for AddDeclareTransactionError {
             }
             SequencerError::StarknetError(e) if e.code == EntryPointNotFound.into() => {
                 AddDeclareTransactionError::NonAccount
+            }
+            SequencerError::ReqwestError(e)
+                if e.status() == Some(reqwest::StatusCode::PAYLOAD_TOO_LARGE) =>
+            {
+                AddDeclareTransactionError::ForwardedError(e)
             }
             _ => AddDeclareTransactionError::UnexpectedError(e.to_string()),
         }
