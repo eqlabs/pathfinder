@@ -384,9 +384,9 @@ async fn test_proposal_fin_deferred_until_parent_block_decided(
         .expect("Failed to send MarkBlockAsDecidedAndCleanUp");
 
     if !consensus_ahead_of_fgw {
-        // Simulate the case where FGW magically has the block which consensus has not
-        // produced yet. We don't care if this is possible in reality, we just want our
-        // storage to be consistent against all odds.
+        // Simulate the case where the feeder gateway was faster to get the
+        // block for H=1 from the proposer than the node under test figured
+        // out that the very block was decided upon.
         env.create_committed_block(1);
     }
     env.wait_for_task_initialization().await;
@@ -541,9 +541,9 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
         TestEnvironment::with_finalized_blocks(chain_id, validator_address, finalized_blocks);
     env.create_committed_block(0);
     if !consensus_ahead_of_fgw {
-        // Simulate the case where FGW magically has the block which consensus has not
-        // produced yet. We don't care if this is possible in reality, we just want our
-        // storage to be consistent against all odds.
+        // Simulate the case where the feeder gateway was faster to get the
+        // block for H=1 from the proposer than the node under test figured
+        // out that the very block was decided upon.
         env.create_committed_block(1);
     }
     env.wait_for_task_initialization().await;
