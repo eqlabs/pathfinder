@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
@@ -35,7 +36,7 @@ use pathfinder_executor::{
     IntoStarkFelt,
 };
 use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
-use pathfinder_storage::Storage;
+use pathfinder_storage::{Storage, Transaction as DbTransaction};
 use rayon::prelude::*;
 use tracing::debug;
 
@@ -64,6 +65,41 @@ pub enum ValidationResult {
     Valid,
     Invalid,
     Error(anyhow::Error),
+}
+
+/// Determines whether validation of the proposal should be deferred based on
+/// the presence of the parent block in the decided blocks or DB.
+pub fn should_defer_validation(
+    height: u64,
+    decided_blocks: &HashMap<u64, (u32, ConsensusFinalizedL2Block)>,
+    db_tx: &DbTransaction<'_>,
+) -> Result<bool, ProposalHandlingError> {
+    let Some(parent_height) = height.checked_sub(1) else {
+        // Genesis block - no deferral needed.
+        return Ok(false);
+    };
+
+    let decided_parent = decided_blocks.get(&parent_height);
+
+    let defer = match decided_parent {
+        // The node observed parent block get decided - no deferral needed.
+        Some(_) => false,
+        // The node did not observe parent block get decided - either it has not been
+        // decided on yet, or the node joined the network too late to observe it. Fall
+        // back to checking the committed blocks in DB.
+        None => {
+            let parent_block = BlockNumber::new(parent_height)
+                .context("Block number is larger than i64::MAX")
+                .map_err(ProposalHandlingError::Fatal)?;
+            let parent_block = BlockId::Number(parent_block);
+            let parent_committed = db_tx
+                .block_exists(parent_block)
+                .map_err(ProposalHandlingError::Fatal)?;
+            !parent_committed
+        }
+    };
+
+    Ok(defer)
 }
 
 pub fn new(
@@ -107,6 +143,7 @@ impl ValidatorBlockInfoStage {
         self,
         block_info: BlockInfo,
         main_storage: Storage,
+        decided_blocks: &HashMap<u64, (u32, ConsensusFinalizedL2Block)>,
         gas_price_provider: Option<L1GasPriceProvider>,
         l1_to_fri_validator: Option<&L1ToFriValidator>,
         worker_pool: ValidatorWorkerPool,
@@ -131,7 +168,12 @@ impl ValidatorBlockInfoStage {
             )));
         }
 
-        validate_block_info_timestamp(block_info.height, block_info.timestamp, &main_storage)?;
+        validate_block_info_timestamp(
+            block_info.height,
+            block_info.timestamp,
+            &main_storage,
+            decided_blocks,
+        )?;
 
         // Validate L1 gas prices if a provider is available
         if let Some(ref provider) = gas_price_provider {
@@ -206,32 +248,46 @@ fn validate_block_info_timestamp(
     height: u64,
     proposal_timestamp: u64,
     main_storage: &Storage,
+    decided_blocks: &HashMap<u64, (u32, ConsensusFinalizedL2Block)>,
 ) -> Result<(), ProposalHandlingError> {
     let Some(parent_height) = height.checked_sub(1) else {
         // Genesis block, no parent to validate against.
         return Ok(());
     };
 
-    let mut db_conn = main_storage
-        .connection()
-        .context("Creating database connection for timestamp validation")
-        .map_err(ProposalHandlingError::fatal)?;
-    let db_tx = db_conn
-        .transaction()
-        .context("Creating DB transaction for timestamp validation")
-        .map_err(ProposalHandlingError::fatal)?;
+    let decided_parent_timestamp = decided_blocks
+        .get(&parent_height)
+        .map(|(_, parent_block)| parent_block.header.timestamp);
 
-    let block_num = BlockNumber::new_or_panic(parent_height);
-    let parent_header = db_tx
-        .block_header(BlockId::Number(block_num))
-        .context("Fetching block header for timestamp validation")
-        .map_err(ProposalHandlingError::fatal)?
-        .expect("BlockInfo validation should be deferred until parent block is committed");
+    let parent_timestamp = match decided_parent_timestamp {
+        Some(ts) => ts,
+        None => {
+            let mut db_conn = main_storage
+                .connection()
+                .context("Creating database connection for timestamp validation")
+                .map_err(ProposalHandlingError::fatal)?;
+            let db_tx = db_conn
+                .transaction()
+                .context("Creating DB transaction for timestamp validation")
+                .map_err(ProposalHandlingError::fatal)?;
 
-    if proposal_timestamp <= parent_header.timestamp.get() {
+            let block_num = BlockNumber::new_or_panic(parent_height);
+            db_tx
+                .block_header(BlockId::Number(block_num))
+                .context("Fetching block header for timestamp validation")
+                .map_err(ProposalHandlingError::fatal)?
+                .map(|parent_header| parent_header.timestamp)
+                .expect(
+                    "BlockInfo validation should be deferred until parent block is decided or \
+                     committed",
+                )
+        }
+    };
+
+    if proposal_timestamp <= parent_timestamp.get() {
         let msg = format!(
             "Proposal timestamp must be strictly greater than parent block timestamp: {} <= {}",
-            proposal_timestamp, parent_header.timestamp
+            proposal_timestamp, parent_timestamp
         );
         return Err(ProposalHandlingError::recoverable_msg(msg));
     }
@@ -1186,6 +1242,7 @@ mod tests {
     #[test]
     fn test_empty_proposal_finalization() {
         let main_storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let decided_blocks = HashMap::new();
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
 
@@ -1216,7 +1273,14 @@ mod tests {
             .expect("Failed to create ValidatorBlockInfoStage");
 
         let validator_transaction_batch = validator_block_info
-            .validate_block_info(block_info, main_storage.clone(), None, None, worker_pool)
+            .validate_block_info(
+                block_info,
+                main_storage.clone(),
+                &decided_blocks,
+                None,
+                None,
+                worker_pool,
+            )
             .expect("Failed to validate block info");
 
         // Verify the validator is in the expected empty state
@@ -1291,6 +1355,7 @@ mod tests {
         #[case] expected_error_message: Option<String>,
     ) {
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let decided_blocks = HashMap::new();
         let worker_pool = create_test_worker_pool();
         let mut db_conn = storage.connection().expect("Failed to get DB connection");
         let db_tx = db_conn
@@ -1334,6 +1399,7 @@ mod tests {
         let result = validator_block_info1.validate_block_info(
             block_info1,
             storage,
+            &decided_blocks,
             None,
             None,
             worker_pool,
@@ -1354,13 +1420,15 @@ mod tests {
     }
 
     #[rstest]
-    #[case(BlockNumber::GENESIS)]
+    #[case::genesis_parent(BlockNumber::GENESIS)]
     #[should_panic(
-        expected = "BlockInfo validation should be deferred until parent block is committed"
+        expected = "BlockInfo validation should be deferred until parent block is decided or \
+                    committed"
     )]
-    #[case(BlockNumber::new_or_panic(42))]
+    #[case::non_genesis_parent(BlockNumber::new_or_panic(42))]
     fn timestamp_validation_parent_block_not_found(#[case] proposal_height: BlockNumber) {
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let decided_blocks = HashMap::new();
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
 
@@ -1390,13 +1458,27 @@ mod tests {
             // parent.
             assert!(
                 validator_block_info
-                    .validate_block_info(block_info, storage, None, None, worker_pool)
+                    .validate_block_info(
+                        block_info,
+                        storage,
+                        &decided_blocks,
+                        None,
+                        None,
+                        worker_pool
+                    )
                     .is_ok(),
                 "Genesis block timestamp validation should pass even without parent"
             );
         } else {
             let err = validator_block_info
-                .validate_block_info(block_info, storage, None, None, worker_pool)
+                .validate_block_info(
+                    block_info,
+                    storage,
+                    &decided_blocks,
+                    None,
+                    None,
+                    worker_pool,
+                )
                 .unwrap_err();
             let expected_err_message = format!(
                 "Parent block header not found for height {}",
