@@ -549,7 +549,7 @@ impl StorageBuilder {
         options.set_env(&env);
 
         // TODO: make this configurable
-        let cache = rust_rocksdb::Cache::new_hyper_clock_cache(8 * 1024 * 1024 * 1024, 0);
+        let cache = rust_rocksdb::Cache::new_hyper_clock_cache(32 * 1024 * 1024 * 1024, 0);
         let mut block_opts = rust_rocksdb::BlockBasedOptions::default();
         block_opts.set_block_cache(&cache);
 
