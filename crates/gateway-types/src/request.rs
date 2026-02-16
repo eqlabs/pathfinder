@@ -8,7 +8,14 @@ pub mod add_transaction {
         SelectorAndOffset,
     };
     use pathfinder_common::prelude::*;
-    use pathfinder_common::{CallParam, ContractAddress, Fee, TransactionSignatureElem};
+    use pathfinder_common::{
+        CallParam,
+        ContractAddress,
+        Fee,
+        ProofElem,
+        ProofFactElem,
+        TransactionSignatureElem,
+    };
     use pathfinder_serde::{CallParamAsDecimalStr, TransactionSignatureElemAsDecimalStr};
     use serde_with::serde_as;
 
@@ -131,6 +138,10 @@ pub mod add_transaction {
         pub sender_address: ContractAddress,
         pub calldata: Vec<CallParam>,
         pub account_deployment_data: Vec<AccountDeploymentDataElem>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub proof_facts: Vec<ProofFactElem>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub proof: Vec<ProofElem>,
     }
 
     /// Declare transaction details.
