@@ -7,6 +7,13 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0-beta.2] - 2026-02-16
+
+### Fixed
+
+- JSON-RPC serialization of `INITIAL_READS` is not compliant with the specification. Pathfinder returns `storage_key` properties for storage reads instead of the `key` property required by the spec.
+- `starknet_addInvokeTransaction` is not forwarding `proof_facts` property to the Starknet gateway.
+
 ## [0.22.0-beta.1] - 2026-01-30
 
 ### Added
