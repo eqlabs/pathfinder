@@ -8632,6 +8632,7 @@ version = "0.22.0-beta.1"
 dependencies = [
  "anyhow",
  "num-bigint 0.4.6",
+ "pathfinder",
  "pathfinder-class-hash",
  "pathfinder-common",
  "pathfinder-compiler",

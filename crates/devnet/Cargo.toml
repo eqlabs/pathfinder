@@ -9,6 +9,7 @@ rust-version = { workspace = true }
 [dependencies]
 anyhow = { workspace = true }
 num-bigint = { workspace = true }
+pathfinder = { path = "../pathfinder" }
 pathfinder-class-hash = { path = "../class-hash" }
 pathfinder-common = { path = "../common" }
 pathfinder-compiler = { path = "../compiler" }
