@@ -36,8 +36,7 @@ pub fn main() -> anyhow::Result<()> {
     let storage_address = StorageAddress::new_or_panic(storage_address);
 
     let storage_value = std::env::args().nth(5).unwrap();
-    let storage_value =
-        Felt::from_hex_str(&storage_value).expect("Failed to parse storage value");
+    let storage_value = Felt::from_hex_str(&storage_value).expect("Failed to parse storage value");
     let storage_value = StorageValue(storage_value);
 
     let mut contract_tree =
