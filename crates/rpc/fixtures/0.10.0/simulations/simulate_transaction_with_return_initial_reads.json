@@ -21,17 +21,17 @@
     "storage": [
       {
         "contract_address": "0xf3805e4f045a8b48e7e9e6cd5d910973a22360572207f3ae625c5cec2a3232",
-        "storage_key": "0x81ba5d1f84a6a8f0e7ae24720a20f43f81d9ee6eed98fd524ba8d53a49416b",
+        "key": "0x81ba5d1f84a6a8f0e7ae24720a20f43f81d9ee6eed98fd524ba8d53a49416b",
         "value": "0x0"
       },
       {
         "contract_address": "0xf3805e4f045a8b48e7e9e6cd5d910973a22360572207f3ae625c5cec2a3232",
-        "storage_key": "0x1379ac0624b939ceb9dede92211d7db5ee174fe28be72245b0a1a2abd81c98f",
+        "key": "0x1379ac0624b939ceb9dede92211d7db5ee174fe28be72245b0a1a2abd81c98f",
         "value": "0x0"
       },
       {
         "contract_address": "0xf3805e4f045a8b48e7e9e6cd5d910973a22360572207f3ae625c5cec2a3232",
-        "storage_key": "0x7e79bbb6be5d418acd50c88b675e697f6f7094e203c9d7e29c6ad6731f931dd",
+        "key": "0x7e79bbb6be5d418acd50c88b675e697f6f7094e203c9d7e29c6ad6731f931dd",
         "value": "0x0"
       }
     ]

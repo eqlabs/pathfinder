@@ -482,32 +482,32 @@
     "storage": [
       {
         "contract_address": "0xc01",
-        "storage_key": "0x1379ac0624b939ceb9dede92211d7db5ee174fe28be72245b0a1a2abd81c98f",
+        "key": "0x1379ac0624b939ceb9dede92211d7db5ee174fe28be72245b0a1a2abd81c98f",
         "value": "0x0"
       },
       {
         "contract_address": "0x12592426632af714f43ccb05536b6044fc3e897fa55288f658731f93590e7e7",
-        "storage_key": "0x1275130f95dda36bcbb6e9d28796c1d7e10b6e9fd5ed083e0ede4b12f613528",
+        "key": "0x1275130f95dda36bcbb6e9d28796c1d7e10b6e9fd5ed083e0ede4b12f613528",
         "value": "0x9"
       },
       {
         "contract_address": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
-        "storage_key": "0x32a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e",
+        "key": "0x32a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e",
         "value": "0x10000000000000000000000000000"
       },
       {
         "contract_address": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
-        "storage_key": "0x32a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408f",
+        "key": "0x32a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408f",
         "value": "0x0"
       },
       {
         "contract_address": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
-        "storage_key": "0x5496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a",
+        "key": "0x5496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a",
         "value": "0x0"
       },
       {
         "contract_address": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
-        "storage_key": "0x5496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9b",
+        "key": "0x5496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9b",
         "value": "0x0"
       }
     ]
