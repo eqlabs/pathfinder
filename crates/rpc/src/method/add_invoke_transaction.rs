@@ -285,6 +285,8 @@ pub(crate) async fn add_invoke_transaction_impl(
                         sender_address: tx.sender_address,
                         calldata: tx.calldata.clone(),
                         account_deployment_data: tx.account_deployment_data.clone(),
+                        proof_facts: tx.proof_facts.clone(),
+                        proof: tx.proof.clone(),
                     },
                 ))
                 .await?;
