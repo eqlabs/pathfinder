@@ -11,7 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `starknet_traceBlockTransactions` parameter `trace_flags` is not optional (as required by the spec)
+- `starknet_traceBlockTransactions` parameter `trace_flags` is not optional (as required by the spec).
+
+### Added
+
+- Forwarding gateway HTTP error 413 when handling `starknet_addDeclareTransaction`.
 
 ## [0.22.0-beta.2] - 2026-02-16
 
