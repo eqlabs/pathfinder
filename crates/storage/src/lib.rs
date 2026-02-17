@@ -523,7 +523,7 @@ impl StorageBuilder {
 
     fn open_rocksdb(path: &Path) -> anyhow::Result<RocksDBInner> {
         let available_parallelism = std::thread::available_parallelism()
-            .map(|e| e.get() as i32)
+            .map(|e| e.get() as i32 / 2)
             .unwrap_or(1);
 
         let mut options = rust_rocksdb::Options::default();
