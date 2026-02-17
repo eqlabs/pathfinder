@@ -35,6 +35,7 @@ impl IntoTypesCoreFelt for Felt {
 #[cfg(test)]
 pub mod tests {
     use std::num::NonZeroU32;
+    use std::sync::Arc;
     use std::thread::available_parallelism;
     use std::time::SystemTime;
 
@@ -269,11 +270,11 @@ pub mod tests {
                 storage.clone(),
                 None,
                 None,
-                worker_pool,
+                worker_pool.clone(),
             )
             .unwrap();
 
-        let mut declare = DeclareTransactionV3 {
+        let declare = DeclareTransactionV3 {
             class_hash: ClassHash(hello_class_hash.0),
             nonce: TransactionNonce::ZERO,
             nonce_data_availability_mode: DataAvailabilityMode::L1,
@@ -290,9 +291,9 @@ pub mod tests {
                 l1_data_gas: None,
             },
             tip: Tip(0),
-            paymaster_data: vec![/* TODO ANYTHING MISSING HERE ??? */],
-            signature: vec![/* TODO SIGNATURE MISSING !!! */],
-            account_deployment_data: vec![/* TODO ANYTHING MISSING HERE ??? */],
+            paymaster_data: vec![],
+            signature: vec![/* Will be filled after signing */],
+            account_deployment_data: vec![],
             sender_address: account.address(),
             compiled_class_hash: hello_casm_hash,
         };
@@ -366,5 +367,8 @@ pub mod tests {
 
         let block_1 = validator.consensus_finalize0().unwrap();
         eprintln!("Block 1: {block_1:#?}");
+
+        let worker_pool = Arc::into_inner(worker_pool).unwrap();
+        worker_pool.join();
     }
 }
