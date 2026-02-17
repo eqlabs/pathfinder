@@ -368,12 +368,18 @@ pub fn should_defer_execution(
 
 #[cfg(test)]
 mod tests {
-    use pathfinder_common::ContractAddress;
+    use p2p::consensus::HeightAndRound;
+    use pathfinder_common::prelude::*;
     use pathfinder_crypto::Felt;
+    use pathfinder_executor::types::BlockInfo;
     use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
+    use pathfinder_storage::StorageBuilder;
 
     use super::*;
-    use crate::consensus::inner::dummy_proposal::create_test_proposal_init;
+    use crate::consensus::inner::dummy_proposal::{
+        create_test_proposal_init,
+        create_transaction_batch,
+    };
     use crate::validator::{ProdTransactionMapper, ValidatorBlockInfoStage};
 
     /// Creates a worker pool for tests.
@@ -386,7 +392,6 @@ mod tests {
         storage: &pathfinder_storage::Storage,
         parent_height: u64,
     ) -> anyhow::Result<()> {
-        use pathfinder_common::prelude::*;
         let mut db_conn = storage.connection()?;
         let db_tx = db_conn.transaction()?;
         let block_id = BlockId::Number(BlockNumber::new_or_panic(parent_height));
@@ -410,16 +415,8 @@ mod tests {
     }
 
     /// Helper function to create BlockInfo for tests
-    fn create_test_block_info(number: u64) -> pathfinder_executor::types::BlockInfo {
-        use pathfinder_common::{
-            BlockNumber,
-            BlockTimestamp,
-            GasPrice,
-            L1DataAvailabilityMode,
-            SequencerAddress,
-            StarknetVersion,
-        };
-        pathfinder_executor::types::BlockInfo {
+    fn create_test_block_info(number: u64) -> BlockInfo {
+        BlockInfo {
             number: BlockNumber::new_or_panic(number),
             timestamp: BlockTimestamp::new_or_panic(1000),
             sequencer_address: SequencerAddress::ZERO,
@@ -440,38 +437,10 @@ mod tests {
     /// ProposalFin should be deferred.
     #[tokio::test]
     async fn test_execution_state_tracking() {
-        use p2p::consensus::HeightAndRound;
-        use pathfinder_common::{
-            BlockNumber,
-            BlockTimestamp,
-            ChainId,
-            GasPrice,
-            L1DataAvailabilityMode,
-            SequencerAddress,
-            StarknetVersion,
-        };
-        use pathfinder_executor::types::BlockInfo;
-        use pathfinder_storage::StorageBuilder;
-
-        use crate::consensus::inner::dummy_proposal::create_transaction_batch;
-
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
-
-        let block_info = BlockInfo {
-            number: BlockNumber::new_or_panic(1),
-            timestamp: BlockTimestamp::new_or_panic(1000),
-            sequencer_address: SequencerAddress::ZERO,
-            l1_da_mode: L1DataAvailabilityMode::Calldata,
-            eth_l1_gas_price: GasPrice::ZERO,
-            strk_l1_gas_price: GasPrice::ZERO,
-            eth_l1_data_gas_price: GasPrice::ZERO,
-            strk_l1_data_gas_price: GasPrice::ZERO,
-            strk_l2_gas_price: GasPrice::ZERO,
-            eth_l2_gas_price: GasPrice::ZERO,
-            starknet_version: StarknetVersion::new(0, 14, 0, 0),
-        };
+        let block_info = create_test_block_info(1);
 
         let mut validator_stage =
             ValidatorTransactionBatchStage::new(chain_id, block_info, storage, worker_pool.clone())
@@ -547,13 +516,6 @@ mod tests {
     /// deferred entry even if no batches have been deferred yet.
     #[tokio::test]
     async fn test_executed_transaction_count_before_any_batch() {
-        use p2p::consensus::HeightAndRound;
-        use pathfinder_common::prelude::*;
-        use pathfinder_common::{BlockNumber, BlockTimestamp, ChainId, SequencerAddress};
-        use pathfinder_storage::StorageBuilder;
-
-        use crate::consensus::inner::dummy_proposal::create_transaction_batch;
-
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
 
@@ -685,12 +647,6 @@ mod tests {
     /// - multiple batches with mixed deferral
     #[tokio::test]
     async fn test_deferral_and_execution() {
-        use p2p::consensus::HeightAndRound;
-        use pathfinder_common::ChainId;
-        use pathfinder_storage::StorageBuilder;
-
-        use crate::consensus::inner::dummy_proposal::create_transaction_batch;
-
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
@@ -833,12 +789,6 @@ mod tests {
     /// Test ExecutedTransactionCount processing with rollback support.
     #[tokio::test]
     async fn test_executed_transaction_count_rollback() {
-        use p2p::consensus::HeightAndRound;
-        use pathfinder_common::ChainId;
-        use pathfinder_storage::StorageBuilder;
-
-        use crate::consensus::inner::dummy_proposal::create_transaction_batch;
-
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
@@ -966,10 +916,6 @@ mod tests {
     /// Test empty batch handling.
     #[tokio::test]
     async fn test_empty_batch() {
-        use p2p::consensus::HeightAndRound;
-        use pathfinder_common::ChainId;
-        use pathfinder_storage::StorageBuilder;
-
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
@@ -1011,6 +957,112 @@ mod tests {
         assert!(
             batch_execution_manager.is_executed_transaction_count_processed(&height_and_round),
             "ExecutedTransactionCount should be processed after empty batch"
+        );
+    }
+
+    /// Test that ExecutedTransactionCount == 0 rolls back all transactions to
+    /// zero. This covers the edge case where the proposer executed no
+    /// transactions but the validator optimistically executed some.
+    #[tokio::test]
+    async fn test_executed_transaction_count_zero_rollback() {
+        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+        let worker_pool = create_test_worker_pool();
+        let block_info = create_test_block_info(1);
+
+        let mut validator_stage =
+            ValidatorTransactionBatchStage::new(chain_id, block_info, storage, worker_pool.clone())
+                .expect("Failed to create validator stage");
+
+        let mut batch_execution_manager = BatchExecutionManager::new(None, worker_pool);
+        let height_and_round = HeightAndRound::new(2, 1);
+
+        // Execute a batch of 5 transactions
+        let transactions = create_transaction_batch(0, 0, 5, chain_id);
+        batch_execution_manager
+            .execute_batch::<ProdTransactionMapper>(
+                height_and_round,
+                transactions,
+                &mut validator_stage,
+            )
+            .expect("Failed to execute batch");
+
+        assert_eq!(
+            validator_stage.transaction_count(),
+            5,
+            "Should have 5 transactions before ExecutedTransactionCount"
+        );
+
+        // ETC == 0 should roll back all transactions
+        batch_execution_manager
+            .process_executed_transaction_count::<ProdTransactionMapper>(
+                height_and_round,
+                0,
+                &mut validator_stage,
+            )
+            .expect("Failed to process ExecutedTransactionCount with zero rollback");
+
+        assert_eq!(
+            validator_stage.transaction_count(),
+            0,
+            "All transactions should be rolled back when ETC is 0"
+        );
+        assert!(
+            batch_execution_manager.is_executed_transaction_count_processed(&height_and_round),
+            "ExecutedTransactionCount should be marked as processed"
+        );
+    }
+
+    /// Test that ExecutedTransactionCount > actual transaction count does not
+    /// error or inflate the count. The validator continues with the
+    /// transactions it has.
+    #[tokio::test]
+    async fn test_executed_transaction_count_exceeds_actual() {
+        let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
+        let chain_id = ChainId::SEPOLIA_TESTNET;
+        let worker_pool = create_test_worker_pool();
+        let block_info = create_test_block_info(1);
+
+        let mut validator_stage =
+            ValidatorTransactionBatchStage::new(chain_id, block_info, storage, worker_pool.clone())
+                .expect("Failed to create validator stage");
+
+        let mut batch_execution_manager = BatchExecutionManager::new(None, worker_pool);
+        let height_and_round = HeightAndRound::new(2, 1);
+
+        // Execute a batch of 5 transactions
+        let transactions = create_transaction_batch(0, 0, 5, chain_id);
+        batch_execution_manager
+            .execute_batch::<ProdTransactionMapper>(
+                height_and_round,
+                transactions,
+                &mut validator_stage,
+            )
+            .expect("Failed to execute batch");
+
+        assert_eq!(
+            validator_stage.transaction_count(),
+            5,
+            "Should have 5 transactions before ExecutedTransactionCount"
+        );
+
+        // ETC == 10 exceeds the 5 we have; should warn but not error
+        batch_execution_manager
+            .process_executed_transaction_count::<ProdTransactionMapper>(
+                height_and_round,
+                10,
+                &mut validator_stage,
+            )
+            .expect("ETC exceeding actual count should not error");
+
+        assert_eq!(
+            validator_stage.transaction_count(),
+            5,
+            "Transaction count should remain unchanged when ETC exceeds actual"
+        );
+        assert!(
+            batch_execution_manager.is_executed_transaction_count_processed(&height_and_round),
+            "ExecutedTransactionCount should be marked as processed"
         );
     }
 }

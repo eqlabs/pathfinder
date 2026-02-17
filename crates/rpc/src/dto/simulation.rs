@@ -538,7 +538,7 @@ impl crate::dto::SerializeForVersion for StorageValue<'_> {
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("contract_address", &self.0 .0 .0)?;
-        serializer.serialize_field("storage_key", &self.0 .0 .1)?;
+        serializer.serialize_field("key", &self.0 .0 .1)?;
         serializer.serialize_field("value", self.0 .1)?;
         serializer.end()
     }
@@ -660,7 +660,7 @@ impl crate::dto::SerializeForVersion for CallType {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct TraceFlags(pub Vec<TraceFlag>);
 
 impl TraceFlags {

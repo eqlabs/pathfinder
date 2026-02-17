@@ -692,7 +692,19 @@ pub fn calculate_class_commitment_leaf_hash(
 }
 
 /// A SNOS stwo proof element.
-#[derive(Copy, Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Copy,
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 pub struct ProofElem(pub u32);
 
 #[cfg(test)]

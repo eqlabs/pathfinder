@@ -28,9 +28,11 @@ impl crate::dto::DeserializeForVersion for TraceBlockTransactionsInput {
             Ok(Self {
                 block_id: value.deserialize("block_id")?,
                 trace_flags: if rpc_version >= RpcVersion::V10 {
-                    value.deserialize("trace_flags")?
+                    value
+                        .deserialize_optional("trace_flags")?
+                        .unwrap_or_default()
                 } else if !value.contains_key("trace_flags") {
-                    crate::dto::TraceFlags::new()
+                    crate::dto::TraceFlags::default()
                 } else {
                     let err = serde_json::Error::custom(format!(
                         "Trace flags are not supported in RPC version {}. Use RPC version {} or \
