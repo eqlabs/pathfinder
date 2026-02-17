@@ -351,6 +351,7 @@ impl Default for ProposalCommitmentWithOrigin {
 mod tests {
     use p2p::consensus::HeightAndRound;
     use pathfinder_common::prelude::*;
+    use pathfinder_common::BlockId;
     use pathfinder_crypto::Felt;
     use pathfinder_executor::types::BlockInfo;
     use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
