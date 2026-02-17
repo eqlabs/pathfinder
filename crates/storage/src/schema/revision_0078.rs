@@ -89,7 +89,7 @@ fn migrate_trie(
         batch.put_cf(&node_column, idx, &data);
 
         if i % BATCH_SIZE == BATCH_SIZE - 1 {
-            rocksdb.rocksdb.write(&batch)?;
+            rocksdb.rocksdb.write_without_wal(&batch)?;
             batch = crate::RocksDBBatch::default();
             tracing::info!(
                 "Migrated {} entries from table {}",
@@ -99,7 +99,7 @@ fn migrate_trie(
         }
     }
 
-    rocksdb.rocksdb.write(&batch)?;
+    rocksdb.rocksdb.write_without_wal(&batch)?;
 
     tracing::info!(%sqlite_table_name, "Migrated trie from table");
 
