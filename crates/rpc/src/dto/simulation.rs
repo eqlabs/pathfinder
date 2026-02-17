@@ -660,7 +660,7 @@ impl crate::dto::SerializeForVersion for CallType {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct TraceFlags(pub Vec<TraceFlag>);
 
 impl TraceFlags {
