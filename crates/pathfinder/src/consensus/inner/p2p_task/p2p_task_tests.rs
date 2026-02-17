@@ -211,6 +211,18 @@ impl TestEnvironment {
     }
 }
 
+fn create_finalized_block(height: u64) -> ConsensusFinalizedL2Block {
+    ConsensusFinalizedL2Block {
+        header: ConsensusFinalizedBlockHeader {
+            number: BlockNumber::new_or_panic(height),
+            timestamp: BlockTimestamp::new_or_panic(height + 1000),
+            state_diff_commitment: StateDiffCommitment(Felt::from(height)),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
 /// Helper: Wait for a proposal event from consensus
 async fn wait_for_proposal_event(
     rx: &mut mpsc::Receiver<ConsensusTaskEvent>,
@@ -322,6 +334,179 @@ fn verify_proposal_event(
     }
 }
 
+/// ProposalFin deferred until parent block is decided.
+///
+/// **Scenario**: ProposalFin arrives before the parent block is decided.
+/// Execution has started (TransactionBatch received), so ProposalFin must
+/// be deferred until the parent block is decided (or committed, covered by
+/// [test_proposal_fin_deferred_until_parent_block_committed]), then
+/// finalization can proceed.
+///
+/// **Test**: Send Init → BlockInfo → TransactionBatch →
+/// ExecutedTransactionCount → ProposalFin →
+/// MarkBlockAsDecidedAndCleanUp(parent).
+///
+/// Verify ProposalFin is deferred (no proposal event), then verify
+/// finalization occurs after parent block is decided.
+#[rstest::rstest]
+#[case::consensus_ahead_of_fgw(true)]
+#[case::fgw_ahead_of_consensus(false)]
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+async fn test_proposal_fin_deferred_until_parent_block_decided(
+    #[case] consensus_ahead_of_fgw: bool,
+) {
+    let chain_id = ChainId::SEPOLIA_TESTNET;
+
+    let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
+
+    let h0r0 = HeightAndRound::new(0, 0);
+    let h1r0 = HeightAndRound::new(1, 0);
+    let finalized_blocks = HashMap::from([
+        (h0r0, create_finalized_block(h0r0.height())),
+        (h1r0, create_finalized_block(h1r0.height())),
+    ]);
+
+    let proposal_commitment0 = finalized_blocks
+        .get(&h0r0)
+        .map(|block| block.header.state_diff_commitment.0)
+        .map(ProposalCommitment)
+        .unwrap();
+
+    let mut env =
+        TestEnvironment::with_finalized_blocks(chain_id, validator_address, finalized_blocks);
+
+    env.tx_to_p2p
+        .send(P2PTaskEvent::MarkBlockAsDecidedAndCleanUp(
+            h0r0,
+            ConsensusValue(proposal_commitment0),
+        ))
+        .await
+        .expect("Failed to send MarkBlockAsDecidedAndCleanUp");
+
+    if !consensus_ahead_of_fgw {
+        // Simulate the case where FGW magically has the block which consensus has not
+        // produced yet. We don't care if this is possible in reality, we just want our
+        // storage to be consistent against all odds.
+        env.create_committed_block(1);
+    }
+    env.wait_for_task_initialization().await;
+
+    let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
+    let h2r1 = HeightAndRound::new(2, 1);
+    let transactions = create_transaction_batch(0, 0, 5, chain_id);
+    let (proposal_init, block_info) =
+        create_test_proposal_init(chain_id, h2r1.height(), h2r1.round(), proposer_address);
+
+    // Focus is on batch execution and deferral logic, not commitment validation.
+    // Using a dummy commitment...
+    let proposal_commitment2 = ProposalCommitment(Felt::ZERO);
+
+    // Step 1: Send ProposalInit
+    env.p2p_tx
+        .send(Event {
+            source: PeerId::random(),
+            kind: EventKind::Proposal(h2r1, ProposalPart::Init(proposal_init)),
+        })
+        .expect("Failed to send ProposalInit");
+    env.verify_task_alive().await;
+
+    // Step 2: Send BlockInfo
+    env.p2p_tx
+        .send(Event {
+            source: PeerId::random(),
+            kind: EventKind::Proposal(h2r1, ProposalPart::BlockInfo(block_info)),
+        })
+        .expect("Failed to send BlockInfo");
+    env.verify_task_alive().await;
+
+    // Step 3: Send TransactionBatch (execution should start)
+    env.p2p_tx
+        .send(Event {
+            source: PeerId::random(),
+            kind: EventKind::Proposal(h2r1, ProposalPart::TransactionBatch(transactions)),
+        })
+        .expect("Failed to send TransactionBatch");
+    env.verify_task_alive().await;
+
+    // Verify: No proposal event yet (execution started, but not finalized)
+    verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
+
+    // Step 4: Send ExecutedTransactionCount
+    env.p2p_tx
+        .send(Event {
+            source: PeerId::random(),
+            kind: EventKind::Proposal(h2r1, ProposalPart::ExecutedTransactionCount(5)),
+        })
+        .expect("Failed to send ExecutedTransactionCount");
+    env.verify_task_alive().await;
+
+    // Step 5: Send ProposalFin
+    env.p2p_tx
+        .send(Event {
+            source: PeerId::random(),
+            kind: EventKind::Proposal(
+                h2r1,
+                ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
+                    proposal_commitment: p2p_proto::common::Hash(proposal_commitment2.0),
+                }),
+            ),
+        })
+        .expect("Failed to send ProposalFin");
+    env.verify_task_alive().await;
+
+    if consensus_ahead_of_fgw {
+        // Verify: Still no proposal event
+        verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
+    } else {
+        // Verify: Proposal event should be sent now
+        let proposal_cmd = wait_for_proposal_event(&mut env.rx_from_p2p, Duration::from_secs(3))
+            .await
+            .expect("Expected proposal event after ProposalFin");
+        verify_proposal_event(proposal_cmd, 2, proposal_commitment2);
+    }
+
+    // Step 6: Send MarkBlockAsDecidedAndCleanUp for parent block (should trigger
+    // finalization)
+    env.tx_to_p2p
+        .send(P2PTaskEvent::MarkBlockAsDecidedAndCleanUp(
+            h2r1,
+            ConsensusValue(proposal_commitment2),
+        ))
+        .await
+        .expect("Failed to send MarkBlockAsDecidedAndCleanUp");
+    env.verify_task_alive().await;
+
+    // Make sure the above message is consumed before proceeding, otherwise we can
+    // get an ugly race condition which does not occur in reality but will make the
+    // test fail once in a while
+    env.wait_tx_to_p2p_consumed().await;
+
+    if consensus_ahead_of_fgw {
+        // Step 8: At some point sync sends SyncMessageToConsensus::GetFinalizedBlock
+        // for H=1, and then confirms committing the block with
+        // SyncMessageToConsensus::ConfirmFinalizedBlockCommitted
+        env.create_committed_block(1);
+        env.tx_sync_to_consensus
+            .send(SyncMessageToConsensus::ConfirmBlockCommitted {
+                number: BlockNumber::new_or_panic(1),
+            })
+            .await
+            .expect("Failed to send ConfirmBlockCommitted");
+        env.verify_task_alive().await;
+
+        // Verify: Proposal event should be sent now
+        let proposal_cmd = wait_for_proposal_event(&mut env.rx_from_p2p, Duration::from_secs(3))
+            .await
+            .expect("Expected proposal event after ExecutedTransactionCount");
+        verify_proposal_event(proposal_cmd, 2, proposal_commitment2);
+    } else {
+        // Step 8: It turns out that the feeder gateway was faster to get the
+        // block for H=1 from the proposer than the node under test figured out
+        // that the very block was decided upon.
+    }
+    env.verify_task_alive().await;
+}
+
 /// ProposalFin deferred until parent block is committed.
 ///
 /// **Scenario**: ProposalFin arrives before the parent block is committed.
@@ -342,19 +527,16 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
 ) {
     let chain_id = ChainId::SEPOLIA_TESTNET;
     let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
-    let finalized_blocks = [(
-        HeightAndRound::new(1, 0),
-        ConsensusFinalizedL2Block {
-            header: ConsensusFinalizedBlockHeader {
-                number: BlockNumber::GENESIS,
-                timestamp: BlockTimestamp::new_or_panic(1000),
-                state_diff_commitment: StateDiffCommitment(Felt::ONE),
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-    )]
-    .into();
+
+    let h1r0 = HeightAndRound::new(1, 0);
+    let finalized_blocks = HashMap::from([(h1r0, create_finalized_block(h1r0.height()))]);
+
+    let proposal_commitment1 = finalized_blocks
+        .get(&h1r0)
+        .map(|block| block.header.state_diff_commitment.0)
+        .map(ProposalCommitment)
+        .unwrap();
+
     let mut env =
         TestEnvironment::with_finalized_blocks(chain_id, validator_address, finalized_blocks);
     env.create_committed_block(0);
@@ -367,19 +549,20 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
     env.wait_for_task_initialization().await;
 
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
-    let height_and_round = HeightAndRound::new(2, 1);
+    let h2r1 = HeightAndRound::new(2, 1);
     let transactions = create_transaction_batch(0, 0, 5, chain_id);
-    let (proposal_init, block_info) = create_test_proposal_init(chain_id, 2, 1, proposer_address);
+    let (proposal_init, block_info) =
+        create_test_proposal_init(chain_id, h2r1.height(), h2r1.round(), proposer_address);
 
     // Focus is on batch execution and deferral logic, not commitment validation.
     // Using a dummy commitment...
-    let proposal_commitment = ProposalCommitment(Felt::ZERO);
+    let proposal_commitment2 = ProposalCommitment(Felt::ZERO);
 
     // Step 1: Send ProposalInit
     env.p2p_tx
         .send(Event {
             source: PeerId::random(),
-            kind: EventKind::Proposal(height_and_round, ProposalPart::Init(proposal_init)),
+            kind: EventKind::Proposal(h2r1, ProposalPart::Init(proposal_init)),
         })
         .expect("Failed to send ProposalInit");
     env.verify_task_alive().await;
@@ -388,7 +571,7 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
     env.p2p_tx
         .send(Event {
             source: PeerId::random(),
-            kind: EventKind::Proposal(height_and_round, ProposalPart::BlockInfo(block_info)),
+            kind: EventKind::Proposal(h2r1, ProposalPart::BlockInfo(block_info)),
         })
         .expect("Failed to send BlockInfo");
     env.verify_task_alive().await;
@@ -397,10 +580,7 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
     env.p2p_tx
         .send(Event {
             source: PeerId::random(),
-            kind: EventKind::Proposal(
-                height_and_round,
-                ProposalPart::TransactionBatch(transactions),
-            ),
+            kind: EventKind::Proposal(h2r1, ProposalPart::TransactionBatch(transactions)),
         })
         .expect("Failed to send TransactionBatch");
     env.verify_task_alive().await;
@@ -412,7 +592,7 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
     env.p2p_tx
         .send(Event {
             source: PeerId::random(),
-            kind: EventKind::Proposal(height_and_round, ProposalPart::ExecutedTransactionCount(5)),
+            kind: EventKind::Proposal(h2r1, ProposalPart::ExecutedTransactionCount(5)),
         })
         .expect("Failed to send ExecutedTransactionCount");
     env.verify_task_alive().await;
@@ -422,9 +602,9 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
         .send(Event {
             source: PeerId::random(),
             kind: EventKind::Proposal(
-                height_and_round,
+                h2r1,
                 ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
-                    proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
+                    proposal_commitment: p2p_proto::common::Hash(proposal_commitment2.0),
                 }),
             ),
         })
@@ -439,19 +619,20 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
         let proposal_cmd = wait_for_proposal_event(&mut env.rx_from_p2p, Duration::from_secs(3))
             .await
             .expect("Expected proposal event after ProposalFin");
-        verify_proposal_event(proposal_cmd, 2, proposal_commitment);
+        verify_proposal_event(proposal_cmd, 2, proposal_commitment2);
     }
 
-    // Step 6: Send CommitBlock for parent block (should trigger finalization)
+    // Step 6: Send MarkBlockAsDecidedAndCleanUp for parent block (should trigger
+    // finalization)
     env.tx_to_p2p
         .send(
             crate::consensus::inner::P2PTaskEvent::MarkBlockAsDecidedAndCleanUp(
-                HeightAndRound::new(1, 0),
-                ConsensusValue(ProposalCommitment(Felt::ONE)),
+                h1r0,
+                ConsensusValue(proposal_commitment1),
             ),
         )
         .await
-        .expect("Failed to send CommitBlock");
+        .expect("Failed to send MarkBlockAsDecidedAndCleanUp");
     env.verify_task_alive().await;
 
     // Make sure the above message is consumed before proceeding, otherwise we can
@@ -462,21 +643,21 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
     if consensus_ahead_of_fgw {
         // Step 8: At some point sync sends SyncMessageToConsensus::GetFinalizedBlock
         // for H=1, and then confirms committing the block with
-        // SyncMessageToConsensus::ConfirmFinalizedBlockCommitted
+        // SyncMessageToConsensus::ConfirmBlockCommitted
         env.create_committed_block(1);
         env.tx_sync_to_consensus
             .send(SyncMessageToConsensus::ConfirmBlockCommitted {
                 number: BlockNumber::new_or_panic(1),
             })
             .await
-            .expect("Failed to send ConfirmFinalizedBlockCommitted");
+            .expect("Failed to send ConfirmBlockCommitted");
         env.verify_task_alive().await;
 
         // Verify: Proposal event should be sent now
         let proposal_cmd = wait_for_proposal_event(&mut env.rx_from_p2p, Duration::from_secs(3))
             .await
             .expect("Expected proposal event after ExecutedTransactionCount");
-        verify_proposal_event(proposal_cmd, 2, proposal_commitment);
+        verify_proposal_event(proposal_cmd, 2, proposal_commitment2);
     } else {
         // Step 8: It turns out that the feeder gateway was faster to get the
         // block for H=1 from the proposer than the node under test figured out

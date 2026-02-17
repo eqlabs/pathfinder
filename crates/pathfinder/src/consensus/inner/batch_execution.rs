@@ -10,12 +10,13 @@ use std::collections::{HashMap, HashSet};
 use anyhow::Context;
 use p2p::consensus::HeightAndRound;
 use p2p_proto::consensus as proto_consensus;
-use pathfinder_common::{BlockId, BlockNumber};
-use pathfinder_storage::{Storage, Transaction};
+use pathfinder_common::ConsensusFinalizedL2Block;
+use pathfinder_storage::Storage;
 
 use crate::consensus::ProposalHandlingError;
 use crate::gas_price::L1GasPriceProvider;
 use crate::validator::{
+    should_defer_validation,
     TransactionExt,
     ValidatorStage,
     ValidatorTransactionBatchStage,
@@ -95,6 +96,7 @@ impl BatchExecutionManager {
         transactions: Vec<proto_consensus::Transaction>,
         validator_stage: ValidatorStage,
         main_db: Storage,
+        decided_blocks: &HashMap<u64, (u32, ConsensusFinalizedL2Block)>,
         deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
     ) -> Result<ValidatorStage, ProposalHandlingError> {
         let mut main_db_conn = main_db
@@ -106,7 +108,7 @@ impl BatchExecutionManager {
             .context("Creating database transaction for batch execution with deferral")
             .map_err(ProposalHandlingError::Fatal)?;
         // Check if execution should be deferred
-        if should_defer_execution(height_and_round, &main_db_tx)? {
+        if should_defer_validation(height_and_round.height(), decided_blocks, &main_db_tx)? {
             tracing::debug!(
                 "🖧  ⚙️ transaction batch execution for height and round {height_and_round} is \
                  deferred"
@@ -153,6 +155,7 @@ impl BatchExecutionManager {
                     .validate_block_info(
                         block_info,
                         main_db.clone(),
+                        decided_blocks,
                         self.gas_price_provider.clone(),
                         None, // TODO: Add L1ToFriValidator when oracle is available
                         self.worker_pool.clone(),
@@ -342,28 +345,6 @@ impl Default for ProposalCommitmentWithOrigin {
             pol_round: pathfinder_consensus::Round::nil(),
         }
     }
-}
-
-/// Determine whether execution of proposal parts for `height_and_round` should
-/// be deferred because the previous block is not committed yet.
-pub fn should_defer_execution(
-    height_and_round: HeightAndRound,
-    main_db_tx: &Transaction<'_>,
-) -> Result<bool, ProposalHandlingError> {
-    let parent_block = height_and_round.height().checked_sub(1);
-    let defer = if let Some(parent_block) = parent_block {
-        let parent_block = BlockNumber::new(parent_block)
-            .context("Block number is larger than i64::MAX")
-            .map_err(ProposalHandlingError::Fatal)?;
-        let parent_block = BlockId::Number(parent_block);
-        let parent_committed = main_db_tx
-            .block_exists(parent_block)
-            .map_err(ProposalHandlingError::Fatal)?;
-        !parent_committed
-    } else {
-        false
-    };
-    Ok(defer)
 }
 
 #[cfg(test)]
@@ -557,6 +538,8 @@ mod tests {
 
         let worker_pool = create_test_worker_pool();
         let mut batch_execution_manager = BatchExecutionManager::new(None, worker_pool);
+
+        let decided_blocks = std::collections::HashMap::new();
         let mut deferred_executions: std::collections::HashMap<HeightAndRound, DeferredExecution> =
             std::collections::HashMap::new();
 
@@ -613,6 +596,7 @@ mod tests {
                 transactions,
                 validator_stage,
                 storage.clone(),
+                &decided_blocks,
                 &mut deferred_executions,
             )
             .expect("Failed to process batch");
@@ -664,6 +648,8 @@ mod tests {
             .expect("Failed to create validator stage");
 
         let mut batch_execution_manager = BatchExecutionManager::new(None, worker_pool.clone());
+
+        let decided_blocks = std::collections::HashMap::new();
         let mut deferred_executions: std::collections::HashMap<HeightAndRound, DeferredExecution> =
             std::collections::HashMap::new();
         deferred_executions
@@ -681,6 +667,7 @@ mod tests {
                     transactions,
                     validator_stage,
                     storage.clone(),
+                    &decided_blocks,
                     &mut deferred_executions,
                 )
                 .expect("Failed to process batch");
@@ -722,6 +709,7 @@ mod tests {
                     transactions,
                     next_stage,
                     storage.clone(),
+                    &decided_blocks,
                     &mut deferred_executions,
                 )
                 .expect("Failed to process batch");
@@ -770,6 +758,7 @@ mod tests {
                         transactions,
                         next_stage,
                         storage.clone(),
+                        &decided_blocks,
                         &mut deferred_executions,
                     )
                     .expect("Failed to process batch");
