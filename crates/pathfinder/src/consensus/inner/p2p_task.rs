@@ -524,12 +524,14 @@ pub fn spawn(
                             stopwatch.elapsed().as_millis()
                         );
 
-                        // Remove all finalized blocks for previous rounds at this height
-                        // because they will not be committed to the main DB. Do not remove the
-                        // block, which has just been marked as decided upon, and will be
-                        // committed by the sync task until it is confirmed that the block was
-                        // indeed committed.
-                        finalized_blocks.retain(|hnr, _| hnr.height() != height_and_round.height());
+                        // Remove all finalized blocks for previous rounds at this height because
+                        // they will not be committed to the main DB. Do not remove the block which
+                        // has just been marked as decided upon, and will be committed by the sync
+                        // task until it is confirmed that the block was indeed committed.
+                        finalized_blocks.retain(|hnr, _| {
+                            hnr.height() != height_and_round.height()
+                                || hnr.round() == height_and_round.round()
+                        });
 
                         tracing::debug!(
                             "🖧  🗑️ {validator_address} removed my undecided finalized blocks for \
