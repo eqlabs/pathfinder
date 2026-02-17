@@ -5,6 +5,7 @@ pub(crate) struct Column {
     pub name: &'static str,
     key_prefix_length: Option<usize>,
     point_lookup: bool,
+    optimize_for_hits: bool,
 }
 
 impl Column {
@@ -13,6 +14,7 @@ impl Column {
             name,
             key_prefix_length: None,
             point_lookup: false,
+            optimize_for_hits: false,
         }
     }
 
@@ -27,6 +29,9 @@ impl Column {
                 prefix_length,
             ));
         }
+        if self.optimize_for_hits {
+            options.set_optimize_filters_for_hits(true);
+        }
         options
     }
 
@@ -40,6 +45,13 @@ impl Column {
     pub const fn with_point_lookup(self) -> Self {
         Self {
             point_lookup: true,
+            ..self
+        }
+    }
+
+    pub const fn with_optimize_for_hits(self) -> Self {
+        Self {
+            optimize_for_hits: true,
             ..self
         }
     }

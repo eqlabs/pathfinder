@@ -11,12 +11,24 @@ use crate::columns::Column;
 use crate::prelude::*;
 use crate::TriePruneMode;
 
-pub const TRIE_CLASS_HASH_COLUMN: Column = Column::new("trie_class_hash").with_point_lookup();
-pub const TRIE_CLASS_NODE_COLUMN: Column = Column::new("trie_class_node").with_point_lookup();
-pub const TRIE_CONTRACT_HASH_COLUMN: Column = Column::new("trie_contract_hash").with_point_lookup();
-pub const TRIE_CONTRACT_NODE_COLUMN: Column = Column::new("trie_contract_node").with_point_lookup();
-pub const TRIE_STORAGE_HASH_COLUMN: Column = Column::new("trie_storage_hash").with_point_lookup();
-pub const TRIE_STORAGE_NODE_COLUMN: Column = Column::new("trie_storage_node").with_point_lookup();
+pub const TRIE_CLASS_HASH_COLUMN: Column = Column::new("trie_class_hash")
+    .with_point_lookup()
+    .with_optimize_for_hits();
+pub const TRIE_CLASS_NODE_COLUMN: Column = Column::new("trie_class_node")
+    .with_point_lookup()
+    .with_optimize_for_hits();
+pub const TRIE_CONTRACT_HASH_COLUMN: Column = Column::new("trie_contract_hash")
+    .with_point_lookup()
+    .with_optimize_for_hits();
+pub const TRIE_CONTRACT_NODE_COLUMN: Column = Column::new("trie_contract_node")
+    .with_point_lookup()
+    .with_optimize_for_hits();
+pub const TRIE_STORAGE_HASH_COLUMN: Column = Column::new("trie_storage_hash")
+    .with_point_lookup()
+    .with_optimize_for_hits();
+pub const TRIE_STORAGE_NODE_COLUMN: Column = Column::new("trie_storage_node")
+    .with_point_lookup()
+    .with_optimize_for_hits();
 
 const CONTRACT_STATE_HASHES_PREFIX_LENGTH: usize = size_of::<Felt>();
 const CONTRACT_STATE_HASHES_KEY_LENGTH: usize =
