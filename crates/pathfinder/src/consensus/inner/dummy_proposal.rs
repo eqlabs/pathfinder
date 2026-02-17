@@ -184,16 +184,19 @@ pub(crate) fn create(
     if let Some(parent_height) = height.checked_sub(1) {
         fake_decided_blocks.insert(
             parent_height,
-            ConsensusFinalizedL2Block {
-                header: ConsensusFinalizedBlockHeader {
-                    number: BlockNumber::new_or_panic(parent_height),
-                    // Must be less than `block_info.timestamp` to be considered valid by
-                    // `validate_block_info`.
-                    timestamp: BlockTimestamp::new_or_panic(0),
+            (
+                0, // Any round is fine.
+                ConsensusFinalizedL2Block {
+                    header: ConsensusFinalizedBlockHeader {
+                        number: BlockNumber::new_or_panic(parent_height),
+                        // Must be less than `block_info.timestamp` to be considered valid by
+                        // `validate_block_info`.
+                        timestamp: BlockTimestamp::new_or_panic(0),
+                        ..Default::default()
+                    },
                     ..Default::default()
                 },
-                ..Default::default()
-            },
+            ),
         );
     }
 
@@ -203,7 +206,7 @@ pub(crate) fn create(
         .validate_block_info(
             block_info.clone(),
             main_storage,
-            &HashMap::new(),
+            &fake_decided_blocks,
             None,
             None,
             worker_pool,
