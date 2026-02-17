@@ -12,7 +12,7 @@ pub mod add_transaction {
         CallParam,
         ContractAddress,
         Fee,
-        ProofElem,
+        Proof,
         ProofFactElem,
         TransactionSignatureElem,
     };
@@ -140,8 +140,8 @@ pub mod add_transaction {
         pub account_deployment_data: Vec<AccountDeploymentDataElem>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         pub proof_facts: Vec<ProofFactElem>,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        pub proof: Vec<ProofElem>,
+        #[serde(default, skip_serializing_if = "Proof::is_empty")]
+        pub proof: Proof,
     }
 
     /// Declare transaction details.

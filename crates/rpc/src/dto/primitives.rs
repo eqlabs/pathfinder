@@ -815,9 +815,13 @@ mod pathfinder_common_types {
         }
     }
 
-    impl SerializeForVersion for &pathfinder_common::ProofElem {
+    impl SerializeForVersion for &pathfinder_common::Proof {
         fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
-            serializer.serialize_u32(self.0)
+            use base64::Engine;
+
+            let bytes: Vec<u8> = self.0.iter().flat_map(|v| v.to_be_bytes()).collect();
+            let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            serializer.serialize_str(&encoded)
         }
     }
 }

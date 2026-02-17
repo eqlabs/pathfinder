@@ -186,10 +186,7 @@
             "0xabc",
             "0xdef"
         ],
-        "proof": [
-            11,
-            22
-        ]
+        "proof": "AAAACwAAABY="
     },
     {
         "type": "DEPLOY_ACCOUNT",

@@ -21,6 +21,7 @@ full-serde = []
 
 [dependencies]
 anyhow = { workspace = true }
+base64 = { workspace = true }
 bitvec = { workspace = true }
 fake = { workspace = true, features = ["derive"] }
 metrics = { workspace = true }

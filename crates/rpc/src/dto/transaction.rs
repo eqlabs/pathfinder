@@ -372,12 +372,12 @@ impl crate::dto::SerializeForVersion for Vec<pathfinder_common::ProofFactElem> {
     }
 }
 
-impl crate::dto::SerializeForVersion for Vec<pathfinder_common::ProofElem> {
+impl crate::dto::SerializeForVersion for pathfinder_common::Proof {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
-        serializer.serialize_iter(self.len(), &mut self.iter())
+        (&self).serialize(serializer)
     }
 }
 
