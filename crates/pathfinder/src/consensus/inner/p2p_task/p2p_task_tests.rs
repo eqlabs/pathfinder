@@ -355,6 +355,8 @@ fn verify_proposal_event(
 async fn test_proposal_fin_deferred_until_parent_block_decided(
     #[case] consensus_ahead_of_fgw: bool,
 ) {
+    use pathfinder_common::proposal_commitment;
+
     let chain_id = ChainId::SEPOLIA_TESTNET;
 
     let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
@@ -371,6 +373,9 @@ async fn test_proposal_fin_deferred_until_parent_block_decided(
         .map(|block| block.header.state_diff_commitment.0)
         .map(ProposalCommitment)
         .unwrap();
+
+    let expected_proposal_commitment2 =
+        proposal_commitment!("0x02A3CE358B96A4A26AC9C0EF4F7A8F878A9F3B1A4757E716874CAC711617CA87");
 
     let mut env =
         TestEnvironment::with_finalized_blocks(chain_id, validator_address, finalized_blocks);
@@ -396,10 +401,6 @@ async fn test_proposal_fin_deferred_until_parent_block_decided(
     let transactions = create_transaction_batch(0, 0, 5, chain_id);
     let (proposal_init, block_info) =
         create_test_proposal_init(chain_id, h2r1.height(), h2r1.round(), proposer_address);
-
-    // Focus is on batch execution and deferral logic, not commitment validation.
-    // Using a dummy commitment...
-    let proposal_commitment2 = ProposalCommitment(Felt::ZERO);
 
     // Step 1: Send ProposalInit
     env.p2p_tx
@@ -447,7 +448,7 @@ async fn test_proposal_fin_deferred_until_parent_block_decided(
             kind: EventKind::Proposal(
                 h2r1,
                 ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
-                    proposal_commitment: p2p_proto::common::Hash(proposal_commitment2.0),
+                    proposal_commitment: p2p_proto::common::Hash(expected_proposal_commitment2.0),
                 }),
             ),
         })
@@ -462,7 +463,7 @@ async fn test_proposal_fin_deferred_until_parent_block_decided(
         let proposal_cmd = wait_for_proposal_event(&mut env.rx_from_p2p, Duration::from_secs(3))
             .await
             .expect("Expected proposal event after ProposalFin");
-        verify_proposal_event(proposal_cmd, 2, proposal_commitment2);
+        verify_proposal_event(proposal_cmd, 2, expected_proposal_commitment2);
     }
 
     // Step 6: Send MarkBlockAsDecidedAndCleanUp for parent block (should trigger
@@ -470,7 +471,7 @@ async fn test_proposal_fin_deferred_until_parent_block_decided(
     env.tx_to_p2p
         .send(P2PTaskEvent::MarkBlockAsDecidedAndCleanUp(
             h2r1,
-            ConsensusValue(proposal_commitment2),
+            ConsensusValue(expected_proposal_commitment2),
         ))
         .await
         .expect("Failed to send MarkBlockAsDecidedAndCleanUp");
@@ -498,7 +499,7 @@ async fn test_proposal_fin_deferred_until_parent_block_decided(
         let proposal_cmd = wait_for_proposal_event(&mut env.rx_from_p2p, Duration::from_secs(3))
             .await
             .expect("Expected proposal event after ExecutedTransactionCount");
-        verify_proposal_event(proposal_cmd, 2, proposal_commitment2);
+        verify_proposal_event(proposal_cmd, 2, expected_proposal_commitment2);
     } else {
         // Step 8: It turns out that the feeder gateway was faster to get the
         // block for H=1 from the proposer than the node under test figured out
