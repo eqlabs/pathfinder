@@ -80,6 +80,10 @@ impl Account {
         self.address
     }
 
+    pub fn secret_key(&self) -> Felt {
+        self.private_key
+    }
+
     fn set_initial_balance(&self, state_update: &mut StateUpdateData) -> anyhow::Result<()> {
         let storage_var_address_low: starknet_api::state::StorageKey =
             get_storage_var_address("ERC20_balances", &[self.address.0.into_types_core_felt()]);

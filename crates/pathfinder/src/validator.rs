@@ -434,6 +434,8 @@ impl ValidatorTransactionBatchStage {
             .context("Executor should be initialized")
             .map_err(ProposalHandlingError::fatal)?;
 
+        eprintln!("Executing...");
+
         let (receipts, events): (Vec<_>, Vec<_>) =
             executor.execute(executor_txns)?.into_iter().unzip();
 
@@ -506,7 +508,7 @@ impl ValidatorTransactionBatchStage {
         Ok(())
     }
 
-    #[cfg(test)]
+    // #[cfg(test)]
     /// Finalize with the current state (up to the last executed transaction)
     pub fn finalize(
         &mut self,
@@ -600,9 +602,7 @@ impl ValidatorTransactionBatchStage {
     /// Finalizes the block, producing a header with all commitments except
     /// the state commitment and block hash, which are computed in the last
     /// stage.
-    pub(crate) fn consensus_finalize0(
-        self,
-    ) -> Result<ConsensusFinalizedL2Block, ProposalHandlingError> {
+    pub fn consensus_finalize0(self) -> Result<ConsensusFinalizedL2Block, ProposalHandlingError> {
         let Self {
             block_info,
             executor,

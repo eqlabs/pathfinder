@@ -66,7 +66,9 @@ pub mod tests {
         Tip,
         TransactionCommitment,
         TransactionNonce,
+        TransactionSignatureElem,
     };
+    use pathfinder_crypto::signature::ecdsa_sign;
     use pathfinder_crypto::Felt;
     use pathfinder_executor::types::to_starknet_api_transaction;
     use pathfinder_executor::{ConcurrentBlockExecutor, ConcurrentStateReader, ExecutorWorkerPool};
@@ -164,6 +166,12 @@ pub mod tests {
         let chargeable_account = accounts.pop().unwrap();
         let account = accounts.pop().unwrap();
 
+        eprintln!(
+            "Chargeable account address: {}",
+            chargeable_account.address()
+        );
+        eprintln!("Account address: {}", account.address());
+
         let (storage_commitment, class_commitment) = update_starknet_state(
             &db_txn,
             (&state_update).into(),
@@ -233,12 +241,8 @@ pub mod tests {
         eprintln!("Hello class hash: {hello_class_hash}");
         eprintln!("Hello casm hash: {hello_casm_hash}");
 
-        let db_conn = storage.connection().unwrap();
-        // let block_info = genesis_header.into();
         let worker_pool: ValidatorWorkerPool =
             ExecutorWorkerPool::<ConcurrentStateReader>::auto().get();
-
-        /*
 
         let validator = ValidatorBlockInfoStage::new(
             ChainId::SEPOLIA_TESTNET,
@@ -269,19 +273,19 @@ pub mod tests {
             )
             .unwrap();
 
-        let declare = DeclareTransactionV3 {
+        let mut declare = DeclareTransactionV3 {
             class_hash: ClassHash(hello_class_hash.0),
             nonce: TransactionNonce::ZERO,
             nonce_data_availability_mode: DataAvailabilityMode::L1,
             fee_data_availability_mode: DataAvailabilityMode::L1,
             resource_bounds: ResourceBounds {
                 l1_gas: ResourceBound {
-                    max_amount: ResourceAmount(u64::MAX),
-                    max_price_per_unit: ResourcePricePerUnit(u128::MAX),
+                    max_amount: ResourceAmount(1_000_000),
+                    max_price_per_unit: ResourcePricePerUnit(1_000_000_000),
                 },
                 l2_gas: ResourceBound {
-                    max_amount: ResourceAmount(u64::MAX),
-                    max_price_per_unit: ResourcePricePerUnit(u128::MAX),
+                    max_amount: ResourceAmount(1_000_000),
+                    max_price_per_unit: ResourcePricePerUnit(1_000_000_000),
                 },
                 l1_data_gas: None,
             },
@@ -292,8 +296,14 @@ pub mod tests {
             sender_address: account.address(),
             compiled_class_hash: hello_casm_hash,
         };
-        let variant = TransactionVariant::DeclareV3(declare);
+        let mut variant = TransactionVariant::DeclareV3(declare);
         let txn_hash = variant.calculate_hash(ChainId::SEPOLIA_TESTNET, false);
+        let (r, s) = ecdsa_sign(account.secret_key(), txn_hash.0).unwrap();
+        let TransactionVariant::DeclareV3(declare) = &mut variant else {
+            unreachable!();
+        };
+        declare.signature = vec![TransactionSignatureElem(r), TransactionSignatureElem(s)];
+
         let variant = variant.to_dto();
 
         eprintln!("DTO: {variant:#?}");
@@ -353,6 +363,8 @@ pub mod tests {
         validator
             .execute_batch::<ProdTransactionMapper>(vec![declare])
             .unwrap();
-        */
+
+        let block_1 = validator.consensus_finalize0().unwrap();
+        eprintln!("Block 1: {block_1:#?}");
     }
 }

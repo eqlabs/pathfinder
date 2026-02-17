@@ -100,7 +100,10 @@ fn sierra(
         entry_points_by_type,
     };
 
+    // Re-serialize into a storage-compatible format
+    let sierra_class_ser = serde_json::to_vec(&sierra_class_def).unwrap();
     let casm = compile_to_casm_deser(sierra_class_def).unwrap();
+
     let casm_hash = casm_class_hash_v2(&casm).unwrap();
     let sierra_class_hash = SierraHash(sierra_class_hash.0);
 
