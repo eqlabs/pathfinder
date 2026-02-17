@@ -120,13 +120,24 @@ impl IntoResponse for RpcResponse {
             _ => {}
         }
 
-        serde_json::to_vec(
+        let mut response = serde_json::to_vec(
             &self
                 .serialize(crate::dto::Serializer::new(self.version))
                 .unwrap(),
         )
         .unwrap()
-        .into_response()
+        .into_response();
+        if let Err(RpcError::ApplicationError(ApplicationError::ForwardedError(error))) =
+            self.output
+        {
+            if let Some(status) = error.status() {
+                *response.status_mut() = status;
+            } else {
+                tracing::warn!(?error, "Forwarded error has no status");
+            }
+        }
+
+        response
     }
 }
 

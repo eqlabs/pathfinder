@@ -87,6 +87,9 @@ pub enum ApplicationError {
     ProofLimitExceeded { limit: u32, requested: u32 },
     #[error("Internal error")]
     GatewayError(starknet_gateway_types::error::StarknetError),
+    /// Gateway HTTP errors whose status is forwarded.
+    #[error("Internal error")]
+    ForwardedError(reqwest::Error),
     #[error("Transaction execution error")]
     TransactionExecutionError {
         transaction_index: usize,
@@ -175,6 +178,7 @@ impl ApplicationError {
             ApplicationError::TooManyBlocksBack { .. } => 68,
             // https://www.jsonrpc.org/specification#error_object
             ApplicationError::GatewayError(_)
+            | ApplicationError::ForwardedError(_)
             | ApplicationError::Internal(_)
             | ApplicationError::Custom(_) => -32603,
         }
@@ -247,6 +251,9 @@ impl ApplicationError {
             })),
             ApplicationError::GatewayError(error) => Some(json!({
                 "error": error,
+            })),
+            ApplicationError::ForwardedError(error) => Some(json!({
+                "error": error.to_string(),
             })),
             ApplicationError::TransactionExecutionError {
                 transaction_index,
