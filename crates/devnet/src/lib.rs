@@ -33,32 +33,70 @@ impl IntoTypesCoreFelt for Felt {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
+    use std::num::NonZeroU32;
+    use std::thread::available_parallelism;
     use std::time::SystemTime;
 
+    use p2p::sync::client::conv::ToDto as _;
+    use p2p_proto::common::{Address, Hash};
+    use p2p_proto::consensus::{BlockInfo, ProposalInit};
+    use p2p_proto::sync::transaction::DeclareV3WithoutClass;
+    use pathfinder_common::class_definition::Sierra;
+    use pathfinder_common::transaction::{
+        DataAvailabilityMode,
+        DeclareTransactionV3,
+        ResourceBound,
+        ResourceBounds,
+        TransactionVariant,
+    };
     use pathfinder_common::{
         BlockHash,
         BlockHeader,
         BlockTimestamp,
+        ChainId,
+        ClassHash,
         EventCommitment,
         GasPrice,
         L1DataAvailabilityMode,
         ReceiptCommitment,
+        ResourceAmount,
+        ResourcePricePerUnit,
         SequencerAddress,
+        Tip,
         TransactionCommitment,
+        TransactionNonce,
     };
     use pathfinder_crypto::Felt;
+    use pathfinder_executor::types::to_starknet_api_transaction;
+    use pathfinder_executor::{ConcurrentBlockExecutor, ConcurrentStateReader, ExecutorWorkerPool};
     use pathfinder_lib::state::block_hash::{
         calculate_event_commitment,
         calculate_receipt_commitment,
         calculate_transaction_commitment,
         compute_final_hash,
     };
+    use pathfinder_lib::validator::{
+        ProdTransactionMapper,
+        ValidatorBlockInfoStage,
+        ValidatorTransactionBatchStage,
+        ValidatorWorkerPool,
+    };
     use pathfinder_merkle_tree::starknet_state::update_starknet_state;
-    use starknet_api::block_hash::receipt_commitment;
 
     use crate::account::Account;
+    use crate::class::preprocess_sierra;
+    use crate::fixtures::Class;
     use crate::{class, contract, fixtures};
+
+    fn timestamp_now() -> BlockTimestamp {
+        BlockTimestamp::new_or_panic(
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+        )
+    }
 
     #[test]
     fn test_init_devnet() {
@@ -66,7 +104,11 @@ mod tests {
         use pathfinder_common::{BlockNumber, StarknetVersion, StateCommitment};
         use pathfinder_storage::StorageBuilder;
 
-        let storage = StorageBuilder::in_tempdir().unwrap();
+        let storage = StorageBuilder::in_tempdir_with_trie_pruning_and_pool_size(
+            pathfinder_storage::TriePruneMode::Archive,
+            NonZeroU32::new(32 + available_parallelism().unwrap().get() as u32).unwrap(),
+        )
+        .unwrap();
         let mut db_conn = storage.connection().unwrap();
         let db_txn = db_conn.transaction().unwrap();
         let mut state_update = StateUpdateData::default();
@@ -91,6 +133,7 @@ mod tests {
                 contract::erc20_init(&mut state_update, contract_address, name, symbol).unwrap();
             });
 
+        let mut accounts = Vec::new();
         [
             (
                 Felt::from_u64(1 /* Keep ECDSA happy */),
@@ -116,7 +159,10 @@ mod tests {
             )
             .unwrap();
             account.predeploy(&mut state_update).unwrap();
+            accounts.push(account);
         });
+        let chargeable_account = accounts.pop().unwrap();
+        let account = accounts.pop().unwrap();
 
         let (storage_commitment, class_commitment) = update_starknet_state(
             &db_txn,
@@ -132,12 +178,6 @@ mod tests {
             StarknetVersion::V_0_14_0,
         );
 
-        let timestamp = BlockTimestamp::new_or_panic(
-            SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs(),
-        );
         let transaction_commitment =
             calculate_transaction_commitment(&[], StarknetVersion::V_0_14_0).unwrap();
         assert_eq!(transaction_commitment, TransactionCommitment::ZERO);
@@ -151,6 +191,7 @@ mod tests {
         assert_eq!(event_commitment, EventCommitment::ZERO);
         eprintln!("Genesis event commitment: {event_commitment}");
 
+        let timestamp = timestamp_now();
         let mut genesis_header = BlockHeader {
             hash: BlockHash::ZERO, // Will be updated
             parent_hash: BlockHash::ZERO,
@@ -183,5 +224,135 @@ mod tests {
             .insert_state_update_data(BlockNumber::GENESIS, &state_update)
             .unwrap();
         db_txn.commit().unwrap();
+
+        let Class::Cairo1(hello_sierra_ser) = fixtures::HELLO_CLASS else {
+            panic!("Expected Cairo1 class");
+        };
+        let (hello_class_hash, sierra, hello_casm_hash, hello_casm) =
+            preprocess_sierra(hello_sierra_ser).unwrap();
+        eprintln!("Hello class hash: {hello_class_hash}");
+        eprintln!("Hello casm hash: {hello_casm_hash}");
+
+        let db_conn = storage.connection().unwrap();
+        // let block_info = genesis_header.into();
+        let worker_pool: ValidatorWorkerPool =
+            ExecutorWorkerPool::<ConcurrentStateReader>::auto().get();
+
+        /*
+
+        let validator = ValidatorBlockInfoStage::new(
+            ChainId::SEPOLIA_TESTNET,
+            ProposalInit {
+                height: 1,
+                round: 0,
+                valid_round: None,
+                proposer: Address(Felt::ONE),
+            },
+        )
+        .unwrap();
+        let mut validator = validator
+            .validate_block_info(
+                BlockInfo {
+                    height: 1,
+                    builder: Address(Felt::ONE),
+                    timestamp: timestamp.get() + 1,
+                    l2_gas_price_fri: 1_000_000_000,
+                    l1_gas_price_wei: 1_000_000_000,
+                    l1_data_gas_price_wei: 1_000_000_000,
+                    eth_to_fri_rate: 1_000_000_000,
+                    l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
+                },
+                storage.clone(),
+                None,
+                None,
+                worker_pool,
+            )
+            .unwrap();
+
+        let declare = DeclareTransactionV3 {
+            class_hash: ClassHash(hello_class_hash.0),
+            nonce: TransactionNonce::ZERO,
+            nonce_data_availability_mode: DataAvailabilityMode::L1,
+            fee_data_availability_mode: DataAvailabilityMode::L1,
+            resource_bounds: ResourceBounds {
+                l1_gas: ResourceBound {
+                    max_amount: ResourceAmount(u64::MAX),
+                    max_price_per_unit: ResourcePricePerUnit(u128::MAX),
+                },
+                l2_gas: ResourceBound {
+                    max_amount: ResourceAmount(u64::MAX),
+                    max_price_per_unit: ResourcePricePerUnit(u128::MAX),
+                },
+                l1_data_gas: None,
+            },
+            tip: Tip(0),
+            paymaster_data: vec![/* TODO ANYTHING MISSING HERE ??? */],
+            signature: vec![/* TODO SIGNATURE MISSING !!! */],
+            account_deployment_data: vec![/* TODO ANYTHING MISSING HERE ??? */],
+            sender_address: account.address(),
+            compiled_class_hash: hello_casm_hash,
+        };
+        let variant = TransactionVariant::DeclareV3(declare);
+        let txn_hash = variant.calculate_hash(ChainId::SEPOLIA_TESTNET, false);
+        let variant = variant.to_dto();
+
+        eprintln!("DTO: {variant:#?}");
+
+        let p2p_proto::sync::transaction::TransactionVariant::DeclareV3(DeclareV3WithoutClass {
+            common,
+            class_hash,
+        }) = variant
+        else {
+            unreachable!();
+        };
+        let Sierra {
+            abi,
+            sierra_program,
+            contract_class_version,
+            entry_points_by_type,
+        } = sierra;
+        let declare = p2p_proto::transaction::DeclareV3WithClass {
+            common,
+            class: p2p_proto::class::Cairo1Class {
+                abi: abi.into_owned(),
+                entry_points: p2p_proto::class::Cairo1EntryPoints {
+                    externals: entry_points_by_type
+                        .external
+                        .into_iter()
+                        .map(|x| p2p_proto::class::SierraEntryPoint {
+                            index: x.function_idx,
+                            selector: x.selector.0,
+                        })
+                        .collect(),
+                    l1_handlers: entry_points_by_type
+                        .l1_handler
+                        .into_iter()
+                        .map(|x| p2p_proto::class::SierraEntryPoint {
+                            index: x.function_idx,
+                            selector: x.selector.0,
+                        })
+                        .collect(),
+                    constructors: entry_points_by_type
+                        .constructor
+                        .into_iter()
+                        .map(|x| p2p_proto::class::SierraEntryPoint {
+                            index: x.function_idx,
+                            selector: x.selector.0,
+                        })
+                        .collect(),
+                },
+                program: sierra_program,
+                contract_class_version: contract_class_version.into_owned(),
+            },
+        };
+        let declare = p2p_proto::consensus::Transaction {
+            txn: p2p_proto::consensus::TransactionVariant::DeclareV3(declare),
+            transaction_hash: Hash(txn_hash.0),
+        };
+
+        validator
+            .execute_batch::<ProdTransactionMapper>(vec![declare])
+            .unwrap();
+        */
     }
 }

@@ -5,7 +5,7 @@ use pathfinder_class_hash::{
     RawCairoContractDefinition,
 };
 use pathfinder_common::class_definition::Sierra;
-use pathfinder_common::{state_update, ClassHash, SierraHash};
+use pathfinder_common::{state_update, CasmHash, ClassHash, SierraHash};
 use pathfinder_compiler::{casm_class_hash_v2, compile_to_casm_deser};
 use pathfinder_storage::Transaction;
 
@@ -121,6 +121,44 @@ fn sierra(
         &casm_hash,
     )?;
     Ok(())
+}
+
+pub fn preprocess_sierra<'a>(
+    sierra_class_ser: &'a [u8],
+) -> anyhow::Result<(SierraHash, Sierra<'a>, CasmHash, Vec<u8>)> {
+    let compat::SierraContractDefinition {
+        abi,
+        sierra_program,
+        contract_class_version,
+        entry_points_by_type,
+    } = serde_json::from_slice(sierra_class_ser).unwrap();
+    let sierra_class_def = SierraContractDefinition {
+        abi: serde_json::to_string(&abi).unwrap().into(),
+        sierra_program,
+        contract_class_version,
+        entry_points_by_type,
+    };
+
+    let sierra_class_hash = compute_sierra_class_hash(sierra_class_def)?;
+
+    let compat::Sierra {
+        abi,
+        sierra_program,
+        contract_class_version,
+        entry_points_by_type,
+    } = serde_json::from_slice(sierra_class_ser).unwrap();
+    let sierra_class_def = Sierra {
+        abi: serde_json::to_string(&abi).unwrap().into(),
+        sierra_program,
+        contract_class_version,
+        entry_points_by_type,
+    };
+
+    let casm = compile_to_casm_deser(sierra_class_def.clone()).unwrap();
+    let casm_hash = casm_class_hash_v2(&casm).unwrap();
+    let sierra_class_hash = SierraHash(sierra_class_hash.0);
+
+    Ok((sierra_class_hash, sierra_class_def, casm_hash, casm))
 }
 
 mod compat {

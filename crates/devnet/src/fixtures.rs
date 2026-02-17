@@ -1,8 +1,10 @@
 use pathfinder_common::{
+    casm_hash,
     class_hash,
     contract_address,
     felt,
     public_key,
+    CasmHash,
     ClassHash,
     ContractAddress,
     PublicKey,
@@ -98,3 +100,9 @@ pub const CHARGEABLE_ACCOUNT_ADDRESS: ContractAddress =
 /// https://github.com/OpenZeppelin/cairo-contracts/blob/89a450a88628ec3b86273f261b2d8d1ca9b1522b/src/account/interface.cairo#L7
 pub const ISRC6_ID: Felt =
     felt!("0x2ceccef7f994940b3962a6c67e0ba4fcd37df7d131417c604f91e03caecc1cd");
+
+pub const HELLO_CLASS: Class = Class::Cairo1(include_bytes!("./fixtures/hello_starknet.sierra"));
+pub const HELLO_CLASS_HASH: ClassHash =
+    class_hash!("0x0457EF47CFAA819D9FE1372E8957815CDBA2252ED3E42A15536A5A40747C8A00");
+pub const HELLO_CASM_HASH: CasmHash =
+    casm_hash!("0x0071411E420C6D4237454AD997676341D8FBFDE4256888B31F34204AB7ED912F");

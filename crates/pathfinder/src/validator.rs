@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
@@ -5,9 +6,12 @@ use std::time::Instant;
 use anyhow::Context;
 use p2p::sync::client::conv::TryFromDto;
 use p2p_proto::class::Cairo1Class;
+use p2p_proto::common::Hash;
 use p2p_proto::consensus::{BlockInfo, ProposalInit, TransactionVariant as ConsensusVariant};
 use p2p_proto::sync::transaction::{DeclareV3WithoutClass, TransactionVariant as SyncVariant};
 use p2p_proto::transaction::DeclareV3WithClass;
+use pathfinder_class_hash::compute_sierra_class_hash;
+use pathfinder_class_hash::json::SierraContractDefinition;
 use pathfinder_common::class_definition::{SelectorAndFunctionIndex, SierraEntryPoints};
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
@@ -383,6 +387,8 @@ impl ValidatorTransactionBatchStage {
             .collect::<anyhow::Result<Vec<_>>>()
             .map_err(ProposalHandlingError::recoverable)?;
         let (common_txns, executor_txns): (Vec<_>, Vec<_>) = txns.into_iter().unzip();
+
+        eprintln!("Mapped txns: {:#?}", common_txns);
 
         // Verify transaction hashes
         let txn_hashes = common_txns
@@ -772,13 +778,58 @@ impl TransactionExt for ProdTransactionMapper {
             transaction_hash,
         } = transaction;
         let (variant, class_info) = match txn {
-            ConsensusVariant::DeclareV3(DeclareV3WithClass { common, class }) => (
-                SyncVariant::DeclareV3(DeclareV3WithoutClass {
-                    common,
-                    class_hash: Default::default(),
-                }),
-                Some(class_info(class)?),
-            ),
+            ConsensusVariant::DeclareV3(DeclareV3WithClass { common, class }) => {
+                // let Cairo1Class {
+                //     abi,
+                //     entry_points,
+                //     program,
+                //     contract_class_version,
+                // } = class;
+                let mut entry_points_by_type = HashMap::new();
+                class.entry_points.constructors.iter().for_each(|x| {
+                    entry_points_by_type
+                        .entry(pathfinder_common::class_definition::EntryPointType::Constructor)
+                        .or_insert_with(Vec::new)
+                        .push(SelectorAndFunctionIndex {
+                            selector: EntryPoint(x.selector),
+                            function_idx: x.index,
+                        });
+                });
+                class.entry_points.externals.iter().for_each(|x| {
+                    entry_points_by_type
+                        .entry(pathfinder_common::class_definition::EntryPointType::External)
+                        .or_insert_with(Vec::new)
+                        .push(SelectorAndFunctionIndex {
+                            selector: EntryPoint(x.selector),
+                            function_idx: x.index,
+                        });
+                });
+                class.entry_points.l1_handlers.iter().for_each(|x| {
+                    entry_points_by_type
+                        .entry(pathfinder_common::class_definition::EntryPointType::L1Handler)
+                        .or_insert_with(Vec::new)
+                        .push(SelectorAndFunctionIndex {
+                            selector: EntryPoint(x.selector),
+                            function_idx: x.index,
+                        });
+                });
+
+                let def = SierraContractDefinition {
+                    abi: class.abi.clone().into(),
+                    sierra_program: class.program.clone(),
+                    contract_class_version: class.contract_class_version.clone().into(),
+                    entry_points_by_type,
+                };
+                let class_hash = compute_sierra_class_hash(def)?;
+
+                (
+                    SyncVariant::DeclareV3(DeclareV3WithoutClass {
+                        common,
+                        class_hash: Hash(class_hash.0),
+                    }),
+                    Some(class_info(class)?),
+                )
+            }
             ConsensusVariant::DeployAccountV3(v) => (SyncVariant::DeployAccountV3(v), None),
             ConsensusVariant::InvokeV3(v) => (SyncVariant::InvokeV3(v), None),
             ConsensusVariant::L1HandlerV0(v) => (SyncVariant::L1HandlerV0(v), None),

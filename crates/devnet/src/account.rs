@@ -76,6 +76,10 @@ impl Account {
         self.simulate_constructor(state_update)
     }
 
+    pub fn address(&self) -> ContractAddress {
+        self.address
+    }
+
     fn set_initial_balance(&self, state_update: &mut StateUpdateData) -> anyhow::Result<()> {
         let storage_var_address_low: starknet_api::state::StorageKey =
             get_storage_var_address("ERC20_balances", &[self.address.0.into_types_core_felt()]);

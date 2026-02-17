@@ -14,8 +14,11 @@ pathfinder-class-hash = { path = "../class-hash" }
 pathfinder-common = { path = "../common" }
 pathfinder-compiler = { path = "../compiler" }
 pathfinder-crypto = { path = "../crypto" }
+pathfinder-executor = { path = "../executor" }
 pathfinder-merkle-tree = { path = "../merkle-tree" }
 pathfinder-storage = { path = "../storage" }
+p2p = { path = "../p2p" }
+p2p_proto = { path = "../p2p_proto" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 starknet_api = { workspace = true }
