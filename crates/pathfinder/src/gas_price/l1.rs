@@ -230,6 +230,12 @@ impl L1GasPriceProvider {
         Ok(())
     }
 
+    /// Clears all stored samples. Used during recovery after a reorg or
+    /// connection failure.
+    pub fn clear(&self) {
+        self.inner.buffer.write().unwrap().clear();
+    }
+
     /// Computes the rolling average of gas prices for the given timestamp.
     ///
     /// Returns (avg_base_fee, avg_blob_fee).
@@ -438,6 +444,22 @@ mod tests {
             provider.add_sample(bad_block),
             Err(AddSampleError::Reorg { .. })
         ));
+    }
+
+    #[test]
+    fn test_clear() {
+        let provider = L1GasPriceProvider::new(L1GasPriceConfig::default());
+        provider.add_sample(sample(10, 100, 100, 10)).unwrap();
+        provider.add_sample(sample(11, 112, 100, 10)).unwrap();
+        assert_eq!(provider.sample_count(), 2);
+
+        provider.clear();
+        assert_eq!(provider.sample_count(), 0);
+        assert!(!provider.is_ready());
+
+        // Can add from a completely different block number after clear
+        provider.add_sample(sample(500, 6000, 200, 20)).unwrap();
+        assert_eq!(provider.sample_count(), 1);
     }
 
     #[test]
