@@ -60,6 +60,7 @@ pub mod tests {
         CallParam,
         ChainId,
         ClassHash,
+        ConsensusFinalizedL2Block,
         EntryPoint,
         EventCommitment,
         GasPrice,
@@ -70,7 +71,6 @@ pub mod tests {
         SequencerAddress,
         Tip,
         TransactionCommitment,
-        TransactionNonce,
         TransactionSignatureElem,
     };
     use pathfinder_crypto::signature::ecdsa_sign;
@@ -103,7 +103,7 @@ pub mod tests {
         )
     }
 
-    #[test]
+    #[test_log::test(test)]
     fn test_init_devnet() {
         use pathfinder_common::state_update::StateUpdateData;
         use pathfinder_common::{BlockNumber, StarknetVersion, StateCommitment};
@@ -239,10 +239,11 @@ pub mod tests {
         let Class::Cairo1(hello_sierra_ser) = fixtures::HELLO_CLASS else {
             panic!("Expected Cairo1 class");
         };
-        let (hello_class_hash, sierra, hello_casm_hash, hello_casm) =
+        let (hello_class_hash, sierra, hello_casm_hash_v2, hello_casm) =
             preprocess_sierra(hello_sierra_ser).unwrap();
         eprintln!("Hello class hash: {hello_class_hash}");
-        eprintln!("Hello casm hash: {hello_casm_hash}");
+        eprintln!("Hello casm hash v2: {hello_casm_hash_v2}");
+        let hello_sierra_ser_compatible = serde_json::to_vec(&sierra).unwrap();
 
         let worker_pool: ValidatorWorkerPool =
             ExecutorWorkerPool::<ConcurrentStateReader>::auto().get();
@@ -297,7 +298,7 @@ pub mod tests {
             signature: vec![/* Will be filled after signing */],
             account_deployment_data: vec![],
             sender_address: account.address(),
-            compiled_class_hash: hello_casm_hash,
+            compiled_class_hash: hello_casm_hash_v2,
         };
         let mut variant = TransactionVariant::DeclareV3(declare);
         let txn_hash = variant.calculate_hash(ChainId::SEPOLIA_TESTNET, false);
@@ -369,6 +370,107 @@ pub mod tests {
 
         let block_1 = validator.consensus_finalize0().unwrap();
         eprintln!("Block 1: {block_1:#?}");
+
+        let block_number = BlockNumber::new_or_panic(1);
+        let mut db_conn = storage.connection().unwrap();
+        let db_txn = db_conn.transaction().unwrap();
+        let (storage_commitment, class_commitment) = update_starknet_state(
+            &db_txn,
+            (&state_update).into(),
+            true,
+            block_number,
+            storage.clone(),
+        )
+        .unwrap();
+        let state_commitment = StateCommitment::calculate(
+            storage_commitment,
+            class_commitment,
+            StarknetVersion::V_0_14_0,
+        );
+
+        let ConsensusFinalizedL2Block {
+            header,
+            state_update,
+            transactions_and_receipts,
+            events,
+        } = block_1;
+
+        let header = header.compute_hash(genesis_header.hash, state_commitment, compute_final_hash);
+
+        db_txn.insert_block_header(&header).unwrap();
+
+        // Insert classes before state update because the latter will trigger
+        // `upsert_declared_at` and insert a NULL definition
+        db_txn
+            .insert_sierra_class_definition(
+                &hello_class_hash,
+                &hello_sierra_ser_compatible,
+                &hello_casm,
+                &hello_casm_hash_v2,
+            )
+            .unwrap();
+
+        db_txn
+            .insert_state_update_data(block_number, &state_update)
+            .unwrap();
+        db_txn
+            .insert_transaction_data(block_number, &transactions_and_receipts, Some(&events))
+            .unwrap();
+        // Insert will fail because of `upsert_declared_at` in
+        // `insert_state_update_data` TODO make sure where this insertion
+        // db_txn
+        //     .update_sierra_class_definition(
+        //         &hello_class_hash,
+        //         &hello_sierra_ser_compatible,
+        //         &hello_casm,
+        //         &hello_casm_hash_v2,
+        //     )
+        //     .unwrap();
+
+        db_txn.commit().unwrap();
+
+        // let mut db_conn = storage.connection().unwrap();
+        // let db_txn = db_conn.transaction().unwrap();
+        // let x = db_txn.class_definition_with_block_number(ClassHash(hello_class_hash.
+        // 0));
+
+        // panic!("Class definition at block 1: {x:#?}");
+
+        // let x = db_txn.class_definition_at(
+        //     pathfinder_common::BlockId::Number(BlockNumber::new_or_panic(1)),
+        //     ClassHash(hello_class_hash.0),
+        // );
+
+        // panic!("Class definition at block 1: {x:#?}");
+
+        let validator = ValidatorBlockInfoStage::new(
+            ChainId::SEPOLIA_TESTNET,
+            ProposalInit {
+                height: 2,
+                round: 0,
+                valid_round: None,
+                proposer: Address(Felt::ONE),
+            },
+        )
+        .unwrap();
+        let mut validator = validator
+            .validate_block_info(
+                BlockInfo {
+                    height: 2,
+                    builder: Address(Felt::ONE),
+                    timestamp: timestamp.get() + 2,
+                    l2_gas_price_fri: 1_000_000_000,
+                    l1_gas_price_wei: 1_000_000_000,
+                    l1_data_gas_price_wei: 1_000_000_000,
+                    eth_to_fri_rate: 1_000_000_000,
+                    l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
+                },
+                storage.clone(),
+                None,
+                None,
+                worker_pool.clone(),
+            )
+            .unwrap();
 
         // Calldata structure for deployment via InvokeV3:
         // https://github.com/software-mansion/starknet-rust/blob/8c6e5eef7b2b19256ee643eefe742119188092e6/starknet-rust-accounts/src/single_owner.rs#L141
@@ -446,6 +548,32 @@ pub mod tests {
         };
 
         eprintln!("Deploy transaction: {deploy:#?}");
+
+        let mut variant = TransactionVariant::InvokeV3(deploy);
+        let txn_hash = variant.calculate_hash(ChainId::SEPOLIA_TESTNET, false);
+        let (r, s) = ecdsa_sign(account.secret_key(), txn_hash.0).unwrap();
+        let TransactionVariant::InvokeV3(deploy) = &mut variant else {
+            unreachable!();
+        };
+        deploy.signature = vec![TransactionSignatureElem(r), TransactionSignatureElem(s)];
+
+        let variant = variant.to_dto();
+
+        let p2p_proto::sync::transaction::TransactionVariant::InvokeV3(deploy) = variant else {
+            unreachable!();
+        };
+
+        let deploy = p2p_proto::consensus::Transaction {
+            txn: p2p_proto::consensus::TransactionVariant::InvokeV3(deploy),
+            transaction_hash: Hash(txn_hash.0),
+        };
+
+        validator
+            .execute_batch::<ProdTransactionMapper>(vec![deploy])
+            .unwrap();
+
+        let block_2 = validator.consensus_finalize0().unwrap();
+        eprintln!("Block 2: {block_2:#?}");
 
         let worker_pool = Arc::into_inner(worker_pool).unwrap();
         worker_pool.join();

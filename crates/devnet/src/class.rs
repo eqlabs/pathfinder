@@ -158,10 +158,10 @@ pub fn preprocess_sierra<'a>(
     };
 
     let casm = compile_to_casm_deser(sierra_class_def.clone()).unwrap();
-    let casm_hash = casm_class_hash_v2(&casm).unwrap();
+    let casm_hash_v2 = casm_class_hash_v2(&casm).unwrap();
     let sierra_class_hash = SierraHash(sierra_class_hash.0);
 
-    Ok((sierra_class_hash, sierra_class_def, casm_hash, casm))
+    Ok((sierra_class_hash, sierra_class_def, casm_hash_v2, casm))
 }
 
 mod compat {
