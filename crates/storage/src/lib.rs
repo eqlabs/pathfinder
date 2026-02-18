@@ -546,7 +546,7 @@ impl StorageBuilder {
         options.set_bytes_per_sync(1024 * 1024_u64);
         options.set_wal_bytes_per_sync(512 * 1024_u64);
         options.set_max_log_file_size(10 * 1024 * 1024_usize);
-        options.set_max_open_files(2048);
+        options.set_max_open_files(50000);
         options.set_keep_log_file_num(3);
         options.set_log_level(rust_rocksdb::LogLevel::Warn);
 
