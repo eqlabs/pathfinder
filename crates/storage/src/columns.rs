@@ -27,6 +27,7 @@ impl Column {
         block_based_options.set_pin_l0_filter_and_index_blocks_in_cache(true);
         block_based_options.set_ribbon_filter(15.0);
 
+        options.optimize_universal_style_compaction(512 * 1024 * 1024);
         options.set_bottommost_compression_type(DBCompressionType::Zstd);
 
         if self.point_lookup {
