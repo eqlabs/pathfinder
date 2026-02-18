@@ -268,11 +268,11 @@ impl Transaction<'_> {
 
         // Skip _last_ entry and remove the rest.
         iter.next();
-        if iter.valid() {
+        let mut batch = self.batch.lock().expect("Batch lock poisoned");
+        while iter.valid() {
             let key = iter.key().expect("Iterator is valid");
-            let genesis_key = contract_state_hashes_key(BlockNumber::GENESIS, &contract);
-            let mut batch = self.batch.lock().expect("Batch lock poisoned");
-            batch.delete_range_cf(&column, key, &genesis_key);
+            batch.delete_cf(&column, key);
+            iter.next();
         }
 
         Ok(())
