@@ -102,14 +102,6 @@ pub fn update_contract_state(
             .unwrap_or_default()
     };
 
-    tracing::info!(
-        ?contract_address,
-        ?class_hash,
-        ?new_root,
-        ?nonce,
-        "Calculated new contract state hash preimage"
-    );
-
     let state_hash = calculate_contract_state_hash(class_hash, new_root, nonce);
 
     Ok(ContractStateUpdateResult {
