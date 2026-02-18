@@ -211,16 +211,17 @@ impl EthereumClient {
         Ok(results)
     }
 
-    /// Subscribes to new block headers and calls the callback with gas price
-    /// data for each block as it arrives.
+    /// Subscribes to new block headers and sends gas price data to the
+    /// provided channel for each block as it arrives.
     ///
     /// This uses a dedicated WebSocket connection for the subscription stream.
     /// Re-subscribes automatically if the stream ends due to errors.
-    pub async fn subscribe_block_headers<F, Fut>(&self, callback: F) -> anyhow::Result<()>
-    where
-        F: Fn(L1GasPriceData) -> Fut + Send + 'static,
-        Fut: Future<Output = ()> + Send + 'static,
-    {
+    /// Returns `Ok(())` if the receiver is dropped (clean shutdown).
+    /// Returns `Err` if the WebSocket connection cannot be re-established.
+    pub async fn subscribe_block_headers(
+        &self,
+        tx: tokio::sync::mpsc::Sender<L1GasPriceData>,
+    ) -> anyhow::Result<()> {
         // Create a dedicated WebSocket connection for subscriptions
         let ws = WsConnect::new(self.url.clone());
         let provider = ProviderBuilder::new().connect_ws(ws).await?;
@@ -239,7 +240,9 @@ impl EthereumClient {
                         base_fee_per_gas: header.base_fee_per_gas.unwrap_or(0) as u128,
                         blob_fee: compute_blob_fee(header.excess_blob_gas),
                     };
-                    callback(data).await;
+                    if tx.send(data).await.is_err() {
+                        return Ok(());
+                    }
                 }
                 Err(e) => {
                     tracing::debug!(error = %e, "Block subscription ended, re-subscribing");
