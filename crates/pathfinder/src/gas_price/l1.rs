@@ -352,9 +352,19 @@ impl L1GasPriceProvider {
 mod tests {
     use super::*;
 
+    /// Generates a deterministic block hash from a block number.
+    fn hash_for(n: u64) -> L1BlockHash {
+        let mut bytes = [0u8; 32];
+        bytes[24..32].copy_from_slice(&n.to_be_bytes());
+        L1BlockHash::from(bytes)
+    }
+
+    /// Creates a test sample with deterministic hashes that form a valid chain.
     fn sample(block_num: u64, timestamp: u64, base_fee: u128, blob_fee: u128) -> L1GasPriceData {
         L1GasPriceData {
             block_number: L1BlockNumber::new_or_panic(block_num),
+            block_hash: hash_for(block_num),
+            parent_hash: hash_for(block_num.wrapping_sub(1)),
             timestamp,
             base_fee_per_gas: base_fee,
             blob_fee,
@@ -374,7 +384,10 @@ mod tests {
         provider.add_sample(sample(101, 1012, 110, 11)).unwrap();
         assert_eq!(provider.sample_count(), 2);
 
-        assert!(provider.add_sample(sample(105, 1060, 150, 15)).is_err());
+        assert!(matches!(
+            provider.add_sample(sample(105, 1060, 150, 15)),
+            Err(AddSampleError::Gap { .. })
+        ));
 
         let small_provider = L1GasPriceProvider::new(L1GasPriceConfig {
             storage_limit: 3,
@@ -390,6 +403,41 @@ mod tests {
             small_provider.latest_block_number(),
             Some(L1BlockNumber::new_or_panic(4))
         );
+    }
+
+    #[test]
+    fn test_gap_detection() {
+        let provider = L1GasPriceProvider::new(L1GasPriceConfig::default());
+
+        // Add block 10 first
+        provider.add_sample(sample(10, 100, 100, 10)).unwrap();
+
+        // Now add block 15 and expect the error
+        let err = provider.add_sample(sample(15, 160, 100, 10)).unwrap_err();
+        match err {
+            AddSampleError::Gap { expected, actual } => {
+                assert_eq!(expected, L1BlockNumber::new_or_panic(11));
+                assert_eq!(actual, L1BlockNumber::new_or_panic(15));
+            }
+            other => panic!("Expected Gap, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_reorg_detection() {
+        let provider = L1GasPriceProvider::new(L1GasPriceConfig::default());
+
+        // Add block 10 first
+        provider.add_sample(sample(10, 100, 100, 10)).unwrap();
+
+        // Now add block 11 with a parent hash that doesn't match block 10's hash
+        let mut bad_block = sample(11, 112, 100, 10);
+        bad_block.parent_hash = L1BlockHash::from([0xFFu8; 32]);
+
+        assert!(matches!(
+            provider.add_sample(bad_block),
+            Err(AddSampleError::Reorg { .. })
+        ));
     }
 
     #[test]

@@ -10,6 +10,7 @@ mod oracle;
 pub(crate) const ETH_TO_WEI: u128 = 1_000_000_000_000_000_000;
 
 pub use l1::{
+    AddSampleError,
     L1GasPriceConfig,
     L1GasPriceProvider,
     L1GasPriceValidationError,

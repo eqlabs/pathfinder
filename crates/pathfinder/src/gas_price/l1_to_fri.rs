@@ -145,7 +145,7 @@ impl L1ToFriValidator {
 
 #[cfg(test)]
 mod tests {
-    use pathfinder_common::L1BlockNumber;
+    use pathfinder_common::{L1BlockHash, L1BlockNumber};
     use pathfinder_ethereum::L1GasPriceData;
 
     use super::*;
@@ -153,8 +153,14 @@ mod tests {
     use crate::gas_price::oracle::MockEthToFriOracle;
 
     fn sample(block_num: u64, timestamp: u64, base_fee: u128, blob_fee: u128) -> L1GasPriceData {
+        let mut hash_bytes = [0u8; 32];
+        hash_bytes[24..32].copy_from_slice(&block_num.to_be_bytes());
+        let mut parent_bytes = [0u8; 32];
+        parent_bytes[24..32].copy_from_slice(&block_num.wrapping_sub(1).to_be_bytes());
         L1GasPriceData {
             block_number: L1BlockNumber::new_or_panic(block_num),
+            block_hash: L1BlockHash::from(hash_bytes),
+            parent_hash: L1BlockHash::from(parent_bytes),
             timestamp,
             base_fee_per_gas: base_fee,
             blob_fee,
