@@ -6,7 +6,7 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, RwLock};
 
-use pathfinder_common::L1BlockNumber;
+use pathfinder_common::{L1BlockHash, L1BlockNumber};
 use pathfinder_ethereum::L1GasPriceData;
 
 use super::deviation_pct;
@@ -115,6 +115,22 @@ pub enum L1GasPriceValidationResult {
     InsufficientData,
 }
 
+/// Error returned when adding a sample to the gas price buffer fails.
+#[derive(Debug, thiserror::Error)]
+pub enum AddSampleError {
+    #[error("Gap in L1 block sequence: expected {expected}, got {actual}")]
+    Gap {
+        expected: L1BlockNumber,
+        actual: L1BlockNumber,
+    },
+    #[error("L1 reorg detected at block {block_number}: parent hash mismatch")]
+    Reorg {
+        block_number: L1BlockNumber,
+        expected_parent: L1BlockHash,
+        actual_parent: L1BlockHash,
+    },
+}
+
 /// Provides L1 gas price data and validation for consensus proposals.
 ///
 /// Uses ring buffer to store historical gas price samples and computes rolling
@@ -172,18 +188,29 @@ impl L1GasPriceProvider {
 
     /// Adds a new gas price sample to the buffer.
     ///
-    /// Samples are expected to be added in sequential block order.
-    pub fn add_sample(&self, data: L1GasPriceData) -> Result<(), anyhow::Error> {
+    /// Samples must be added in sequential block order. Returns
+    /// [`AddSampleError::Gap`] if block numbers are non-sequential, or
+    /// [`AddSampleError::Reorg`] if the parent hash doesn't match the
+    /// previous block's hash (indicating a chain reorganization).
+    pub fn add_sample(&self, data: L1GasPriceData) -> Result<(), AddSampleError> {
         let mut buffer = self.inner.buffer.write().unwrap();
 
         if let Some(last) = buffer.back() {
-            let expected = last.block_number.get() + 1;
-            if data.block_number.get() != expected {
-                anyhow::bail!(
-                    "Non-sequential block: expected {}, got {}",
+            let expected = L1BlockNumber::new_or_panic(last.block_number.get() + 1);
+
+            if data.block_number != expected {
+                return Err(AddSampleError::Gap {
                     expected,
-                    data.block_number.get()
-                );
+                    actual: data.block_number,
+                });
+            }
+
+            if data.parent_hash != last.block_hash {
+                return Err(AddSampleError::Reorg {
+                    block_number: data.block_number,
+                    expected_parent: last.block_hash,
+                    actual_parent: data.parent_hash,
+                });
             }
         }
 
@@ -196,7 +223,7 @@ impl L1GasPriceProvider {
     }
 
     /// Adds multiple samples in bulk (used in initialization).
-    pub fn add_samples(&self, samples: Vec<L1GasPriceData>) -> Result<(), anyhow::Error> {
+    pub fn add_samples(&self, samples: Vec<L1GasPriceData>) -> Result<(), AddSampleError> {
         for sample in samples {
             self.add_sample(sample)?;
         }
