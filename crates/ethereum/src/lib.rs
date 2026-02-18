@@ -19,7 +19,7 @@ use alloy::rpc::types::{FilteredParams, Log};
 use anyhow::Context;
 use pathfinder_common::prelude::*;
 use pathfinder_common::transaction::L1HandlerTransaction;
-use pathfinder_common::{EthereumChain, L1BlockNumber, L1TransactionHash};
+use pathfinder_common::{EthereumChain, L1BlockHash, L1BlockNumber, L1TransactionHash};
 use pathfinder_crypto::Felt;
 use primitive_types::{H160, U256};
 use reqwest::{IntoUrl, Url};
@@ -72,6 +72,10 @@ pub struct EthereumStateUpdate {
 pub struct L1GasPriceData {
     /// The L1 block number
     pub block_number: L1BlockNumber,
+    /// The block's own hash
+    pub block_hash: L1BlockHash,
+    /// The parent block's hash (used for reorg detection)
+    pub parent_hash: L1BlockHash,
     /// Unix timestamp of the block
     pub timestamp: u64,
     /// EIP-1559 base fee per gas (wei)
@@ -169,11 +173,15 @@ impl EthereumClient {
             .await?
             .context("Block not found")?;
 
+        let block_hash = L1BlockHash::from(block.header.hash.0);
+        let parent_hash = L1BlockHash::from(block.header.parent_hash.0);
         let base_fee_per_gas = block.header.base_fee_per_gas.unwrap_or(0) as u128;
         let blob_fee = compute_blob_fee(block.header.excess_blob_gas);
 
         Ok(L1GasPriceData {
             block_number,
+            block_hash,
+            parent_hash,
             timestamp: block.header.timestamp,
             base_fee_per_gas,
             blob_fee,
@@ -225,6 +233,8 @@ impl EthereumClient {
                 Ok(header) => {
                     let data = L1GasPriceData {
                         block_number: L1BlockNumber::new_or_panic(header.number),
+                        block_hash: L1BlockHash::from(header.hash.0),
+                        parent_hash: L1BlockHash::from(header.parent_hash.0),
                         timestamp: header.timestamp,
                         base_fee_per_gas: header.base_fee_per_gas.unwrap_or(0) as u128,
                         blob_fee: compute_blob_fee(header.excess_blob_gas),
