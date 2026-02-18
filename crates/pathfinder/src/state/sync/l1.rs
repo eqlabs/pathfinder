@@ -176,6 +176,10 @@ async fn process_block(
             Ok(())
         }
         Err(AddSampleError::Gap { expected, actual }) => {
+            if actual < expected {
+                anyhow::bail!("Block number went backward: expected {expected}, got {actual}");
+            }
+
             let gap_size = actual.get() - expected.get();
 
             if gap_size > config.max_gap_blocks {
