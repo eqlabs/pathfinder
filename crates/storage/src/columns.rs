@@ -30,6 +30,7 @@ impl Column {
         options.set_bottommost_compression_type(DBCompressionType::Zstd);
 
         if self.point_lookup {
+            block_based_options.set_block_size(1024);
             block_based_options.set_data_block_index_type(DataBlockIndexType::BinaryAndHash);
             block_based_options.set_data_block_hash_ratio(0.75);
             block_based_options.set_whole_key_filtering(true);
