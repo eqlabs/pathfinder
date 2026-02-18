@@ -1,4 +1,4 @@
-use rust_rocksdb::DBCompressionType;
+use rust_rocksdb::{DBCompressionType, DataBlockIndexType};
 
 #[derive(Clone, Debug)]
 pub(crate) struct Column {
@@ -18,20 +18,35 @@ impl Column {
         }
     }
 
-    pub fn options(&self) -> rust_rocksdb::Options {
+    pub fn options(&self, cache: &rust_rocksdb::Cache) -> rust_rocksdb::Options {
         let mut options = rust_rocksdb::Options::default();
+
+        let mut block_based_options = rust_rocksdb::BlockBasedOptions::default();
+        block_based_options.set_block_cache(&cache);
+        block_based_options.set_cache_index_and_filter_blocks(true);
+        block_based_options.set_pin_l0_filter_and_index_blocks_in_cache(true);
+        block_based_options.set_ribbon_filter(15.0);
+
         options.set_bottommost_compression_type(DBCompressionType::Zstd);
+
         if self.point_lookup {
-            options.optimize_for_point_lookup(8);
+            block_based_options.set_data_block_index_type(DataBlockIndexType::BinaryAndHash);
+            block_based_options.set_data_block_hash_ratio(0.75);
+            block_based_options.set_whole_key_filtering(true);
         }
+
         if let Some(prefix_length) = self.key_prefix_length {
             options.set_prefix_extractor(rust_rocksdb::SliceTransform::create_fixed_prefix(
                 prefix_length,
             ));
         }
+
         if self.optimize_for_hits {
             options.set_optimize_filters_for_hits(true);
         }
+
+        options.set_block_based_table_factory(&block_based_options);
+
         options
     }
 

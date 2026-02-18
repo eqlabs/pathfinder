@@ -560,12 +560,15 @@ impl StorageBuilder {
         let cache = rust_rocksdb::Cache::new_hyper_clock_cache(32 * 1024 * 1024 * 1024, 0);
         let mut block_opts = rust_rocksdb::BlockBasedOptions::default();
         block_opts.set_block_cache(&cache);
+        block_opts.set_cache_index_and_filter_blocks(true);
+        block_opts.set_pin_l0_filter_and_index_blocks_in_cache(true);
+        block_opts.set_ribbon_filter(15.0);
 
         options.set_block_based_table_factory(&block_opts);
 
         let cfs = columns::COLUMNS
             .iter()
-            .map(|column| ColumnFamilyDescriptor::new(column.name, column.options()));
+            .map(|column| ColumnFamilyDescriptor::new(column.name, column.options(&cache)));
 
         options.enable_statistics();
 
