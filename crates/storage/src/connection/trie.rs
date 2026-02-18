@@ -716,6 +716,10 @@ impl Transaction<'_> {
             metrics::counter!(METRIC_TRIE_NODES_ADDED, "table" => table).increment(1);
         }
 
+        if table == "trie_storage" && block_number.get() % 10 == 0 {
+            self.rocksdb.log_stats();
+        }
+
         Ok(RootIndexUpdate::Updated(
             *indices
                 .get(&(update.nodes_added.len() - 1))

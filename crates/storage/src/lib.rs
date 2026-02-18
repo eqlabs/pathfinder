@@ -85,6 +85,7 @@ struct Inner {
 
 struct RocksDBInner {
     rocksdb: RocksDB,
+    options: rust_rocksdb::Options,
     trie_class_next_index: std::sync::atomic::AtomicU64,
     trie_contract_next_index: std::sync::atomic::AtomicU64,
     trie_storage_next_index: std::sync::atomic::AtomicU64,
@@ -124,6 +125,13 @@ impl RocksDBInner {
         self.rocksdb
             .cf_handle(column.name)
             .expect("RocksDB column family missing")
+    }
+
+    fn log_stats(&self) {
+        let stats = self.options.get_statistics();
+        if let Some(stats) = stats {
+            tracing::debug!(stats = stats, "RocksDB statistics");
+        }
     }
 }
 
@@ -559,6 +567,8 @@ impl StorageBuilder {
             .iter()
             .map(|column| ColumnFamilyDescriptor::new(column.name, column.options()));
 
+        options.enable_statistics();
+
         let db = RocksDB::open_cf_descriptors(&options, path, cfs)?;
 
         let (trie_class_next_index, trie_contract_next_index, trie_storage_next_index) =
@@ -566,6 +576,7 @@ impl StorageBuilder {
 
         let db_inner = RocksDBInner {
             rocksdb: db,
+            options,
             trie_class_next_index: std::sync::atomic::AtomicU64::new(trie_class_next_index),
             trie_contract_next_index: std::sync::atomic::AtomicU64::new(trie_contract_next_index),
             trie_storage_next_index: std::sync::atomic::AtomicU64::new(trie_storage_next_index),
