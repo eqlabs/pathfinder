@@ -162,6 +162,16 @@ impl EthereumClient {
             .context("Failed to fetch finalized block hash")
     }
 
+    /// Returns the block number of the latest block
+    pub async fn get_latest_block_number(&self) -> anyhow::Result<L1BlockNumber> {
+        let provider = self.provider().await?;
+        provider
+            .get_block_by_number(BlockNumberOrTag::Latest)
+            .await?
+            .map(|block| L1BlockNumber::new_or_panic(block.header.number))
+            .context("Failed to fetch latest block")
+    }
+
     /// Fetches gas price data from a specific L1 block header.
     pub async fn get_gas_price_data(
         &self,
