@@ -410,38 +410,18 @@ pub mod tests {
             )
             .unwrap();
 
+        drop(hello_class_hash);
+        drop(hello_sierra_ser_compatible);
+        drop(hello_casm);
+        drop(hello_casm_hash_v2);
+
         db_txn
             .insert_state_update_data(block_number, &state_update)
             .unwrap();
         db_txn
             .insert_transaction_data(block_number, &transactions_and_receipts, Some(&events))
             .unwrap();
-        // Insert will fail because of `upsert_declared_at` in
-        // `insert_state_update_data` TODO make sure where this insertion
-        // db_txn
-        //     .update_sierra_class_definition(
-        //         &hello_class_hash,
-        //         &hello_sierra_ser_compatible,
-        //         &hello_casm,
-        //         &hello_casm_hash_v2,
-        //     )
-        //     .unwrap();
-
         db_txn.commit().unwrap();
-
-        // let mut db_conn = storage.connection().unwrap();
-        // let db_txn = db_conn.transaction().unwrap();
-        // let x = db_txn.class_definition_with_block_number(ClassHash(hello_class_hash.
-        // 0));
-
-        // panic!("Class definition at block 1: {x:#?}");
-
-        // let x = db_txn.class_definition_at(
-        //     pathfinder_common::BlockId::Number(BlockNumber::new_or_panic(1)),
-        //     ClassHash(hello_class_hash.0),
-        // );
-
-        // panic!("Class definition at block 1: {x:#?}");
 
         let validator = ValidatorBlockInfoStage::new(
             ChainId::SEPOLIA_TESTNET,
@@ -574,6 +554,41 @@ pub mod tests {
 
         let block_2 = validator.consensus_finalize0().unwrap();
         eprintln!("Block 2: {block_2:#?}");
+
+        let block_number = BlockNumber::new_or_panic(2);
+        let mut db_conn = storage.connection().unwrap();
+        let db_txn = db_conn.transaction().unwrap();
+        let (storage_commitment, class_commitment) = update_starknet_state(
+            &db_txn,
+            (&state_update).into(),
+            true,
+            block_number,
+            storage.clone(),
+        )
+        .unwrap();
+        let state_commitment = StateCommitment::calculate(
+            storage_commitment,
+            class_commitment,
+            StarknetVersion::V_0_14_0,
+        );
+
+        let ConsensusFinalizedL2Block {
+            header,
+            state_update,
+            transactions_and_receipts,
+            events,
+        } = block_2;
+
+        let header = header.compute_hash(genesis_header.hash, state_commitment, compute_final_hash);
+
+        db_txn.insert_block_header(&header).unwrap();
+        db_txn
+            .insert_state_update_data(block_number, &state_update)
+            .unwrap();
+        db_txn
+            .insert_transaction_data(block_number, &transactions_and_receipts, Some(&events))
+            .unwrap();
+        db_txn.commit().unwrap();
 
         let worker_pool = Arc::into_inner(worker_pool).unwrap();
         worker_pool.join();
