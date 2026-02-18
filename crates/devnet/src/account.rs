@@ -3,10 +3,11 @@ use std::sync::Arc;
 use anyhow::Context;
 use num_bigint::BigUint;
 use pathfinder_common::state_update::StateUpdateData;
-use pathfinder_common::{ClassHash, ContractAddress, PublicKey};
+use pathfinder_common::{ClassHash, ContractAddress, PublicKey, TransactionNonce};
 use pathfinder_crypto::Felt;
 use starknet_api::abi::abi_utils::get_storage_var_address;
 use starknet_api::core::calculate_contract_address;
+use starknet_api::executable_transaction::Transaction;
 
 use crate::contract::predeploy;
 use crate::utils::{get_storage_at, join_felts, set_storage_at, split_biguint};
@@ -20,6 +21,7 @@ pub struct Account {
     initial_balance: u128,
     eth_fee_token_address: ContractAddress,
     strk_fee_token_address: ContractAddress,
+    nonce: u64,
 }
 
 impl Account {
@@ -67,6 +69,7 @@ impl Account {
             initial_balance,
             eth_fee_token_address,
             strk_fee_token_address,
+            nonce: 0,
         })
     }
 
@@ -82,6 +85,12 @@ impl Account {
 
     pub fn secret_key(&self) -> Felt {
         self.private_key
+    }
+
+    pub fn fetch_add_nonce(&mut self) -> TransactionNonce {
+        let nonce = self.nonce;
+        self.nonce += 1;
+        TransactionNonce(Felt::from(nonce))
     }
 
     fn set_initial_balance(&self, state_update: &mut StateUpdateData) -> anyhow::Result<()> {

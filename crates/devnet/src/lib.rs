@@ -47,16 +47,20 @@ pub mod tests {
     use pathfinder_common::transaction::{
         DataAvailabilityMode,
         DeclareTransactionV3,
+        InvokeTransactionV3,
         ResourceBound,
         ResourceBounds,
         TransactionVariant,
     };
     use pathfinder_common::{
+        felt,
         BlockHash,
         BlockHeader,
         BlockTimestamp,
+        CallParam,
         ChainId,
         ClassHash,
+        EntryPoint,
         EventCommitment,
         GasPrice,
         L1DataAvailabilityMode,
@@ -71,8 +75,7 @@ pub mod tests {
     };
     use pathfinder_crypto::signature::ecdsa_sign;
     use pathfinder_crypto::Felt;
-    use pathfinder_executor::types::to_starknet_api_transaction;
-    use pathfinder_executor::{ConcurrentBlockExecutor, ConcurrentStateReader, ExecutorWorkerPool};
+    use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
     use pathfinder_lib::state::block_hash::{
         calculate_event_commitment,
         calculate_receipt_commitment,
@@ -82,7 +85,6 @@ pub mod tests {
     use pathfinder_lib::validator::{
         ProdTransactionMapper,
         ValidatorBlockInfoStage,
-        ValidatorTransactionBatchStage,
         ValidatorWorkerPool,
     };
     use pathfinder_merkle_tree::starknet_state::update_starknet_state;
@@ -165,7 +167,7 @@ pub mod tests {
             accounts.push(account);
         });
         let chargeable_account = accounts.pop().unwrap();
-        let account = accounts.pop().unwrap();
+        let mut account = accounts.pop().unwrap();
 
         eprintln!(
             "Chargeable account address: {}",
@@ -276,7 +278,7 @@ pub mod tests {
 
         let declare = DeclareTransactionV3 {
             class_hash: ClassHash(hello_class_hash.0),
-            nonce: TransactionNonce::ZERO,
+            nonce: account.fetch_add_nonce(),
             nonce_data_availability_mode: DataAvailabilityMode::L1,
             fee_data_availability_mode: DataAvailabilityMode::L1,
             resource_bounds: ResourceBounds {
@@ -367,6 +369,83 @@ pub mod tests {
 
         let block_1 = validator.consensus_finalize0().unwrap();
         eprintln!("Block 1: {block_1:#?}");
+
+        // Calldata structure for deployment via InvokeV3:
+        // https://github.com/software-mansion/starknet-rust/blob/8c6e5eef7b2b19256ee643eefe742119188092e6/starknet-rust-accounts/src/single_owner.rs#L141
+        //
+        // Calldata structure for UDC:
+        // https://docs.openzeppelin.com/contracts-cairo/2.x/udc
+        // https://github.com/OpenZeppelin/cairo-contracts/blob/802735d432499124c684d28a5a0465ebf6c9cbdb/packages/presets/src/universal_deployer.cairo#L46
+        //
+        // "calldata": [
+        //     /* Number of calls */
+        //     "0x1",
+        //     /* UDC address */
+        //     "0x2ceed65a4bd731034c01113685c831b01c15d7d432f71afb1cf1634b53a2125",
+        //     /* Selector for 'deployContract' */
+        //     "0x1987cbd17808b9a23693d4de7e246a443cfe37e6e7fbaeabd7d7e6532b07c3d",
+        //     /* Calldata length */
+        //     "0x4",
+        //     /* UDC Calldata - class hash */
+        //     "0x0457EF47CFAA819D9FE1372E8957815CDBA2252ED3E42A15536A5A40747C8A00",
+        //     /* UDC Calldata - salt */
+        //     "0x0",
+        //     /* UDC Calldata - not_from_zero, 0 for origin independent deployment */
+        //     "0x0",
+        //     /* UDC Calldata - calldata to pass to the target contract */
+        //     "0x0"
+        // ],
+
+        let selector = EntryPoint::hashed(b"deployContract");
+        assert_eq!(
+            selector,
+            EntryPoint(felt!(
+                "0x1987cbd17808b9a23693d4de7e246a443cfe37e6e7fbaeabd7d7e6532b07c3d"
+            ))
+        );
+
+        let deploy = InvokeTransactionV3 {
+            signature: vec![/* Will be filled after signing */],
+            nonce: account.fetch_add_nonce(),
+            nonce_data_availability_mode: DataAvailabilityMode::L1,
+            fee_data_availability_mode: DataAvailabilityMode::L1,
+            resource_bounds: ResourceBounds {
+                l1_gas: ResourceBound {
+                    max_amount: ResourceAmount(1_000_000),
+                    max_price_per_unit: ResourcePricePerUnit(1_000_000_000),
+                },
+                l2_gas: ResourceBound {
+                    max_amount: ResourceAmount(1_000_000),
+                    max_price_per_unit: ResourcePricePerUnit(1_000_000_000),
+                },
+                l1_data_gas: None,
+            },
+            tip: Tip(0),
+            paymaster_data: vec![],
+            account_deployment_data: vec![],
+            calldata: vec![
+                // Number of calls
+                CallParam(Felt::ONE),
+                // UDC address
+                CallParam(fixtures::UDC_CONTRACT_ADDRESS.0),
+                // Selector for 'deployContract'
+                CallParam(selector.0),
+                // Calldata length
+                CallParam(Felt::from_u64(4)),
+                // UDC Calldata - class hash
+                CallParam(hello_class_hash.0),
+                // UDC Calldata - salt
+                CallParam(Felt::ZERO),
+                // UDC Calldata - not_from_zero, 0 for origin independent deployment
+                CallParam(Felt::ZERO),
+                // UDC Calldata - calldata to pass to the target contract
+                CallParam(Felt::ZERO),
+            ],
+            sender_address: account.address(),
+            proof_facts: vec![],
+        };
+
+        eprintln!("Deploy transaction: {deploy:#?}");
 
         let worker_pool = Arc::into_inner(worker_pool).unwrap();
         worker_pool.join();
