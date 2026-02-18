@@ -193,17 +193,11 @@ impl EthereumClient {
 
         for block_num in start.get()..=end.get() {
             let block_number = L1BlockNumber::new_or_panic(block_num);
-            match self.get_gas_price_data(block_number).await {
-                Ok(data) => results.push(data),
-                Err(e) => {
-                    tracing::warn!(
-                        block_number = block_num,
-                        error = %e,
-                        "Failed to fetch gas price data for block"
-                    );
-                    // Continue with other blocks
-                }
-            }
+            let data = self
+                .get_gas_price_data(block_number)
+                .await
+                .with_context(|| format!("Fetching gas price data for block {block_num}"))?;
+            results.push(data);
         }
 
         Ok(results)
