@@ -22,13 +22,13 @@ impl IntoFelt for StarkHash {
     }
 }
 
-pub trait IntoTypesCoreFelt {
-    fn into_types_core_felt(self) -> starknet_types_core::felt::Felt;
+pub trait IntoStarkHash {
+    fn into_stark_hash(self) -> StarkHash;
 }
 
-impl IntoTypesCoreFelt for Felt {
-    fn into_types_core_felt(self) -> starknet_types_core::felt::Felt {
-        starknet_types_core::felt::Felt::from_bytes_be(&self.to_be_bytes())
+impl IntoStarkHash for Felt {
+    fn into_stark_hash(self) -> StarkHash {
+        StarkHash::from_bytes_be(&self.to_be_bytes())
     }
 }
 

@@ -5,13 +5,13 @@ use num_bigint::BigUint;
 use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::{ClassHash, ContractAddress, PublicKey, TransactionNonce};
 use pathfinder_crypto::Felt;
+use pathfinder_executor::{IntoFelt as _, IntoStarkFelt as _};
 use starknet_api::abi::abi_utils::get_storage_var_address;
 use starknet_api::core::calculate_contract_address;
-use starknet_api::executable_transaction::Transaction;
 
-use crate::contract::predeploy;
-use crate::utils::{get_storage_at, join_felts, set_storage_at, split_biguint};
-use crate::{fixtures, IntoFelt, IntoStarkHash as _};
+use crate::devnet::contract::predeploy;
+use crate::devnet::fixtures;
+use crate::devnet::utils::{get_storage_at, join_felts, set_storage_at, split_biguint};
 
 pub struct Account {
     class_hash: ClassHash,
@@ -51,10 +51,10 @@ impl Account {
                     //     starknet_rust_core::types::Felt::from_hex("0x14").unwrap(),
                     // ),
                     Default::default(),
-                    starknet_api::core::ClassHash(class_hash.0.into_stark_hash()),
+                    starknet_api::core::ClassHash(class_hash.0.into_starkfelt()),
                     &starknet_api::transaction::fields::Calldata(Arc::new(vec![public_key
                         .0
-                        .into_stark_hash()])),
+                        .into_starkfelt()])),
                     Default::default(),
                 )?
                 .into_felt(),
@@ -95,7 +95,7 @@ impl Account {
 
     fn set_initial_balance(&self, state_update: &mut StateUpdateData) -> anyhow::Result<()> {
         let storage_var_address_low: starknet_api::state::StorageKey =
-            get_storage_var_address("ERC20_balances", &[self.address.0.into_stark_hash()]);
+            get_storage_var_address("ERC20_balances", &[self.address.0.into_starkfelt()]);
         let storage_var_address_high = storage_var_address_low.next_storage_key()?;
 
         let total_supply_storage_address_low: starknet_api::state::StorageKey =
@@ -152,7 +152,7 @@ impl Account {
     fn simulate_constructor(&self, state_update: &mut StateUpdateData) -> anyhow::Result<()> {
         let interface_storage_var = get_storage_var_address(
             "SRC5_supported_interfaces",
-            &[fixtures::ISRC6_ID.into_stark_hash()],
+            &[fixtures::ISRC6_ID.into_starkfelt()],
         );
         set_storage_at(
             state_update,

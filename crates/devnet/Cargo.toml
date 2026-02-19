@@ -22,5 +22,4 @@ p2p_proto = { path = "../p2p_proto" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 starknet_api = { workspace = true }
-starknet-types-core = { workspace = true }
 test-log = { workspace = true }
