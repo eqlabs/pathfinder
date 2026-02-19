@@ -23,7 +23,7 @@ use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::task::JoinError;
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::config::{NetworkConfig, StateTries};
 
@@ -794,16 +794,13 @@ struct EthereumContext {
 impl EthereumContext {
     /// Configure an [EthereumContext]'s transport and read the chain ID using
     /// it.
-    async fn setup(mut url: reqwest::Url, password: &Option<String>) -> anyhow::Result<Self> {
-        // Make sure the URL is a WS URL
-        if url.scheme().eq("http") {
-            warn!("The provided Ethereum URL is using HTTP, converting to WS");
-            url.set_scheme("ws")
-                .map_err(|_| anyhow::anyhow!("Failed to set Ethereum URL scheme to ws"))?;
-        } else if url.scheme().eq("https") {
-            warn!("The provided Ethereum URL is using HTTPS, converting to WSS");
-            url.set_scheme("wss")
-                .map_err(|_| anyhow::anyhow!("Failed to set Ethereum URL scheme to wss"))?;
+    async fn setup(url: reqwest::Url, password: &Option<String>) -> anyhow::Result<Self> {
+        // Require WebSocket URL - EthereumClient uses WebSocket for all operations
+        if !matches!(url.scheme(), "ws" | "wss") {
+            anyhow::bail!(
+                "Ethereum URL must use WebSocket protocol (ws:// or wss://), got: {url}\n\nHint: \
+                 Change your --ethereum.url from http(s):// to ws(s)://"
+            );
         }
 
         let client = if let Some(password) = password.as_ref() {
