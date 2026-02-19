@@ -1,70 +1,18 @@
-use pathfinder_class_hash::json::{CairoContractDefinition, SierraContractDefinition};
-use pathfinder_class_hash::{
-    compute_cairo_class_hash,
-    compute_sierra_class_hash,
-    RawCairoContractDefinition,
-};
+use pathfinder_class_hash::compute_sierra_class_hash;
+use pathfinder_class_hash::json::SierraContractDefinition;
 use pathfinder_common::class_definition::Sierra;
 use pathfinder_common::{state_update, CasmHash, ClassHash, SierraHash};
 use pathfinder_compiler::{casm_class_hash_v2, compile_to_casm_deser};
 use pathfinder_storage::Transaction;
 
-use crate::fixtures::Class;
-
-/// Predeclare Cairo0 or Cairo1 class, ie. insert class definition into the DB
-/// and update the state update, which should be inserted into the DB when all
-/// predeclarations and predeployments are done. If `class_hash` is `None`, it
-/// will be computed from the class definition.
-///
-/// Note: Cairo1 class will also be compiled into casm and the casm class hash
-/// will be computed and stored in the state update.
+/// Predeclare a Cairo1 class:
+/// - compile sierra bytecode into casm,
+/// - compute casm hash v2,
+/// - compute sierra class hash if `class_hash` is `None`,
+/// - insert sierra and casm into the DB and update the state update, which
+///   should be inserted into the DB when all predeclarations and predeployments
+///   are done.
 pub fn predeclare(
-    transaction: &Transaction<'_>,
-    state_update: &mut state_update::StateUpdateData,
-    class_ser: Class,
-    class_hash: Option<ClassHash>,
-) -> anyhow::Result<()> {
-    match class_ser {
-        Class::Cairo0(cairo_class_ser) => {
-            cairo(transaction, state_update, cairo_class_ser, class_hash)
-        }
-        Class::Cairo1(sierra_class_ser) => {
-            sierra(transaction, state_update, sierra_class_ser, class_hash)
-        }
-    }
-}
-
-/// Predeclare Cairo0 class, ie. insert class definition into the DB and update
-/// the state update, which should be inserted into the DB when all
-/// predeclarations and predeployments are done. If `class_hash` is `None`, it
-/// will be computed from the class definition.
-fn cairo(
-    transaction: &Transaction<'_>,
-    state_update: &mut state_update::StateUpdateData,
-    cairo_class_ser: &[u8],
-    class_hash: Option<ClassHash>,
-) -> anyhow::Result<()> {
-    let cairo_class_def = serde_json::from_slice::<CairoContractDefinition<'_>>(cairo_class_ser)?;
-    let cairo_class_hash = class_hash.unwrap_or(compute_cairo_class_hash(
-        RawCairoContractDefinition::from(cairo_class_def),
-    )?);
-
-    let insert_ok = state_update.declared_cairo_classes.insert(cairo_class_hash);
-    anyhow::ensure!(
-        insert_ok,
-        "Predeclaring class with hash {cairo_class_hash} would overwrite an existing class \
-         declaration"
-    );
-
-    transaction.insert_cairo_class_definition(cairo_class_hash, cairo_class_ser)?;
-    Ok(())
-}
-
-/// Predeclare a Cairo1 (Sierra) class, ie. insert class definition into the DB
-/// and update the state update, which should be inserted into the DB when all
-/// predeclarations and predeployments are done. If `class_hash` is `None`, it
-/// will be computed from the class definition.
-fn sierra(
     transaction: &Transaction<'_>,
     state_update: &mut state_update::StateUpdateData,
     sierra_class_ser: &[u8],

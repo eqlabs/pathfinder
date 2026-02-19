@@ -37,7 +37,7 @@ pub mod tests {
     use std::num::NonZeroU32;
     use std::sync::Arc;
     use std::thread::available_parallelism;
-    use std::time::SystemTime;
+    use std::time::{Instant, SystemTime};
 
     use p2p::sync::client::conv::ToDto as _;
     use p2p_proto::common::{Address, Hash};
@@ -61,8 +61,6 @@ pub mod tests {
         ChainId,
         ClassHash,
         ConsensusFinalizedL2Block,
-        ContractAddress,
-        ContractAddressSalt,
         EntryPoint,
         EventCommitment,
         GasPrice,
@@ -90,11 +88,9 @@ pub mod tests {
         ValidatorWorkerPool,
     };
     use pathfinder_merkle_tree::starknet_state::update_starknet_state;
-    use starknet_types_core::felt;
 
     use crate::account::Account;
     use crate::class::preprocess_sierra;
-    use crate::fixtures::Class;
     use crate::{class, contract, fixtures};
 
     fn timestamp_now() -> BlockTimestamp {
@@ -111,6 +107,8 @@ pub mod tests {
         use pathfinder_common::state_update::StateUpdateData;
         use pathfinder_common::{BlockNumber, StarknetVersion, StateCommitment};
         use pathfinder_storage::StorageBuilder;
+
+        let stopwatch = Instant::now();
 
         let storage = StorageBuilder::in_tempdir_with_trie_pruning_and_pool_size(
             pathfinder_storage::TriePruneMode::Archive,
@@ -239,11 +237,9 @@ pub mod tests {
             .unwrap();
         db_txn.commit().unwrap();
 
-        let Class::Cairo1(hello_sierra_ser) = fixtures::HELLO_CLASS else {
-            panic!("Expected Cairo1 class");
-        };
+        let hello_sierra_ser_incompatible = fixtures::HELLO_CLASS;
         let (hello_class_hash, sierra, hello_casm_hash_v2, hello_casm) =
-            preprocess_sierra(hello_sierra_ser).unwrap();
+            preprocess_sierra(hello_sierra_ser_incompatible).unwrap();
         eprintln!("Hello class hash: {hello_class_hash}");
         eprintln!("Hello casm hash v2: {hello_casm_hash_v2}");
         let hello_sierra_ser_compatible = serde_json::to_vec(&sierra).unwrap();
@@ -423,6 +419,14 @@ pub mod tests {
             .insert_transaction_data(block_number, &transactions_and_receipts, Some(&events))
             .unwrap();
         db_txn.commit().unwrap();
+
+        let elapsed = stopwatch.elapsed();
+        eprintln!(
+            "Init + declaring hello starknet: {} ms",
+            elapsed.as_millis()
+        );
+
+        let stopwatch = Instant::now();
 
         let validator = ValidatorBlockInfoStage::new(
             ChainId::SEPOLIA_TESTNET,
@@ -733,6 +737,12 @@ pub mod tests {
             .insert_transaction_data(block_number, &transactions_and_receipts, Some(&events))
             .unwrap();
         db_txn.commit().unwrap();
+
+        let elapsed = stopwatch.elapsed();
+        eprintln!(
+            "Deploying hello starknet + invoking increase_balance: {} ms",
+            elapsed.as_millis()
+        );
 
         let worker_pool = Arc::into_inner(worker_pool).unwrap();
         worker_pool.join();

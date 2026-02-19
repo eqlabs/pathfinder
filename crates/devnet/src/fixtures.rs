@@ -10,21 +10,17 @@ use pathfinder_common::{
     PublicKey,
 };
 use pathfinder_crypto::Felt;
-use starknet_types_core::felt;
 
 /// All classes that are predeclared in the devnet.
-pub const PREDECLARED_CLASSES: &[(Class, ClassHash)] = &[
-    (CAIRO_0_ACCOUNT_CLASS, CAIRO_0_ACCOUNT_CLASS_HASH),
+pub const PREDECLARED_CLASSES: &[(&[u8], ClassHash)] = &[
     (CAIRO_1_ACCOUNT_CLASS, CAIRO_1_ACCOUNT_CLASS_HASH),
     (ETH_ERC20_CLASS, ETH_ERC20_CLASS_HASH),
     (STRK_ERC20_CLASS, STRK_ERC20_CLASS_HASH),
-    (UDC_LEGACY_CLASS, UDC_LEGACY_CLASS_HASH),
     (UDC_CLASS, UDC_CLASS_HASH),
 ];
 
 /// Excludes accounts!
 pub const PREDEPLOYED_CONTRACTS: &[(ContractAddress, ClassHash)] = &[
-    (UDC_LEGACY_CONTRACT_ADDRESS, UDC_LEGACY_CLASS_HASH),
     (UDC_CONTRACT_ADDRESS, UDC_CLASS_HASH),
     (ETH_ERC20_CONTRACT_ADDRESS, ETH_ERC20_CLASS_HASH),
     (STRK_ERC20_CONTRACT_ADDRESS, STRK_ERC20_CLASS_HASH),
@@ -39,33 +35,18 @@ pub const ERC20S: &[(ContractAddress, &'static str, &'static str)] = &[
     ),
 ];
 
-#[derive(Clone, Copy)]
-pub enum Class<'a> {
-    Cairo0(&'a [u8]),
-    Cairo1(&'a [u8]),
-}
-
-pub const CAIRO_0_ACCOUNT_CLASS: Class = Class::Cairo0(include_bytes!(
-    "./fixtures/account/OpenZeppelin/0.5.1/Account.cairo/Account.json"
-));
-pub const CAIRO_0_ACCOUNT_CLASS_HASH: ClassHash =
-    class_hash!("0x4d07e40e93398ed3c76981e72dd1fd22557a78ce36c0515f679e27f0bb5bc5f");
-
-pub const CAIRO_1_ACCOUNT_CLASS: Class = Class::Cairo1(include_bytes!(
-    "./fixtures/account/OpenZeppelin/1.0.0/Account.cairo/Account.sierra"
-));
+pub const CAIRO_1_ACCOUNT_CLASS: &[u8] =
+    include_bytes!("./fixtures/account/OpenZeppelin/1.0.0/Account.cairo/Account.sierra");
 pub const CAIRO_1_ACCOUNT_CLASS_HASH: ClassHash =
     class_hash!("0x05b4b537eaa2399e3aa99c4e2e0208ebd6c71bc1467938cd52c798c601e43564");
 
-pub const ETH_ERC20_CLASS: Class =
-    Class::Cairo1(include_bytes!("./fixtures/system/erc20_eth.sierra"));
+pub const ETH_ERC20_CLASS: &[u8] = include_bytes!("./fixtures/system/erc20_eth.sierra");
 pub const ETH_ERC20_CLASS_HASH: ClassHash =
     class_hash!("0x9524a94b41c4440a16fd96d7c1ef6ad6f44c1c013e96662734502cd4ee9b1f");
 pub const ETH_ERC20_CONTRACT_ADDRESS: ContractAddress =
     contract_address!("0x49D36570D4E46F48E99674BD3FCC84644DDD6B96F7C741B1562B82F9E004DC7");
 
-pub const STRK_ERC20_CLASS: Class =
-    Class::Cairo1(include_bytes!("./fixtures/system/erc20_strk.sierra"));
+pub const STRK_ERC20_CLASS: &[u8] = include_bytes!("./fixtures/system/erc20_strk.sierra");
 pub const STRK_ERC20_CLASS_HASH: ClassHash =
     class_hash!("0x76791ef97c042f81fbf352ad95f39a22554ee8d7927b2ce3c681f3418b5206a");
 pub const STRK_ERC20_CONTRACT_ADDRESS: ContractAddress =
@@ -78,14 +59,7 @@ pub const ETH_ERC20_SYMBOL: &str = "ETH";
 pub const STRK_ERC20_NAME: &str = "StarkNet Token";
 pub const STRK_ERC20_SYMBOL: &str = "STRK";
 
-pub const UDC_LEGACY_CLASS: Class =
-    Class::Cairo0(include_bytes!("./fixtures/system/UDC_OZ_0.5.0.json"));
-pub const UDC_LEGACY_CLASS_HASH: ClassHash =
-    class_hash!("0x7B3E05F48F0C69E4A65CE5E076A66271A527AFF2C34CE1083EC6E1526997A69");
-pub const UDC_LEGACY_CONTRACT_ADDRESS: ContractAddress =
-    contract_address!("0x41A78E741E5AF2FEC34B695679BC6891742439F7AFB8484ECD7766661AD02BF");
-
-pub const UDC_CLASS: Class = Class::Cairo1(include_bytes!("./fixtures/system/udc_2.sierra"));
+pub const UDC_CLASS: &[u8] = include_bytes!("./fixtures/system/udc_2.sierra");
 pub const UDC_CLASS_HASH: ClassHash =
     class_hash!("0x01b2df6d8861670d4a8ca4670433b2418d78169c2947f46dc614e69f333745c8");
 pub const UDC_CONTRACT_ADDRESS: ContractAddress =
@@ -101,7 +75,7 @@ pub const CHARGEABLE_ACCOUNT_ADDRESS: ContractAddress =
 pub const ISRC6_ID: Felt =
     felt!("0x2ceccef7f994940b3962a6c67e0ba4fcd37df7d131417c604f91e03caecc1cd");
 
-pub const HELLO_CLASS: Class = Class::Cairo1(include_bytes!("./fixtures/hello_starknet.sierra"));
+pub const HELLO_CLASS: &[u8] = include_bytes!("./fixtures/hello_starknet.sierra");
 pub const HELLO_CLASS_HASH: ClassHash =
     class_hash!("0x0457EF47CFAA819D9FE1372E8957815CDBA2252ED3E42A15536A5A40747C8A00");
 pub const HELLO_CASM_HASH: CasmHash =
