@@ -1038,7 +1038,7 @@ pub(crate) mod tests {
                             call_param!("0"),
                         ],
                         proof_facts: vec![],
-                        proof: vec![],
+                        proof: Default::default(),
                     },
                 ))
             }
@@ -1083,7 +1083,7 @@ pub(crate) mod tests {
                             call_param!("0"),
                         ],
                         proof_facts: vec![],
-                        proof: vec![],
+                        proof: Default::default(),
                     },
                 ))
             }

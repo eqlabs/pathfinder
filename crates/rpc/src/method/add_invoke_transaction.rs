@@ -327,7 +327,7 @@ impl crate::dto::SerializeForVersion for Output {
 mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBound, ResourceBounds};
-    use pathfinder_common::{ResourceAmount, ResourcePricePerUnit, Tip, TransactionVersion};
+    use pathfinder_common::{Proof, ResourceAmount, ResourcePricePerUnit, Tip, TransactionVersion};
 
     use super::*;
     use crate::types::request::BroadcastedInvokeTransactionV1;
@@ -565,7 +565,7 @@ mod tests {
                 call_param!("0x613816405e6334ab420e53d4b38a0451cb2ebca2755171315958c87d303cf6"),
             ],
             proof_facts: vec![],
-            proof: vec![],
+            proof: Proof::default(),
         };
 
         let input = Input {

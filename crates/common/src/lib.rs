@@ -691,21 +691,51 @@ pub fn calculate_class_commitment_leaf_hash(
     )
 }
 
-/// A SNOS stwo proof element.
-#[derive(
-    Copy,
-    Debug,
-    Clone,
-    Default,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-)]
-pub struct ProofElem(pub u32);
+/// A SNOS stwo proof, serialized as a base64-encoded string of big-endian
+/// packed `u32` values.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct Proof(pub Vec<u32>);
+
+impl Proof {
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl serde::Serialize for Proof {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use base64::Engine;
+
+        let bytes: Vec<u8> = self.0.iter().flat_map(|v| v.to_be_bytes()).collect();
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        serializer.serialize_str(&encoded)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Proof {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use base64::Engine;
+
+        let s = String::deserialize(deserializer)?;
+        if s.is_empty() {
+            return Ok(Proof::default());
+        }
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(&s)
+            .map_err(serde::de::Error::custom)?;
+        if bytes.len() % 4 != 0 {
+            return Err(serde::de::Error::custom(format!(
+                "proof base64 decoded length {} is not a multiple of 4",
+                bytes.len()
+            )));
+        }
+        let values = bytes
+            .chunks_exact(4)
+            .map(|chunk| u32::from_be_bytes(chunk.try_into().unwrap()))
+            .collect();
+        Ok(Proof(values))
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -768,5 +798,44 @@ mod tests {
             )),
         );
         assert_eq!(actual_contract_address, expected_contract_address);
+    }
+
+    mod proof_serde {
+        use super::super::Proof;
+
+        #[test]
+        fn round_trip() {
+            let proof = Proof(vec![0, 123, 456]);
+            let json = serde_json::to_string(&proof).unwrap();
+            assert_eq!(json, r#""AAAAAAAAAHsAAAHI""#);
+            let deserialized: Proof = serde_json::from_str(&json).unwrap();
+            assert_eq!(deserialized, proof);
+        }
+
+        #[test]
+        fn empty_string_deserializes_to_default() {
+            let proof: Proof = serde_json::from_str(r#""""#).unwrap();
+            assert_eq!(proof, Proof::default());
+        }
+
+        #[test]
+        fn invalid_base64_returns_error() {
+            let result = serde_json::from_str::<Proof>(r#""not-valid-base64!@#""#);
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn non_multiple_of_4_length_returns_error() {
+            // 3 bytes is not a multiple of 4
+            let result = serde_json::from_str::<Proof>(r#""AAAA""#); // decodes to 3 bytes
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn empty_proof_serializes_to_empty_string() {
+            let proof = Proof::default();
+            let json = serde_json::to_string(&proof).unwrap();
+            assert_eq!(json, r#""""#);
+        }
     }
 }
