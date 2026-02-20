@@ -577,6 +577,11 @@ impl StorageBuilder {
         let (trie_class_next_index, trie_contract_next_index, trie_storage_next_index) =
             Self::rocksdb_fetch_next_trie_storage_indices(&db)?;
 
+        tracing::info!("Compacting trie columns after opening RocksDB");
+        Self::compact_trie_column(&db, &crate::connection::TRIE_CLASS_NODE_COLUMN)?;
+        Self::compact_trie_column(&db, &crate::connection::TRIE_STORAGE_NODE_COLUMN)?;
+        Self::compact_trie_column(&db, &crate::connection::TRIE_CONTRACT_NODE_COLUMN)?;
+
         let db_inner = RocksDBInner {
             rocksdb: db,
             options,
@@ -614,6 +619,15 @@ impl StorageBuilder {
             0
         };
         Ok(last_index)
+    }
+
+    fn compact_trie_column(db: &RocksDB, column: &Column) -> anyhow::Result<()> {
+        tracing::info!(column=%column.name, "Compacting RocksDB column");
+        let column_handle = db
+            .cf_handle(column.name)
+            .context("Getting RocksDB column for compaction")?;
+        db.compact_range_cf(&column_handle, None::<&[u8]>, None::<&[u8]>);
+        Ok(())
     }
 
     /// - If there is no explicitly requested configuration, assumes the user
