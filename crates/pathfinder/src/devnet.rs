@@ -6,10 +6,11 @@
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::Arc;
 use std::thread::available_parallelism;
 use std::time::{Instant, SystemTime};
 
-use anyhow::Context;
+use anyhow::{Context, Ok};
 use p2p::sync::client::conv::ToDto as _;
 use p2p_proto::common::{Address, Hash};
 use p2p_proto::consensus::{BlockInfo, ProposalInit};
@@ -53,7 +54,7 @@ use pathfinder_storage::{Storage, StorageBuilder, TriePruneMode};
 use tempfile::TempDir;
 
 use crate::devnet::account::Account;
-use crate::devnet::class::{preprocess_sierra, PrepocessedSierraClass};
+use crate::devnet::class::{preprocess_sierra, PrepocessedSierra};
 use crate::state::block_hash::compute_final_hash;
 use crate::validator::{ProdTransactionMapper, ValidatorBlockInfoStage, ValidatorWorkerPool};
 
@@ -63,13 +64,7 @@ mod contract;
 mod fixtures;
 mod utils;
 
-/// Some nonzero gas price
-const GAS_PRICE: GasPrice = GasPrice(1_000_000_000);
-/// WEI to FRI conversion rate is 1:1 for simplicity, so ETH to FRI conversion
-/// rate is 1:1e18
-const ETH_TO_FRI_RATE: u128 = 1_000_000_000_000_000_000;
-/// Alice from integration tests
-const PROPOSER_ADDRESS: Address = Address(Felt::ONE);
+use fixtures::{ETH_TO_FRI_RATE, GAS_PRICE, PROPOSER_ADDRESS};
 
 /// Initializes a devnet DB. The following contracts are predeclared,
 /// predeployed and initialized if necessary: Cairo 1 account, ETH and STRK
@@ -94,13 +89,7 @@ pub fn init_db() -> anyhow::Result<DevnetConfig> {
     let db_txn = db_conn.transaction()?;
     let mut state_update = StateUpdateData::default();
 
-    let (chargeable_account, account) = predeploy_contracts(&db_txn, &mut state_update)?;
-
-    eprintln!(
-        "Chargeable account address: {}",
-        chargeable_account.address()
-    );
-    eprintln!("Account address: {}", account.address());
+    let mut account = predeploy_contracts(&db_txn, &mut state_update)?;
 
     let block_number = BlockNumber::GENESIS;
     let (storage_commitment, class_commitment) = update_starknet_state(
@@ -128,7 +117,7 @@ pub fn init_db() -> anyhow::Result<DevnetConfig> {
         eth_l2_gas_price: GAS_PRICE,
         strk_l2_gas_price: GAS_PRICE,
         // Alice has this address in integration tests
-        sequencer_address: SequencerAddress(Felt::ONE),
+        sequencer_address: SequencerAddress(PROPOSER_ADDRESS.0),
         starknet_version: StarknetVersion::V_0_14_0,
         // No events in genesis, so the root of an empty tree is zero
         event_commitment: EventCommitment(Felt::ZERO),
@@ -146,6 +135,8 @@ pub fn init_db() -> anyhow::Result<DevnetConfig> {
 
     genesis_header.hash = compute_final_hash(&genesis_header);
 
+    eprintln!("Genesis state update: {state_update:#?}");
+
     db_txn.insert_block_header(&genesis_header).unwrap();
     db_txn
         .insert_state_update_data(block_number, &state_update)
@@ -156,6 +147,9 @@ pub fn init_db() -> anyhow::Result<DevnetConfig> {
         "Initialized devnet bootstrap DB genesis block in {} ms",
         stopwatch.elapsed().as_millis(),
     );
+
+    let db_txn = db_conn.transaction()?;
+    declare(storage.clone(), db_txn, &mut account, fixtures::HELLO_CLASS)?;
 
     Ok(DevnetConfig {
         _bootstrap_db_dir,
@@ -192,7 +186,9 @@ pub fn declare(
     account: &mut Account,
     serialized_sierra: &[u8],
 ) -> anyhow::Result<()> {
-    let PrepocessedSierraClass {
+    let stopwatch = Instant::now();
+
+    let PrepocessedSierra {
         sierra_class_hash,
         cairo1_class_p2p,
         sierra_class_ser,
@@ -308,7 +304,16 @@ pub fn declare(
         .unwrap();
     db_txn.commit().unwrap();
 
-    todo!()
+    let worker_pool = Arc::into_inner(worker_pool).expect("Refcount is 1");
+    worker_pool.join();
+
+    tracing::info!(
+        "Declared class {sierra_class_hash} in block {} in {} ms",
+        next_header.number,
+        stopwatch.elapsed().as_millis(),
+    );
+
+    Ok(())
 }
 
 /// Predeclare, predeploy, and initialize if necessary: Cairo 1 account, ETH and
@@ -316,7 +321,7 @@ pub fn declare(
 fn predeploy_contracts(
     db_txn: &pathfinder_storage::Transaction<'_>,
     state_update: &mut StateUpdateData,
-) -> Result<(Account, Account), anyhow::Error> {
+) -> Result<Account, anyhow::Error> {
     fixtures::PREDECLARED_CLASSES
         .iter()
         .copied()
@@ -335,33 +340,9 @@ fn predeploy_contracts(
         .try_for_each(|(contract_address, name, symbol)| {
             contract::erc20_init(state_update, contract_address, name, symbol)
         })?;
-    let mut accounts = Vec::new();
-    [
-        (
-            Felt::ONE, // Keep ECDSA happy
-            fixtures::CAIRO_1_ACCOUNT_CLASS_HASH,
-            None,
-        ),
-        (
-            fixtures::CHARGEABLE_ACCOUNT_PRIVATE_KEY,
-            fixtures::CAIRO_1_ACCOUNT_CLASS_HASH,
-            Some(fixtures::CHARGEABLE_ACCOUNT_ADDRESS),
-        ),
-    ]
-    .iter()
-    .copied()
-    .try_for_each(|(private_key, sierra_hash, address)| {
-        let account = Account::new(private_key, address)?;
-        account.predeploy(state_update)?;
-        accounts.push(account);
-        anyhow::Ok(())
-    })?;
-    let chargeable_account = accounts.pop().expect("2 items");
-    let account = accounts.pop().expect("1 item");
-    // TODO this is not really necessary here, we only need to return the private
-    // key of the non-chargeable account. From that we can recreate the entire
-    // account, compute the address, etc.
-    Ok((chargeable_account, account))
+    let account = Account::new_from_fixture();
+    account.predeploy(state_update)?;
+    Ok(account)
 }
 
 /// Returns the current UNIX timestamp, ensuring that it is strictly increasing
@@ -474,7 +455,7 @@ pub mod tests {
     use tempfile::tempdir;
 
     use crate::devnet::account::Account;
-    use crate::devnet::class::{preprocess_sierra, PrepocessedSierraClass};
+    use crate::devnet::class::{preprocess_sierra, PrepocessedSierra};
     use crate::devnet::{
         block_info,
         class,
@@ -492,7 +473,6 @@ pub mod tests {
     };
     use crate::validator::{ProdTransactionMapper, ValidatorBlockInfoStage, ValidatorWorkerPool};
 
-    // #[test_log::test(test)]
     #[test]
     fn refactor_test_init_devnet() {
         use pathfinder_common::{BlockNumber, StarknetVersion, StateCommitment};
@@ -524,142 +504,14 @@ pub mod tests {
             .unwrap();
         let timestamp = strictly_increasing_timestamp(Some(genesis_header.timestamp));
 
-        let mut account = Account::new(config.account_private_key(), None).unwrap();
+        let mut account = Account::from_storage(&db_txn).unwrap();
 
-        let hello_sierra_ser_incompatible = fixtures::HELLO_CLASS;
-        let PrepocessedSierraClass {
-            sierra_class_hash: hello_class_hash,
-            cairo1_class_p2p: hello_cairo1_class_p2p,
-            sierra_class_ser: hello_sierra_ser_compatible,
-            casm_hash_v2: hello_casm_hash_v2,
-            casm: hello_casm,
-        } = preprocess_sierra(hello_sierra_ser_incompatible, None).unwrap();
-        eprintln!("Hello class hash: {hello_class_hash}");
-        eprintln!("Hello casm hash v2: {hello_casm_hash_v2}");
+        let hello_class_hash = ClassHash(fixtures::HELLO_CLASS_HASH.0);
 
-        let worker_pool: ValidatorWorkerPool =
-            ExecutorWorkerPool::<ConcurrentStateReader>::auto().get();
-
-        let block_1_height = BlockNumber::new_or_panic(1);
-        let validator = new_validator(block_1_height);
-        let mut validator = validator
-            .validate_block_info(
-                block_info(block_1_height, timestamp),
-                storage.clone(),
-                None,
-                None,
-                worker_pool.clone(),
-            )
-            .unwrap();
-
-        let declare = DeclareTransactionV3 {
-            class_hash: ClassHash(hello_class_hash.0),
-            nonce: account.fetch_add_nonce(),
-            nonce_data_availability_mode: DataAvailabilityMode::L1,
-            fee_data_availability_mode: DataAvailabilityMode::L1,
-            resource_bounds: resource_bounds(),
-            tip: Tip(0),
-            paymaster_data: vec![],
-            signature: vec![/* Will be filled after signing */],
-            account_deployment_data: vec![],
-            sender_address: account.address(),
-            compiled_class_hash: hello_casm_hash_v2,
-        };
-        let mut variant = TransactionVariant::DeclareV3(declare);
-        let txn_hash = variant.calculate_hash(ChainId::SEPOLIA_TESTNET, false);
-        let (r, s) = ecdsa_sign(account.private_key(), txn_hash.0).unwrap();
-        let TransactionVariant::DeclareV3(declare) = &mut variant else {
-            unreachable!();
-        };
-        declare.signature = vec![TransactionSignatureElem(r), TransactionSignatureElem(s)];
-
-        let variant = variant.to_dto();
-
-        eprintln!("DTO: {variant:#?}");
-
-        let p2p_proto::sync::transaction::TransactionVariant::DeclareV3(DeclareV3WithoutClass {
-            common,
-            class_hash,
-        }) = variant
-        else {
-            unreachable!();
-        };
-        let declare = p2p_proto::transaction::DeclareV3WithClass {
-            common,
-            class: hello_cairo1_class_p2p,
-        };
-        let declare = p2p_proto::consensus::Transaction {
-            txn: p2p_proto::consensus::TransactionVariant::DeclareV3(declare),
-            transaction_hash: Hash(txn_hash.0),
-        };
-
-        validator
-            .execute_batch::<ProdTransactionMapper>(vec![declare])
-            .unwrap();
-
-        let block_1 = validator.consensus_finalize0().unwrap();
-        eprintln!("Block 1: {block_1:#?}");
-
-        let genesis_hash = db_txn
-            .block_hash(BlockId::Number(BlockNumber::GENESIS))
+        let block_1_hash = db_txn
+            .block_hash(BlockId::Number(BlockNumber::new_or_panic(1)))
             .unwrap()
             .unwrap();
-
-        eprintln!("Genesis hash: {genesis_hash}");
-
-        let (storage_commitment, class_commitment) = update_starknet_state(
-            &db_txn,
-            (&block_1.state_update).into(),
-            true,
-            block_1.header.number,
-            storage.clone(),
-        )
-        .unwrap();
-        let state_commitment = StateCommitment::calculate(
-            storage_commitment,
-            class_commitment,
-            StarknetVersion::V_0_14_0,
-        );
-
-        let ConsensusFinalizedL2Block {
-            header,
-            state_update,
-            transactions_and_receipts,
-            events,
-        } = block_1;
-
-        let header_1 = header.compute_hash(genesis_hash, state_commitment, compute_final_hash);
-        let block_1_hash = header_1.hash;
-
-        db_txn.insert_block_header(&header_1).unwrap();
-
-        // Insert classes before state update because the latter will trigger
-        // `upsert_declared_at` and insert a NULL definition
-        db_txn
-            .insert_sierra_class_definition(
-                &hello_class_hash,
-                &hello_sierra_ser_compatible,
-                &hello_casm,
-                &hello_casm_hash_v2,
-            )
-            .unwrap();
-
-        drop(hello_sierra_ser_compatible);
-        drop(hello_casm);
-
-        db_txn
-            .insert_state_update_data(header_1.number, &state_update)
-            .unwrap();
-        db_txn
-            .insert_transaction_data(header_1.number, &transactions_and_receipts, Some(&events))
-            .unwrap();
-        db_txn.commit().unwrap();
-
-        let elapsed = stopwatch.elapsed();
-        eprintln!(
-            "Init + declaring hello starknet: {} ms",
-            elapsed.as_millis()
-        );
 
         let stopwatch = Instant::now();
 
@@ -673,6 +525,10 @@ pub mod tests {
             },
         )
         .unwrap();
+
+        let worker_pool: ValidatorWorkerPool =
+            ExecutorWorkerPool::<ConcurrentStateReader>::auto().get();
+
         let mut validator = validator
             .validate_block_info(
                 BlockInfo {
@@ -985,8 +841,7 @@ pub mod tests {
         worker_pool.join();
     }
 
-    #[cfg(disabled)]
-    #[test_log::test(test)]
+    #[test]
     fn backup_test_init_devnet() {
         use pathfinder_common::state_update::StateUpdateData;
         use pathfinder_common::{BlockNumber, StarknetVersion, StateCommitment};
@@ -1031,34 +886,8 @@ pub mod tests {
                 contract::erc20_init(&mut state_update, contract_address, name, symbol).unwrap();
             });
 
-        let mut accounts = Vec::new();
-        [
-            (
-                Felt::from_u64(1 /* Keep ECDSA happy */),
-                fixtures::CAIRO_1_ACCOUNT_CLASS_HASH,
-                None,
-            ),
-            (
-                fixtures::CHARGEABLE_ACCOUNT_PRIVATE_KEY,
-                fixtures::CAIRO_1_ACCOUNT_CLASS_HASH,
-                Some(fixtures::CHARGEABLE_ACCOUNT_ADDRESS),
-            ),
-        ]
-        .iter()
-        .copied()
-        .for_each(|(private_key, class_hash, address)| {
-            let account = Account::new(private_key, address).unwrap();
-            account.predeploy(&mut state_update).unwrap();
-            accounts.push(account);
-        });
-        let chargeable_account = accounts.pop().unwrap();
-        let mut account = accounts.pop().unwrap();
-
-        eprintln!(
-            "Chargeable account address: {}",
-            chargeable_account.address()
-        );
-        eprintln!("Account address: {}", account.address());
+        let mut account = Account::new_from_fixture();
+        account.predeploy(&mut state_update).unwrap();
 
         let (storage_commitment, class_commitment) = update_starknet_state(
             &db_txn,
@@ -1122,11 +951,19 @@ pub mod tests {
         db_txn.commit().unwrap();
 
         let hello_sierra_ser_incompatible = fixtures::HELLO_CLASS;
-        let (hello_class_hash, sierra, hello_casm_hash_v2, hello_casm) =
-            preprocess_sierra(hello_sierra_ser_incompatible).unwrap();
+        let PrepocessedSierra {
+            sierra_class_hash: hello_class_hash,
+            sierra_class_ser: hello_sierra_ser_compatible,
+            cairo1_class_p2p: hello_cairo1_class_p2p,
+            casm_hash_v2: hello_casm_hash_v2,
+            casm: hello_casm,
+        } = preprocess_sierra(hello_sierra_ser_incompatible, None).unwrap();
+
+        // let (hello_class_hash, sierra, hello_casm_hash_v2, hello_casm) =
+        //     preprocess_sierra(hello_sierra_ser_incompatible).unwrap();
         eprintln!("Hello class hash: {hello_class_hash}");
         eprintln!("Hello casm hash v2: {hello_casm_hash_v2}");
-        let hello_sierra_ser_compatible = serde_json::to_vec(&sierra).unwrap();
+        // let hello_sierra_ser_compatible = serde_json::to_vec(&sierra).unwrap();
 
         let worker_pool: ValidatorWorkerPool =
             ExecutorWorkerPool::<ConcurrentStateReader>::auto().get();
@@ -1202,46 +1039,52 @@ pub mod tests {
         else {
             unreachable!();
         };
-        let Sierra {
-            abi,
-            sierra_program,
-            contract_class_version,
-            entry_points_by_type,
-        } = sierra;
+
         let declare = p2p_proto::transaction::DeclareV3WithClass {
             common,
-            class: p2p_proto::class::Cairo1Class {
-                abi: abi.into_owned(),
-                entry_points: p2p_proto::class::Cairo1EntryPoints {
-                    externals: entry_points_by_type
-                        .external
-                        .into_iter()
-                        .map(|x| p2p_proto::class::SierraEntryPoint {
-                            index: x.function_idx,
-                            selector: x.selector.0,
-                        })
-                        .collect(),
-                    l1_handlers: entry_points_by_type
-                        .l1_handler
-                        .into_iter()
-                        .map(|x| p2p_proto::class::SierraEntryPoint {
-                            index: x.function_idx,
-                            selector: x.selector.0,
-                        })
-                        .collect(),
-                    constructors: entry_points_by_type
-                        .constructor
-                        .into_iter()
-                        .map(|x| p2p_proto::class::SierraEntryPoint {
-                            index: x.function_idx,
-                            selector: x.selector.0,
-                        })
-                        .collect(),
-                },
-                program: sierra_program,
-                contract_class_version: contract_class_version.into_owned(),
-            },
+            class: hello_cairo1_class_p2p,
         };
+
+        // let Sierra {
+        //     abi,
+        //     sierra_program,
+        //     contract_class_version,
+        //     entry_points_by_type,
+        // } = sierra;
+        // let declare = p2p_proto::transaction::DeclareV3WithClass {
+        //     common,
+        //     class: p2p_proto::class::Cairo1Class {
+        //         abi: abi.into_owned(),
+        //         entry_points: p2p_proto::class::Cairo1EntryPoints {
+        //             externals: entry_points_by_type
+        //                 .external
+        //                 .into_iter()
+        //                 .map(|x| p2p_proto::class::SierraEntryPoint {
+        //                     index: x.function_idx,
+        //                     selector: x.selector.0,
+        //                 })
+        //                 .collect(),
+        //             l1_handlers: entry_points_by_type
+        //                 .l1_handler
+        //                 .into_iter()
+        //                 .map(|x| p2p_proto::class::SierraEntryPoint {
+        //                     index: x.function_idx,
+        //                     selector: x.selector.0,
+        //                 })
+        //                 .collect(),
+        //             constructors: entry_points_by_type
+        //                 .constructor
+        //                 .into_iter()
+        //                 .map(|x| p2p_proto::class::SierraEntryPoint {
+        //                     index: x.function_idx,
+        //                     selector: x.selector.0,
+        //                 })
+        //                 .collect(),
+        //         },
+        //         program: sierra_program,
+        //         contract_class_version: contract_class_version.into_owned(),
+        //     },
+        // };
         let declare = p2p_proto::consensus::Transaction {
             txn: p2p_proto::consensus::TransactionVariant::DeclareV3(declare),
             transaction_hash: Hash(txn_hash.0),

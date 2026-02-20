@@ -15,7 +15,6 @@ use pathfinder_common::{
 use pathfinder_crypto::Felt;
 use pathfinder_executor::{IntoFelt as _, IntoStarkFelt as _};
 use starknet_api::abi::abi_utils::get_storage_var_address;
-use starknet_api::core::calculate_contract_address;
 
 use crate::devnet::contract::predeploy;
 use crate::devnet::fixtures;
@@ -32,49 +31,29 @@ pub struct Account {
 }
 
 impl Account {
-    /// Creates a new account with the given private key, and optional address.
-    /// If the address is not provided, it will be calculated using the class
-    /// hash, public key derived from the private key, and a default salt.
-    pub fn new(private_key: Felt, address: Option<ContractAddress>) -> anyhow::Result<Self> {
-        let public_key = Self::compute_public_key(private_key)?;
-
-        let sierra_hash = fixtures::CAIRO_1_ACCOUNT_CLASS_HASH;
-
-        let address = if let Some(address) = address {
-            address
-        } else {
-            Self::compute_address(sierra_hash, public_key)?
-        };
-
-        Ok(Self {
-            sierra_hash,
-            private_key,
-            public_key,
-            address,
+    /// Creates a new account from fixture.
+    pub fn new_from_fixture() -> Self {
+        Self {
+            sierra_hash: fixtures::CAIRO_1_ACCOUNT_CLASS_HASH,
+            private_key: fixtures::ACCOUNT_PRIVATE_KEY,
+            public_key: fixtures::ACCOUNT_PUBLIC_KEY,
+            address: fixtures::ACCOUNT_ADDRESS,
             eth_fee_token_address: fixtures::ETH_ERC20_CONTRACT_ADDRESS,
             strk_fee_token_address: fixtures::STRK_ERC20_CONTRACT_ADDRESS,
             nonce: ContractNonce::ZERO,
-        })
+        }
     }
 
-    pub fn from_storage(
-        db_txn: &pathfinder_storage::Transaction<'_>,
-        private_key: Felt,
-    ) -> anyhow::Result<Self> {
-        let public_key = Self::compute_public_key(private_key)?;
-        let address = Self::compute_address(fixtures::CAIRO_1_ACCOUNT_CLASS_HASH, public_key)?;
+    /// Creates a new account from fixture and recovers its nonce from storage.
+    pub fn from_storage(db_txn: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<Self> {
+        let mut account = Self::new_from_fixture();
         let nonce = db_txn
-            .contract_nonce(address, BlockId::Latest)?
-            .context("Nonce is missing for the account.")?;
-        Ok(Self {
-            sierra_hash: fixtures::CAIRO_1_ACCOUNT_CLASS_HASH,
-            private_key,
-            public_key,
-            address,
-            eth_fee_token_address: fixtures::ETH_ERC20_CONTRACT_ADDRESS,
-            strk_fee_token_address: fixtures::STRK_ERC20_CONTRACT_ADDRESS,
-            nonce,
-        })
+            .contract_nonce(account.address, BlockId::Latest)?
+            // If the account has not been used before, it won't have the nonce in storage yet, so
+            // we default to 0
+            .unwrap_or_default();
+        account.nonce = nonce;
+        Ok(account)
     }
 
     pub fn predeploy(&self, state_update: &mut StateUpdateData) -> anyhow::Result<()> {
@@ -176,30 +155,5 @@ impl Account {
         )?;
 
         Ok(())
-    }
-
-    fn compute_public_key(private_key: Felt) -> anyhow::Result<PublicKey> {
-        let public_key = pathfinder_crypto::signature::get_pk(private_key)
-            .context("Failed to derive public key")?;
-        let public_key = PublicKey(public_key);
-        Ok(public_key)
-    }
-
-    fn compute_address(
-        sierra_hash: SierraHash,
-        public_key: PublicKey,
-    ) -> anyhow::Result<ContractAddress> {
-        let address = ContractAddress(
-            calculate_contract_address(
-                Default::default(),
-                starknet_api::core::ClassHash(sierra_hash.0.into_starkfelt()),
-                &starknet_api::transaction::fields::Calldata(Arc::new(vec![public_key
-                    .0
-                    .into_starkfelt()])),
-                Default::default(),
-            )?
-            .into_felt(),
-        );
-        Ok(address)
     }
 }

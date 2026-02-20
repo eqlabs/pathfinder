@@ -1,9 +1,15 @@
 use anyhow::Context as _;
 use num_bigint::BigUint;
 use pathfinder_common::state_update::StateUpdateData;
-use pathfinder_common::{ContractAddress, StorageAddress, StorageValue};
+use pathfinder_common::{ContractAddress, PublicKey, StorageAddress, StorageValue};
 use pathfinder_crypto::Felt;
 use pathfinder_executor::IntoFelt as _;
+
+pub fn compute_public_key(private_key: Felt) -> anyhow::Result<PublicKey> {
+    let public_key =
+        pathfinder_crypto::signature::get_pk(private_key).context("Deriving public key")?;
+    Ok(PublicKey(public_key))
+}
 
 /// Converts Cairo short string to [`Felt`].
 pub fn cairo_short_string_to_felt(str: &str) -> anyhow::Result<Felt> {

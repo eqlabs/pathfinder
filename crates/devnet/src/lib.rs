@@ -141,11 +141,11 @@ pub mod tests {
 
         let mut accounts = Vec::new();
         [
-            (
-                Felt::from_u64(1 /* Keep ECDSA happy */),
-                fixtures::CAIRO_1_ACCOUNT_CLASS_HASH,
-                None,
-            ),
+            // (
+            //     Felt::from_u64(1 /* Keep ECDSA happy */),
+            //     fixtures::CAIRO_1_ACCOUNT_CLASS_HASH,
+            //     None,
+            // ),
             (
                 fixtures::CHARGEABLE_ACCOUNT_PRIVATE_KEY,
                 fixtures::CAIRO_1_ACCOUNT_CLASS_HASH,
@@ -168,13 +168,16 @@ pub mod tests {
             accounts.push(account);
         });
         let chargeable_account = accounts.pop().unwrap();
-        let mut account = accounts.pop().unwrap();
+        // let mut account = accounts.pop().unwrap();
 
         eprintln!(
             "Chargeable account address: {}",
             chargeable_account.address()
         );
-        eprintln!("Account address: {}", account.address());
+        // eprintln!("Account address: {}", account.address());
+        // drop(account);
+
+        let mut account = chargeable_account;
 
         let (storage_commitment, class_commitment) = update_starknet_state(
             &db_txn,
@@ -236,6 +239,8 @@ pub mod tests {
             .insert_state_update_data(BlockNumber::GENESIS, &state_update)
             .unwrap();
         db_txn.commit().unwrap();
+
+        eprintln!("Genesis state update: {state_update:#?}");
 
         let hello_sierra_ser_incompatible = fixtures::HELLO_CLASS;
         let (hello_class_hash, sierra, hello_casm_hash_v2, hello_casm) =

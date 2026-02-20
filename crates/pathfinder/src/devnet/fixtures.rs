@@ -1,3 +1,4 @@
+use p2p_proto::common::Address;
 use pathfinder_common::{
     casm_hash,
     contract_address,
@@ -6,6 +7,7 @@ use pathfinder_common::{
     sierra_hash,
     CasmHash,
     ContractAddress,
+    GasPrice,
     PublicKey,
     SierraHash,
 };
@@ -65,11 +67,12 @@ pub const UDC_CLASS_HASH: SierraHash =
 pub const UDC_CONTRACT_ADDRESS: ContractAddress =
     contract_address!("0x02ceed65a4bd731034c01113685c831b01c15d7d432f71afb1cf1634b53a2125");
 
-pub const CHARGEABLE_ACCOUNT_PUBLIC_KEY: PublicKey =
-    public_key!("0x4C37AB4F0994879337BFD4EAD0800776DB57DA382B8ED8EFAA478C5D3B942A4");
-pub const CHARGEABLE_ACCOUNT_PRIVATE_KEY: Felt = felt!("0x5FB2959E3011A873A7160F5BB32B0ECE");
-pub const CHARGEABLE_ACCOUNT_ADDRESS: ContractAddress =
-    contract_address!("0x1CAF2DF5ED5DDE1AE3FAEF4ACD72522AC3CB16E23F6DC4C7F9FAED67124C511");
+// As simple as possible to keep ECDSA happy.
+pub const ACCOUNT_PRIVATE_KEY: Felt = Felt::ONE;
+pub const ACCOUNT_PUBLIC_KEY: PublicKey =
+    public_key!("0x01EF15C18599971B7BECED415A40F0C7DEACFD9B0D1819E03D723D8BC943CFCA");
+pub const ACCOUNT_ADDRESS: ContractAddress =
+    contract_address!("0x02334DE23F9C31EEF53826835D99537F5C3823B7DE60F5B605819BF2EA97C6CA");
 
 /// https://github.com/OpenZeppelin/cairo-contracts/blob/89a450a88628ec3b86273f261b2d8d1ca9b1522b/src/account/interface.cairo#L7
 pub const ISRC6_ID: Felt =
@@ -80,3 +83,43 @@ pub const HELLO_CLASS_HASH: SierraHash =
     sierra_hash!("0x0457EF47CFAA819D9FE1372E8957815CDBA2252ED3E42A15536A5A40747C8A00");
 pub const HELLO_CASM_HASH: CasmHash =
     casm_hash!("0x0071411E420C6D4237454AD997676341D8FBFDE4256888B31F34204AB7ED912F");
+
+/// Some nonzero gas price
+pub const GAS_PRICE: GasPrice = GasPrice(1_000_000_000);
+/// WEI to FRI conversion rate is 1:1 for simplicity, so ETH to FRI conversion
+/// rate is 1:1e18
+pub const ETH_TO_FRI_RATE: u128 = 1_000_000_000_000_000_000;
+/// Alice from integration tests
+pub const PROPOSER_ADDRESS: Address = Address(Felt::ONE);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::devnet::class::{preprocess_sierra, PrepocessedSierra};
+    use crate::devnet::contract::compute_address;
+    use crate::devnet::utils::compute_public_key;
+
+    #[test]
+    fn derived_account_values_match_fixture() {
+        assert_eq!(
+            compute_public_key(ACCOUNT_PRIVATE_KEY).unwrap(),
+            ACCOUNT_PUBLIC_KEY,
+        );
+        assert_eq!(
+            compute_address(CAIRO_1_ACCOUNT_CLASS_HASH, ACCOUNT_PUBLIC_KEY).unwrap(),
+            ACCOUNT_ADDRESS,
+        );
+    }
+
+    #[test]
+    fn derived_hello_contract_values_match_fixture() {
+        let PrepocessedSierra {
+            sierra_class_hash,
+            casm_hash_v2,
+            ..
+        } = preprocess_sierra(HELLO_CLASS, None).unwrap();
+
+        assert_eq!(sierra_class_hash, HELLO_CLASS_HASH);
+        assert_eq!(casm_hash_v2, HELLO_CASM_HASH);
+    }
+}

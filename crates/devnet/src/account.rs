@@ -98,6 +98,16 @@ impl Account {
             get_storage_var_address("ERC20_balances", &[self.address.0.into_stark_hash()]);
         let storage_var_address_high = storage_var_address_low.next_storage_key()?;
 
+        eprintln!("SET INITIAL BALANCE FOR: {}", self.address);
+        eprintln!(
+            "Storage variable address low: {}",
+            storage_var_address_low.into_felt()
+        );
+        eprintln!(
+            "Storage variable address high: {}",
+            storage_var_address_high.into_felt()
+        );
+
         let total_supply_storage_address_low: starknet_api::state::StorageKey =
             get_storage_var_address("ERC20_total_supply", &[]);
         let total_supply_storage_address_high =

@@ -1,7 +1,7 @@
 use pathfinder_class_hash::compute_sierra_class_hash;
 use pathfinder_class_hash::json::SierraContractDefinition;
 use pathfinder_common::class_definition::Sierra;
-use pathfinder_common::{state_update, CasmHash, ClassHash, SierraHash};
+use pathfinder_common::{state_update, CasmHash, SierraHash};
 use pathfinder_compiler::{casm_class_hash_v2, compile_to_casm_deser};
 use pathfinder_storage::Transaction;
 
@@ -18,7 +18,7 @@ pub fn predeclare(
     sierra_class_ser: &[u8],
     class_hash: Option<SierraHash>,
 ) -> anyhow::Result<()> {
-    let PrepocessedSierraClass {
+    let PrepocessedSierra {
         sierra_class_hash,
 
         sierra_class_ser,
@@ -26,45 +26,6 @@ pub fn predeclare(
         casm,
         ..
     } = preprocess_sierra(sierra_class_ser, class_hash)?;
-
-    /*
-    let sierra_class_hash = class_hash.unwrap_or({
-        let compat::SierraContractDefinition {
-            abi,
-            sierra_program,
-            contract_class_version,
-            entry_points_by_type,
-        } = serde_json::from_slice(sierra_class_ser).unwrap();
-        let sierra_class_def = SierraContractDefinition {
-            abi: serde_json::to_string(&abi).unwrap().into(),
-            sierra_program,
-            contract_class_version,
-            entry_points_by_type,
-        };
-
-        compute_sierra_class_hash(sierra_class_def)?
-    });
-
-    let compat::Sierra {
-        abi,
-        sierra_program,
-        contract_class_version,
-        entry_points_by_type,
-    } = serde_json::from_slice(sierra_class_ser).unwrap();
-    let sierra_class_def = Sierra {
-        abi: serde_json::to_string(&abi).unwrap().into(),
-        sierra_program,
-        contract_class_version,
-        entry_points_by_type,
-    };
-
-    // Re-serialize into a storage-compatible format
-    let sierra_class_ser = serde_json::to_vec(&sierra_class_def).unwrap();
-    let casm = compile_to_casm_deser(sierra_class_def).unwrap();
-
-    let casm_hash = casm_class_hash_v2(&casm).unwrap();
-    let sierra_class_hash = SierraHash(sierra_class_hash.0);
-    */
 
     let overwritten = state_update
         .declared_sierra_classes
@@ -86,7 +47,7 @@ pub fn predeclare(
 }
 
 #[derive(Debug)]
-pub struct PrepocessedSierraClass {
+pub struct PrepocessedSierra {
     // Class hash
     pub sierra_class_hash: SierraHash,
     // Deserialized into a format compatible with p2p, and hence the validator (for execution)
@@ -104,7 +65,7 @@ pub struct PrepocessedSierraClass {
 pub fn preprocess_sierra<'a>(
     sierra_class_ser: &'a [u8],
     sierra_class_hash: Option<SierraHash>,
-) -> anyhow::Result<PrepocessedSierraClass> {
+) -> anyhow::Result<PrepocessedSierra> {
     let sierra_class_hash = sierra_class_hash.unwrap_or({
         let compat::SierraContractDefinition {
             abi,
@@ -142,7 +103,7 @@ pub fn preprocess_sierra<'a>(
 
     let casm_hash_v2 = casm_class_hash_v2(&casm).unwrap();
 
-    Ok(PrepocessedSierraClass {
+    Ok(PrepocessedSierra {
         sierra_class_hash,
         cairo1_class_p2p: sierra_class_p2p,
         sierra_class_ser,
