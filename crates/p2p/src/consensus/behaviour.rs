@@ -1,4 +1,4 @@
-use libp2p::gossipsub::{self, IdentTopic};
+use libp2p::gossipsub::{self, Sha256Topic};
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{identity, PeerId};
 use p2p_proto::consensus::Vote;
@@ -49,7 +49,7 @@ impl ApplicationBehaviour for Behaviour {
 
                 let mut tx_result = Ok(());
                 for msg in stream_msgs {
-                    let topic = IdentTopic::new(TOPIC_PROPOSALS);
+                    let topic = Sha256Topic::new(TOPIC_PROPOSALS);
 
                     if let Err(e) = self.gossipsub.publish(topic, msg.to_protobuf_bytes()) {
                         error!(
@@ -69,7 +69,7 @@ impl ApplicationBehaviour for Behaviour {
             ConsensusCommand::Vote { vote, done_tx } => {
                 let cloned_vote = vote.clone();
                 let data = vote.to_protobuf_bytes();
-                let topic = IdentTopic::new(TOPIC_VOTES);
+                let topic = Sha256Topic::new(TOPIC_VOTES);
 
                 let tx_result = self
                     .gossipsub
@@ -133,7 +133,7 @@ impl ApplicationBehaviour for Behaviour {
                     stream_msgs.shuffle(&mut rand::thread_rng());
                 }
                 for msg in stream_msgs {
-                    let topic = IdentTopic::new(TOPIC_PROPOSALS);
+                    let topic = Sha256Topic::new(TOPIC_PROPOSALS);
                     if let Err(e) = self.gossipsub.publish(topic, msg.to_protobuf_bytes()) {
                         error!("Failed to publish proposal message: {}", e);
                     }
@@ -151,13 +151,19 @@ impl ApplicationBehaviour for Behaviour {
     ) {
         use gossipsub::Event::*;
         let BehaviourEvent::Gossipsub(e) = event;
+
+        tracing::trace!(event=?e, "Gossipsub event received");
+
+        let topic_proposals_hash = Sha256Topic::new(TOPIC_PROPOSALS).hash();
+        let topic_votes_hash = Sha256Topic::new(TOPIC_VOTES).hash();
+
         match e {
             Message {
                 propagation_source,
                 message_id,
                 message,
-            } => match message.topic.as_str() {
-                TOPIC_PROPOSALS => {
+            } => match message.topic {
+                hash if hash == topic_proposals_hash => {
                     if let Ok(stream_msg) = StreamMessage::from_protobuf_bytes(&message.data) {
                         let events =
                             handle_incoming_proposal_message(state, stream_msg, propagation_source);
@@ -168,7 +174,7 @@ impl ApplicationBehaviour for Behaviour {
                         error!("Failed to parse proposal message with id: {}", message_id);
                     }
                 }
-                TOPIC_VOTES => {
+                hash if hash == topic_votes_hash => {
                     if let Ok(vote) = Vote::from_protobuf_bytes(&message.data) {
                         let event = Event {
                             source: propagation_source,
@@ -211,8 +217,8 @@ impl Behaviour {
             )
             .expect("Params should be valid and not already set");
 
-        let proposals_topic = IdentTopic::new(TOPIC_PROPOSALS);
-        let votes_topic = IdentTopic::new(TOPIC_VOTES);
+        let proposals_topic = Sha256Topic::new(TOPIC_PROPOSALS);
+        let votes_topic = Sha256Topic::new(TOPIC_VOTES);
 
         gossipsub
             .subscribe(&proposals_topic)
