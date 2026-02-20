@@ -16,8 +16,18 @@ pub fn predeclare(
     transaction: &Transaction<'_>,
     state_update: &mut state_update::StateUpdateData,
     sierra_class_ser: &[u8],
-    class_hash: Option<ClassHash>,
+    class_hash: Option<SierraHash>,
 ) -> anyhow::Result<()> {
+    let PrepocessedSierraClass {
+        sierra_class_hash,
+
+        sierra_class_ser,
+        casm_hash_v2,
+        casm,
+        ..
+    } = preprocess_sierra(sierra_class_ser, class_hash)?;
+
+    /*
     let sierra_class_hash = class_hash.unwrap_or({
         let compat::SierraContractDefinition {
             abi,
@@ -54,10 +64,11 @@ pub fn predeclare(
 
     let casm_hash = casm_class_hash_v2(&casm).unwrap();
     let sierra_class_hash = SierraHash(sierra_class_hash.0);
+    */
 
     let overwritten = state_update
         .declared_sierra_classes
-        .insert(sierra_class_hash, casm_hash)
+        .insert(sierra_class_hash, casm_hash_v2)
         .is_some();
     anyhow::ensure!(
         !overwritten,
@@ -69,28 +80,47 @@ pub fn predeclare(
         &sierra_class_hash,
         &sierra_class_ser,
         &casm,
-        &casm_hash,
+        &casm_hash_v2,
     )?;
     Ok(())
 }
 
+#[derive(Debug)]
+pub struct PrepocessedSierraClass {
+    // Class hash
+    pub sierra_class_hash: SierraHash,
+    // Deserialized into a format compatible with p2p, and hence the validator (for execution)
+    pub cairo1_class_p2p: p2p_proto::class::Cairo1Class,
+    // Re-serialized into a storage-compatible format
+    pub sierra_class_ser: Vec<u8>,
+    // Casm hash v2
+    pub casm_hash_v2: CasmHash,
+    // Casm - compiled from sierra
+    pub casm: Vec<u8>,
+}
+
+/// Preprocess a Sierra class definition. Class hash is computed if not
+/// provided.
 pub fn preprocess_sierra<'a>(
     sierra_class_ser: &'a [u8],
-) -> anyhow::Result<(SierraHash, Sierra<'a>, CasmHash, Vec<u8>)> {
-    let compat::SierraContractDefinition {
-        abi,
-        sierra_program,
-        contract_class_version,
-        entry_points_by_type,
-    } = serde_json::from_slice(sierra_class_ser).unwrap();
-    let sierra_class_def = SierraContractDefinition {
-        abi: serde_json::to_string(&abi).unwrap().into(),
-        sierra_program,
-        contract_class_version,
-        entry_points_by_type,
-    };
+    sierra_class_hash: Option<SierraHash>,
+) -> anyhow::Result<PrepocessedSierraClass> {
+    let sierra_class_hash = sierra_class_hash.unwrap_or({
+        let compat::SierraContractDefinition {
+            abi,
+            sierra_program,
+            contract_class_version,
+            entry_points_by_type,
+        } = serde_json::from_slice(sierra_class_ser).unwrap();
+        let sierra_class_def = SierraContractDefinition {
+            abi: serde_json::to_string(&abi).unwrap().into(),
+            sierra_program,
+            contract_class_version,
+            entry_points_by_type,
+        };
 
-    let sierra_class_hash = compute_sierra_class_hash(sierra_class_def)?;
+        SierraHash(compute_sierra_class_hash(sierra_class_def)?.0)
+    });
 
     let compat::Sierra {
         abi,
@@ -105,11 +135,60 @@ pub fn preprocess_sierra<'a>(
         entry_points_by_type,
     };
 
-    let casm = compile_to_casm_deser(sierra_class_def.clone()).unwrap();
-    let casm_hash_v2 = casm_class_hash_v2(&casm).unwrap();
-    let sierra_class_hash = SierraHash(sierra_class_hash.0);
+    // Re-serialize into a storage-compatible format
+    let sierra_class_ser = serde_json::to_vec(&sierra_class_def).unwrap();
+    let sierra_class_p2p = sierra_def_to_p2p_cairo1(&sierra_class_def);
+    let casm = compile_to_casm_deser(sierra_class_def).unwrap();
 
-    Ok((sierra_class_hash, sierra_class_def, casm_hash_v2, casm))
+    let casm_hash_v2 = casm_class_hash_v2(&casm).unwrap();
+
+    Ok(PrepocessedSierraClass {
+        sierra_class_hash,
+        cairo1_class_p2p: sierra_class_p2p,
+        sierra_class_ser,
+        casm_hash_v2,
+        casm,
+    })
+}
+
+fn sierra_def_to_p2p_cairo1(sierra: &Sierra<'_>) -> p2p_proto::class::Cairo1Class {
+    let Sierra {
+        abi,
+        sierra_program,
+        contract_class_version,
+        entry_points_by_type,
+    } = sierra;
+    p2p_proto::class::Cairo1Class {
+        abi: abi.clone().into_owned(),
+        entry_points: p2p_proto::class::Cairo1EntryPoints {
+            externals: entry_points_by_type
+                .external
+                .iter()
+                .map(|x| p2p_proto::class::SierraEntryPoint {
+                    index: x.function_idx,
+                    selector: x.selector.0,
+                })
+                .collect(),
+            l1_handlers: entry_points_by_type
+                .l1_handler
+                .iter()
+                .map(|x| p2p_proto::class::SierraEntryPoint {
+                    index: x.function_idx,
+                    selector: x.selector.0,
+                })
+                .collect(),
+            constructors: entry_points_by_type
+                .constructor
+                .iter()
+                .map(|x| p2p_proto::class::SierraEntryPoint {
+                    index: x.function_idx,
+                    selector: x.selector.0,
+                })
+                .collect(),
+        },
+        program: sierra_program.clone(),
+        contract_class_version: contract_class_version.clone().into_owned(),
+    }
 }
 
 mod compat {

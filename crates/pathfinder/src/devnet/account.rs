@@ -1,9 +1,17 @@
 use std::sync::Arc;
+use std::u128;
 
 use anyhow::Context;
 use num_bigint::BigUint;
 use pathfinder_common::state_update::StateUpdateData;
-use pathfinder_common::{ClassHash, ContractAddress, PublicKey, TransactionNonce};
+use pathfinder_common::{
+    BlockId,
+    ContractAddress,
+    ContractNonce,
+    PublicKey,
+    SierraHash,
+    TransactionNonce,
+};
 use pathfinder_crypto::Felt;
 use pathfinder_executor::{IntoFelt as _, IntoStarkFelt as _};
 use starknet_api::abi::abi_utils::get_storage_var_address;
@@ -14,67 +22,63 @@ use crate::devnet::fixtures;
 use crate::devnet::utils::{get_storage_at, join_felts, set_storage_at, split_biguint};
 
 pub struct Account {
-    class_hash: ClassHash,
+    sierra_hash: SierraHash,
     private_key: Felt,
     public_key: PublicKey,
     address: ContractAddress,
-    initial_balance: u128,
     eth_fee_token_address: ContractAddress,
     strk_fee_token_address: ContractAddress,
-    nonce: u64,
+    nonce: ContractNonce,
 }
 
 impl Account {
-    /// Creates a new account with the given private key, class hash, and
-    /// optional address. If the address is not provided, it will be calculated
-    /// using the class hash, public key derived from the private key, and a
-    /// default salt.
-    pub fn new(
-        private_key: Felt,
-        class_hash: ClassHash,
-        address: Option<ContractAddress>,
-        initial_balance: u128,
-        eth_fee_token_address: ContractAddress,
-        strk_fee_token_address: ContractAddress,
-    ) -> anyhow::Result<Self> {
-        let public_key = pathfinder_crypto::signature::get_pk(private_key)
-            .context("Failed to derive public key")?;
+    /// Creates a new account with the given private key, and optional address.
+    /// If the address is not provided, it will be calculated using the class
+    /// hash, public key derived from the private key, and a default salt.
+    pub fn new(private_key: Felt, address: Option<ContractAddress>) -> anyhow::Result<Self> {
+        let public_key = Self::compute_public_key(private_key)?;
 
-        let public_key = PublicKey(public_key);
+        let sierra_hash = fixtures::CAIRO_1_ACCOUNT_CLASS_HASH;
+
         let address = if let Some(address) = address {
             address
         } else {
-            ContractAddress(
-                calculate_contract_address(
-                    // Is this necessary?
-                    // starknet_api::transaction::fields::ContractAddressSalt(
-                    //     starknet_rust_core::types::Felt::from_hex("0x14").unwrap(),
-                    // ),
-                    Default::default(),
-                    starknet_api::core::ClassHash(class_hash.0.into_starkfelt()),
-                    &starknet_api::transaction::fields::Calldata(Arc::new(vec![public_key
-                        .0
-                        .into_starkfelt()])),
-                    Default::default(),
-                )?
-                .into_felt(),
-            )
+            Self::compute_address(sierra_hash, public_key)?
         };
 
         Ok(Self {
-            class_hash,
+            sierra_hash,
             private_key,
             public_key,
             address,
-            initial_balance,
-            eth_fee_token_address,
-            strk_fee_token_address,
-            nonce: 0,
+            eth_fee_token_address: fixtures::ETH_ERC20_CONTRACT_ADDRESS,
+            strk_fee_token_address: fixtures::STRK_ERC20_CONTRACT_ADDRESS,
+            nonce: ContractNonce::ZERO,
+        })
+    }
+
+    pub fn from_storage(
+        db_txn: &pathfinder_storage::Transaction<'_>,
+        private_key: Felt,
+    ) -> anyhow::Result<Self> {
+        let public_key = Self::compute_public_key(private_key)?;
+        let address = Self::compute_address(fixtures::CAIRO_1_ACCOUNT_CLASS_HASH, public_key)?;
+        let nonce = db_txn
+            .contract_nonce(address, BlockId::Latest)?
+            .context("Nonce is missing for the account.")?;
+        Ok(Self {
+            sierra_hash: fixtures::CAIRO_1_ACCOUNT_CLASS_HASH,
+            private_key,
+            public_key,
+            address,
+            eth_fee_token_address: fixtures::ETH_ERC20_CONTRACT_ADDRESS,
+            strk_fee_token_address: fixtures::STRK_ERC20_CONTRACT_ADDRESS,
+            nonce,
         })
     }
 
     pub fn predeploy(&self, state_update: &mut StateUpdateData) -> anyhow::Result<()> {
-        predeploy(state_update, self.address, self.class_hash)?;
+        predeploy(state_update, self.address, self.sierra_hash)?;
         self.set_initial_balance(state_update)?;
         self.simulate_constructor(state_update)
     }
@@ -83,17 +87,19 @@ impl Account {
         self.address
     }
 
-    pub fn secret_key(&self) -> Felt {
+    pub fn private_key(&self) -> Felt {
         self.private_key
     }
 
     pub fn fetch_add_nonce(&mut self) -> TransactionNonce {
         let nonce = self.nonce;
-        self.nonce += 1;
-        TransactionNonce(Felt::from(nonce))
+        self.nonce = ContractNonce(self.nonce.0 + Felt::ONE);
+        TransactionNonce(nonce.0)
     }
 
+    /// Sets initial balance to u128::MAX
     fn set_initial_balance(&self, state_update: &mut StateUpdateData) -> anyhow::Result<()> {
+        let initial_balance = u128::MAX;
         let storage_var_address_low: starknet_api::state::StorageKey =
             get_storage_var_address("ERC20_balances", &[self.address.0.into_starkfelt()]);
         let storage_var_address_high = storage_var_address_low.next_storage_key()?;
@@ -103,7 +109,7 @@ impl Account {
         let total_supply_storage_address_high =
             total_supply_storage_address_low.next_storage_key()?;
 
-        let (high, low) = split_biguint(BigUint::from(self.initial_balance));
+        let (high, low) = split_biguint(BigUint::from(initial_balance));
 
         for fee_token_address in [self.eth_fee_token_address, self.strk_fee_token_address] {
             let token_address = fee_token_address.into();
@@ -119,8 +125,8 @@ impl Account {
                 total_supply_storage_address_high,
             );
 
-            let new_total_supply = join_felts(total_supply_high, total_supply_low)
-                + BigUint::from(self.initial_balance);
+            let new_total_supply =
+                join_felts(total_supply_high, total_supply_low) + BigUint::from(initial_balance);
 
             let (new_total_supply_high, new_total_supply_low) = split_biguint(new_total_supply);
 
@@ -170,5 +176,30 @@ impl Account {
         )?;
 
         Ok(())
+    }
+
+    fn compute_public_key(private_key: Felt) -> anyhow::Result<PublicKey> {
+        let public_key = pathfinder_crypto::signature::get_pk(private_key)
+            .context("Failed to derive public key")?;
+        let public_key = PublicKey(public_key);
+        Ok(public_key)
+    }
+
+    fn compute_address(
+        sierra_hash: SierraHash,
+        public_key: PublicKey,
+    ) -> anyhow::Result<ContractAddress> {
+        let address = ContractAddress(
+            calculate_contract_address(
+                Default::default(),
+                starknet_api::core::ClassHash(sierra_hash.0.into_starkfelt()),
+                &starknet_api::transaction::fields::Calldata(Arc::new(vec![public_key
+                    .0
+                    .into_starkfelt()])),
+                Default::default(),
+            )?
+            .into_felt(),
+        );
+        Ok(address)
     }
 }

@@ -1,17 +1,16 @@
 use pathfinder_common::state_update::StateUpdateData;
-use pathfinder_common::{ClassHash, ContractAddress, StorageAddress, StorageValue};
+use pathfinder_common::{ClassHash, ContractAddress, SierraHash, StorageAddress, StorageValue};
 use pathfinder_crypto::Felt;
 use pathfinder_executor::IntoFelt as _;
 use starknet_api::abi::abi_utils::get_storage_var_address;
 
 use crate::devnet::fixtures::CHARGEABLE_ACCOUNT_ADDRESS;
 use crate::devnet::utils::cairo_short_string_to_felt;
-// use crate::IntoFelt as _;
 
 pub fn predeploy(
     state_update: &mut StateUpdateData,
     contract_address: ContractAddress,
-    class_hash: ClassHash,
+    sierra_hash: SierraHash,
 ) -> anyhow::Result<()> {
     let overwritten = state_update
         .contract_updates
@@ -19,7 +18,9 @@ pub fn predeploy(
             contract_address,
             pathfinder_common::state_update::ContractUpdate {
                 class: Some(
-                    pathfinder_common::state_update::ContractClassUpdate::Deploy(class_hash),
+                    pathfinder_common::state_update::ContractClassUpdate::Deploy(ClassHash(
+                        sierra_hash.0,
+                    )),
                 ),
                 ..Default::default()
             },
