@@ -35,6 +35,10 @@ impl Column {
             block_based_options.set_data_block_index_type(DataBlockIndexType::BinaryAndHash);
             block_based_options.set_data_block_hash_ratio(0.75);
             block_based_options.set_whole_key_filtering(true);
+            block_based_options
+                .set_index_type(rust_rocksdb::BlockBasedIndexType::TwoLevelIndexSearch);
+            block_based_options.set_partition_filters(true);
+            block_based_options.set_metadata_block_size(4096);
         }
 
         if let Some(prefix_length) = self.key_prefix_length {
