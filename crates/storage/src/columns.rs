@@ -25,7 +25,7 @@ impl Column {
         block_based_options.set_block_cache(&cache);
         block_based_options.set_cache_index_and_filter_blocks(true);
         block_based_options.set_pin_l0_filter_and_index_blocks_in_cache(true);
-        block_based_options.set_ribbon_filter(15.0);
+        block_based_options.set_ribbon_filter(10.0);
 
         options.optimize_level_style_compaction(512 * 1024 * 1024);
         options.set_bottommost_compression_type(DBCompressionType::Zstd);
