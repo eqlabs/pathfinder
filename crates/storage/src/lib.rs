@@ -595,6 +595,8 @@ impl StorageBuilder {
     fn rocksdb_fetch_next_trie_storage_indices(db: &RocksDB) -> anyhow::Result<(u64, u64, u64)> {
         let trie_class_last_index =
             Self::trie_last_index(db, &crate::connection::TRIE_CLASS_COLUMN)?;
+        // FIXME: this is now broken, since the key includes the contract address
+        // prefix.
         let trie_contract_last_index =
             Self::trie_last_index(db, &crate::connection::TRIE_CONTRACT_COLUMN)?;
         let trie_storage_last_index =

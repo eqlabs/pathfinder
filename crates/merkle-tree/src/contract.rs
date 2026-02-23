@@ -47,7 +47,7 @@ impl<'tx> ContractsStorageTree<'tx> {
         block: BlockNumber,
     ) -> anyhow::Result<Self> {
         let root = tx
-            .contract_root_index(block, contract)
+            .contract_root_index(block, &contract)
             .context("Querying contract root index")?;
         let Some(root) = root else {
             return Ok(Self::empty(tx, contract));
@@ -257,11 +257,11 @@ impl crate::storage::Storage for ContractStorage<'_> {
         &self,
         index: TrieStorageIndex,
     ) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
-        self.tx.contract_trie_node(index)
+        self.tx.contract_trie_node(index, &self.contract)
     }
 
     fn hash(&self, index: TrieStorageIndex) -> anyhow::Result<Option<Felt>> {
-        self.tx.contract_trie_node_hash(index)
+        self.tx.contract_trie_node_hash(index, &self.contract)
     }
 
     fn leaf(&self, path: &BitSlice<u8, Msb0>) -> anyhow::Result<Option<Felt>> {

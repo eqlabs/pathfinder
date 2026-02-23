@@ -11,15 +11,33 @@ use crate::columns::Column;
 use crate::prelude::*;
 use crate::TriePruneMode;
 
+const TRIE_CONTRACT_PREFIX_LEN: usize = size_of::<Felt>();
+const TRIE_CONTRACT_KEY_LEN: usize = TRIE_CONTRACT_PREFIX_LEN + size_of::<TrieStorageIndex>();
+
 pub const TRIE_CLASS_COLUMN: Column = Column::new("trie_class")
     .with_point_lookup()
     .with_optimize_for_hits();
 pub const TRIE_CONTRACT_COLUMN: Column = Column::new("trie_contract")
+    .with_prefix_length(TRIE_CONTRACT_PREFIX_LEN)
     .with_point_lookup()
     .with_optimize_for_hits();
 pub const TRIE_STORAGE_COLUMN: Column = Column::new("trie_storage")
     .with_point_lookup()
     .with_optimize_for_hits();
+
+/// Constructs the key for a contract trie entry.
+///
+/// Format is the following:
+/// [contract_address (32 bytes)][storage_idx (8 bytes)]
+fn contract_trie_key(
+    prefix: &Felt,
+    storage_idx: TrieStorageIndex,
+    buf: &mut [u8; TRIE_CONTRACT_KEY_LEN],
+) {
+    buf[..TRIE_CONTRACT_PREFIX_LEN].copy_from_slice(prefix.as_be_bytes());
+    let storage_idx_be_bytes = storage_idx.0.to_be_bytes();
+    buf[TRIE_CONTRACT_PREFIX_LEN..].copy_from_slice(&storage_idx_be_bytes);
+}
 
 const CONTRACT_STATE_HASHES_PREFIX_LENGTH: usize = size_of::<Felt>();
 const CONTRACT_STATE_HASHES_KEY_LENGTH: usize =
@@ -121,13 +139,13 @@ impl Transaction<'_> {
     pub fn contract_root_index(
         &self,
         block_number: BlockNumber,
-        contract: ContractAddress,
+        contract: &ContractAddress,
     ) -> anyhow::Result<Option<TrieStorageIndex>> {
         self.inner()
             .query_row(
                 "SELECT root_index FROM contract_roots WHERE contract_address = ? AND \
                  block_number <= ? ORDER BY block_number DESC LIMIT 1",
-                params![&contract, &block_number],
+                params![contract, &block_number],
                 |row| row.get::<_, Option<u64>>(0),
             )
             .optional()
@@ -138,31 +156,23 @@ impl Transaction<'_> {
     pub fn contract_root(
         &self,
         block_number: BlockNumber,
-        contract: ContractAddress,
+        contract: &ContractAddress,
     ) -> anyhow::Result<Option<ContractRoot>> {
         let root_index = self.inner()
         .query_row(
             r"
                 SELECT root_index FROM contract_roots WHERE block_number <= ? AND contract_address = ? ORDER BY block_number DESC LIMIT 1
             ",
-            params![&block_number, &contract],
+            params![&block_number, contract],
             |row| row.get_optional_i64(0),
         )
         .optional()?
         .flatten();
 
         if let Some(root_index) = root_index {
+            let root_index = TrieStorageIndex(root_index.try_into()?);
             let root = self
-                .rocksdb()
-                .get_pinned_cf(
-                    &self.rocksdb_get_column(&TRIE_CONTRACT_COLUMN),
-                    root_index.to_be_bytes().as_slice(),
-                )?
-                .map(|v| {
-                    Felt::from_be_slice(&v.as_ref()[..32])
-                        .context("Decoding contract root hash from RocksDB")
-                })
-                .transpose()?
+                .contract_trie_node_hash(root_index, &contract)?
                 .map(ContractRoot);
             Ok(root)
         } else {
@@ -398,27 +408,29 @@ impl Transaction<'_> {
         block_number: BlockNumber,
         contract_address: &ContractAddress,
     ) -> anyhow::Result<RootIndexUpdate> {
-        let key_shard = contract_address.0.as_be_bytes()[8..10]
-            .try_into()
-            .expect("Failed to convert key shard");
         self.insert_trie(
             update,
             block_number,
             "trie_contracts",
             &TRIE_CONTRACT_COLUMN,
-            Some(key_shard),
+            Some(&contract_address.0),
         )
     }
 
     pub fn contract_trie_node(
         &self,
         index: TrieStorageIndex,
+        contract_address: &ContractAddress,
     ) -> anyhow::Result<Option<StoredNode>> {
-        self.trie_node(index, &TRIE_CONTRACT_COLUMN)
+        self.trie_node(index, &TRIE_CONTRACT_COLUMN, Some(&contract_address.0))
     }
 
-    pub fn contract_trie_node_hash(&self, index: TrieStorageIndex) -> anyhow::Result<Option<Felt>> {
-        self.trie_node_hash(index, &TRIE_CONTRACT_COLUMN)
+    pub fn contract_trie_node_hash(
+        &self,
+        index: TrieStorageIndex,
+        contract_address: &ContractAddress,
+    ) -> anyhow::Result<Option<Felt>> {
+        self.trie_node_hash(index, &TRIE_CONTRACT_COLUMN, Some(&contract_address.0))
     }
 
     pub fn insert_class_trie(
@@ -430,11 +442,11 @@ impl Transaction<'_> {
     }
 
     pub fn class_trie_node(&self, index: TrieStorageIndex) -> anyhow::Result<Option<StoredNode>> {
-        self.trie_node(index, &TRIE_CLASS_COLUMN)
+        self.trie_node(index, &TRIE_CLASS_COLUMN, None)
     }
 
     pub fn class_trie_node_hash(&self, index: TrieStorageIndex) -> anyhow::Result<Option<Felt>> {
-        self.trie_node_hash(index, &TRIE_CLASS_COLUMN)
+        self.trie_node_hash(index, &TRIE_CLASS_COLUMN, None)
     }
 
     pub fn insert_storage_trie(
@@ -452,11 +464,11 @@ impl Transaction<'_> {
     }
 
     pub fn storage_trie_node(&self, index: TrieStorageIndex) -> anyhow::Result<Option<StoredNode>> {
-        self.trie_node(index, &TRIE_STORAGE_COLUMN)
+        self.trie_node(index, &TRIE_STORAGE_COLUMN, None)
     }
 
     pub fn storage_trie_node_hash(&self, index: TrieStorageIndex) -> anyhow::Result<Option<Felt>> {
-        self.trie_node_hash(index, &TRIE_STORAGE_COLUMN)
+        self.trie_node_hash(index, &TRIE_STORAGE_COLUMN, None)
     }
 
     /// Prune tries by removing nodes that are no longer needed at the given
@@ -607,7 +619,7 @@ impl Transaction<'_> {
         block_number: BlockNumber,
         table: &'static str,
         rocksdb_hash_column: &Column,
-        key_shard: Option<[u8; 2]>,
+        key_prefix: Option<&Felt>,
     ) -> anyhow::Result<RootIndexUpdate> {
         if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
             self.prune_trie(block_number, num_blocks_kept, table, rocksdb_hash_column)?;
@@ -658,6 +670,7 @@ impl Transaction<'_> {
 
         // Reusable (and oversized) buffer for encoding.
         let mut buffer = [0u8; 256];
+        let mut key: [u8; 40] = [0u8; TRIE_CONTRACT_KEY_LEN];
 
         let mut storage_idx = self
             .rocksdb
@@ -675,19 +688,17 @@ impl Transaction<'_> {
             buffer[0..32].copy_from_slice(hash.as_be_bytes());
             let length = node.encode(&mut buffer[32..]).context("Encoding node")?;
 
-            let sharded_idx = if let Some(key_shard) = key_shard {
-                storage_idx.with_shard(key_shard)
+            let key_length = if let Some(key_prefix) = key_prefix {
+                contract_trie_key(key_prefix, storage_idx, &mut key);
+                TRIE_CONTRACT_KEY_LEN
             } else {
-                storage_idx
+                key[..8].copy_from_slice(&storage_idx.0.to_be_bytes());
+                8
             };
 
-            indices.insert(idx, sharded_idx);
+            indices.insert(idx, storage_idx);
 
-            batch.put_cf(
-                &column,
-                sharded_idx.0.to_be_bytes().as_slice(),
-                &buffer[..length + 32],
-            );
+            batch.put_cf(&column, &key[..key_length], &buffer[..length + 32]);
 
             storage_idx.0 += 1;
 
@@ -710,13 +721,19 @@ impl Transaction<'_> {
         &self,
         index: TrieStorageIndex,
         rocksdb_column: &Column,
+        key_prefix: Option<&Felt>,
     ) -> anyhow::Result<Option<StoredNode>> {
+        let mut key: [u8; 40] = [0u8; TRIE_CONTRACT_KEY_LEN];
+        let key_length = if let Some(key_prefix) = key_prefix {
+            contract_trie_key(key_prefix, index, &mut key);
+            TRIE_CONTRACT_KEY_LEN
+        } else {
+            key[..8].copy_from_slice(&index.0.to_be_bytes());
+            8
+        };
         let node = self
             .rocksdb()
-            .get_pinned_cf(
-                &self.rocksdb_get_column(rocksdb_column),
-                index.0.to_be_bytes().as_slice(),
-            )?
+            .get_pinned_cf(&self.rocksdb_get_column(rocksdb_column), &key[..key_length])?
             .map(|v| StoredNode::decode(&v.as_ref()[32..]).context("Decoding node from RocksDB"))
             .transpose()?;
 
@@ -728,12 +745,21 @@ impl Transaction<'_> {
         &self,
         index: TrieStorageIndex,
         rocksdb_hash_column: &Column,
+        key_prefix: Option<&Felt>,
     ) -> anyhow::Result<Option<Felt>> {
+        let mut key: [u8; 40] = [0u8; TRIE_CONTRACT_KEY_LEN];
+        let key_length = if let Some(key_prefix) = key_prefix {
+            contract_trie_key(key_prefix, index, &mut key);
+            TRIE_CONTRACT_KEY_LEN
+        } else {
+            key[..8].copy_from_slice(&index.0.to_be_bytes());
+            8
+        };
         let hash = self
             .rocksdb()
             .get_pinned_cf(
                 &self.rocksdb_get_column(rocksdb_hash_column),
-                index.0.to_be_bytes().as_slice(),
+                &key[..key_length],
             )?
             .map(|v| {
                 Felt::from_be_slice(&v.as_ref()[..32]).context("Decoding node hash from RocksDB")
@@ -1190,15 +1216,15 @@ mod tests {
             panic!("Expected the root index to be updated");
         };
 
-        let result1 = tx.contract_root_index(BlockNumber::GENESIS, c1).unwrap();
+        let result1 = tx.contract_root_index(BlockNumber::GENESIS, &c1).unwrap();
         assert_eq!(result1, None);
 
         tx.insert_contract_root(BlockNumber::GENESIS, c1, idx0_update)
             .unwrap();
-        let result1 = tx.contract_root_index(BlockNumber::GENESIS, c1).unwrap();
-        let result2 = tx.contract_root_index(BlockNumber::GENESIS, c2).unwrap();
-        let hash1 = tx.contract_root(BlockNumber::GENESIS, c1).unwrap();
-        let hash2 = tx.contract_root(BlockNumber::GENESIS, c2).unwrap();
+        let result1 = tx.contract_root_index(BlockNumber::GENESIS, &c1).unwrap();
+        let result2 = tx.contract_root_index(BlockNumber::GENESIS, &c2).unwrap();
+        let hash1 = tx.contract_root(BlockNumber::GENESIS, &c1).unwrap();
+        let hash2 = tx.contract_root(BlockNumber::GENESIS, &c2).unwrap();
         assert_eq!(result1, Some(idx0));
         assert_eq!(result2, None);
         assert_eq!(hash1, Some(root0));
@@ -1226,29 +1252,29 @@ mod tests {
             RootIndexUpdate::Updated(888.into()),
         )
         .unwrap();
-        let result1 = tx.contract_root_index(BlockNumber::GENESIS, c1).unwrap();
-        let result2 = tx.contract_root_index(BlockNumber::GENESIS, c2).unwrap();
-        let hash1 = tx.contract_root(BlockNumber::GENESIS, c1).unwrap();
+        let result1 = tx.contract_root_index(BlockNumber::GENESIS, &c1).unwrap();
+        let result2 = tx.contract_root_index(BlockNumber::GENESIS, &c2).unwrap();
+        let hash1 = tx.contract_root(BlockNumber::GENESIS, &c1).unwrap();
         assert_eq!(result1, Some(idx0));
         assert_eq!(result2, None);
         assert_eq!(hash1, Some(root0));
         let result1 = tx
-            .contract_root_index(BlockNumber::GENESIS + 1, c1)
+            .contract_root_index(BlockNumber::GENESIS + 1, &c1)
             .unwrap();
         let result2 = tx
-            .contract_root_index(BlockNumber::GENESIS + 1, c2)
+            .contract_root_index(BlockNumber::GENESIS + 1, &c2)
             .unwrap();
-        let hash1 = tx.contract_root(BlockNumber::GENESIS + 1, c1).unwrap();
+        let hash1 = tx.contract_root(BlockNumber::GENESIS + 1, &c1).unwrap();
         assert_eq!(result1, Some(idx1));
         assert_eq!(result2, Some(888.into()));
         assert_eq!(hash1, Some(root1));
         let result1 = tx
-            .contract_root_index(BlockNumber::GENESIS + 2, c1)
+            .contract_root_index(BlockNumber::GENESIS + 2, &c1)
             .unwrap();
         let result2 = tx
-            .contract_root_index(BlockNumber::GENESIS + 2, c2)
+            .contract_root_index(BlockNumber::GENESIS + 2, &c2)
             .unwrap();
-        let hash1 = tx.contract_root(BlockNumber::GENESIS + 2, c1).unwrap();
+        let hash1 = tx.contract_root(BlockNumber::GENESIS + 2, &c1).unwrap();
         assert_eq!(result1, Some(idx1));
         assert_eq!(result2, Some(888.into()));
         assert_eq!(hash1, Some(root1));
@@ -1275,44 +1301,44 @@ mod tests {
         )
         .unwrap();
         let result1 = tx
-            .contract_root_index(BlockNumber::GENESIS + 9, c1)
+            .contract_root_index(BlockNumber::GENESIS + 9, &c1)
             .unwrap();
         let result2 = tx
-            .contract_root_index(BlockNumber::GENESIS + 9, c2)
+            .contract_root_index(BlockNumber::GENESIS + 9, &c2)
             .unwrap();
-        let hash1 = tx.contract_root(BlockNumber::GENESIS + 9, c1).unwrap();
+        let hash1 = tx.contract_root(BlockNumber::GENESIS + 9, &c1).unwrap();
         assert_eq!(result1, Some(idx1));
         assert_eq!(result2, Some(888.into()));
         assert_eq!(hash1, Some(root1));
         let result1 = tx
-            .contract_root_index(BlockNumber::GENESIS + 10, c1)
+            .contract_root_index(BlockNumber::GENESIS + 10, &c1)
             .unwrap();
         let result2 = tx
-            .contract_root_index(BlockNumber::GENESIS + 10, c2)
+            .contract_root_index(BlockNumber::GENESIS + 10, &c2)
             .unwrap();
-        let hash1 = tx.contract_root(BlockNumber::GENESIS + 10, c1).unwrap();
+        let hash1 = tx.contract_root(BlockNumber::GENESIS + 10, &c1).unwrap();
         assert_eq!(result1, Some(idx2));
         assert_eq!(result2, Some(888.into()));
         assert_eq!(hash1, Some(root2));
         let result2 = tx
-            .contract_root_index(BlockNumber::GENESIS + 11, c2)
+            .contract_root_index(BlockNumber::GENESIS + 11, &c2)
             .unwrap();
-        let hash1 = tx.contract_root(BlockNumber::GENESIS + 11, c1).unwrap();
+        let hash1 = tx.contract_root(BlockNumber::GENESIS + 11, &c1).unwrap();
         assert_eq!(result2, Some(999.into()));
         assert_eq!(hash1, Some(root2));
 
         tx.insert_contract_root(BlockNumber::GENESIS + 12, c1, RootIndexUpdate::TrieEmpty)
             .unwrap();
         let result1 = tx
-            .contract_root_index(BlockNumber::GENESIS + 10, c1)
+            .contract_root_index(BlockNumber::GENESIS + 10, &c1)
             .unwrap();
-        let hash1 = tx.contract_root(BlockNumber::GENESIS + 10, c1).unwrap();
+        let hash1 = tx.contract_root(BlockNumber::GENESIS + 10, &c1).unwrap();
         assert_eq!(result1, Some(idx2));
         assert_eq!(hash1, Some(root2));
         let result1 = tx
-            .contract_root_index(BlockNumber::GENESIS + 12, c1)
+            .contract_root_index(BlockNumber::GENESIS + 12, &c1)
             .unwrap();
-        let hash1 = tx.contract_root(BlockNumber::GENESIS + 12, c1).unwrap();
+        let hash1 = tx.contract_root(BlockNumber::GENESIS + 12, &c1).unwrap();
         assert_eq!(result1, None);
         assert_eq!(hash1, None);
     }
@@ -1989,17 +2015,17 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            tx.contract_root_index(BlockNumber::GENESIS, contract)
+            tx.contract_root_index(BlockNumber::GENESIS, &contract)
                 .unwrap(),
             None
         );
         assert_eq!(
-            tx.contract_root_index(BlockNumber::new_or_panic(2), contract)
+            tx.contract_root_index(BlockNumber::new_or_panic(2), &contract)
                 .unwrap(),
             Some(2.into())
         );
         assert_eq!(
-            tx.contract_root_index(BlockNumber::new_or_panic(3), contract)
+            tx.contract_root_index(BlockNumber::new_or_panic(3), &contract)
                 .unwrap(),
             Some(3.into())
         );
@@ -2030,12 +2056,12 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            tx.contract_root_index(BlockNumber::GENESIS, contract)
+            tx.contract_root_index(BlockNumber::GENESIS, &contract)
                 .unwrap(),
             None
         );
         assert_eq!(
-            tx.contract_root_index(BlockNumber::new_or_panic(1), contract)
+            tx.contract_root_index(BlockNumber::new_or_panic(1), &contract)
                 .unwrap(),
             Some(2.into())
         );
