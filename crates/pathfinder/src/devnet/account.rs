@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::u128;
 
@@ -42,12 +43,11 @@ pub struct Account {
     address: ContractAddress,
     eth_fee_token_address: ContractAddress,
     strk_fee_token_address: ContractAddress,
-    // TODO consider using atomic counter to make methods accept &self instead of &mut self
-    nonce: ContractNonce,
+    // Account nonce
+    nonce: AtomicU64,
     /// Used for consecutive hello_starknet deployments to avoid address
     /// collisions
-    // TODO consider using atomic counter to make methods accept &self instead of &mut self
-    salt: CallParam,
+    deployment_salt: AtomicU64,
     /// Hello starknet deployments so far.
     deployed: Vec<ContractAddress>,
 }
@@ -62,8 +62,8 @@ impl Account {
             address: fixtures::ACCOUNT_ADDRESS,
             eth_fee_token_address: fixtures::ETH_ERC20_CONTRACT_ADDRESS,
             strk_fee_token_address: fixtures::STRK_ERC20_CONTRACT_ADDRESS,
-            nonce: ContractNonce::ZERO,
-            salt: CallParam::ZERO,
+            nonce: AtomicU64::new(0),
+            deployment_salt: AtomicU64::new(0),
             deployed: Vec::new(),
         }
     }
@@ -76,7 +76,10 @@ impl Account {
             // If the account has not been used before, it won't have the nonce in storage yet, so
             // we default to 0
             .unwrap_or_default();
-        account.nonce = nonce;
+        let nonce_bytes = nonce.0.as_be_bytes();
+        let mut buf = [0u8; 8];
+        buf.copy_from_slice(&nonce_bytes[24..]);
+        account.nonce = AtomicU64::new(u64::from_be_bytes(buf));
         Ok(account)
     }
 
@@ -94,16 +97,14 @@ impl Account {
         self.private_key
     }
 
-    pub fn fetch_add_nonce(&mut self) -> TransactionNonce {
-        let nonce = self.nonce;
-        self.nonce = ContractNonce(self.nonce.0 + Felt::ONE);
-        TransactionNonce(nonce.0)
+    pub fn fetch_add_nonce(&self) -> TransactionNonce {
+        TransactionNonce(Felt::from_u64(self.nonce.fetch_add(1, Ordering::Relaxed)))
     }
 
-    pub fn fetch_add_deployment_salt(&mut self) -> TransactionNonce {
-        let salt = self.salt;
-        self.salt = CallParam(self.salt.0 + Felt::ONE);
-        TransactionNonce(salt.0)
+    fn fetch_add_deployment_salt(&self) -> CallParam {
+        CallParam(Felt::from_u64(
+            self.deployment_salt.fetch_add(1, Ordering::Relaxed),
+        ))
     }
 
     /// Sets initial balance to u128::MAX
@@ -189,7 +190,7 @@ impl Account {
 
     /// Create an invoke transaction deploying another instance of hello
     /// starknet contract
-    pub fn hello_starknet_deploy(&mut self) -> anyhow::Result<p2p_proto::consensus::Transaction> {
+    pub fn hello_starknet_deploy(&self) -> anyhow::Result<p2p_proto::consensus::Transaction> {
         // Calldata structure for deployment via InvokeV3:
         // https://github.com/software-mansion/starknet-rust/blob/8c6e5eef7b2b19256ee643eefe742119188092e6/starknet-rust-accounts/src/single_owner.rs#L141
         //
@@ -243,7 +244,7 @@ impl Account {
                 // UDC Calldata - class hash
                 CallParam(fixtures::HELLO_CLASS_HASH.0),
                 // UDC Calldata - salt
-                CallParam::ZERO,
+                self.fetch_add_deployment_salt(),
                 // UDC Calldata - not_from_zero, 0 for origin independent deployment
                 CallParam::ZERO,
                 // UDC Calldata - calldata to pass to the target contract
@@ -276,7 +277,7 @@ impl Account {
     /// Create an invoke transaction that calls increase_balance function of a
     /// hello starknet contract instance
     pub fn hello_starknet_increase_balance(
-        &mut self,
+        &self,
         contract_address: ContractAddress,
     ) -> p2p_proto::consensus::Transaction {
         let selector = EntryPoint::hashed(b"increase_balance");
@@ -335,7 +336,7 @@ impl Account {
     /// Create an invoke transaction that calls get_balance function of a hello
     /// starknet contract instance
     pub fn hello_starknet_get_balance(
-        &mut self,
+        &self,
         contract_address: ContractAddress,
     ) -> p2p_proto::consensus::Transaction {
         let selector = EntryPoint::hashed(b"get_balance");
