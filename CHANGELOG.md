@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `starknet_traceBlockTransactions` parameter `trace_flags` is not optional (as required by the spec).
+- Starknet 0.14.2 blocks are now using the correct versioned constants.
 
 ### Added
 
