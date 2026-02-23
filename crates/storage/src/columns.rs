@@ -78,6 +78,7 @@ pub(crate) const COLUMNS: &[Column] = &[
     crate::connection::TRIE_CLASS_COLUMN,
     crate::connection::TRIE_CONTRACT_COLUMN,
     crate::connection::TRIE_STORAGE_COLUMN,
+    crate::connection::TRIE_NEXT_INDEX_COLUMN,
     crate::connection::STATE_UPDATES_COLUMN,
     crate::connection::STORAGE_UPDATES_COLUMN,
     crate::connection::NONCE_UPDATES_COLUMN,

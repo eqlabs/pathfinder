@@ -24,6 +24,7 @@ pub const TRIE_CONTRACT_COLUMN: Column = Column::new("trie_contract")
 pub const TRIE_STORAGE_COLUMN: Column = Column::new("trie_storage")
     .with_point_lookup()
     .with_optimize_for_hits();
+pub const TRIE_NEXT_INDEX_COLUMN: Column = Column::new("trie_next_index");
 
 /// Constructs the key for a contract trie entry.
 ///
@@ -704,6 +705,15 @@ impl Transaction<'_> {
 
             metrics::counter!(METRIC_TRIE_NODES_ADDED, "table" => table).increment(1);
         }
+
+        // Store next index for future use. This is read after startup to determine the
+        // next index to use for new nodes.
+        let next_index_column = self.rocksdb_get_column(&TRIE_NEXT_INDEX_COLUMN);
+        batch.put_cf(
+            &next_index_column,
+            rocksdb_hash_column.name.as_bytes(),
+            &storage_idx.0.to_be_bytes(),
+        );
 
         if table == "trie_storage" && block_number.get() % 100 == 0 {
             self.rocksdb.log_stats();

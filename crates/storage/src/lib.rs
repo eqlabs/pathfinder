@@ -594,33 +594,32 @@ impl StorageBuilder {
 
     fn rocksdb_fetch_next_trie_storage_indices(db: &RocksDB) -> anyhow::Result<(u64, u64, u64)> {
         let trie_class_last_index =
-            Self::trie_last_index(db, &crate::connection::TRIE_CLASS_COLUMN)?;
-        // FIXME: this is now broken, since the key includes the contract address
-        // prefix.
+            Self::trie_next_index(db, &crate::connection::TRIE_CLASS_COLUMN)?;
         let trie_contract_last_index =
-            Self::trie_last_index(db, &crate::connection::TRIE_CONTRACT_COLUMN)?;
+            Self::trie_next_index(db, &crate::connection::TRIE_CONTRACT_COLUMN)?;
         let trie_storage_last_index =
-            Self::trie_last_index(db, &crate::connection::TRIE_STORAGE_COLUMN)?;
+            Self::trie_next_index(db, &crate::connection::TRIE_STORAGE_COLUMN)?;
         Ok((
-            trie_class_last_index + 1,
-            trie_contract_last_index + 1,
-            trie_storage_last_index + 1,
+            trie_class_last_index,
+            trie_contract_last_index,
+            trie_storage_last_index,
         ))
     }
 
-    fn trie_last_index(db: &RocksDB, column: &Column) -> anyhow::Result<u64> {
+    fn trie_next_index(db: &RocksDB, column: &Column) -> anyhow::Result<u64> {
         let column_handle = db
-            .cf_handle(column.name)
+            .cf_handle(TRIE_NEXT_INDEX_COLUMN.name)
             .context("Getting RocksDB column for fetching next trie storage index")?;
-        let mut iter = db.raw_iterator_cf(&column_handle);
-        iter.seek_to_last();
-        let last_index = if iter.valid() {
-            let key = iter.key().context("RocksDB iterator key is missing")?;
-            u64::from_be_bytes(key.try_into()?)
-        } else {
-            0
-        };
-        Ok(last_index)
+        let next_index = db
+            .get_cf(&column_handle, column.name.as_bytes())?
+            .map(|value| {
+                u64::from_be_bytes(
+                    value
+                        .try_into()
+                        .expect("RocksDB trie storage index value has invalid length"),
+                )
+            });
+        Ok(next_index.unwrap_or(0))
     }
 
     fn compact_trie_column(db: &RocksDB, column: &Column) -> anyhow::Result<()> {
