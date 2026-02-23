@@ -24,7 +24,7 @@ impl ContractStateUpdateResult {
         // Insert nodes only if we made storage updates.
         if self.did_storage_updates {
             let root_index = transaction
-                .insert_contract_trie(&self.trie_update, block)
+                .insert_contract_trie(&self.trie_update, block, &self.contract_address)
                 .context("Persisting contract trie")?;
 
             transaction
@@ -185,7 +185,7 @@ pub fn revert_contract_state(
                 let (root, trie_update) = tree.commit().context("Committing contract state")?;
 
                 let root_index = transaction
-                    .insert_contract_trie(&trie_update, target_block)
+                    .insert_contract_trie(&trie_update, target_block, &contract_address)
                     .context("Persisting contract trie")?;
 
                 transaction

@@ -396,12 +396,17 @@ impl Transaction<'_> {
         &self,
         update: &TrieUpdate,
         block_number: BlockNumber,
+        contract_address: &ContractAddress,
     ) -> anyhow::Result<RootIndexUpdate> {
+        let key_shard = contract_address.0.as_be_bytes()[8..10]
+            .try_into()
+            .expect("Failed to convert key shard");
         self.insert_trie(
             update,
             block_number,
             "trie_contracts",
             &TRIE_CONTRACT_COLUMN,
+            Some(key_shard),
         )
     }
 
@@ -421,7 +426,7 @@ impl Transaction<'_> {
         update: &TrieUpdate,
         block_number: BlockNumber,
     ) -> anyhow::Result<RootIndexUpdate> {
-        self.insert_trie(update, block_number, "trie_class", &TRIE_CLASS_COLUMN)
+        self.insert_trie(update, block_number, "trie_class", &TRIE_CLASS_COLUMN, None)
     }
 
     pub fn class_trie_node(&self, index: TrieStorageIndex) -> anyhow::Result<Option<StoredNode>> {
@@ -437,7 +442,13 @@ impl Transaction<'_> {
         update: &TrieUpdate,
         block_number: BlockNumber,
     ) -> anyhow::Result<RootIndexUpdate> {
-        self.insert_trie(update, block_number, "trie_storage", &TRIE_STORAGE_COLUMN)
+        self.insert_trie(
+            update,
+            block_number,
+            "trie_storage",
+            &TRIE_STORAGE_COLUMN,
+            None,
+        )
     }
 
     pub fn storage_trie_node(&self, index: TrieStorageIndex) -> anyhow::Result<Option<StoredNode>> {
@@ -596,6 +607,7 @@ impl Transaction<'_> {
         block_number: BlockNumber,
         table: &'static str,
         rocksdb_hash_column: &Column,
+        key_shard: Option<[u8; 2]>,
     ) -> anyhow::Result<RootIndexUpdate> {
         if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
             self.prune_trie(block_number, num_blocks_kept, table, rocksdb_hash_column)?;
@@ -663,11 +675,17 @@ impl Transaction<'_> {
             buffer[0..32].copy_from_slice(hash.as_be_bytes());
             let length = node.encode(&mut buffer[32..]).context("Encoding node")?;
 
-            indices.insert(idx, storage_idx);
+            let sharded_idx = if let Some(key_shard) = key_shard {
+                storage_idx.with_shard(key_shard)
+            } else {
+                storage_idx
+            };
+
+            indices.insert(idx, sharded_idx);
 
             batch.put_cf(
                 &column,
-                storage_idx.0.to_be_bytes().as_slice(),
+                sharded_idx.0.to_be_bytes().as_slice(),
                 &buffer[..length + 32],
             );
 
@@ -747,6 +765,14 @@ pub struct TrieUpdate {
 /// The storage index of a trie node.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct TrieStorageIndex(pub u64);
+
+impl TrieStorageIndex {
+    pub fn with_shard(self, shard: [u8; 2]) -> Self {
+        let shard0 = shard[0] & 0x7F; // Ensure the highest bit is not set to avoid i64 overflow.
+        let shard_offset = u64::from_be_bytes([shard0, shard[1], 0, 0, 0, 0, 0, 0]);
+        TrieStorageIndex(self.0 + shard_offset)
+    }
+}
 
 impl std::fmt::Display for TrieStorageIndex {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1158,7 +1184,7 @@ mod tests {
         };
 
         let idx0_update = tx
-            .insert_contract_trie(&update, BlockNumber::GENESIS)
+            .insert_contract_trie(&update, BlockNumber::GENESIS, &c1)
             .unwrap();
         let RootIndexUpdate::Updated(idx0) = idx0_update else {
             panic!("Expected the root index to be updated");
@@ -1186,7 +1212,7 @@ mod tests {
         };
 
         let idx1_update = tx
-            .insert_contract_trie(&update, BlockNumber::GENESIS + 1)
+            .insert_contract_trie(&update, BlockNumber::GENESIS + 1, &c2)
             .unwrap();
         let RootIndexUpdate::Updated(idx1) = idx1_update else {
             panic!("Expected the root index to be updated");
@@ -1234,7 +1260,7 @@ mod tests {
             ..Default::default()
         };
         let idx2_update = tx
-            .insert_contract_trie(&update, BlockNumber::GENESIS + 10)
+            .insert_contract_trie(&update, BlockNumber::GENESIS + 10, &c1)
             .unwrap();
         let RootIndexUpdate::Updated(idx2) = idx2_update else {
             panic!("Expected the root index to be updated");
