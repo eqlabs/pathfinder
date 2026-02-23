@@ -98,19 +98,19 @@ impl RocksDBInner {
         number_of_indices_to_allocate: usize,
     ) -> TrieStorageIndex {
         let next_index = match column.name {
-            name if name == crate::connection::TRIE_CLASS_NODE_COLUMN.name => {
+            name if name == crate::connection::TRIE_CLASS_COLUMN.name => {
                 self.trie_class_next_index.fetch_add(
                     number_of_indices_to_allocate as u64,
                     std::sync::atomic::Ordering::SeqCst,
                 )
             }
-            name if name == crate::connection::TRIE_CONTRACT_NODE_COLUMN.name => {
+            name if name == crate::connection::TRIE_CONTRACT_COLUMN.name => {
                 self.trie_contract_next_index.fetch_add(
                     number_of_indices_to_allocate as u64,
                     std::sync::atomic::Ordering::SeqCst,
                 )
             }
-            name if name == crate::connection::TRIE_STORAGE_NODE_COLUMN.name => {
+            name if name == crate::connection::TRIE_STORAGE_COLUMN.name => {
                 self.trie_storage_next_index.fetch_add(
                     number_of_indices_to_allocate as u64,
                     std::sync::atomic::Ordering::SeqCst,
@@ -577,10 +577,10 @@ impl StorageBuilder {
         let (trie_class_next_index, trie_contract_next_index, trie_storage_next_index) =
             Self::rocksdb_fetch_next_trie_storage_indices(&db)?;
 
-        tracing::info!("Compacting trie columns after opening RocksDB");
-        Self::compact_trie_column(&db, &crate::connection::TRIE_CLASS_NODE_COLUMN)?;
-        Self::compact_trie_column(&db, &crate::connection::TRIE_STORAGE_NODE_COLUMN)?;
-        Self::compact_trie_column(&db, &crate::connection::TRIE_CONTRACT_NODE_COLUMN)?;
+        // tracing::info!("Compacting trie columns after opening RocksDB");
+        // Self::compact_trie_column(&db, &crate::connection::TRIE_CLASS_COLUMN)?;
+        // Self::compact_trie_column(&db, &crate::connection::TRIE_STORAGE_COLUMN)?;
+        // Self::compact_trie_column(&db, &crate::connection::TRIE_CONTRACT_COLUMN)?;
 
         let db_inner = RocksDBInner {
             rocksdb: db,
@@ -594,11 +594,11 @@ impl StorageBuilder {
 
     fn rocksdb_fetch_next_trie_storage_indices(db: &RocksDB) -> anyhow::Result<(u64, u64, u64)> {
         let trie_class_last_index =
-            Self::trie_last_index(db, &crate::connection::TRIE_CLASS_NODE_COLUMN)?;
+            Self::trie_last_index(db, &crate::connection::TRIE_CLASS_COLUMN)?;
         let trie_contract_last_index =
-            Self::trie_last_index(db, &crate::connection::TRIE_CONTRACT_NODE_COLUMN)?;
+            Self::trie_last_index(db, &crate::connection::TRIE_CONTRACT_COLUMN)?;
         let trie_storage_last_index =
-            Self::trie_last_index(db, &crate::connection::TRIE_STORAGE_NODE_COLUMN)?;
+            Self::trie_last_index(db, &crate::connection::TRIE_STORAGE_COLUMN)?;
         Ok((
             trie_class_last_index + 1,
             trie_contract_last_index + 1,

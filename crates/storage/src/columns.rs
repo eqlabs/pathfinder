@@ -75,12 +75,9 @@ impl Column {
 }
 
 pub(crate) const COLUMNS: &[Column] = &[
-    crate::connection::TRIE_CLASS_HASH_COLUMN,
-    crate::connection::TRIE_CLASS_NODE_COLUMN,
-    crate::connection::TRIE_CONTRACT_HASH_COLUMN,
-    crate::connection::TRIE_CONTRACT_NODE_COLUMN,
-    crate::connection::TRIE_STORAGE_HASH_COLUMN,
-    crate::connection::TRIE_STORAGE_NODE_COLUMN,
+    crate::connection::TRIE_CLASS_COLUMN,
+    crate::connection::TRIE_CONTRACT_COLUMN,
+    crate::connection::TRIE_STORAGE_COLUMN,
     crate::connection::STATE_UPDATES_COLUMN,
     crate::connection::STORAGE_UPDATES_COLUMN,
     crate::connection::NONCE_UPDATES_COLUMN,

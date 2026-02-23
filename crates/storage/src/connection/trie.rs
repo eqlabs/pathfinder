@@ -11,22 +11,13 @@ use crate::columns::Column;
 use crate::prelude::*;
 use crate::TriePruneMode;
 
-pub const TRIE_CLASS_HASH_COLUMN: Column = Column::new("trie_class_hash")
+pub const TRIE_CLASS_COLUMN: Column = Column::new("trie_class")
     .with_point_lookup()
     .with_optimize_for_hits();
-pub const TRIE_CLASS_NODE_COLUMN: Column = Column::new("trie_class_node")
+pub const TRIE_CONTRACT_COLUMN: Column = Column::new("trie_contract")
     .with_point_lookup()
     .with_optimize_for_hits();
-pub const TRIE_CONTRACT_HASH_COLUMN: Column = Column::new("trie_contract_hash")
-    .with_point_lookup()
-    .with_optimize_for_hits();
-pub const TRIE_CONTRACT_NODE_COLUMN: Column = Column::new("trie_contract_node")
-    .with_point_lookup()
-    .with_optimize_for_hits();
-pub const TRIE_STORAGE_HASH_COLUMN: Column = Column::new("trie_storage_hash")
-    .with_point_lookup()
-    .with_optimize_for_hits();
-pub const TRIE_STORAGE_NODE_COLUMN: Column = Column::new("trie_storage_node")
+pub const TRIE_STORAGE_COLUMN: Column = Column::new("trie_storage")
     .with_point_lookup()
     .with_optimize_for_hits();
 
@@ -164,11 +155,11 @@ impl Transaction<'_> {
             let root = self
                 .rocksdb()
                 .get_pinned_cf(
-                    &self.rocksdb_get_column(&TRIE_CONTRACT_HASH_COLUMN),
+                    &self.rocksdb_get_column(&TRIE_CONTRACT_COLUMN),
                     root_index.to_be_bytes().as_slice(),
                 )?
                 .map(|v| {
-                    Felt::from_be_slice(v.as_ref())
+                    Felt::from_be_slice(&v.as_ref()[..32])
                         .context("Decoding contract root hash from RocksDB")
                 })
                 .transpose()?
@@ -410,8 +401,7 @@ impl Transaction<'_> {
             update,
             block_number,
             "trie_contracts",
-            &TRIE_CONTRACT_HASH_COLUMN,
-            &TRIE_CONTRACT_NODE_COLUMN,
+            &TRIE_CONTRACT_COLUMN,
         )
     }
 
@@ -419,11 +409,11 @@ impl Transaction<'_> {
         &self,
         index: TrieStorageIndex,
     ) -> anyhow::Result<Option<StoredNode>> {
-        self.trie_node(index, &TRIE_CONTRACT_NODE_COLUMN)
+        self.trie_node(index, &TRIE_CONTRACT_COLUMN)
     }
 
     pub fn contract_trie_node_hash(&self, index: TrieStorageIndex) -> anyhow::Result<Option<Felt>> {
-        self.trie_node_hash(index, &TRIE_CONTRACT_HASH_COLUMN)
+        self.trie_node_hash(index, &TRIE_CONTRACT_COLUMN)
     }
 
     pub fn insert_class_trie(
@@ -431,21 +421,15 @@ impl Transaction<'_> {
         update: &TrieUpdate,
         block_number: BlockNumber,
     ) -> anyhow::Result<RootIndexUpdate> {
-        self.insert_trie(
-            update,
-            block_number,
-            "trie_class",
-            &TRIE_CLASS_HASH_COLUMN,
-            &TRIE_CLASS_NODE_COLUMN,
-        )
+        self.insert_trie(update, block_number, "trie_class", &TRIE_CLASS_COLUMN)
     }
 
     pub fn class_trie_node(&self, index: TrieStorageIndex) -> anyhow::Result<Option<StoredNode>> {
-        self.trie_node(index, &TRIE_CLASS_NODE_COLUMN)
+        self.trie_node(index, &TRIE_CLASS_COLUMN)
     }
 
     pub fn class_trie_node_hash(&self, index: TrieStorageIndex) -> anyhow::Result<Option<Felt>> {
-        self.trie_node_hash(index, &TRIE_CLASS_HASH_COLUMN)
+        self.trie_node_hash(index, &TRIE_CLASS_COLUMN)
     }
 
     pub fn insert_storage_trie(
@@ -453,21 +437,15 @@ impl Transaction<'_> {
         update: &TrieUpdate,
         block_number: BlockNumber,
     ) -> anyhow::Result<RootIndexUpdate> {
-        self.insert_trie(
-            update,
-            block_number,
-            "trie_storage",
-            &TRIE_STORAGE_HASH_COLUMN,
-            &TRIE_STORAGE_NODE_COLUMN,
-        )
+        self.insert_trie(update, block_number, "trie_storage", &TRIE_STORAGE_COLUMN)
     }
 
     pub fn storage_trie_node(&self, index: TrieStorageIndex) -> anyhow::Result<Option<StoredNode>> {
-        self.trie_node(index, &TRIE_STORAGE_NODE_COLUMN)
+        self.trie_node(index, &TRIE_STORAGE_COLUMN)
     }
 
     pub fn storage_trie_node_hash(&self, index: TrieStorageIndex) -> anyhow::Result<Option<Felt>> {
-        self.trie_node_hash(index, &TRIE_STORAGE_HASH_COLUMN)
+        self.trie_node_hash(index, &TRIE_STORAGE_COLUMN)
     }
 
     /// Prune tries by removing nodes that are no longer needed at the given
@@ -484,22 +462,19 @@ impl Transaction<'_> {
             block_number,
             num_blocks_kept,
             "trie_contracts",
-            &TRIE_CONTRACT_HASH_COLUMN,
-            &TRIE_CONTRACT_NODE_COLUMN,
+            &TRIE_CONTRACT_COLUMN,
         )?;
         self.prune_trie(
             block_number,
             num_blocks_kept,
             "trie_class",
-            &TRIE_CLASS_HASH_COLUMN,
-            &TRIE_CLASS_NODE_COLUMN,
+            &TRIE_CLASS_COLUMN,
         )?;
         self.prune_trie(
             block_number,
             num_blocks_kept,
             "trie_storage",
-            &TRIE_STORAGE_HASH_COLUMN,
-            &TRIE_STORAGE_NODE_COLUMN,
+            &TRIE_STORAGE_COLUMN,
         )?;
         Ok(())
     }
@@ -567,8 +542,7 @@ impl Transaction<'_> {
         block_number: BlockNumber,
         num_blocks_kept: u64,
         table: &'static str,
-        rocksdb_hash_column: &Column,
-        rocksdb_node_column: &Column,
+        rocksdb_column: &Column,
     ) -> anyhow::Result<()> {
         if let Some(before_block) = block_number.checked_sub(num_blocks_kept) {
             // Delete nodes that have already been marked as ready for deletion.
@@ -582,8 +556,7 @@ impl Transaction<'_> {
                 .query(params![&before_block])
                 .context("Fetching nodes to delete")?;
 
-            let hash_column = self.rocksdb_get_column(rocksdb_hash_column);
-            let node_column = self.rocksdb_get_column(rocksdb_node_column);
+            let hash_column = self.rocksdb_get_column(rocksdb_column);
 
             let mut batch = self.batch.lock().expect("Batch lock poisoned");
 
@@ -596,7 +569,6 @@ impl Transaction<'_> {
                 for idx in indices.iter() {
                     let key = idx.to_be_bytes();
                     batch.delete_cf(&hash_column, key);
-                    batch.delete_cf(&node_column, key);
                 }
                 metrics::counter!(METRIC_TRIE_NODES_REMOVED, "table" => table)
                     .increment(indices.len() as u64);
@@ -624,16 +596,9 @@ impl Transaction<'_> {
         block_number: BlockNumber,
         table: &'static str,
         rocksdb_hash_column: &Column,
-        rocksdb_node_column: &Column,
     ) -> anyhow::Result<RootIndexUpdate> {
         if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
-            self.prune_trie(
-                block_number,
-                num_blocks_kept,
-                table,
-                rocksdb_hash_column,
-                rocksdb_node_column,
-            )?;
+            self.prune_trie(block_number, num_blocks_kept, table, rocksdb_hash_column)?;
             self.remove_trie(&update.nodes_removed, block_number, table)?;
         }
 
@@ -675,8 +640,7 @@ impl Transaction<'_> {
             }
         }
 
-        let hash_column = self.rocksdb_get_column(rocksdb_hash_column);
-        let node_column = self.rocksdb_get_column(rocksdb_node_column);
+        let column = self.rocksdb_get_column(rocksdb_hash_column);
 
         let mut indices = HashMap::new();
 
@@ -685,7 +649,7 @@ impl Transaction<'_> {
 
         let mut storage_idx = self
             .rocksdb
-            .next_trie_storage_index(rocksdb_node_column, to_insert.len());
+            .next_trie_storage_index(rocksdb_hash_column, to_insert.len());
 
         let mut batch = self.batch.lock().expect("Batch lock poisoned");
 
@@ -696,19 +660,15 @@ impl Transaction<'_> {
 
             let node = node.as_stored(&indices)?;
 
-            let length = node.encode(&mut buffer).context("Encoding node")?;
+            buffer[0..32].copy_from_slice(hash.as_be_bytes());
+            let length = node.encode(&mut buffer[32..]).context("Encoding node")?;
 
             indices.insert(idx, storage_idx);
 
             batch.put_cf(
-                &hash_column,
+                &column,
                 storage_idx.0.to_be_bytes().as_slice(),
-                hash.as_be_bytes().as_slice(),
-            );
-            batch.put_cf(
-                &node_column,
-                storage_idx.0.to_be_bytes().as_slice(),
-                &buffer[..length],
+                &buffer[..length + 32],
             );
 
             storage_idx.0 += 1;
@@ -716,7 +676,7 @@ impl Transaction<'_> {
             metrics::counter!(METRIC_TRIE_NODES_ADDED, "table" => table).increment(1);
         }
 
-        if table == "trie_storage" && block_number.get() % 10 == 0 {
+        if table == "trie_storage" && block_number.get() % 100 == 0 {
             self.rocksdb.log_stats();
         }
 
@@ -731,15 +691,15 @@ impl Transaction<'_> {
     fn trie_node(
         &self,
         index: TrieStorageIndex,
-        rocksdb_node_column: &Column,
+        rocksdb_column: &Column,
     ) -> anyhow::Result<Option<StoredNode>> {
         let node = self
             .rocksdb()
             .get_pinned_cf(
-                &self.rocksdb_get_column(rocksdb_node_column),
+                &self.rocksdb_get_column(rocksdb_column),
                 index.0.to_be_bytes().as_slice(),
             )?
-            .map(|v| StoredNode::decode(v.as_ref()).context("Decoding node from RocksDB"))
+            .map(|v| StoredNode::decode(&v.as_ref()[32..]).context("Decoding node from RocksDB"))
             .transpose()?;
 
         Ok(node)
@@ -757,7 +717,9 @@ impl Transaction<'_> {
                 &self.rocksdb_get_column(rocksdb_hash_column),
                 index.0.to_be_bytes().as_slice(),
             )?
-            .map(|v| Felt::from_be_slice(v.as_ref()).context("Decoding node hash from RocksDB"))
+            .map(|v| {
+                Felt::from_be_slice(&v.as_ref()[..32]).context("Decoding node hash from RocksDB")
+            })
             .transpose()?;
 
         Ok(hash)

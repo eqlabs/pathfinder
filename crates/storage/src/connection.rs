@@ -36,12 +36,9 @@ pub(crate) use transaction::{
 pub use trie::{Node, NodeRef, RootIndexUpdate, StoredNode, TrieStorageIndex, TrieUpdate};
 pub(crate) use trie::{
     CONTRACT_STATE_HASHES_COLUMN,
-    TRIE_CLASS_HASH_COLUMN,
-    TRIE_CLASS_NODE_COLUMN,
-    TRIE_CONTRACT_HASH_COLUMN,
-    TRIE_CONTRACT_NODE_COLUMN,
-    TRIE_STORAGE_HASH_COLUMN,
-    TRIE_STORAGE_NODE_COLUMN,
+    TRIE_CLASS_COLUMN,
+    TRIE_CONTRACT_COLUMN,
+    TRIE_STORAGE_COLUMN,
 };
 
 use crate::bloom::AggregateBloomCache;

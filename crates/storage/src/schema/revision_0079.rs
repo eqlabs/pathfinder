@@ -21,12 +21,12 @@ pub(crate) fn migrate(
     tracing::info!("Migrating events to RocksDB");
     migrate_events(tx, rocksdb)?;
 
-    tx.execute_batch(
-        "
-        DROP TABLE nonce_updates;
-        DROP TABLE storage_updates;
-        ",
-    )?;
+    // tx.execute_batch(
+    //     "
+    //     DROP TABLE nonce_updates;
+    //     DROP TABLE storage_updates;
+    //     ",
+    // )?;
 
     Ok(())
 }

@@ -3,12 +3,9 @@ use anyhow::Context;
 use crate::columns::Column;
 use crate::{
     CONTRACT_STATE_HASHES_COLUMN,
-    TRIE_CLASS_HASH_COLUMN,
-    TRIE_CLASS_NODE_COLUMN,
-    TRIE_CONTRACT_HASH_COLUMN,
-    TRIE_CONTRACT_NODE_COLUMN,
-    TRIE_STORAGE_HASH_COLUMN,
-    TRIE_STORAGE_NODE_COLUMN,
+    TRIE_CLASS_COLUMN,
+    TRIE_CONTRACT_COLUMN,
+    TRIE_STORAGE_COLUMN,
 };
 
 pub(crate) fn migrate(
@@ -16,43 +13,25 @@ pub(crate) fn migrate(
     rocksdb: &crate::RocksDBInner,
 ) -> anyhow::Result<()> {
     tracing::info!("Migrating class trie to RocksDB");
-    migrate_trie(
-        tx,
-        "trie_class",
-        rocksdb,
-        &TRIE_CLASS_HASH_COLUMN,
-        &TRIE_CLASS_NODE_COLUMN,
-    )?;
+    migrate_trie(tx, "trie_class", rocksdb, &TRIE_CLASS_COLUMN)?;
 
     tracing::info!("Migrating contract trie to RocksDB");
-    migrate_trie(
-        tx,
-        "trie_contracts",
-        rocksdb,
-        &TRIE_CONTRACT_HASH_COLUMN,
-        &TRIE_CONTRACT_NODE_COLUMN,
-    )?;
+    migrate_trie(tx, "trie_contracts", rocksdb, &TRIE_CONTRACT_COLUMN)?;
 
     tracing::info!("Migrating storage trie to RocksDB");
-    migrate_trie(
-        tx,
-        "trie_storage",
-        rocksdb,
-        &TRIE_STORAGE_HASH_COLUMN,
-        &TRIE_STORAGE_NODE_COLUMN,
-    )?;
+    migrate_trie(tx, "trie_storage", rocksdb, &TRIE_STORAGE_COLUMN)?;
 
     tracing::info!("Migrating contract state hashes to RocksDB");
     migrate_contract_state_hashes(tx, rocksdb)?;
 
-    tx.execute_batch(
-        "
-        DROP TABLE trie_class;
-        DROP TABLE trie_contracts;
-        DROP TABLE trie_storage;
-        DROP TABLE contract_state_hashes;
-        ",
-    )?;
+    // tx.execute_batch(
+    //     "
+    //     DROP TABLE trie_class;
+    //     DROP TABLE trie_contracts;
+    //     DROP TABLE trie_storage;
+    //     DROP TABLE contract_state_hashes;
+    //     ",
+    // )?;
     Ok(())
 }
 
@@ -62,8 +41,7 @@ fn migrate_trie(
     sqlite_txn: &rusqlite::Transaction,
     sqlite_table_name: &str,
     rocksdb: &crate::RocksDBInner,
-    hash_column: &Column,
-    node_column: &Column,
+    column: &Column,
 ) -> anyhow::Result<()> {
     let mut stmt = sqlite_txn.prepare(&format!(
         "SELECT idx, hash, data FROM {}",
@@ -77,16 +55,17 @@ fn migrate_trie(
         Ok((idx, hash, data))
     })?;
 
-    let hash_column = rocksdb.get_column(hash_column);
-    let node_column = rocksdb.get_column(node_column);
+    let column = rocksdb.get_column(column);
 
+    let mut buf = [0u8; 256];
     let mut batch = crate::RocksDBBatch::default();
 
     for (i, trie_result) in trie_iter.enumerate() {
         let (idx, hash, data) = trie_result?;
         let idx = idx.to_be_bytes();
-        batch.put_cf(&hash_column, idx, hash);
-        batch.put_cf(&node_column, idx, &data);
+        buf[..32].copy_from_slice(&hash);
+        buf[32..32 + data.len()].copy_from_slice(&data);
+        batch.put_cf(&column, idx, &buf[..32 + data.len()]);
 
         if i % BATCH_SIZE == BATCH_SIZE - 1 {
             rocksdb.rocksdb.write_without_wal(&batch)?;
