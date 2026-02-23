@@ -500,7 +500,7 @@ pub fn spawn(
 
                         let block = finalized_blocks.remove(&height_and_round);
 
-                        // The block will not be in the consensus DB if it has already been
+                        // The block will not be in the consensus cache if it has already been
                         // downloaded from the feeder gateway and committed to the main DB by the
                         // sync task. This can happen in fast local testnets where the FGw is
                         // sometimes serving blocks from the proposers faster than the consensus
@@ -565,12 +565,13 @@ pub fn spawn(
                             &info_watch_tx,
                         )?;
 
-                        // Consistency of our storage is more important than any irrational
-                        // scenarios that in theory cannot occur. In the abnormal case that
-                        // the FGw is actually ahead of consensus, we can check if the finalized
-                        // block has already been committed to the main DB without waiting for a
-                        // commit confirmation which had already arrived in the past and will result
-                        // in finalized blocks for last rounds piling up without ever being removed.
+                        // There is a rare but still possible scenario where the FGw is ahead of
+                        // consensus for some nodes due to low network latency and their consensus
+                        // engines not notifying those nodes internally fast enough that the
+                        // executed proposal has been decided upon. In such case we can check if the
+                        // finalized block has already been committed to the main DB by the fgw sync
+                        // task without waiting for a commit confirmation which had already arrived
+                        // in the past.
                         let block_number = BlockNumber::new(height_and_round.height())
                             .context("height exceeds i64::MAX")?;
                         let is_already_committed =
@@ -856,7 +857,7 @@ fn is_outdated_p2p_event(
             return Ok(true);
         }
     } else {
-        // Fallback to main database if no finalized blocks in consensus DB yet
+        // Fallback to main database if no finalized blocks in consensus cache yet
         let latest_committed = db_tx
             .block_number(BlockId::Latest)
             .context("Failed to query latest committed block for outdated event check")?;

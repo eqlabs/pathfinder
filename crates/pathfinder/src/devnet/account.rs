@@ -3,22 +3,37 @@ use std::u128;
 
 use anyhow::Context;
 use num_bigint::BigUint;
+use p2p::sync::client::conv::ToDto as _;
+use p2p_proto::common::Hash;
 use pathfinder_common::state_update::StateUpdateData;
+use pathfinder_common::transaction::{
+    DataAvailabilityMode,
+    InvokeTransactionV3,
+    TransactionVariant,
+};
 use pathfinder_common::{
+    entry_point,
     BlockId,
+    CallParam,
+    ChainId,
     ContractAddress,
     ContractNonce,
+    EntryPoint,
     PublicKey,
     SierraHash,
+    Tip,
     TransactionNonce,
+    TransactionSignatureElem,
 };
+use pathfinder_crypto::signature::ecdsa_sign;
 use pathfinder_crypto::Felt;
 use pathfinder_executor::{IntoFelt as _, IntoStarkFelt as _};
 use starknet_api::abi::abi_utils::get_storage_var_address;
 
 use crate::devnet::contract::predeploy;
-use crate::devnet::fixtures;
+use crate::devnet::fixtures::RESOURCE_BOUNDS;
 use crate::devnet::utils::{get_storage_at, join_felts, set_storage_at, split_biguint};
+use crate::devnet::{account, fixtures};
 
 pub struct Account {
     sierra_hash: SierraHash,
@@ -27,7 +42,14 @@ pub struct Account {
     address: ContractAddress,
     eth_fee_token_address: ContractAddress,
     strk_fee_token_address: ContractAddress,
+    // TODO consider using atomic counter to make methods accept &self instead of &mut self
     nonce: ContractNonce,
+    /// Used for consecutive hello_starknet deployments to avoid address
+    /// collisions
+    // TODO consider using atomic counter to make methods accept &self instead of &mut self
+    salt: CallParam,
+    /// Hello starknet deployments so far.
+    deployed: Vec<ContractAddress>,
 }
 
 impl Account {
@@ -41,6 +63,8 @@ impl Account {
             eth_fee_token_address: fixtures::ETH_ERC20_CONTRACT_ADDRESS,
             strk_fee_token_address: fixtures::STRK_ERC20_CONTRACT_ADDRESS,
             nonce: ContractNonce::ZERO,
+            salt: CallParam::ZERO,
+            deployed: Vec::new(),
         }
     }
 
@@ -74,6 +98,12 @@ impl Account {
         let nonce = self.nonce;
         self.nonce = ContractNonce(self.nonce.0 + Felt::ONE);
         TransactionNonce(nonce.0)
+    }
+
+    pub fn fetch_add_deployment_salt(&mut self) -> TransactionNonce {
+        let salt = self.salt;
+        self.salt = CallParam(self.salt.0 + Felt::ONE);
+        TransactionNonce(salt.0)
     }
 
     /// Sets initial balance to u128::MAX
@@ -155,5 +185,205 @@ impl Account {
         )?;
 
         Ok(())
+    }
+
+    /// Create an invoke transaction deploying another instance of hello
+    /// starknet contract
+    pub fn hello_starknet_deploy(&mut self) -> anyhow::Result<p2p_proto::consensus::Transaction> {
+        // Calldata structure for deployment via InvokeV3:
+        // https://github.com/software-mansion/starknet-rust/blob/8c6e5eef7b2b19256ee643eefe742119188092e6/starknet-rust-accounts/src/single_owner.rs#L141
+        //
+        // Calldata structure for UDC:
+        // https://docs.openzeppelin.com/contracts-cairo/2.x/udc
+        // https://github.com/OpenZeppelin/cairo-contracts/blob/802735d432499124c684d28a5a0465ebf6c9cbdb/packages/presets/src/universal_deployer.cairo#L46
+        //
+        // "calldata": [
+        //     /* Number of calls */
+        //     "0x1",
+        //     /* UDC address */
+        //     "0x2ceed65a4bd731034c01113685c831b01c15d7d432f71afb1cf1634b53a2125",
+        //     /* Selector for 'deployContract' */
+        //     "0x1987cbd17808b9a23693d4de7e246a443cfe37e6e7fbaeabd7d7e6532b07c3d",
+        //     /* Calldata length */
+        //     "0x4",
+        //     /* UDC Calldata - class hash */
+        //     "0x0457EF47CFAA819D9FE1372E8957815CDBA2252ED3E42A15536A5A40747C8A00",
+        //     /* UDC Calldata - salt */
+        //     "0x0",
+        //     /* UDC Calldata - not_from_zero, 0 for origin independent deployment */
+        //     "0x0",
+        //     /* UDC Calldata - calldata to pass to the target contract */
+        //     "0x0"
+        // ],
+
+        let selector = EntryPoint::hashed(b"deployContract");
+        assert_eq!(
+            selector,
+            entry_point!("0x1987cbd17808b9a23693d4de7e246a443cfe37e6e7fbaeabd7d7e6532b07c3d")
+        );
+
+        let invoke = InvokeTransactionV3 {
+            signature: vec![/* Will be filled after signing */],
+            nonce: self.fetch_add_nonce(),
+            nonce_data_availability_mode: DataAvailabilityMode::L1,
+            fee_data_availability_mode: DataAvailabilityMode::L1,
+            resource_bounds: fixtures::RESOURCE_BOUNDS,
+            tip: Tip(0),
+            paymaster_data: vec![],
+            account_deployment_data: vec![],
+            calldata: vec![
+                // Number of calls
+                CallParam(Felt::ONE),
+                // UDC address
+                CallParam(fixtures::UDC_CONTRACT_ADDRESS.0),
+                // Selector for 'deployContract'
+                CallParam(selector.0),
+                // Calldata length
+                CallParam(Felt::from_u64(4)),
+                // UDC Calldata - class hash
+                CallParam(fixtures::HELLO_CLASS_HASH.0),
+                // UDC Calldata - salt
+                CallParam::ZERO,
+                // UDC Calldata - not_from_zero, 0 for origin independent deployment
+                CallParam::ZERO,
+                // UDC Calldata - calldata to pass to the target contract
+                CallParam::ZERO,
+            ],
+            sender_address: self.address(),
+            proof_facts: vec![],
+        };
+
+        let mut variant = TransactionVariant::InvokeV3(invoke);
+        let txn_hash = variant.calculate_hash(ChainId::SEPOLIA_TESTNET, false);
+        let (r, s) = ecdsa_sign(self.private_key(), txn_hash.0)?;
+        let TransactionVariant::InvokeV3(invoke) = &mut variant else {
+            unreachable!();
+        };
+        invoke.signature = vec![TransactionSignatureElem(r), TransactionSignatureElem(s)];
+
+        let variant = variant.to_dto();
+
+        let p2p_proto::sync::transaction::TransactionVariant::InvokeV3(invoke) = variant else {
+            unreachable!();
+        };
+
+        Ok(p2p_proto::consensus::Transaction {
+            txn: p2p_proto::consensus::TransactionVariant::InvokeV3(invoke),
+            transaction_hash: Hash(txn_hash.0),
+        })
+    }
+
+    /// Create an invoke transaction that calls increase_balance function of a
+    /// hello starknet contract instance
+    pub fn hello_starknet_increase_balance(
+        &mut self,
+        contract_address: ContractAddress,
+    ) -> p2p_proto::consensus::Transaction {
+        let selector = EntryPoint::hashed(b"increase_balance");
+        assert_eq!(
+            selector,
+            entry_point!("0x362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320")
+        );
+
+        let invoke = InvokeTransactionV3 {
+            signature: vec![/* Will be filled after signing */],
+            nonce: self.fetch_add_nonce(),
+            nonce_data_availability_mode: DataAvailabilityMode::L1,
+            fee_data_availability_mode: DataAvailabilityMode::L1,
+            resource_bounds: RESOURCE_BOUNDS,
+            tip: Tip(0),
+            paymaster_data: vec![],
+            account_deployment_data: vec![],
+            calldata: vec![
+                // Number of calls
+                CallParam(Felt::ONE),
+                // Hello contract address
+                CallParam(contract_address.0),
+                // Selector for 'increase_balance'
+                CallParam(selector.0),
+                // Calldata length
+                CallParam(Felt::ONE),
+                // Hello starknet increase_balance argument
+                CallParam(Felt::from_u64(0xFF)),
+            ],
+            sender_address: self.address(),
+            proof_facts: vec![],
+        };
+
+        eprintln!("Invoke transaction: {invoke:#?}");
+
+        let mut variant = TransactionVariant::InvokeV3(invoke);
+        let txn_hash = variant.calculate_hash(ChainId::SEPOLIA_TESTNET, false);
+        let (r, s) = ecdsa_sign(self.private_key(), txn_hash.0).unwrap();
+        let TransactionVariant::InvokeV3(invoke) = &mut variant else {
+            unreachable!();
+        };
+        invoke.signature = vec![TransactionSignatureElem(r), TransactionSignatureElem(s)];
+
+        let variant = variant.to_dto();
+
+        let p2p_proto::sync::transaction::TransactionVariant::InvokeV3(invoke) = variant else {
+            unreachable!();
+        };
+
+        p2p_proto::consensus::Transaction {
+            txn: p2p_proto::consensus::TransactionVariant::InvokeV3(invoke),
+            transaction_hash: Hash(txn_hash.0),
+        }
+    }
+
+    /// Create an invoke transaction that calls get_balance function of a hello
+    /// starknet contract instance
+    pub fn hello_starknet_get_balance(
+        &mut self,
+        contract_address: ContractAddress,
+    ) -> p2p_proto::consensus::Transaction {
+        let selector = EntryPoint::hashed(b"get_balance");
+        assert_eq!(
+            selector,
+            entry_point!("0x39e11d48192e4333233c7eb19d10ad67c362bb28580c604d67884c85da39695")
+        );
+
+        let invoke = InvokeTransactionV3 {
+            signature: vec![/* Will be filled after signing */],
+            nonce: self.fetch_add_nonce(),
+            nonce_data_availability_mode: DataAvailabilityMode::L1,
+            fee_data_availability_mode: DataAvailabilityMode::L1,
+            resource_bounds: RESOURCE_BOUNDS,
+            tip: Tip(0),
+            paymaster_data: vec![],
+            account_deployment_data: vec![],
+            calldata: vec![
+                // Number of calls
+                CallParam(Felt::ONE),
+                // Hello contract address
+                CallParam(contract_address.0),
+                // Selector for 'get_balance'
+                CallParam(selector.0),
+                // Calldata length
+                CallParam(Felt::ZERO),
+            ],
+            sender_address: self.address(),
+            proof_facts: vec![],
+        };
+
+        let mut variant = TransactionVariant::InvokeV3(invoke);
+        let txn_hash = variant.calculate_hash(ChainId::SEPOLIA_TESTNET, false);
+        let (r, s) = ecdsa_sign(self.private_key(), txn_hash.0).unwrap();
+        let TransactionVariant::InvokeV3(invoke) = &mut variant else {
+            unreachable!();
+        };
+        invoke.signature = vec![TransactionSignatureElem(r), TransactionSignatureElem(s)];
+
+        let variant = variant.to_dto();
+
+        let p2p_proto::sync::transaction::TransactionVariant::InvokeV3(invoke) = variant else {
+            unreachable!();
+        };
+
+        p2p_proto::consensus::Transaction {
+            txn: p2p_proto::consensus::TransactionVariant::InvokeV3(invoke),
+            transaction_hash: Hash(txn_hash.0),
+        }
     }
 }

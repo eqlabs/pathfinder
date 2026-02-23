@@ -1,4 +1,5 @@
 use p2p_proto::common::Address;
+use pathfinder_common::transaction::{ResourceBound, ResourceBounds};
 use pathfinder_common::{
     casm_hash,
     contract_address,
@@ -9,6 +10,8 @@ use pathfinder_common::{
     ContractAddress,
     GasPrice,
     PublicKey,
+    ResourceAmount,
+    ResourcePricePerUnit,
     SierraHash,
 };
 use pathfinder_crypto::Felt;
@@ -89,8 +92,18 @@ pub const GAS_PRICE: GasPrice = GasPrice(1_000_000_000);
 /// WEI to FRI conversion rate is 1:1 for simplicity, so ETH to FRI conversion
 /// rate is 1:1e18
 pub const ETH_TO_FRI_RATE: u128 = 1_000_000_000_000_000_000;
-/// Alice from integration tests
-pub const PROPOSER_ADDRESS: Address = Address(Felt::ONE);
+/// Some nonzero resource bounds
+pub const RESOURCE_BOUNDS: ResourceBounds = ResourceBounds {
+    l1_gas: ResourceBound {
+        max_amount: ResourceAmount(1_000_000),
+        max_price_per_unit: ResourcePricePerUnit(1_000_000_000),
+    },
+    l2_gas: ResourceBound {
+        max_amount: ResourceAmount(1_000_000),
+        max_price_per_unit: ResourcePricePerUnit(1_000_000_000),
+    },
+    l1_data_gas: None,
+};
 
 #[cfg(test)]
 mod tests {
