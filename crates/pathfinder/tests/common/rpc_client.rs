@@ -208,22 +208,29 @@ pub async fn get_consensus_info(
 pub async fn get_cached_artifacts_info(
     instance: &PathfinderInstance,
     less_than_height: u64,
-) -> Vec<CachedItem> {
-    let name = instance.name();
-    let mut rpc_port_watch_rx = instance.rpc_port_watch_rx().clone();
-    let (pid, rpc_port) =
-        if let Ok(borrowed) = rpc_port_watch_rx.wait_for(|port| *port != (0, 0)).await {
-            *borrowed
-        } else {
-            panic!("Rpc port watch for {name} is closed");
-        };
-    let JsonRpcReply {
-        result: Output { mut cached, .. },
-    } = get_consensus_info(name, rpc_port)
+) -> anyhow::Result<Vec<CachedItem>> {
+    let fut = async move {
+        let name = instance.name();
+        let mut rpc_port_watch_rx = instance.rpc_port_watch_rx().clone();
+        // If any of the nodes crashes we need to timeout otherwise the test will just
+        // hang forever.
+        let (pid, rpc_port) =
+            if let Ok(borrowed) = rpc_port_watch_rx.wait_for(|port| *port != (0, 0)).await {
+                *borrowed
+            } else {
+                panic!("Rpc port watch for {name} is closed");
+            };
+        let JsonRpcReply {
+            result: Output { mut cached, .. },
+        } = get_consensus_info(name, rpc_port)
+            .await
+            .unwrap_or_else(|_| panic!("Couldn't get consensus info for {name} (pid: {pid})"));
+        cached.retain(|CachedItem { height, .. }| *height < less_than_height);
+        cached
+    };
+    tokio::time::timeout(Duration::from_secs(1), fut)
         .await
-        .unwrap_or_else(|_| panic!("Couldn't get consensus info for {name} (pid: {pid})"));
-    cached.retain(|CachedItem { height, .. }| *height < less_than_height);
-    cached
+        .context("Getting cached artifacts info timed out")
 }
 
 #[derive(Deserialize)]
