@@ -83,7 +83,7 @@ mod test {
         const POLL_READY: Duration = Duration::from_millis(500);
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
-        let (configs, stopwatch) = utils::setup(NUM_NODES)?;
+        let (configs, stopwatch) = utils::setup(NUM_NODES, true)?;
 
         let alice_cfg = configs.first().unwrap();
         let mut fgw = FeederGateway::spawn(alice_cfg)?;
@@ -180,7 +180,7 @@ mod test {
         const POLL_READY: Duration = Duration::from_millis(500);
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
-        let (configs, stopwatch) = utils::setup(NUM_NODES)?;
+        let (configs, stopwatch) = utils::setup(NUM_NODES, true)?;
 
         let alice_cfg = configs.first().unwrap();
         let mut fgw = FeederGateway::spawn(alice_cfg)?;
@@ -317,7 +317,7 @@ mod test {
 
         const LAST_VALID_HEIGHT: u64 = 4;
 
-        let (configs, stopwatch) = utils::setup(NUM_NODES).unwrap();
+        let (configs, stopwatch) = utils::setup(NUM_NODES, true).unwrap();
 
         let alice_cfg = configs.first().unwrap();
         let mut fgw = FeederGateway::spawn(alice_cfg).unwrap();

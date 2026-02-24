@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use anyhow::Context as _;
 use http::StatusCode;
 use pathfinder_lib::config::integration_testing::InjectFailureConfig;
+use pathfinder_lib::devnet::DevnetConfig;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -44,6 +45,7 @@ pub struct Config {
     pub test_dir: PathBuf,
     pub inject_failure: Option<InjectFailureConfig>,
     pub local_feeder_gateway_port: Option<u16>,
+    pub devnet_config: Option<DevnetConfig>,
 }
 
 pub type RpcPortWatch = (watch::Sender<(u32, u16)>, watch::Receiver<(u32, u16)>);
@@ -339,6 +341,7 @@ impl Config {
         pathfinder_bin: &Path,
         fixture_dir: &Path,
         test_dir: PathBuf,
+        devnet_config: Option<DevnetConfig>,
     ) -> Vec<Self> {
         assert!(
             set_size <= Self::NAMES.len(),
@@ -359,6 +362,7 @@ impl Config {
                 fixture_dir: fixture_dir.to_path_buf(),
                 inject_failure: None,
                 local_feeder_gateway_port: None,
+                devnet_config: devnet_config.clone(),
             })
             .collect()
     }
