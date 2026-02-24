@@ -802,14 +802,6 @@ pub struct TrieUpdate {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct TrieStorageIndex(pub u64);
 
-impl TrieStorageIndex {
-    pub fn with_shard(self, shard: [u8; 2]) -> Self {
-        let shard0 = shard[0] & 0x7F; // Ensure the highest bit is not set to avoid i64 overflow.
-        let shard_offset = u64::from_be_bytes([shard0, shard[1], 0, 0, 0, 0, 0, 0]);
-        TrieStorageIndex(self.0 + shard_offset)
-    }
-}
-
 impl std::fmt::Display for TrieStorageIndex {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
