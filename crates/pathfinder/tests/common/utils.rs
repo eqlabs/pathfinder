@@ -7,7 +7,7 @@ use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
-use tempfile::Builder;
+use tempfile::TempDir;
 use tokio::task::{JoinError, JoinHandle};
 use tokio::time::sleep;
 
@@ -32,22 +32,13 @@ pub fn setup(num_instances: usize) -> anyhow::Result<(Vec<Config>, Instant)> {
     anyhow::ensure!(pathfinder_bin.exists(), "Pathfinder binary not found");
     let fixture_dir = fixture_dir();
     anyhow::ensure!(fixture_dir.exists(), "Fixture directory not found");
-    let test_dir = Builder::new()
-        .disable_cleanup(true)
-        .tempdir()
-        .context("Creating temporary directory for test artifacts")?;
-    println!(
-        "Test artifacts will be stored in {}",
-        test_dir.path().display()
-    );
+    let test_dir = TempDir::new()
+        .context("Creating temporary directory for test artifacts")?
+        .keep();
+    println!("Test artifacts will be stored in {}", test_dir.display());
 
     Ok((
-        Config::for_set(
-            num_instances,
-            &pathfinder_bin,
-            &fixture_dir,
-            test_dir.path(),
-        ),
+        Config::for_set(num_instances, &pathfinder_bin, &fixture_dir, test_dir),
         stopwatch,
     ))
 }

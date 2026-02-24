@@ -338,7 +338,7 @@ impl Config {
         set_size: usize,
         pathfinder_bin: &Path,
         fixture_dir: &Path,
-        test_dir: &Path,
+        test_dir: PathBuf,
     ) -> Vec<Self> {
         assert!(
             set_size <= Self::NAMES.len(),
@@ -354,7 +354,7 @@ impl Config {
                 // The set is deduplicated when consensus task is started, so including the own
                 // validator address is fine.
                 validator_addresses: (1..=set_size as u8).collect::<Vec<_>>(),
-                test_dir: test_dir.to_path_buf(),
+                test_dir: test_dir.clone(),
                 pathfinder_bin: pathfinder_bin.to_path_buf(),
                 fixture_dir: fixture_dir.to_path_buf(),
                 inject_failure: None,
