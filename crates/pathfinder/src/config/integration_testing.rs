@@ -83,6 +83,13 @@ mod enabled {
         disable_db_verification: bool,
 
         #[arg(
+            long = "integration-tests.disable-gas-price-validation",
+            action = clap::ArgAction::Set,
+            default_value = "false"
+        )]
+        disable_gas_price_validation: bool,
+
+        #[arg(
             long = "integration-tests.inject-failure",
             action = clap::ArgAction::Set,
             value_parser = parse_inject_failure,
@@ -118,6 +125,7 @@ mod enabled {
     #[derive(Copy, Clone)]
     pub struct IntegrationTestingConfig {
         disable_db_verification: bool,
+        disable_gas_price_validation: bool,
         inject_failure: Option<InjectFailureConfig>,
     }
 
@@ -125,12 +133,17 @@ mod enabled {
         pub fn parse(cli: IntegrationTestingCli) -> Self {
             Self {
                 disable_db_verification: cli.disable_db_verification,
+                disable_gas_price_validation: cli.disable_gas_price_validation,
                 inject_failure: cli.inject_failure,
             }
         }
 
         pub fn is_db_verification_disabled(&self) -> bool {
             self.disable_db_verification
+        }
+
+        pub fn is_gas_price_validation_disabled(&self) -> bool {
+            self.disable_gas_price_validation
         }
 
         pub fn inject_failure_config(&self) -> Option<InjectFailureConfig> {
@@ -163,6 +176,10 @@ mod disabled {
         }
 
         pub fn is_db_verification_disabled(&self) -> bool {
+            false
+        }
+
+        pub fn is_gas_price_validation_disabled(&self) -> bool {
             false
         }
 

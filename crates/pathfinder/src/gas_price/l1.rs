@@ -6,7 +6,7 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, RwLock};
 
-use pathfinder_common::L1BlockNumber;
+use pathfinder_common::{L1BlockHash, L1BlockNumber};
 use pathfinder_ethereum::L1GasPriceData;
 
 use super::deviation_pct;
@@ -115,6 +115,22 @@ pub enum L1GasPriceValidationResult {
     InsufficientData,
 }
 
+/// Error returned when adding a sample to the gas price buffer fails.
+#[derive(Debug, thiserror::Error)]
+pub enum AddSampleError {
+    #[error("Gap in L1 block sequence: expected {expected}, got {actual}")]
+    Gap {
+        expected: L1BlockNumber,
+        actual: L1BlockNumber,
+    },
+    #[error("L1 reorg detected at block {block_number}: parent hash mismatch")]
+    Reorg {
+        block_number: L1BlockNumber,
+        expected_parent: L1BlockHash,
+        actual_parent: L1BlockHash,
+    },
+}
+
 /// Provides L1 gas price data and validation for consensus proposals.
 ///
 /// Uses ring buffer to store historical gas price samples and computes rolling
@@ -172,18 +188,29 @@ impl L1GasPriceProvider {
 
     /// Adds a new gas price sample to the buffer.
     ///
-    /// Samples are expected to be added in sequential block order.
-    pub fn add_sample(&self, data: L1GasPriceData) -> Result<(), anyhow::Error> {
+    /// Samples must be added in sequential block order. Returns
+    /// [`AddSampleError::Gap`] if block numbers are non-sequential, or
+    /// [`AddSampleError::Reorg`] if the parent hash doesn't match the
+    /// previous block's hash (indicating a chain reorganization).
+    pub fn add_sample(&self, data: L1GasPriceData) -> Result<(), AddSampleError> {
         let mut buffer = self.inner.buffer.write().unwrap();
 
         if let Some(last) = buffer.back() {
-            let expected = last.block_number.get() + 1;
-            if data.block_number.get() != expected {
-                anyhow::bail!(
-                    "Non-sequential block: expected {}, got {}",
+            let expected = L1BlockNumber::new_or_panic(last.block_number.get() + 1);
+
+            if data.block_number != expected {
+                return Err(AddSampleError::Gap {
                     expected,
-                    data.block_number.get()
-                );
+                    actual: data.block_number,
+                });
+            }
+
+            if data.parent_hash != last.block_hash {
+                return Err(AddSampleError::Reorg {
+                    block_number: data.block_number,
+                    expected_parent: last.block_hash,
+                    actual_parent: data.parent_hash,
+                });
             }
         }
 
@@ -196,11 +223,17 @@ impl L1GasPriceProvider {
     }
 
     /// Adds multiple samples in bulk (used in initialization).
-    pub fn add_samples(&self, samples: Vec<L1GasPriceData>) -> Result<(), anyhow::Error> {
+    pub fn add_samples(&self, samples: Vec<L1GasPriceData>) -> Result<(), AddSampleError> {
         for sample in samples {
             self.add_sample(sample)?;
         }
         Ok(())
+    }
+
+    /// Clears all stored samples. Used during recovery after a reorg or
+    /// connection failure.
+    pub fn clear(&self) {
+        self.inner.buffer.write().unwrap().clear();
     }
 
     /// Computes the rolling average of gas prices for the given timestamp.
@@ -290,7 +323,12 @@ impl L1GasPriceProvider {
 
         let (avg_base_fee, avg_blob_fee) = match self.get_average_prices(timestamp) {
             Ok(prices) => prices,
-            Err(e) => return L1GasPriceValidationResult::Invalid(e),
+            // NoDataAvailable and StaleData mean we can't compute an average for
+            // this timestamp, not that the proposal is wrong. Treat as insufficient data.
+            Err(e) => {
+                tracing::debug!(error = %e, "L1 gas price data unavailable for validation");
+                return L1GasPriceValidationResult::InsufficientData;
+            }
         };
 
         let base_fee_deviation = deviation_pct(proposed_base_fee, avg_base_fee);
@@ -325,9 +363,19 @@ impl L1GasPriceProvider {
 mod tests {
     use super::*;
 
+    /// Generates a deterministic block hash from a block number.
+    fn hash_for(n: u64) -> L1BlockHash {
+        let mut bytes = [0u8; 32];
+        bytes[24..32].copy_from_slice(&n.to_be_bytes());
+        L1BlockHash::from(bytes)
+    }
+
+    /// Creates a test sample with deterministic hashes that form a valid chain.
     fn sample(block_num: u64, timestamp: u64, base_fee: u128, blob_fee: u128) -> L1GasPriceData {
         L1GasPriceData {
             block_number: L1BlockNumber::new_or_panic(block_num),
+            block_hash: hash_for(block_num),
+            parent_hash: hash_for(block_num.wrapping_sub(1)),
             timestamp,
             base_fee_per_gas: base_fee,
             blob_fee,
@@ -347,7 +395,10 @@ mod tests {
         provider.add_sample(sample(101, 1012, 110, 11)).unwrap();
         assert_eq!(provider.sample_count(), 2);
 
-        assert!(provider.add_sample(sample(105, 1060, 150, 15)).is_err());
+        assert!(matches!(
+            provider.add_sample(sample(105, 1060, 150, 15)),
+            Err(AddSampleError::Gap { .. })
+        ));
 
         let small_provider = L1GasPriceProvider::new(L1GasPriceConfig {
             storage_limit: 3,
@@ -363,6 +414,57 @@ mod tests {
             small_provider.latest_block_number(),
             Some(L1BlockNumber::new_or_panic(4))
         );
+    }
+
+    #[test]
+    fn test_gap_detection() {
+        let provider = L1GasPriceProvider::new(L1GasPriceConfig::default());
+
+        // Add block 10 first
+        provider.add_sample(sample(10, 100, 100, 10)).unwrap();
+
+        // Now add block 15 and expect the error
+        let err = provider.add_sample(sample(15, 160, 100, 10)).unwrap_err();
+        match err {
+            AddSampleError::Gap { expected, actual } => {
+                assert_eq!(expected, L1BlockNumber::new_or_panic(11));
+                assert_eq!(actual, L1BlockNumber::new_or_panic(15));
+            }
+            other => panic!("Expected Gap, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_reorg_detection() {
+        let provider = L1GasPriceProvider::new(L1GasPriceConfig::default());
+
+        // Add block 10 first
+        provider.add_sample(sample(10, 100, 100, 10)).unwrap();
+
+        // Now add block 11 with a parent hash that doesn't match block 10's hash
+        let mut bad_block = sample(11, 112, 100, 10);
+        bad_block.parent_hash = L1BlockHash::from([0xFFu8; 32]);
+
+        assert!(matches!(
+            provider.add_sample(bad_block),
+            Err(AddSampleError::Reorg { .. })
+        ));
+    }
+
+    #[test]
+    fn test_clear() {
+        let provider = L1GasPriceProvider::new(L1GasPriceConfig::default());
+        provider.add_sample(sample(10, 100, 100, 10)).unwrap();
+        provider.add_sample(sample(11, 112, 100, 10)).unwrap();
+        assert_eq!(provider.sample_count(), 2);
+
+        provider.clear();
+        assert_eq!(provider.sample_count(), 0);
+        assert!(!provider.is_ready());
+
+        // Can add from a completely different block number after clear
+        provider.add_sample(sample(500, 6000, 200, 20)).unwrap();
+        assert_eq!(provider.sample_count(), 1);
     }
 
     #[test]
@@ -417,7 +519,7 @@ mod tests {
 
         assert!(matches!(
             provider.validate(300, 100, 10),
-            L1GasPriceValidationResult::Invalid(L1GasPriceValidationError::StaleData { .. })
+            L1GasPriceValidationResult::InsufficientData
         ));
     }
 }

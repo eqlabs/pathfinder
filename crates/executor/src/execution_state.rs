@@ -41,6 +41,8 @@ mod versions {
     pub(super) const STARKNET_VERSION_0_14_0: StarknetVersion = StarknetVersion::new(0, 14, 0, 0);
 
     pub(super) const STARKNET_VERSION_0_14_1: StarknetVersion = StarknetVersion::new(0, 14, 1, 0);
+
+    pub(super) const STARKNET_VERSION_0_14_2: StarknetVersion = StarknetVersion::new(0, 14, 2, 0);
 }
 
 #[derive(Clone, Debug)]
@@ -61,7 +63,7 @@ impl VersionedConstantsMap {
     }
 
     pub fn latest_version() -> StarknetVersion {
-        versions::STARKNET_VERSION_0_14_1
+        versions::STARKNET_VERSION_0_14_2
     }
 
     fn fill_default(data: &mut BTreeMap<StarknetVersion, Cow<'static, VersionedConstants>>) {
@@ -120,6 +122,12 @@ impl VersionedConstantsMap {
             &STARKNET_VERSION_0_14_1,
             VersionedConstants::get(&starknet_api::block::StarknetVersion::V0_14_1)
                 .expect("Failed to get versioned constants for 0.14.1"),
+        );
+        Self::insert_default(
+            data,
+            &STARKNET_VERSION_0_14_2,
+            VersionedConstants::get(&starknet_api::block::StarknetVersion::V0_14_2)
+                .expect("Failed to get versioned constants for 0.14.2"),
         );
     }
 

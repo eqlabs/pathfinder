@@ -19,7 +19,7 @@ use alloy::rpc::types::{FilteredParams, Log};
 use anyhow::Context;
 use pathfinder_common::prelude::*;
 use pathfinder_common::transaction::L1HandlerTransaction;
-use pathfinder_common::{EthereumChain, L1BlockNumber, L1TransactionHash};
+use pathfinder_common::{EthereumChain, L1BlockHash, L1BlockNumber, L1TransactionHash};
 use pathfinder_crypto::Felt;
 use primitive_types::{H160, U256};
 use reqwest::{IntoUrl, Url};
@@ -72,6 +72,10 @@ pub struct EthereumStateUpdate {
 pub struct L1GasPriceData {
     /// The L1 block number
     pub block_number: L1BlockNumber,
+    /// The block's own hash
+    pub block_hash: L1BlockHash,
+    /// The parent block's hash (used for reorg detection)
+    pub parent_hash: L1BlockHash,
     /// Unix timestamp of the block
     pub timestamp: u64,
     /// EIP-1559 base fee per gas (wei)
@@ -158,6 +162,16 @@ impl EthereumClient {
             .context("Failed to fetch finalized block hash")
     }
 
+    /// Returns the block number of the latest block
+    pub async fn get_latest_block_number(&self) -> anyhow::Result<L1BlockNumber> {
+        let provider = self.provider().await?;
+        provider
+            .get_block_by_number(BlockNumberOrTag::Latest)
+            .await?
+            .map(|block| L1BlockNumber::new_or_panic(block.header.number))
+            .context("Failed to fetch latest block")
+    }
+
     /// Fetches gas price data from a specific L1 block header.
     pub async fn get_gas_price_data(
         &self,
@@ -169,11 +183,15 @@ impl EthereumClient {
             .await?
             .context("Block not found")?;
 
+        let block_hash = L1BlockHash::from(block.header.hash.0);
+        let parent_hash = L1BlockHash::from(block.header.parent_hash.0);
         let base_fee_per_gas = block.header.base_fee_per_gas.unwrap_or(0) as u128;
         let blob_fee = compute_blob_fee(block.header.excess_blob_gas);
 
         Ok(L1GasPriceData {
             block_number,
+            block_hash,
+            parent_hash,
             timestamp: block.header.timestamp,
             base_fee_per_gas,
             blob_fee,
@@ -193,32 +211,27 @@ impl EthereumClient {
 
         for block_num in start.get()..=end.get() {
             let block_number = L1BlockNumber::new_or_panic(block_num);
-            match self.get_gas_price_data(block_number).await {
-                Ok(data) => results.push(data),
-                Err(e) => {
-                    tracing::warn!(
-                        block_number = block_num,
-                        error = %e,
-                        "Failed to fetch gas price data for block"
-                    );
-                    // Continue with other blocks
-                }
-            }
+            let data = self
+                .get_gas_price_data(block_number)
+                .await
+                .with_context(|| format!("Fetching gas price data for block {block_num}"))?;
+            results.push(data);
         }
 
         Ok(results)
     }
 
-    /// Subscribes to new block headers and calls the callback with gas price
-    /// data for each block as it arrives.
+    /// Subscribes to new block headers and sends gas price data to the
+    /// provided channel for each block as it arrives.
     ///
     /// This uses a dedicated WebSocket connection for the subscription stream.
     /// Re-subscribes automatically if the stream ends due to errors.
-    pub async fn subscribe_block_headers<F, Fut>(&self, callback: F) -> anyhow::Result<()>
-    where
-        F: Fn(L1GasPriceData) -> Fut + Send + 'static,
-        Fut: Future<Output = ()> + Send + 'static,
-    {
+    /// Returns `Ok(())` if the receiver is dropped (clean shutdown).
+    /// Returns `Err` if the WebSocket connection cannot be re-established.
+    pub async fn subscribe_block_headers(
+        &self,
+        tx: tokio::sync::mpsc::Sender<L1GasPriceData>,
+    ) -> anyhow::Result<()> {
         // Create a dedicated WebSocket connection for subscriptions
         let ws = WsConnect::new(self.url.clone());
         let provider = ProviderBuilder::new().connect_ws(ws).await?;
@@ -231,11 +244,15 @@ impl EthereumClient {
                 Ok(header) => {
                     let data = L1GasPriceData {
                         block_number: L1BlockNumber::new_or_panic(header.number),
+                        block_hash: L1BlockHash::from(header.hash.0),
+                        parent_hash: L1BlockHash::from(header.parent_hash.0),
                         timestamp: header.timestamp,
                         base_fee_per_gas: header.base_fee_per_gas.unwrap_or(0) as u128,
                         blob_fee: compute_blob_fee(header.excess_blob_gas),
                     };
-                    callback(data).await;
+                    if tx.send(data).await.is_err() {
+                        return Ok(());
+                    }
                 }
                 Err(e) => {
                     tracing::debug!(error = %e, "Block subscription ended, re-subscribing");

@@ -1,11 +1,12 @@
 use std::time::Duration;
 
+use anyhow::Context;
 use pathfinder_common::{Chain, L1BlockNumber};
-use pathfinder_ethereum::EthereumClient;
+use pathfinder_ethereum::{EthereumClient, L1GasPriceData};
 use primitive_types::H160;
 use tokio::sync::mpsc;
 
-use crate::gas_price::L1GasPriceProvider;
+use crate::gas_price::{AddSampleError, L1GasPriceProvider};
 use crate::state::sync::SyncEvent;
 
 #[derive(Clone)]
@@ -55,11 +56,24 @@ pub struct L1GasPriceSyncConfig {
     /// Number of historical blocks to fetch on startup.
     /// Default: 10
     pub startup_blocks: u64,
+
+    /// Delay before reconnecting after a failure (seconds).
+    /// Default: 15
+    pub reconnect_delay_secs: u64,
+
+    /// Maximum gap size (in blocks) to attempt inline backfill. Gaps larger
+    /// than this trigger a full buffer reset instead.
+    /// Default: 100
+    pub max_gap_blocks: u64,
 }
 
 impl Default for L1GasPriceSyncConfig {
     fn default() -> Self {
-        Self { startup_blocks: 10 }
+        Self {
+            startup_blocks: 10,
+            reconnect_delay_secs: 15,
+            max_gap_blocks: 100,
+        }
     }
 }
 
@@ -72,54 +86,140 @@ pub async fn sync_gas_prices(
     provider: L1GasPriceProvider,
     config: L1GasPriceSyncConfig,
 ) -> anyhow::Result<()> {
-    // Get the finalized block to determine where to start historical fetch
-    let finalized = ethereum.get_finalized_block_number().await?;
-    tracing::debug!(finalized_block = %finalized, "Starting L1 gas price sync");
+    let reconnect_delay = Duration::from_secs(config.reconnect_delay_secs);
 
-    // Fetch historical gas prices to populate the buffer
-    let start_block = finalized.get().saturating_sub(config.startup_blocks).max(1);
-    let start_block = L1BlockNumber::new_or_panic(start_block);
+    loop {
+        match sync_gas_prices_inner(&ethereum, &provider, &config).await {
+            Ok(()) => {
+                tracing::warn!("L1 gas price subscription ended, restarting");
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "L1 gas price sync failed, restarting");
+            }
+        }
+
+        provider.clear();
+        std::thread::sleep(reconnect_delay);
+    }
+}
+
+/// A self-contained sync "cycle" for gas price syncing that allows us to
+/// recover from gaps and reorgs.
+///
+/// Bootstraps with historical data, then subscribes and processes blocks until
+/// the subscription ends or an unrecoverable error occurs.
+async fn sync_gas_prices_inner(
+    ethereum: &EthereumClient,
+    provider: &L1GasPriceProvider,
+    config: &L1GasPriceSyncConfig,
+) -> anyhow::Result<()> {
+    // Bootstrap with historical data up to the latest block (not just finalized)
+    // to minimize the gap between bootstrap and the first subscription block.
+    let latest = ethereum.get_latest_block_number().await?;
+    let start_block =
+        L1BlockNumber::new_or_panic(latest.get().saturating_sub(config.startup_blocks).max(1));
 
     tracing::debug!(
         start = %start_block,
-        end = %finalized,
+        end = %latest,
         "Fetching historical gas prices"
     );
 
     let historical_data = ethereum
-        .get_gas_price_data_range(start_block, finalized)
-        .await?;
+        .get_gas_price_data_range(start_block, latest)
+        .await
+        .context("Fetching historical gas prices")?;
 
-    let fetched_count = historical_data.len();
-    if let Err(e) = provider.add_samples(historical_data) {
-        tracing::warn!(error = %e, "Failed to add historical gas price samples");
-    }
+    provider
+        .add_samples(historical_data)
+        .context("Adding historical samples")?;
 
     tracing::debug!(
-        samples = fetched_count,
-        "Populated gas price buffer with historical data"
+        samples = provider.sample_count(),
+        "Historical gas prices loaded"
     );
 
     // Subscribe to new block headers
-    ethereum
-        .subscribe_block_headers(move |data| {
-            let provider = provider.clone();
-            async move {
-                if let Err(e) = provider.add_sample(data) {
-                    tracing::warn!(
-                        block = %data.block_number,
-                        error = %e,
-                        "Failed to add gas price sample"
-                    );
-                } else {
-                    tracing::trace!(
-                        block = %data.block_number,
-                        base_fee = data.base_fee_per_gas,
-                        blob_fee = data.blob_fee,
-                        "Added gas price sample"
-                    );
-                }
+    let (tx, mut rx) = mpsc::channel::<L1GasPriceData>(32);
+
+    let ethereum_for_sub = ethereum.clone();
+    util::task::spawn(async move {
+        if let Err(e) = ethereum_for_sub.subscribe_block_headers(tx).await {
+            tracing::warn!(error = %e, "Block header subscription failed");
+        }
+    });
+
+    // Process incoming blocks
+    while let Some(data) = rx.recv().await {
+        process_block(ethereum, provider, config, data).await?;
+    }
+
+    // Channel closed (WS died)
+    Ok(())
+}
+
+/// Processes a single block from the subscription. Handles gaps via inline
+/// backfill and signals reorgs as errors for the outer loop to handle.
+async fn process_block(
+    ethereum: &EthereumClient,
+    provider: &L1GasPriceProvider,
+    config: &L1GasPriceSyncConfig,
+    data: L1GasPriceData,
+) -> anyhow::Result<()> {
+    match provider.add_sample(data) {
+        Ok(()) => {
+            tracing::trace!(
+                block = %data.block_number,
+                base_fee = data.base_fee_per_gas,
+                blob_fee = data.blob_fee,
+                "Added gas price sample"
+            );
+            Ok(())
+        }
+        Err(AddSampleError::Gap { expected, actual }) => {
+            if actual < expected {
+                anyhow::bail!("Block number went backward: expected {expected}, got {actual}");
             }
-        })
-        .await
+
+            let gap_size = actual.get() - expected.get();
+
+            if gap_size > config.max_gap_blocks {
+                anyhow::bail!(
+                    "Gap too large ({gap_size} blocks, max {}), restarting",
+                    config.max_gap_blocks
+                );
+            }
+
+            tracing::info!(
+                expected = %expected,
+                actual = %actual,
+                gap_size,
+                "Gap detected, backfilling"
+            );
+
+            let gap_end = L1BlockNumber::new_or_panic(actual.get() - 1);
+            let gap_data = ethereum
+                .get_gas_price_data_range(expected, gap_end)
+                .await
+                .context("Backfilling gap")?;
+
+            provider
+                .add_samples(gap_data)
+                .context("Adding gap-fill samples")?;
+
+            provider
+                .add_sample(data)
+                .context("Adding block after gap-fill")?;
+
+            tracing::info!(
+                from = %expected,
+                to = %data.block_number,
+                "Gap filled successfully"
+            );
+            Ok(())
+        }
+        Err(AddSampleError::Reorg { block_number, .. }) => {
+            anyhow::bail!("L1 reorg detected at block {block_number}");
+        }
+    }
 }
