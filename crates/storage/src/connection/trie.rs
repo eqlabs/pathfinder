@@ -70,6 +70,12 @@ fn contract_state_hashes_key(
     key
 }
 
+#[derive(bincode::Encode, bincode::Decode)]
+struct TrieRemovalMarker {
+    key_prefix: Option<Felt>,
+    indices: Vec<TrieStorageIndex>,
+}
+
 impl Transaction<'_> {
     pub fn class_root_index(
         &self,
@@ -514,21 +520,25 @@ impl Transaction<'_> {
         &self,
         removed: &[TrieStorageIndex],
         block_number: BlockNumber,
+        key_prefix: Option<&Felt>,
         table: &'static str,
     ) -> anyhow::Result<()> {
         if !removed.is_empty() {
+            let marker = TrieRemovalMarker {
+                key_prefix: key_prefix.cloned(),
+                indices: removed.to_vec(),
+            };
+            let marker = bincode::encode_to_vec(marker, bincode::config::standard())
+                .context("Serializing removal marker")?;
+
             let mut stmt = self
                 .inner()
                 .prepare_cached(&format!(
                     r"INSERT INTO {table}_removals (block_number, indices) VALUES (?, ?)"
                 ))
                 .context("Creating statement to insert removal marker")?;
-            stmt.execute(params![
-                &block_number,
-                &bincode::encode_to_vec(removed, bincode::config::standard())
-                    .context("Serializing indices")?
-            ])
-            .context("Inserting removal marker")?;
+            stmt.execute(params![&block_number, &marker,])
+                .context("Inserting removal marker")?;
         }
 
         Ok(())
@@ -583,19 +593,29 @@ impl Transaction<'_> {
             let hash_column = self.rocksdb_get_column(rocksdb_column);
 
             let mut batch = self.batch.lock().expect("Batch lock poisoned");
+            let mut buf = [0u8; TRIE_CONTRACT_KEY_LEN];
 
             while let Some(row) = rows.next().context("Iterating over rows")? {
-                let (indices, _) = bincode::decode_from_slice::<Vec<u64>, _>(
+                let (marker, _) = bincode::decode_from_slice::<TrieRemovalMarker, _>(
                     row.get_blob(0)?,
                     bincode::config::standard(),
                 )
-                .context("Decoding indices")?;
-                for idx in indices.iter() {
-                    let key = idx.to_be_bytes();
+                .context("Decoding removal marker")?;
+                for idx in marker.indices.iter() {
+                    let key = match marker.key_prefix {
+                        Some(prefix) => {
+                            contract_trie_key(&prefix, *idx, &mut buf);
+                            &buf[..TRIE_CONTRACT_KEY_LEN]
+                        }
+                        None => {
+                            buf[..8].copy_from_slice(&idx.0.to_be_bytes());
+                            &buf[..8]
+                        }
+                    };
                     batch.delete_cf(&hash_column, key);
                 }
                 metrics::counter!(METRIC_TRIE_NODES_REMOVED, "table" => table)
-                    .increment(indices.len() as u64);
+                    .increment(marker.indices.len() as u64);
             }
 
             // Delete the removal markers.
@@ -624,7 +644,7 @@ impl Transaction<'_> {
     ) -> anyhow::Result<RootIndexUpdate> {
         if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
             self.prune_trie(block_number, num_blocks_kept, table, rocksdb_hash_column)?;
-            self.remove_trie(&update.nodes_removed, block_number, table)?;
+            self.remove_trie(&update.nodes_removed, block_number, key_prefix, table)?;
         }
 
         if update.nodes_added.is_empty() {
