@@ -200,18 +200,16 @@ pub(crate) fn create(
         );
     }
 
-    let validator = ValidatorBlockInfoStage::new(ChainId::SEPOLIA_TESTNET, proposal_init).unwrap();
+    let validator = ValidatorBlockInfoStage::new(ChainId::SEPOLIA_TESTNET, proposal_init)?;
     let worker_pool = create_test_worker_pool();
-    let mut validator = validator
-        .validate_block_info(
-            block_info.clone(),
-            main_storage,
-            &fake_decided_blocks,
-            None,
-            None,
-            worker_pool,
-        )
-        .unwrap();
+    let mut validator = validator.validate_block_info(
+        block_info.clone(),
+        main_storage,
+        &fake_decided_blocks,
+        None,
+        None,
+        worker_pool,
+    )?;
 
     let num_executed_txns = config
         .as_ref()
@@ -230,11 +228,9 @@ pub(crate) fn create(
         num_executed_txns as u64,
     ));
 
-    validator
-        .execute_batch::<ProdTransactionMapper>(txns_to_execute)
-        .unwrap();
+    validator.execute_batch::<ProdTransactionMapper>(txns_to_execute)?;
 
-    let block = validator.consensus_finalize0().unwrap();
+    let block = validator.consensus_finalize0()?;
 
     parts.push(ProposalPart::Fin(ProposalFin {
         proposal_commitment: Hash(block.header.state_diff_commitment.0),
