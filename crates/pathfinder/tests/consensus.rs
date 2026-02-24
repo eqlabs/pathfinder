@@ -57,16 +57,16 @@ mod test {
     // - [ ] ??? any missing significant failure injection points ???.
     #[rstest]
     #[case::happy_path(None)]
-    #[case::fail_on_proposal_init_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ProposalInitRx }))]
-    #[case::fail_on_block_info_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::BlockInfoRx }))]
-    #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::TransactionBatchRx }))]
-    #[case::fail_on_executed_transaction_count_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ExecutedTransactionCountRx }))]
-    #[case::fail_on_proposal_fin_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ProposalFinRx }))]
-    #[case::fail_on_proposal_finalized(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ProposalFinalized }))]
-    #[case::fail_on_prevote_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::PrevoteRx }))]
-    #[case::fail_on_precommit_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::PrecommitRx }))]
-    #[case::fail_on_proposal_decided(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ProposalDecided }))]
-    #[case::fail_on_proposal_committed(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ProposalCommitted }))]
+    #[case::fail_on_proposal_init_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalInitRx }))]
+    #[case::fail_on_block_info_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::BlockInfoRx }))]
+    #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::TransactionBatchRx }))]
+    #[case::fail_on_executed_transaction_count_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ExecutedTransactionCountRx }))]
+    #[case::fail_on_proposal_fin_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalFinRx }))]
+    #[case::fail_on_proposal_finalized(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalFinalized }))]
+    #[case::fail_on_prevote_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::PrevoteRx }))]
+    #[case::fail_on_precommit_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::PrecommitRx }))]
+    #[case::fail_on_proposal_decided(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalDecided }))]
+    #[case::fail_on_proposal_committed(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalCommitted }))]
     #[tokio::test]
     async fn consensus_3_nodes_with_failures(
         #[case] inject_failure: Option<InjectFailureConfig>,
@@ -79,7 +79,10 @@ mod test {
         const POLL_READY: Duration = Duration::from_millis(500);
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
-        let (configs, boot_height, stopwatch) = utils::setup(NUM_NODES, false)?;
+        // Happy path is the only scenario which starts consensus from genesis at the
+        // expense of all transactions being reverted since they're random, invalid L1
+        // handlers.
+        let (configs, boot_height, stopwatch) = utils::setup(NUM_NODES, inject_failure.is_some())?;
 
         // System contracts start to matter after block 10 but we have a separate
         // regression test for that, which checks that rollback at H>10 works correctly.
@@ -194,7 +197,7 @@ mod test {
         const POLL_READY: Duration = Duration::from_millis(500);
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
-        let (configs, boot_height, stopwatch) = utils::setup(NUM_NODES, false)?;
+        let (configs, boot_height, stopwatch) = utils::setup(NUM_NODES, true)?;
 
         // System contracts start to matter after block 10
         let height_to_add_fourth_node: u64 = boot_height + 3;
@@ -333,7 +336,7 @@ mod test {
         const POLL_READY: Duration = Duration::from_millis(500);
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
-        let (configs, boot_blocks, stopwatch) = utils::setup(NUM_NODES, false).unwrap();
+        let (configs, boot_blocks, stopwatch) = utils::setup(NUM_NODES, true).unwrap();
 
         let last_valid_height: u64 = boot_blocks + 5;
 
