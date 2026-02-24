@@ -439,8 +439,6 @@ impl ValidatorTransactionBatchStage {
             .map_err(ProposalHandlingError::recoverable)?;
         let (common_txns, executor_txns): (Vec<_>, Vec<_>) = txns.into_iter().unzip();
 
-        eprintln!("Mapped txns: {:#?}", common_txns);
-
         // Verify transaction hashes
         let txn_hashes = common_txns
             .par_iter()
@@ -484,8 +482,6 @@ impl ValidatorTransactionBatchStage {
             .as_mut()
             .context("Executor should be initialized")
             .map_err(ProposalHandlingError::fatal)?;
-
-        eprintln!("Executing...");
 
         let (receipts, events): (Vec<_>, Vec<_>) =
             executor.execute(executor_txns)?.into_iter().unzip();
@@ -559,7 +555,7 @@ impl ValidatorTransactionBatchStage {
         Ok(())
     }
 
-    // #[cfg(test)]
+    #[cfg(test)]
     /// Finalize with the current state (up to the last executed transaction)
     pub fn finalize(
         &mut self,

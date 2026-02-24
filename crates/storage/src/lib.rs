@@ -299,12 +299,8 @@ impl StorageBuilder {
         // after opening the storage, because the connection pool keeps the inode alive
         // for the lifetime of the storage anyway.
         let tempdir = tempfile::tempdir()?;
-        let path = tempdir.keep();
-        // tracing::trace!("Creating storage in: {}", tempdir.path().display());
-        // crate::StorageBuilder::file(tempdir.path().join("db.sqlite"))
-
-        tracing::trace!("Creating storage in: {}", path.display());
-        crate::StorageBuilder::file(path.join("db.sqlite"))
+        tracing::trace!("Creating storage in: {}", tempdir.path().display());
+        crate::StorageBuilder::file(tempdir.path().join("db.sqlite"))
             .trie_prune_mode(Some(trie_prune_mode))
             .migrate()
             .unwrap()

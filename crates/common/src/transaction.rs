@@ -79,10 +79,6 @@ pub enum TransactionKind {
 impl TransactionVariant {
     #[must_use = "Should act on verification result"]
     fn verify_hash(&self, chain_id: ChainId, expected: TransactionHash) -> bool {
-        let calculated_hash = self.calculate_hash(chain_id, false);
-
-        eprintln!("Expected hash: {expected}, calculated hash: {calculated_hash}");
-
         if expected == self.calculate_hash(chain_id, false) {
             return true;
         }
