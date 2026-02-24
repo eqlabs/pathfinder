@@ -71,7 +71,7 @@ use fixtures::{ETH_TO_FRI_RATE, GAS_PRICE};
 /// predeployed and initialized if necessary: Cairo 1 account, ETH and STRK
 /// ERC20s, and the UDC. The following contract is already declared but not
 /// deployed: Hello Starknet.
-pub fn init_db(proposer: Address) -> anyhow::Result<DevnetConfig> {
+pub fn init_db(proposer: Address) -> anyhow::Result<(BootDb, u64)> {
     let stopwatch = Instant::now();
 
     let timestamp = strictly_increasing_timestamp(None);
@@ -160,22 +160,27 @@ pub fn init_db(proposer: Address) -> anyhow::Result<DevnetConfig> {
         fixtures::HELLO_CLASS,
         proposer,
     )?;
+    let db_txn = db_conn.transaction()?;
+    let latest_block_number = db_txn.block_number(BlockId::Latest)?.context("Empty DB")?;
 
-    Ok(DevnetConfig {
-        _bootstrap_db_dir,
-        bootstrap_db_path,
-    })
+    Ok((
+        BootDb {
+            _bootstrap_db_dir,
+            bootstrap_db_path,
+        },
+        latest_block_number.get() + 1,
+    ))
 }
 
 #[derive(Debug, Clone)]
-pub struct DevnetConfig {
+pub struct BootDb {
     // We keep the temp dir around to ensure it isn't deleted until we're done
     _bootstrap_db_dir: Arc<TempDir>,
     bootstrap_db_path: PathBuf,
 }
 
-impl DevnetConfig {
-    pub fn bootstrap_db_path(&self) -> &Path {
+impl BootDb {
+    pub fn path(&self) -> &Path {
         &self.bootstrap_db_path
     }
 }
@@ -434,8 +439,8 @@ pub mod tests {
         // use for testing
         // Block 1 - declare the Hello Starknet contract class
         let proposer = Address(Felt::ONE);
-        let config = crate::devnet::init_db(proposer).unwrap();
-        let path = config.bootstrap_db_path().to_owned();
+        let (boot_db, _) = crate::devnet::init_db(proposer).unwrap();
+        let path = boot_db.path().to_owned();
 
         let storage = StorageBuilder::file(path)
             .migrate()

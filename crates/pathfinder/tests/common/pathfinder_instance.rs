@@ -6,11 +6,12 @@ use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
+use futures::future::Either;
 use http::StatusCode;
 use pathfinder_lib::config::integration_testing::InjectFailureConfig;
-use pathfinder_lib::devnet::DevnetConfig;
+use pathfinder_lib::devnet::BootDb;
 use tokio::signal::unix::{signal, SignalKind};
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 
@@ -45,7 +46,7 @@ pub struct Config {
     pub test_dir: PathBuf,
     pub inject_failure: Option<InjectFailureConfig>,
     pub local_feeder_gateway_port: Option<u16>,
-    pub devnet_config: Option<DevnetConfig>,
+    pub boot_db: Option<BootDb>,
 }
 
 pub type RpcPortWatch = (watch::Sender<(u32, u16)>, watch::Receiver<(u32, u16)>);
@@ -65,6 +66,18 @@ impl PathfinderInstance {
     pub fn spawn(config: Config) -> anyhow::Result<Self> {
         let id_file = config.fixture_dir.join(format!("id_{}.json", config.name));
         let db_dir = config.db_dir();
+
+        if let Some(devnet_config) = &config.boot_db {
+            let source = devnet_config.path();
+            let destination = db_dir.join("testnet-sepolia.sqlite");
+            std::fs::create_dir_all(&db_dir).context("Creating db directory")?;
+            std::fs::copy(source, &destination).context(format!(
+                "Copying bootstrap DB from {} to {}",
+                source.display(),
+                destination.display(),
+            ))?;
+        }
+
         let stdout_path = config.test_dir.join(format!("{}_stdout.log", config.name));
         let stdout_file =
             create_log_file(format!("Pathfinder instance {}", config.name), &stdout_path)?;
@@ -341,7 +354,7 @@ impl Config {
         pathfinder_bin: &Path,
         fixture_dir: &Path,
         test_dir: PathBuf,
-        devnet_config: Option<DevnetConfig>,
+        boot_db: Option<BootDb>,
     ) -> Vec<Self> {
         assert!(
             set_size <= Self::NAMES.len(),
@@ -362,7 +375,7 @@ impl Config {
                 fixture_dir: fixture_dir.to_path_buf(),
                 inject_failure: None,
                 local_feeder_gateway_port: None,
-                devnet_config: devnet_config.clone(),
+                boot_db: boot_db.clone(),
             })
             .collect()
     }
@@ -407,6 +420,73 @@ impl From<JoinHandle<anyhow::Result<()>>> for AbortGuard {
     fn from(jh: JoinHandle<anyhow::Result<()>>) -> Self {
         Self { jh }
     }
+}
+
+pub struct MaybeRespawned(
+    Either<(AbortGuard, mpsc::Receiver<PathfinderInstance>), PathfinderInstance>,
+);
+
+impl MaybeRespawned {
+    pub fn instance(self) -> Option<PathfinderInstance> {
+        match self.0 {
+            Either::Left((_, mut rx)) => match rx.try_recv() {
+                Ok(instance) => Some(instance),
+                Err(_) => None,
+            },
+            Either::Right(instance) => Some(instance),
+        }
+    }
+}
+
+/// Monitors `instance` for exit with non-zero exit code. If that happens,
+/// respawns the instance with `config` and waits for it to be ready. The
+/// respawned instance is not returned, but it will be kept alive until the end
+/// of the test (i.e., until `test_timeout` is reached).
+pub fn respawn_on_fail2(
+    inject_failure: bool,
+    mut instance: PathfinderInstance,
+    config: Config,
+    ready_poll_interval: Duration,
+    ready_timeout: Duration,
+) -> MaybeRespawned {
+    if !inject_failure {
+        return MaybeRespawned(Either::Right(instance));
+    }
+
+    let mut child_signal = signal(SignalKind::child()).unwrap();
+    let (tx, rx) = mpsc::channel(1);
+    let abort_guard = tokio::spawn(async move {
+        if child_signal.recv().await.is_some() {
+            println!("Got SIGCHLD!");
+            match instance.exited_with_error() {
+                Ok(true) => {
+                    println!("Respawning {}...", instance.name());
+                    let watch = instance.rpc_port_watch();
+                    drop(instance);
+                    let instance = PathfinderInstance::spawn(config)?.with_rpc_port_watch(watch);
+                    instance
+                        .wait_for_ready(ready_poll_interval, ready_timeout)
+                        .await?;
+                    println!("{} is ready again", instance.name());
+                    let _ = tx.send(instance).await;
+                }
+                Ok(false) => {
+                    println!("{} exited cleanly, not respawning", instance.name());
+                    drop(instance);
+                }
+                Err(e) => {
+                    eprintln!("Error checking if {} exited cleanly: {e}", instance.name());
+                    // Assume that the process did not exit, the worst that can
+                    // happen is that the kill on drop will fail.
+                }
+            }
+        }
+
+        Ok(())
+    })
+    .into();
+
+    MaybeRespawned(Either::Left((abort_guard, rx)))
 }
 
 /// Monitors `instance` for exit with non-zero exit code. If that happens,
