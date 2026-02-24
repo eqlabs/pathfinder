@@ -499,6 +499,28 @@ pub fn spawn(
                         );
                         let stopwatch = std::time::Instant::now();
 
+                        let block = finalized_blocks
+                            .remove(&height_and_round)
+                            .expect("This block is not removed from the map anywhere else");
+                        decided_blocks
+                            .insert(height_and_round.height(), (height_and_round.round(), block));
+
+                        tracing::info!(
+                            "🖧  💾 {validator_address} Finalized and prepared block for \
+                             committing to the database at {height_and_round} in {} ms",
+                            stopwatch.elapsed().as_millis()
+                        );
+
+                        // Remove all finalized blocks for previous rounds at this height
+                        // because they will not be committed to the main DB.
+                        finalized_blocks.retain(|hnr, _| hnr.height() != height_and_round.height());
+
+                        tracing::debug!(
+                            "🖧  🗑️ {validator_address} removed my undecided finalized blocks for \
+                             height {}",
+                            height_and_round.height()
+                        );
+
                         // Clean up batch execution state for this height
                         batch_execution_manager.cleanup(&height_and_round);
                         tracing::debug!(
@@ -516,15 +538,6 @@ pub fn spawn(
                             "🖧  🗑️ {validator_address} removed my proposal parts for height {}",
                             height_and_round.height()
                         );
-
-                        // Remove all finalized blocks for previous rounds at this height because
-                        // they will not be committed to the main DB. Do not remove the block which
-                        // has just been marked as decided upon, and will be committed by the sync
-                        // task until it is confirmed that the block was indeed committed.
-                        finalized_blocks.retain(|hnr, _| {
-                            hnr.height() != height_and_round.height()
-                                || hnr.round() == height_and_round.round()
-                        });
 
                         tracing::debug!(
                             "🖧  🗑️ {validator_address} removed my undecided finalized blocks for \
@@ -564,8 +577,6 @@ pub fn spawn(
                         } else {
                             on_finalized_block_decided(
                                 &height_and_round,
-                                &value,
-                                validator_address,
                                 &validator_cache,
                                 deferred_executions.clone(),
                                 &mut batch_execution_manager,
@@ -656,8 +667,6 @@ pub fn spawn(
 #[allow(clippy::too_many_arguments)]
 fn on_finalized_block_decided(
     height_and_round: &HeightAndRound,
-    decided_value: &ConsensusValue,
-    validator_address: ContractAddress,
     validator_cache: &ValidatorCache,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
@@ -667,34 +676,6 @@ fn on_finalized_block_decided(
     gas_price_provider: Option<L1GasPriceProvider>,
     worker_pool: ValidatorWorkerPool,
 ) -> Result<ComputationSuccess, anyhow::Error> {
-    // The block will not be in the `finalized_blocks` map if:
-    //  1) It has already been downloaded from the feeder gateway and committed to
-    //  the main DB by the sync task. This can happen in fast local testnets
-    //  where the FGw is sometimes serving blocks from the proposers faster than
-    //  the consensus engine internally notifies Pathfinder about a positive
-    //  decision on the executed proposal.
-    //  2) The node joined the network after the proposal was finalized, so it has
-    //  not received the proposal parts and the finalized block for this height
-    //  and round.
-    if let Some(finalized_block) = finalized_blocks.remove(height_and_round) {
-        assert_eq!(
-            decided_value.0 .0, finalized_block.header.state_diff_commitment.0,
-            "Proposal commitment mismatch"
-        );
-
-        tracing::debug!(
-            "🖧  🗑️ {} removed finalized block for last round at height {} after commit \
-             confirmation",
-            validator_address,
-            height_and_round.height()
-        );
-
-        decided_blocks.insert(
-            height_and_round.height(),
-            (height_and_round.round(), finalized_block),
-        );
-    }
-
     let exec_success = execute_deferred_for_next_height::<ProdTransactionMapper>(
         height_and_round.height(),
         validator_cache.clone(),
