@@ -24,17 +24,22 @@ use crate::common::pathfinder_instance::{Config, PathfinderInstance};
 /// - verifies that the Pathfinder binary and fixtures directory exist,
 /// - starts an [`std::time::Instant`] to measure test setup duration,
 /// - returns configuration for the number of nodes specified and the instant.
-pub fn setup(num_instances: usize, init_devnet_db: bool) -> anyhow::Result<(Vec<Config>, Instant)> {
+pub fn setup(
+    num_instances: usize,
+    init_devnet_db: bool,
+) -> anyhow::Result<(Vec<Config>, u64, Instant)> {
     PathfinderInstance::enable_log_dump(
         std::env::var_os("PATHFINDER_CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL").is_some(),
     );
 
     let stopwatch = Instant::now();
 
-    let devnet_config = if init_devnet_db {
-        Some(devnet::init_db(Address(Felt::ONE) /* Alice */)?)
+    let (boot_db, boot_height) = if init_devnet_db {
+        let (devnet_config, latest_boot_block) =
+            devnet::init_db(Address(Felt::ONE) /* Alice */)?;
+        (Some(devnet_config), latest_boot_block)
     } else {
-        None
+        (None, 0)
     };
 
     let pathfinder_bin = pathfinder_bin();
@@ -52,8 +57,9 @@ pub fn setup(num_instances: usize, init_devnet_db: bool) -> anyhow::Result<(Vec<
             &pathfinder_bin,
             &fixture_dir,
             test_dir,
-            devnet_config,
+            boot_db,
         ),
+        boot_height,
         stopwatch,
     ))
 }
