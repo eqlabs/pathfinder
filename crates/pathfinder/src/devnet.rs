@@ -6,7 +6,6 @@
 use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 use std::sync::Arc;
 use std::thread::available_parallelism;
 use std::time::{Instant, SystemTime};
@@ -76,7 +75,7 @@ pub fn init_db(proposer: Address) -> anyhow::Result<DevnetConfig> {
     let stopwatch = Instant::now();
 
     let timestamp = strictly_increasing_timestamp(None);
-    let _bootstrap_db_dir = Rc::new(TempDir::new()?);
+    let _bootstrap_db_dir = Arc::new(TempDir::new()?);
     let bootstrap_db_path = _bootstrap_db_dir.path().join("bootstrap.sqlite");
 
     let storage = StorageBuilder::file(bootstrap_db_path.clone())
@@ -171,7 +170,7 @@ pub fn init_db(proposer: Address) -> anyhow::Result<DevnetConfig> {
 #[derive(Debug, Clone)]
 pub struct DevnetConfig {
     // We keep the temp dir around to ensure it isn't deleted until we're done
-    _bootstrap_db_dir: Rc<TempDir>,
+    _bootstrap_db_dir: Arc<TempDir>,
     bootstrap_db_path: PathBuf,
 }
 

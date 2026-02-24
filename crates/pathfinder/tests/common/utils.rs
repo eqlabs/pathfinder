@@ -7,6 +7,9 @@ use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
+use p2p_proto::common::Address;
+use pathfinder_crypto::Felt;
+use pathfinder_lib::devnet;
 use tempfile::TempDir;
 use tokio::task::{JoinError, JoinHandle};
 use tokio::time::sleep;
@@ -21,12 +24,18 @@ use crate::common::pathfinder_instance::{Config, PathfinderInstance};
 /// - verifies that the Pathfinder binary and fixtures directory exist,
 /// - starts an [`std::time::Instant`] to measure test setup duration,
 /// - returns configuration for the number of nodes specified and the instant.
-pub fn setup(num_instances: usize) -> anyhow::Result<(Vec<Config>, Instant)> {
+pub fn setup(num_instances: usize, init_devnet_db: bool) -> anyhow::Result<(Vec<Config>, Instant)> {
     PathfinderInstance::enable_log_dump(
         std::env::var_os("PATHFINDER_CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL").is_some(),
     );
 
     let stopwatch = Instant::now();
+
+    let devnet_config = if init_devnet_db {
+        Some(devnet::init_db(Address(Felt::ONE) /* Alice */)?)
+    } else {
+        None
+    };
 
     let pathfinder_bin = pathfinder_bin();
     anyhow::ensure!(pathfinder_bin.exists(), "Pathfinder binary not found");
@@ -38,7 +47,13 @@ pub fn setup(num_instances: usize) -> anyhow::Result<(Vec<Config>, Instant)> {
     println!("Test artifacts will be stored in {}", test_dir.display());
 
     Ok((
-        Config::for_set(num_instances, &pathfinder_bin, &fixture_dir, test_dir),
+        Config::for_set(
+            num_instances,
+            &pathfinder_bin,
+            &fixture_dir,
+            test_dir,
+            devnet_config,
+        ),
         stopwatch,
     ))
 }
