@@ -8634,6 +8634,7 @@ version = "0.22.0-beta.2"
 dependencies = [
  "ark-ff 0.5.0",
  "assert_matches",
+ "bincode",
  "bitvec",
  "criterion",
  "fake",
