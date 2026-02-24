@@ -134,6 +134,7 @@ impl PathfinderInstance {
             ));
         }
         command.arg(format!("--sync.enable={}", config.sync_enabled));
+        command.arg("--integration-tests.disable-gas-price-validation=true");
 
         config.inject_failure.map(|i| {
             command

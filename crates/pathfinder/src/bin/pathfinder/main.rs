@@ -312,8 +312,9 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     let integration_testing_config = config.integration_testing;
 
     // Create L1 gas price provider and sync task if consensus is enabled
-    let gas_price_provider = if let Some(consensus_config) = &config.consensus {
-        // TODO: Hardcoding default config for now
+    let gas_price_provider = if integration_testing_config.is_gas_price_validation_disabled() {
+        None
+    } else if let Some(consensus_config) = &config.consensus {
         let provider = L1GasPriceProvider::new(L1GasPriceConfig::from(consensus_config));
 
         // Spawn the L1 gas price sync task
