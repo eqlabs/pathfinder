@@ -80,7 +80,7 @@ impl PathfinderInstance {
                  informalsystems_malachitebft_core_consensus=trace,starknet_gateway_client=trace,\
                  starknet_gateway_types=trace,pathfinder_storage=trace",
             )
-            .arg("--ethereum.url=https://ethereum-sepolia-rpc.publicnode.com");
+            .arg("--ethereum.url=wss://ethereum-sepolia-rpc.publicnode.com");
 
         if let Some(port) = config.local_feeder_gateway_port {
             command.args([

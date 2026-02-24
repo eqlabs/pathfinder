@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- The `--ethereum.url` option now requires a WebSocket URL (`ws://` or `wss://`). HTTP/HTTPS URLs are no longer automatically converted to WebSocket and will result in an error.
+
 ### Fixed
 
 - `starknet_traceBlockTransactions` parameter `trace_flags` is not optional (as required by the spec).
