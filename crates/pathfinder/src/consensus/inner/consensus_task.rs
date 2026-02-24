@@ -46,6 +46,7 @@ pub fn spawn(
     mut rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
     main_storage: Storage,
     data_directory: &Path,
+    compiler_resource_limits: pathfinder_compiler::ResourceLimits,
     // Does nothing in production builds. Used for integration testing only.
     inject_failure: Option<InjectFailureConfig>,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
@@ -141,6 +142,7 @@ pub fn spawn(
                                 validator_address,
                                 main_storage.clone(),
                                 None, // Randomize
+                                compiler_resource_limits,
                             ) {
                                 Ok((wire_proposal, finalized_block)) => {
                                     let ProposalFin {

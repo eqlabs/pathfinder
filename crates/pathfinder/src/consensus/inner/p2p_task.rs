@@ -1511,6 +1511,7 @@ mod tests {
     use std::path::PathBuf;
 
     use pathfinder_common::{BlockHash, ConsensusFinalizedL2Block, StateCommitment};
+    use pathfinder_compiler::ResourceLimits;
     use pathfinder_crypto::Felt;
     use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
     use pathfinder_storage::StorageBuilder;
@@ -1531,11 +1532,8 @@ mod tests {
     fn regression_rollback_to_nonzero_batch_from_h10_onwards_clears_system_contract_0x1() {
         let main_storage = StorageBuilder::in_tempdir().unwrap();
         let worker_pool = create_test_worker_pool();
-        let mut batch_execution_manager = BatchExecutionManager::new(
-            None,
-            worker_pool.clone(),
-            pathfinder_compiler::ResourceLimits::recommended(),
-        );
+        let mut batch_execution_manager =
+            BatchExecutionManager::new(None, worker_pool.clone(), ResourceLimits::recommended());
         let dummy_data_dir = PathBuf::new();
 
         let mut incoming_proposals = HashMap::new();
@@ -1556,6 +1554,7 @@ mod tests {
                     batch_len: NonZeroUsize::new(1).unwrap(),
                     num_executed_txns: NonZeroUsize::new(2).unwrap(),
                 }),
+                ResourceLimits::recommended(),
             )
             .unwrap();
 

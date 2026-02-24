@@ -90,6 +90,7 @@ pub fn start(
         rx_from_p2p,
         main_storage,
         data_directory,
+        compiler_resource_limits,
         inject_failure_config,
     );
 
