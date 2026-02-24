@@ -5,9 +5,7 @@
 
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
-use std::sync::atomic::AtomicU64;
-use std::sync::LazyLock;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 use anyhow::Context;
 use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
@@ -15,9 +13,7 @@ use p2p_proto::consensus::{BlockInfo, ProposalFin, ProposalInit, ProposalPart};
 use pathfinder_common::{
     BlockId,
     BlockNumber,
-    BlockTimestamp,
     ChainId,
-    ConsensusFinalizedBlockHeader,
     ConsensusFinalizedL2Block,
     ContractAddress,
 };
@@ -27,6 +23,7 @@ use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
 use pathfinder_storage::Storage;
 use rand::{thread_rng, Rng, SeedableRng};
 
+use crate::devnet::strictly_increasing_timestamp;
 use crate::validator::{ProdTransactionMapper, ValidatorBlockInfoStage, ValidatorWorkerPool};
 
 /// Blocks consensus tasks's processing loop until the parent block of height is
@@ -114,17 +111,10 @@ pub(crate) fn create(
         "Attempted to create proposal with Nil round at height {height}"
     ))?;
 
-    static INIT_TIMESTAMP: LazyLock<u64> = LazyLock::new(|| {
-        SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs()
-    });
-
-    static TIMESTAMP_DELTA: AtomicU64 = AtomicU64::new(0);
-
-    let timestamp =
-        *INIT_TIMESTAMP + TIMESTAMP_DELTA.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let mut db_conn = main_storage.connection()?;
+    let db_txn = db_conn.transaction()?;
+    // This is fine because `wait_for_parent_committed` is called first
+    let latest_timestamp = db_txn.block_header(BlockId::Latest)?.map(|h| h.timestamp);
 
     let seed = thread_rng().gen::<u64>();
     tracing::debug!(%height, %round, %seed, ?config, "Creating dummy proposal");
@@ -166,7 +156,7 @@ pub(crate) fn create(
     let block_info = BlockInfo {
         height,
         builder: Address(proposer.0),
-        timestamp,
+        timestamp: strictly_increasing_timestamp(latest_timestamp).get(),
         l2_gas_price_fri: 1_000_000,
         l1_gas_price_wei: 1_000_000,
         l1_data_gas_price_wei: 1_000_000,
@@ -175,37 +165,13 @@ pub(crate) fn create(
     };
 
     parts.push(ProposalPart::BlockInfo(block_info.clone()));
-
-    // This is (obviously) not the actual finalized block for H-1, but
-    // it allows `validate_block_info` to succeed since it requires that
-    // the parent block is present in the decided blocks map (or committed
-    // to DB which we cannot fake).
-    let mut fake_decided_blocks = HashMap::new();
-    if let Some(parent_height) = height.checked_sub(1) {
-        fake_decided_blocks.insert(
-            parent_height,
-            (
-                0, // Any round is fine.
-                ConsensusFinalizedL2Block {
-                    header: ConsensusFinalizedBlockHeader {
-                        number: BlockNumber::new_or_panic(parent_height),
-                        // Must be less than `block_info.timestamp` to be considered valid by
-                        // `validate_block_info`.
-                        timestamp: BlockTimestamp::new_or_panic(0),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                },
-            ),
-        );
-    }
-
     let validator = ValidatorBlockInfoStage::new(ChainId::SEPOLIA_TESTNET, proposal_init)?;
     let worker_pool = create_test_worker_pool();
     let mut validator = validator.validate_block_info(
         block_info.clone(),
         main_storage,
-        &fake_decided_blocks,
+        // This is fine because `wait_for_parent_committed` is called first
+        &HashMap::new(),
         None,
         None,
         worker_pool,

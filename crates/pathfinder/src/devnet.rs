@@ -347,7 +347,7 @@ fn predeploy_contracts(
 
 /// Returns the current UNIX timestamp, ensuring that it is strictly increasing
 /// across calls, if the previous timestamp is provided.
-fn strictly_increasing_timestamp(prev: Option<BlockTimestamp>) -> BlockTimestamp {
+pub fn strictly_increasing_timestamp(prev: Option<BlockTimestamp>) -> BlockTimestamp {
     let current = BlockTimestamp::new_or_panic(
         SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
