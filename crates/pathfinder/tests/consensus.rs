@@ -80,8 +80,8 @@ mod test {
         // Happy path is the only scenario which starts consensus from genesis at the
         // expense of all transactions being reverted since they're random, invalid L1
         // handlers.
-        let (configs, boot_height, stopwatch) =
-            utils::setup(NUM_NODES, inject_failure.is_some()).unwrap();
+        let (configs, boot_height, stopwatch) = utils::setup(NUM_NODES, false).unwrap();
+        // utils::setup(NUM_NODES, inject_failure.is_some()).unwrap();
 
         // System contracts start to matter after block 10 but we have a separate
         // regression test for that, which checks that rollback at H>10 works correctly.
