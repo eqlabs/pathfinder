@@ -419,6 +419,7 @@ impl ValidatorTransactionBatchStage {
     pub fn execute_batch<T: TransactionExt>(
         &mut self,
         transactions: Vec<p2p_proto::consensus::Transaction>,
+        compiler_resource_limits: pathfinder_compiler::ResourceLimits,
     ) -> Result<(), ProposalHandlingError> {
         if transactions.is_empty() {
             return Ok(());
@@ -435,7 +436,7 @@ impl ValidatorTransactionBatchStage {
         // Convert transactions to executor format
         let txns = transactions
             .iter()
-            .map(|t| T::try_map_transaction(t.clone()))
+            .map(|t| T::try_map_transaction(t.clone(), compiler_resource_limits))
             .collect::<anyhow::Result<Vec<_>>>()
             .map_err(ProposalHandlingError::recoverable)?;
         let (common_txns, executor_txns): (Vec<_>, Vec<_>) = txns.into_iter().unzip();
@@ -804,8 +805,12 @@ pub trait TransactionExt {
     /// Maps consensus transaction to a pair of:
     /// - common transaction, which is used for verifying the transaction hash
     /// - executor transaction, which is used for executing the transaction
+    ///
+    /// For certain transactions, there is a compilation step which can be
+    /// resource-limited via `compiler_resource_limits`.
     fn try_map_transaction(
         transaction: p2p_proto::consensus::Transaction,
+        compiler_resource_limits: pathfinder_compiler::ResourceLimits,
     ) -> anyhow::Result<(
         pathfinder_common::transaction::Transaction,
         pathfinder_executor::Transaction,
@@ -819,6 +824,7 @@ pub struct ProdTransactionMapper;
 impl TransactionExt for ProdTransactionMapper {
     fn try_map_transaction(
         transaction: p2p_proto::consensus::Transaction,
+        compiler_resource_limits: pathfinder_compiler::ResourceLimits,
     ) -> anyhow::Result<(
         pathfinder_common::transaction::Transaction,
         pathfinder_executor::Transaction,
@@ -833,7 +839,7 @@ impl TransactionExt for ProdTransactionMapper {
                     common,
                     class_hash: Default::default(),
                 }),
-                Some(class_info(class)?),
+                Some(class_info(class, compiler_resource_limits)?),
             ),
             ConsensusVariant::DeployAccountV3(v) => (SyncVariant::DeployAccountV3(v), None),
             ConsensusVariant::InvokeV3(v) => (SyncVariant::InvokeV3(v), None),
@@ -876,7 +882,10 @@ impl TransactionExt for ProdTransactionMapper {
     }
 }
 
-fn class_info(class: Cairo1Class) -> anyhow::Result<ClassInfo> {
+fn class_info(
+    class: Cairo1Class,
+    compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+) -> anyhow::Result<ClassInfo> {
     let Cairo1Class {
         abi,
         entry_points,
@@ -921,8 +930,8 @@ fn class_info(class: Cairo1Class) -> anyhow::Result<ClassInfo> {
                 .collect(),
         },
     };
-    let casm_contract_definition = pathfinder_compiler::compile_to_casm_deser(definition)
-        .context("Compiling Sierra class definition to CASM")?;
+    let casm_contract_definition =
+        pathfinder_compiler::compile_sierra_to_casm_deser(definition, compiler_resource_limits)?;
 
     let casm_contract_definition = pathfinder_executor::parse_casm_definition(
         casm_contract_definition,
@@ -1064,7 +1073,10 @@ mod tests {
 
         // Execute batch 1
         validator_stage
-            .execute_batch::<ProdTransactionMapper>(batches[0].clone())
+            .execute_batch::<ProdTransactionMapper>(
+                batches[0].clone(),
+                pathfinder_compiler::ResourceLimits::recommended(),
+            )
             .expect("Failed to execute batch 1");
         assert_eq!(
             validator_stage.transaction_count(),
@@ -1074,7 +1086,10 @@ mod tests {
 
         // Execute batch 2
         validator_stage
-            .execute_batch::<ProdTransactionMapper>(batches[1].clone())
+            .execute_batch::<ProdTransactionMapper>(
+                batches[1].clone(),
+                pathfinder_compiler::ResourceLimits::recommended(),
+            )
             .expect("Failed to execute batch 2");
         assert_eq!(
             validator_stage.transaction_count(),
@@ -1084,7 +1099,10 @@ mod tests {
 
         // Execute batch 3
         validator_stage
-            .execute_batch::<ProdTransactionMapper>(batches[2].clone())
+            .execute_batch::<ProdTransactionMapper>(
+                batches[2].clone(),
+                pathfinder_compiler::ResourceLimits::recommended(),
+            )
             .expect("Failed to execute batch 3");
         assert_eq!(
             validator_stage.transaction_count(),
@@ -1162,13 +1180,22 @@ mod tests {
 
         // Execute all batches
         validator_stage
-            .execute_batch::<ProdTransactionMapper>(batches[0].clone())
+            .execute_batch::<ProdTransactionMapper>(
+                batches[0].clone(),
+                pathfinder_compiler::ResourceLimits::recommended(),
+            )
             .expect("Failed to execute batch 0");
         validator_stage
-            .execute_batch::<ProdTransactionMapper>(batches[1].clone())
+            .execute_batch::<ProdTransactionMapper>(
+                batches[1].clone(),
+                pathfinder_compiler::ResourceLimits::recommended(),
+            )
             .expect("Failed to execute batch 1");
         validator_stage
-            .execute_batch::<ProdTransactionMapper>(batches[2].clone())
+            .execute_batch::<ProdTransactionMapper>(
+                batches[2].clone(),
+                pathfinder_compiler::ResourceLimits::recommended(),
+            )
             .expect("Failed to execute batch 2");
 
         assert_eq!(validator_stage.transaction_count(), 7);

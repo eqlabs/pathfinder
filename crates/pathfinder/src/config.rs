@@ -4,6 +4,7 @@ use std::fs::File;
 use std::net::SocketAddr;
 use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::time::Duration;
 
 use clap::{ArgAction, CommandFactory, Parser};
@@ -24,14 +25,102 @@ pub mod p2p;
 use p2p::cli::{P2PConsensusCli, P2PSyncCli};
 use p2p::{P2PConsensusConfig, P2PSyncConfig};
 
+const COMPILER_MEMORY_USAGE_ALLOWED_RANGE: std::ops::RangeInclusive<u64> =
+    (pathfinder_compiler::ResourceLimits::RECOMMENDED_MEMORY_USAGE_LIMIT_MIB / 2)
+        ..=(4 * pathfinder_compiler::ResourceLimits::RECOMMENDED_MEMORY_USAGE_LIMIT_MIB);
+
+const COMPILER_CPU_TIME_ALLOWED_RANGE: std::ops::RangeInclusive<u64> =
+    pathfinder_compiler::ResourceLimits::RECOMMENDED_CPU_TIME_LIMIT
+        ..=(4 * pathfinder_compiler::ResourceLimits::RECOMMENDED_CPU_TIME_LIMIT);
+
 #[derive(Parser)]
 #[command(name = "Pathfinder")]
 #[command(author = "Equilibrium Labs")]
 #[command(version = pathfinder_version::VERSION)]
+#[command(propagate_version = true)]
 #[command(
     about = "A Starknet node implemented by Equilibrium Labs. Submit bug reports and issues at https://github.com/eqlabs/pathfinder."
 )]
-struct Cli {
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+/// Parse command line arguments, defaulting to the `node` subcommand
+/// if no valid subcommand is provided.
+///
+/// NOTE: There are nicer ways to do this but they all involve setting
+/// the `#[command(flatten)]` attribute on [`NodeArgs`] which isn't possible
+/// as long as it has fields with `#[clap(skip)]`.
+pub fn parse_cli() -> Cli {
+    let mut os_args: Vec<_> = std::env::args_os().collect();
+    let Some(arg1) = os_args.get(1) else {
+        // No subcommand provided, let clap handle showing the help message.
+        return Cli::parse_from(os_args);
+    };
+
+    // If a valid subcommand was provided, run it. Otherwise, default to the
+    // `node` subcommand and let clap handle any errors.
+    let is_valid_command = if let Some(arg1) = arg1.as_os_str().to_str() {
+        CommandKind::from_str(arg1).is_ok()
+    } else {
+        false
+    };
+
+    if !is_valid_command {
+        os_args.insert(1, "node".into());
+    }
+
+    Cli::parse_from(os_args)
+}
+
+#[derive(clap::Subcommand)]
+pub enum Command {
+    /// Run the Pathfinder node.
+    Node(Box<NodeArgs>),
+
+    /// Run the Sierra to CASM compiler. Raw Sierra class definitions are read
+    /// from stdin and the compiled CASM is written to stdout.
+    ///
+    /// This command is intended to be used as a subprocess by the main
+    /// `pathfinder` executable and is not generally useful to run directly.
+    Compile,
+}
+
+enum CommandKind {
+    Node,
+    Compile,
+    Help,
+    Version,
+}
+
+impl FromStr for CommandKind {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "node" => Ok(CommandKind::Node),
+            "compile" => Ok(CommandKind::Compile),
+            "help" | "--help" | "-h" => Ok(CommandKind::Help),
+            "--version" | "-V" => Ok(CommandKind::Version),
+            _ => Err(()),
+        }
+    }
+}
+
+// Not actually used, but serves as a guarantee that every command has a
+// corresponding CommandKind.
+impl From<Command> for CommandKind {
+    fn from(command: Command) -> Self {
+        match command {
+            Command::Node(_) => CommandKind::Node,
+            Command::Compile => CommandKind::Compile,
+        }
+    }
+}
+
+#[derive(clap::Args)]
+pub struct NodeArgs {
     #[arg(
         long,
         value_name = "DIR",
@@ -373,6 +462,28 @@ This should only be enabled for debugging purposes as it adds substantial proces
         env = "PATHFINDER_RPC_CUSTOM_VERSIONED_CONSTANTS_JSON_PATH"
     )]
     custom_versioned_constants_path: Option<PathBuf>,
+
+    #[arg(
+        long = "compiler.max-memory-usage-mib",
+        long_help = "Maximum memory usage for the compiler in MiB. 
+
+Setting this value too low may cause compilation of large classes to fail.",
+        env = "PATHFINDER_COMPILER_MAX_MEMORY_USAGE_MIB",
+        default_value_t = pathfinder_compiler::ResourceLimits::RECOMMENDED_MEMORY_USAGE_LIMIT_MIB,
+        value_parser = clap::value_parser!(u64).range(COMPILER_MEMORY_USAGE_ALLOWED_RANGE),
+    )]
+    compiler_max_memory_usage_mib: u64,
+
+    #[arg(
+        long = "compiler.max-cpu-time-secs",
+        long_help = "Maximum CPU time for the compiler in seconds. 
+
+Setting this value too low may cause compilation of large classes to fail.",
+        env = "PATHFINDER_COMPILER_MAX_CPU_TIME_SECONDS",
+        default_value_t = pathfinder_compiler::ResourceLimits::RECOMMENDED_CPU_TIME_LIMIT,
+        value_parser = clap::value_parser!(u64).range(COMPILER_CPU_TIME_ALLOWED_RANGE),
+    )]
+    compiler_max_cpu_time_secs: u64,
 
     #[arg(
         long = "sync.fetch-casm-from-fgw",
@@ -913,6 +1024,7 @@ pub struct Config {
     pub blockchain_history: Option<BlockchainHistory>,
     pub state_tries: Option<StateTries>,
     pub versioned_constants_map: VersionedConstantsMap,
+    pub compiler_resource_limits: pathfinder_compiler::ResourceLimits,
     pub feeder_gateway_fetch_concurrency: NonZeroUsize,
     pub fetch_casm_from_fgw: bool,
     pub shutdown_grace_period: Duration,
@@ -1162,65 +1274,68 @@ impl ConsensusConfig {
 
 impl Config {
     #[cfg_attr(not(feature = "cairo-native"), allow(clippy::unit_arg))]
-    pub fn parse() -> Self {
-        let cli = Cli::parse();
-
-        let network = NetworkConfig::from_components(cli.network);
+    pub fn parse(args: Box<NodeArgs>) -> Self {
+        let network = NetworkConfig::from_components(args.network);
 
         Config {
-            data_directory: cli.data_directory,
+            data_directory: args.data_directory,
             ethereum: Ethereum {
-                password: cli.ethereum_password,
-                url: cli.ethereum_url,
+                password: args.ethereum_password,
+                url: args.ethereum_url,
             },
-            rpc_address: cli.rpc_address,
-            rpc_cors_domains: parse_cors_or_exit(cli.rpc_cors_domains),
-            rpc_root_version: cli.rpc_root_version,
-            websocket: cli.websocket,
-            monitor_address: cli.monitor_address,
+            rpc_address: args.rpc_address,
+            rpc_cors_domains: parse_cors_or_exit(args.rpc_cors_domains),
+            rpc_root_version: args.rpc_root_version,
+            websocket: args.websocket,
+            monitor_address: args.monitor_address,
             network,
-            execution_concurrency: cli.execution_concurrency,
-            sqlite_wal: match cli.sqlite_wal {
+            execution_concurrency: args.execution_concurrency,
+            sqlite_wal: match args.sqlite_wal {
                 true => JournalMode::WAL,
                 false => JournalMode::Rollback,
             },
-            max_rpc_connections: cli.max_rpc_connections,
-            poll_interval: cli.poll_interval,
-            l1_poll_interval: Duration::from_secs(cli.l1_poll_interval.get()),
-            color: cli.color,
-            log_output_json: cli.log_output_json,
-            disable_version_update_check: cli.disable_version_update_check,
-            sync_p2p: P2PSyncConfig::parse_or_exit(cli.p2p_sync),
-            consensus_p2p: P2PConsensusConfig::parse_or_exit(cli.p2p_consensus),
-            debug: DebugConfig::parse(cli.debug),
-            verify_tree_hashes: cli.verify_tree_node_data,
-            rpc_batch_concurrency_limit: cli.rpc_batch_concurrency_limit,
-            disable_batch_requests: cli.disable_batch_requests,
-            is_sync_enabled: cli.is_sync_enabled,
-            is_rpc_enabled: cli.is_rpc_enabled,
-            gateway_api_key: cli.gateway_api_key,
-            event_filter_cache_size: cli.event_filter_cache_size,
-            get_events_event_filter_block_range_limit: cli
+            max_rpc_connections: args.max_rpc_connections,
+            poll_interval: args.poll_interval,
+            l1_poll_interval: Duration::from_secs(args.l1_poll_interval.get()),
+            color: args.color,
+            log_output_json: args.log_output_json,
+            disable_version_update_check: args.disable_version_update_check,
+            sync_p2p: P2PSyncConfig::parse_or_exit(args.p2p_sync),
+            consensus_p2p: P2PConsensusConfig::parse_or_exit(args.p2p_consensus),
+            debug: DebugConfig::parse(args.debug),
+            verify_tree_hashes: args.verify_tree_node_data,
+            rpc_batch_concurrency_limit: args.rpc_batch_concurrency_limit,
+            disable_batch_requests: args.disable_batch_requests,
+            is_sync_enabled: args.is_sync_enabled,
+            is_rpc_enabled: args.is_rpc_enabled,
+            gateway_api_key: args.gateway_api_key,
+            event_filter_cache_size: args.event_filter_cache_size,
+            get_events_event_filter_block_range_limit: args
                 .get_events_event_filter_block_range_limit,
-            gateway_timeout: Duration::from_secs(cli.gateway_timeout.get()),
-            feeder_gateway_fetch_concurrency: cli.feeder_gateway_fetch_concurrency,
-            blockchain_history: cli.blockchain_history,
-            state_tries: cli.state_tries,
-            versioned_constants_map: cli
+            gateway_timeout: Duration::from_secs(args.gateway_timeout.get()),
+            feeder_gateway_fetch_concurrency: args.feeder_gateway_fetch_concurrency,
+            blockchain_history: args.blockchain_history,
+            state_tries: args.state_tries,
+            versioned_constants_map: args
                 .custom_versioned_constants_path
                 .map(|path| parse_versioned_constants_or_exit(&path))
                 .unwrap_or_default(),
-            fetch_casm_from_fgw: cli.fetch_casm_from_fgw,
-            shutdown_grace_period: Duration::from_secs(cli.shutdown_grace_period.get()),
-            fee_estimation_epsilon: cli.fee_estimation_epsilon,
+            compiler_resource_limits: pathfinder_compiler::ResourceLimits::new(
+                // Convert MiB to bytes for the general config.
+                args.compiler_max_memory_usage_mib * 1024 * 1024,
+                args.compiler_max_cpu_time_secs,
+            ),
+            fetch_casm_from_fgw: args.fetch_casm_from_fgw,
+            shutdown_grace_period: Duration::from_secs(args.shutdown_grace_period.get()),
+            fee_estimation_epsilon: args.fee_estimation_epsilon,
             #[cfg_attr(not(feature = "cairo-native"), allow(clippy::unit_arg))]
-            native_execution: NativeExecutionConfig::parse(cli.native_execution),
-            submission_tracker_time_limit: cli.submission_tracker_time_limit,
-            submission_tracker_size_limit: cli.submission_tracker_size_limit,
-            rpc_block_trace_cache_size: cli.rpc_block_trace_cache_size,
-            consensus: ConsensusConfig::parse_or_exit(cli.consensus),
+            native_execution: NativeExecutionConfig::parse(args.native_execution),
+            submission_tracker_time_limit: args.submission_tracker_time_limit,
+            submission_tracker_size_limit: args.submission_tracker_size_limit,
+            rpc_block_trace_cache_size: args.rpc_block_trace_cache_size,
+            consensus: ConsensusConfig::parse_or_exit(args.consensus),
             integration_testing: integration_testing::IntegrationTestingConfig::parse(
-                cli.integration_testing,
+                args.integration_testing,
             ),
         }
     }

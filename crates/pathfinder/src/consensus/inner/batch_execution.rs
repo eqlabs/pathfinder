@@ -38,6 +38,7 @@ pub struct BatchExecutionManager {
     gas_price_provider: Option<L1GasPriceProvider>,
     /// Worker pool for concurrent execution.
     worker_pool: ValidatorWorkerPool,
+    compiler_resource_limits: pathfinder_compiler::ResourceLimits,
 }
 
 impl BatchExecutionManager {
@@ -45,12 +46,14 @@ impl BatchExecutionManager {
     pub fn new(
         gas_price_provider: Option<L1GasPriceProvider>,
         worker_pool: ValidatorWorkerPool,
+        compiler_resource_limits: pathfinder_compiler::ResourceLimits,
     ) -> Self {
         Self {
             executing: HashSet::new(),
             executed_transaction_count_processed: HashSet::new(),
             gas_price_provider,
             worker_pool,
+            compiler_resource_limits,
         }
     }
 
@@ -173,7 +176,7 @@ impl BatchExecutionManager {
         };
 
         // Execute the batch
-        validator.execute_batch::<T>(all_transactions)?;
+        validator.execute_batch::<T>(all_transactions, self.compiler_resource_limits)?;
 
         // Mark that execution has started for this height/round
         self.executing.insert(height_and_round);
@@ -232,7 +235,7 @@ impl BatchExecutionManager {
         }
 
         // Execute the batch
-        validator.execute_batch::<T>(transactions)?;
+        validator.execute_batch::<T>(transactions, self.compiler_resource_limits)?;
 
         tracing::debug!(
             "Transaction batch execution for height and round {height_and_round} is complete"
@@ -428,7 +431,11 @@ mod tests {
             ValidatorTransactionBatchStage::new(chain_id, block_info, storage, worker_pool.clone())
                 .expect("Failed to create validator stage");
 
-        let mut batch_execution_manager = BatchExecutionManager::new(None, worker_pool);
+        let mut batch_execution_manager = BatchExecutionManager::new(
+            None,
+            worker_pool,
+            pathfinder_compiler::ResourceLimits::recommended(),
+        );
         let height_and_round = HeightAndRound::new(2, 1);
 
         // Initially, execution should not have started
@@ -538,7 +545,11 @@ mod tests {
         };
 
         let worker_pool = create_test_worker_pool();
-        let mut batch_execution_manager = BatchExecutionManager::new(None, worker_pool);
+        let mut batch_execution_manager = BatchExecutionManager::new(
+            None,
+            worker_pool,
+            pathfinder_compiler::ResourceLimits::recommended(),
+        );
 
         let decided_blocks = std::collections::HashMap::new();
         let mut deferred_executions: std::collections::HashMap<HeightAndRound, DeferredExecution> =
@@ -648,7 +659,11 @@ mod tests {
             .map(ValidatorStage::BlockInfo)
             .expect("Failed to create validator stage");
 
-        let mut batch_execution_manager = BatchExecutionManager::new(None, worker_pool.clone());
+        let mut batch_execution_manager = BatchExecutionManager::new(
+            None,
+            worker_pool.clone(),
+            pathfinder_compiler::ResourceLimits::recommended(),
+        );
 
         let decided_blocks = std::collections::HashMap::new();
         let mut deferred_executions: std::collections::HashMap<HeightAndRound, DeferredExecution> =
@@ -792,7 +807,11 @@ mod tests {
         )
         .expect("Failed to create validator stage");
 
-        let mut batch_execution_manager = BatchExecutionManager::new(None, worker_pool);
+        let mut batch_execution_manager = BatchExecutionManager::new(
+            None,
+            worker_pool,
+            pathfinder_compiler::ResourceLimits::recommended(),
+        );
         let height_and_round = HeightAndRound::new(2, 1);
 
         // Execute multiple batches: 3 + 7 + 4 = 14 transactions total
@@ -915,7 +934,11 @@ mod tests {
             ValidatorTransactionBatchStage::new(chain_id, block_info, storage, worker_pool.clone())
                 .expect("Failed to create validator stage");
 
-        let mut batch_execution_manager = BatchExecutionManager::new(None, worker_pool);
+        let mut batch_execution_manager = BatchExecutionManager::new(
+            None,
+            worker_pool,
+            pathfinder_compiler::ResourceLimits::recommended(),
+        );
         let height_and_round = HeightAndRound::new(2, 1);
 
         // Empty batch still marks execution as started
@@ -964,7 +987,11 @@ mod tests {
             ValidatorTransactionBatchStage::new(chain_id, block_info, storage, worker_pool.clone())
                 .expect("Failed to create validator stage");
 
-        let mut batch_execution_manager = BatchExecutionManager::new(None, worker_pool);
+        let mut batch_execution_manager = BatchExecutionManager::new(
+            None,
+            worker_pool,
+            pathfinder_compiler::ResourceLimits::recommended(),
+        );
         let height_and_round = HeightAndRound::new(2, 1);
 
         // Execute a batch of 5 transactions
@@ -1017,7 +1044,11 @@ mod tests {
             ValidatorTransactionBatchStage::new(chain_id, block_info, storage, worker_pool.clone())
                 .expect("Failed to create validator stage");
 
-        let mut batch_execution_manager = BatchExecutionManager::new(None, worker_pool);
+        let mut batch_execution_manager = BatchExecutionManager::new(
+            None,
+            worker_pool,
+            pathfinder_compiler::ResourceLimits::recommended(),
+        );
         let height_and_round = HeightAndRound::new(2, 1);
 
         // Execute a batch of 5 transactions

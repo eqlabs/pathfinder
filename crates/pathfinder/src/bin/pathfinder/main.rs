@@ -36,18 +36,22 @@ mod update;
 static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 fn main() -> anyhow::Result<()> {
-    tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .thread_stack_size(8 * 1024 * 1024)
-        .build()
-        .unwrap()
-        .block_on(async {
-            async_main().await?;
-            Ok(())
-        })
+    let cli = config::parse_cli();
+    match cli.command {
+        config::Command::Node(args) => tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .thread_stack_size(8 * 1024 * 1024)
+            .build()
+            .unwrap()
+            .block_on(async move {
+                node_main(args).await?;
+                Ok(())
+            }),
+        config::Command::Compile => compile_main(),
+    }
 }
 
-async fn async_main() -> anyhow::Result<Storage> {
+async fn node_main(args: Box<config::NodeArgs>) -> anyhow::Result<Storage> {
     if std::env::var_os("RUST_LOG").is_none() {
         // Disable all dependency logs by default.
         std::env::set_var("RUST_LOG", "pathfinder=info,error");
@@ -58,7 +62,7 @@ async fn async_main() -> anyhow::Result<Storage> {
         .install_default()
         .expect("rustls crypto provider setup should not fail");
 
-    let config = config::Config::parse();
+    let config = config::Config::parse(args);
 
     setup_tracing(
         config.color,
@@ -250,6 +254,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         submission_tracker_time_limit: config.submission_tracker_time_limit,
         submission_tracker_size_limit: config.submission_tracker_size_limit,
         block_trace_cache_size: config.rpc_block_trace_cache_size,
+        compiler_resource_limits: config.compiler_resource_limits,
     };
 
     let notifications = Notifications::default();
@@ -359,8 +364,9 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
                 event_rx,
                 wal_directory,
                 &config.data_directory,
-                config.verify_tree_hashes,
                 gas_price_provider.clone(),
+                config.verify_tree_hashes,
+                config.compiler_resource_limits,
                 // Does nothing in production builds. Used for integration testing only.
                 integration_testing_config.inject_failure_config(),
             )
@@ -407,7 +413,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             notifications,
             gateway_public_key,
             sync_p2p_client,
-            config.verify_tree_hashes,
         )
     } else {
         tokio::task::spawn(futures::future::pending())
@@ -492,6 +497,23 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     main_result.map(|_| shutdown_storage)
 }
 
+fn compile_main() -> anyhow::Result<()> {
+    use std::io::{Read, Write};
+
+    const SIERRA_DEFINITION_SIZE_ESTIMATE: usize = 400 * 1024; // 400 KiB
+    let mut sierra_definition = Vec::with_capacity(SIERRA_DEFINITION_SIZE_ESTIMATE);
+    std::io::stdin()
+        .read_to_end(&mut sierra_definition)
+        .context("reading Sierra from stdin")?;
+
+    let casm = pathfinder_compiler::compile_sierra_to_casm_impl(&sierra_definition)
+        .context("compiling Sierra to CASM")?;
+
+    std::io::stdout()
+        .write_all(&casm)
+        .context("writing CASM to stdout")
+}
+
 #[cfg(feature = "tokio-console")]
 fn setup_tracing(color: config::Color, pretty_log: bool, json_log: bool) {
     use tracing_subscriber::prelude::*;
@@ -573,7 +595,6 @@ fn start_sync(
     notifications: Notifications,
     gateway_public_key: pathfinder_common::PublicKey,
     p2p_client: Option<P2PSyncClient>,
-    verify_tree_hashes: bool,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     if config.sync_p2p.proxy {
         start_feeder_gateway_sync(
@@ -609,7 +630,8 @@ fn start_sync(
             p2p_client,
             gateway_public_key,
             config.sync_p2p.l1_checkpoint_override,
-            verify_tree_hashes,
+            config.verify_tree_hashes,
+            config.compiler_resource_limits,
         )
     }
 }
@@ -628,7 +650,6 @@ fn start_sync(
     notifications: Notifications,
     gateway_public_key: pathfinder_common::PublicKey,
     _p2p_client: Option<P2PSyncClient>,
-    _verify_tree_hashes: bool,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     start_feeder_gateway_sync(
         storage,
@@ -675,6 +696,7 @@ fn start_feeder_gateway_sync(
         sequencer_public_key: gateway_public_key,
         fetch_concurrency: config.feeder_gateway_fetch_concurrency,
         fetch_casm_from_fgw: config.fetch_casm_from_fgw,
+        compiler_resource_limits: config.compiler_resource_limits,
     };
 
     util::task::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync))
@@ -712,6 +734,7 @@ fn start_consensus_aware_fgw_sync(
         restart_delay: config.debug.restart_delay,
         verify_tree_hashes: config.verify_tree_hashes,
         sequencer_public_key: gateway_public_key,
+        compiler_resource_limits: config.compiler_resource_limits,
         fetch_concurrency: config.feeder_gateway_fetch_concurrency,
         fetch_casm_from_fgw: config.fetch_casm_from_fgw,
     };
@@ -734,6 +757,7 @@ fn start_p2p_sync(
     gateway_public_key: pathfinder_common::PublicKey,
     l1_checkpoint_override: Option<pathfinder_ethereum::EthereumStateUpdate>,
     verify_tree_hashes: bool,
+    compiler_resource_limits: pathfinder_compiler::ResourceLimits,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     use pathfinder_block_hashes::BlockHashDb;
 
@@ -747,6 +771,7 @@ fn start_p2p_sync(
         public_key: gateway_public_key,
         l1_checkpoint_override,
         verify_tree_hashes,
+        compiler_resource_limits,
         block_hash_db: Some(BlockHashDb::new(pathfinder_context.network)),
     };
     util::task::spawn(sync.run())

@@ -118,6 +118,7 @@ pub struct SyncContext<G, E> {
     pub sequencer_public_key: PublicKey,
     pub fetch_concurrency: std::num::NonZeroUsize,
     pub fetch_casm_from_fgw: bool,
+    pub compiler_resource_limits: pathfinder_compiler::ResourceLimits,
 }
 
 impl<G, E> From<&SyncContext<G, E>> for L1SyncContext<E>
@@ -146,6 +147,7 @@ where
             block_validation_mode: value.block_validation_mode,
             storage: value.storage.clone(),
             sequencer_public_key: value.sequencer_public_key,
+            compiler_resource_limits: value.compiler_resource_limits,
             fetch_concurrency: value.fetch_concurrency,
             fetch_casm_from_fgw: value.fetch_casm_from_fgw,
         }
@@ -193,6 +195,7 @@ where
         restart_delay,
         verify_tree_hashes: _,
         sequencer_public_key: _,
+        compiler_resource_limits,
         fetch_concurrency: _,
         fetch_casm_from_fgw,
     } = context;
@@ -284,6 +287,7 @@ where
         storage.clone(),
         rx_latest.clone(),
         rx_current.clone(),
+        compiler_resource_limits,
         fetch_casm_from_fgw,
     ));
 
@@ -299,6 +303,7 @@ where
                     storage.clone(),
                     rx_latest.clone(),
                     rx_current.clone(),
+                    compiler_resource_limits,
                     fetch_casm_from_fgw,
                 ));
             },
@@ -483,6 +488,7 @@ where
         restart_delay,
         verify_tree_hashes: _,
         sequencer_public_key: _,
+        compiler_resource_limits: _,
         fetch_concurrency: _,
         fetch_casm_from_fgw: _,
     } = context;

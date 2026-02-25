@@ -9,6 +9,7 @@ use crate::state::sync::SyncEvent;
 
 /// Emits new pending data events while the current block is close to the latest
 /// block.
+#[allow(clippy::too_many_arguments)]
 pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
     tx_event: tokio::sync::mpsc::Sender<SyncEvent>,
     sequencer: S,
@@ -16,6 +17,7 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
     storage: Storage,
     latest: watch::Receiver<(BlockNumber, BlockHash)>,
     current: watch::Receiver<(BlockNumber, BlockHash)>,
+    compiler_resource_limits: pathfinder_compiler::ResourceLimits,
     fetch_casm_from_fgw: bool,
 ) {
     poll_pre_starknet_0_14_0(
@@ -25,6 +27,7 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
         &storage,
         &latest,
         &current,
+        compiler_resource_limits,
         fetch_casm_from_fgw,
     )
     .await;
@@ -36,6 +39,7 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
         &storage,
         &latest,
         &current,
+        compiler_resource_limits,
         fetch_casm_from_fgw,
     )
     .await;
@@ -43,6 +47,7 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
 
 const STARKNET_VERSION_0_14_0: StarknetVersion = StarknetVersion::new(0, 14, 0, 0);
 
+#[allow(clippy::too_many_arguments)]
 pub async fn poll_pre_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
     tx_event: &tokio::sync::mpsc::Sender<SyncEvent>,
     sequencer: &S,
@@ -50,6 +55,7 @@ pub async fn poll_pre_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
     storage: &Storage,
     latest: &watch::Receiver<(BlockNumber, BlockHash)>,
     current: &watch::Receiver<(BlockNumber, BlockHash)>,
+    compiler_resource_limits: pathfinder_compiler::ResourceLimits,
     fetch_casm_from_fgw: bool,
 ) {
     let mut prev_tx_count = 0;
@@ -101,6 +107,7 @@ pub async fn poll_pre_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
             &state_update,
             sequencer,
             storage.clone(),
+            compiler_resource_limits,
             fetch_casm_from_fgw,
         )
         .await
@@ -135,6 +142,7 @@ pub async fn poll_pre_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
     tx_event: &tokio::sync::mpsc::Sender<SyncEvent>,
     sequencer: &S,
@@ -142,6 +150,7 @@ pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
     storage: &Storage,
     latest: &watch::Receiver<(BlockNumber, BlockHash)>,
     current: &watch::Receiver<(BlockNumber, BlockHash)>,
+    compiler_resource_limits: pathfinder_compiler::ResourceLimits,
     fetch_casm_from_fgw: bool,
 ) {
     const IN_SYNC_THRESHOLD: u64 = 6;
@@ -217,6 +226,7 @@ pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
                 state_update,
                 sequencer,
                 storage.clone(),
+                compiler_resource_limits,
                 fetch_casm_from_fgw,
             )
             .await
@@ -540,6 +550,7 @@ mod tests {
                 StorageBuilder::in_memory().unwrap(),
                 latest,
                 current,
+                pathfinder_compiler::ResourceLimits::recommended(),
                 false,
             )
             .await
@@ -613,6 +624,7 @@ mod tests {
                 StorageBuilder::in_memory().unwrap(),
                 rx_latest,
                 rx_current,
+                pathfinder_compiler::ResourceLimits::recommended(),
                 false,
             )
             .await
@@ -667,6 +679,7 @@ mod tests {
                 StorageBuilder::in_memory().unwrap(),
                 rx_latest,
                 rx_current,
+                pathfinder_compiler::ResourceLimits::recommended(),
                 false,
             )
             .await
@@ -766,6 +779,7 @@ mod tests {
                 StorageBuilder::in_memory().unwrap(),
                 rx_latest,
                 rx_current,
+                pathfinder_compiler::ResourceLimits::recommended(),
                 false,
             )
             .await
@@ -851,6 +865,7 @@ mod tests {
                 &StorageBuilder::in_memory().unwrap(),
                 &rx_latest,
                 &rx_current,
+                pathfinder_compiler::ResourceLimits::recommended(),
                 false,
             )
             .await
@@ -940,6 +955,7 @@ mod tests {
                 &StorageBuilder::in_memory().unwrap(),
                 &rx_latest,
                 &rx_current,
+                pathfinder_compiler::ResourceLimits::recommended(),
                 false,
             )
             .await

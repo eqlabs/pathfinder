@@ -28,6 +28,7 @@ mod tests {
     ) -> anyhow::Result<()> {
         let mut command = Command::new(pathfinder_release_bin());
         let command = command
+            .arg("node")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .env("RUST_LOG", "pathfinder_lib=trace,pathfinder=trace")

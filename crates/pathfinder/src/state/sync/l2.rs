@@ -93,6 +93,7 @@ pub struct L2SyncContext<GatewayClient> {
     pub block_validation_mode: BlockValidationMode,
     pub storage: Storage,
     pub sequencer_public_key: PublicKey,
+    pub compiler_resource_limits: pathfinder_compiler::ResourceLimits,
     pub fetch_concurrency: std::num::NonZeroUsize,
     pub fetch_casm_from_fgw: bool,
 }
@@ -125,6 +126,7 @@ where
         block_validation_mode,
         storage,
         sequencer_public_key,
+        compiler_resource_limits,
         fetch_concurrency: _,
         fetch_casm_from_fgw,
     } = context;
@@ -236,6 +238,7 @@ where
             &state_update,
             &sequencer,
             storage.clone(),
+            compiler_resource_limits,
             fetch_casm_from_fgw,
         )
         .await
@@ -366,6 +369,7 @@ where
         block_validation_mode,
         storage,
         sequencer_public_key,
+        compiler_resource_limits,
         fetch_concurrency: _,
         fetch_casm_from_fgw,
     } = context;
@@ -573,6 +577,7 @@ where
             &state_update,
             &sequencer,
             storage.clone(),
+            compiler_resource_limits,
             fetch_casm_from_fgw,
         )
         .await
@@ -729,6 +734,7 @@ pub async fn download_new_classes(
     state_update: &StateUpdate,
     sequencer: &impl GatewayApi,
     storage: Storage,
+    compiler_resource_limits: pathfinder_compiler::ResourceLimits,
     fetch_casm_from_fgw: bool,
 ) -> Result<Vec<DownloadedClass>, anyhow::Error> {
     let deployed_classes = state_update
@@ -783,9 +789,14 @@ pub async fn download_new_classes(
 
     let futures = require_downloading.into_iter().map(|class_hash| {
         async move {
-            download_class(sequencer, class_hash, fetch_casm_from_fgw)
-                .await
-                .with_context(|| format!("Downloading class {}", class_hash.0))
+            download_class(
+                sequencer,
+                class_hash,
+                compiler_resource_limits,
+                fetch_casm_from_fgw,
+            )
+            .await
+            .with_context(|| format!("Downloading class {}", class_hash.0))
         }
         .in_current_span()
     });
@@ -997,6 +1008,7 @@ where
         block_validation_mode,
         storage,
         sequencer_public_key,
+        compiler_resource_limits,
         fetch_concurrency,
         fetch_casm_from_fgw,
     } = context;
@@ -1096,12 +1108,17 @@ where
                     .context("Verifying block contents")?;
 
                 let t_declare = std::time::Instant::now();
-                let downloaded_classes =
-                    download_new_classes(&state_update, &sequencer, storage, fetch_casm_from_fgw)
-                        .await
-                        .with_context(|| {
-                            format!("Handling newly declared classes for block {block_number:?}")
-                        })?;
+                let downloaded_classes = download_new_classes(
+                    &state_update,
+                    &sequencer,
+                    storage,
+                    compiler_resource_limits,
+                    fetch_casm_from_fgw,
+                )
+                .await
+                .with_context(|| {
+                    format!("Handling newly declared classes for block {block_number:?}")
+                })?;
                 let t_declare = t_declare.elapsed();
 
                 let timings = Timings {
@@ -1728,6 +1745,7 @@ mod tests {
                 block_validation_mode: MODE,
                 storage,
                 sequencer_public_key: PublicKey::ZERO,
+                compiler_resource_limits: pathfinder_compiler::ResourceLimits::recommended(),
                 fetch_concurrency: std::num::NonZeroUsize::new(1).unwrap(),
                 fetch_casm_from_fgw: false,
             };
@@ -1770,6 +1788,7 @@ mod tests {
                 block_validation_mode: MODE,
                 storage,
                 sequencer_public_key: PublicKey::ZERO,
+                compiler_resource_limits: pathfinder_compiler::ResourceLimits::recommended(),
                 fetch_concurrency: std::num::NonZeroUsize::new(1).unwrap(),
                 fetch_casm_from_fgw: false,
             };
@@ -1801,6 +1820,7 @@ mod tests {
                 storage,
                 sequencer_public_key: PublicKey::ZERO,
                 fetch_concurrency: std::num::NonZeroUsize::new(2).unwrap(),
+                compiler_resource_limits: pathfinder_compiler::ResourceLimits::recommended(),
                 fetch_casm_from_fgw: false,
             };
 
@@ -2309,6 +2329,7 @@ mod tests {
                     )
                     .unwrap(),
                     sequencer_public_key: PublicKey::ZERO,
+                    compiler_resource_limits: pathfinder_compiler::ResourceLimits::recommended(),
                     fetch_concurrency: std::num::NonZeroUsize::new(1).unwrap(),
                     fetch_casm_from_fgw: false,
                 };

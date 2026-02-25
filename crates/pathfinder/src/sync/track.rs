@@ -40,6 +40,7 @@ pub struct Sync<L, P> {
     pub public_key: PublicKey,
     pub block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
     pub verify_tree_hashes: bool,
+    pub compiler_resource_limits: pathfinder_compiler::ResourceLimits,
 }
 
 impl<L, P> Sync<L, P> {
@@ -125,7 +126,11 @@ impl<L, P> Sync<L, P> {
         .pipe(class_definitions::VerifyLayout, 10)
         .pipe(class_definitions::VerifyHash, 10)
         .pipe(
-            class_definitions::CompileSierraToCasm::new(fgw, tokio::runtime::Handle::current()),
+            class_definitions::CompileSierraToCasm::new(
+                fgw,
+                tokio::runtime::Handle::current(),
+                self.compiler_resource_limits,
+            ),
             10,
         )
         .pipe(
