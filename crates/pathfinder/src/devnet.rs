@@ -48,7 +48,7 @@ use pathfinder_storage::pruning::BlockchainHistoryMode;
 use pathfinder_storage::{Storage, StorageBuilder, TriePruneMode};
 use tempfile::TempDir;
 
-use crate::devnet::account::Account;
+pub use crate::devnet::account::Account;
 use crate::devnet::class::{preprocess_sierra, PrepocessedSierra};
 use crate::devnet::fixtures::RESOURCE_BOUNDS;
 use crate::state::block_hash::compute_final_hash;
@@ -190,7 +190,7 @@ impl BootDb {
 pub fn declare(
     storage: Storage,
     db_txn: pathfinder_storage::Transaction<'_>,
-    account: &mut Account,
+    account: &Account,
     serialized_sierra: &[u8],
     proposer: Address,
 ) -> anyhow::Result<()> {

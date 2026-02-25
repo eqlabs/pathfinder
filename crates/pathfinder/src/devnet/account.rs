@@ -1,8 +1,6 @@
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 use std::u128;
 
-use anyhow::Context;
 use num_bigint::BigUint;
 use p2p::sync::client::conv::ToDto as _;
 use p2p_proto::common::Hash;
@@ -18,7 +16,6 @@ use pathfinder_common::{
     CallParam,
     ChainId,
     ContractAddress,
-    ContractNonce,
     EntryPoint,
     PublicKey,
     SierraHash,
@@ -28,13 +25,13 @@ use pathfinder_common::{
 };
 use pathfinder_crypto::signature::ecdsa_sign;
 use pathfinder_crypto::Felt;
-use pathfinder_executor::{IntoFelt as _, IntoStarkFelt as _};
+use pathfinder_executor::IntoStarkFelt as _;
 use starknet_api::abi::abi_utils::get_storage_var_address;
 
 use crate::devnet::contract::predeploy;
+use crate::devnet::fixtures;
 use crate::devnet::fixtures::RESOURCE_BOUNDS;
 use crate::devnet::utils::{get_storage_at, join_felts, set_storage_at, split_biguint};
-use crate::devnet::{account, fixtures};
 
 pub struct Account {
     sierra_hash: SierraHash,
@@ -54,7 +51,7 @@ pub struct Account {
 
 impl Account {
     /// Creates a new account from fixture.
-    pub fn new_from_fixture() -> Self {
+    pub(super) fn new_from_fixture() -> Self {
         Self {
             sierra_hash: fixtures::CAIRO_1_ACCOUNT_CLASS_HASH,
             private_key: fixtures::ACCOUNT_PRIVATE_KEY,
@@ -83,21 +80,21 @@ impl Account {
         Ok(account)
     }
 
-    pub fn predeploy(&self, state_update: &mut StateUpdateData) -> anyhow::Result<()> {
+    pub(super) fn predeploy(&self, state_update: &mut StateUpdateData) -> anyhow::Result<()> {
         predeploy(state_update, self.address, self.sierra_hash)?;
         self.set_initial_balance(state_update)?;
         self.simulate_constructor(state_update)
     }
 
-    pub fn address(&self) -> ContractAddress {
+    pub(super) fn address(&self) -> ContractAddress {
         self.address
     }
 
-    pub fn private_key(&self) -> Felt {
+    pub(super) fn private_key(&self) -> Felt {
         self.private_key
     }
 
-    pub fn fetch_add_nonce(&self) -> TransactionNonce {
+    pub(super) fn fetch_add_nonce(&self) -> TransactionNonce {
         TransactionNonce(Felt::from_u64(self.nonce.fetch_add(1, Ordering::Relaxed)))
     }
 
