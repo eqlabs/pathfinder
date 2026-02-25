@@ -41,6 +41,7 @@ use crate::consensus::inner::{
     P2PTaskConfig,
     P2PTaskEvent,
 };
+use crate::validator::ValidatorWorkerPool;
 use crate::SyncMessageToConsensus;
 
 /// Helper struct to setup and manage the test environment (databases,
@@ -53,6 +54,8 @@ struct TestEnvironment {
     rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
     tx_sync_to_consensus: mpsc::Sender<SyncMessageToConsensus>,
     handle: Arc<Mutex<Option<tokio::task::JoinHandle<anyhow::Result<()>>>>>,
+    // Optional so we can `take()` it in `Drop`.
+    worker_pool: Option<ValidatorWorkerPool>,
 
     // Keep these alive to prevent receiver from being dropped
     _info_watch_rx: watch::Receiver<consensus_info::ConsensusInfo>,
@@ -89,7 +92,7 @@ impl TestEnvironment {
         let peer_id = keypair.public().to_peer_id();
         let p2p_client = Client::from((peer_id, client_sender));
 
-        let handle = p2p_task::spawn(
+        let (handle, worker_pool) = p2p_task::spawn(
             chain_id,
             P2PTaskConfig {
                 my_validator_address: validator_address,
@@ -118,6 +121,7 @@ impl TestEnvironment {
             rx_from_p2p,
             tx_sync_to_consensus,
             handle: Arc::new(Mutex::new(Some(handle))),
+            worker_pool: Some(worker_pool),
             _info_watch_rx: info_watch_rx,
         }
     }
@@ -208,6 +212,29 @@ impl TestEnvironment {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
         panic!("Timeout waiting for tx_to_p2p to be consumed");
+    }
+}
+
+impl Drop for TestEnvironment {
+    fn drop(&mut self) {
+        // Ensure the task is stopped when the test environment is dropped
+        let handle_opt = {
+            let mut handle_guard = self.handle.lock().unwrap();
+            handle_guard.take()
+        };
+
+        if let Some(handle) = handle_opt {
+            handle.abort();
+        }
+
+        // Join the worker pool to ensure all threads are cleaned up properly
+        if let Some(pool) = self
+            .worker_pool
+            .take()
+            .and_then(|pool| Arc::into_inner(pool))
+        {
+            pool.join();
+        }
     }
 }
 
