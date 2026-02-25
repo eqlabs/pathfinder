@@ -17,7 +17,7 @@ impl ResourceLimits {
     /// Recommended virtual memory limit for the compiler child process, in
     /// bytes.
     ///
-    /// See [`RECOMMENDED_MAX_MEMORY_USAGE_MIB`].
+    /// See [`Self::RECOMMENDED_MEMORY_USAGE_LIMIT_MIB`].
     pub const RECOMMENDED_MEMORY_USAGE_LIMIT: u64 =
         Self::RECOMMENDED_MEMORY_USAGE_LIMIT_MIB * 1024 * 1024;
 
