@@ -506,11 +506,17 @@ pub fn spawn(
                         );
                         let stopwatch = std::time::Instant::now();
 
-                        let block = finalized_blocks
-                            .remove(&height_and_round)
-                            .expect("This block is not removed from the map anywhere else");
-                        decided_blocks
-                            .insert(height_and_round.height(), (height_and_round.round(), block));
+                        // `None` is possible here if the node has been respawned when precommit for
+                        // this height has already been agreed by the quorum. We loose the finalized
+                        // block for the height, but the consensus engine should still be able to
+                        // decide on the block (thanks to WAL) and move on to the next height. The
+                        // actual missing block will be fetched by the sync task from the FGw.
+                        if let Some(block) = finalized_blocks.remove(&height_and_round) {
+                            decided_blocks.insert(
+                                height_and_round.height(),
+                                (height_and_round.round(), block),
+                            );
+                        }
 
                         tracing::info!(
                             "🖧  💾 {validator_address} Finalized and prepared block for \
