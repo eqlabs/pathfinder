@@ -15,7 +15,7 @@ use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 
-use crate::common::utils::{self, create_log_file};
+use crate::common::utils;
 
 /// Represents a running Pathfinder instance.
 pub struct PathfinderInstance {
@@ -69,7 +69,7 @@ impl PathfinderInstance {
 
         if let Some(devnet_config) = &config.boot_db {
             let source = devnet_config.path();
-            let destination = db_dir.join("testnet-sepolia.sqlite");
+            let destination = db_dir.join("custom.sqlite");
             std::fs::create_dir_all(&db_dir).context("Creating db directory")?;
             std::fs::copy(source, &destination).context(format!(
                 "Copying bootstrap DB from {} to {}",
@@ -80,10 +80,10 @@ impl PathfinderInstance {
 
         let stdout_path = config.test_dir.join(format!("{}_stdout.log", config.name));
         let stdout_file =
-            create_log_file(format!("Pathfinder instance {}", config.name), &stdout_path)?;
+            utils::create_log_file(format!("Pathfinder instance {}", config.name), &stdout_path)?;
         let stderr_path = config.test_dir.join(format!("{}_stderr.log", config.name));
         let stderr_file =
-            create_log_file(format!("Pathfinder instance {}", config.name), &stderr_path)?;
+            utils::create_log_file(format!("Pathfinder instance {}", config.name), &stderr_path)?;
 
         let mut command = Command::new(config.pathfinder_bin);
         let command = command
