@@ -427,20 +427,15 @@ pub struct MaybeRespawned(
 impl MaybeRespawned {
     pub fn instance(self) -> Option<PathfinderInstance> {
         match self.0 {
-            Either::Left((_, mut rx)) => match rx.try_recv() {
-                Ok(instance) => Some(instance),
-                Err(_) => None,
-            },
+            Either::Left((_, mut rx)) => rx.try_recv().ok(),
             Either::Right(instance) => Some(instance),
         }
     }
 }
 
 /// Monitors `instance` for exit with non-zero exit code. If that happens,
-/// respawns the instance with `config` and waits for it to be ready. The
-/// respawned instance is not returned, but it will be kept alive until the end
-/// of the test (i.e., until `test_timeout` is reached).
-pub fn respawn_on_fail2(
+/// respawns the instance with `config` and waits for it to be ready.
+pub fn respawn_on_fail(
     inject_failure: bool,
     mut instance: PathfinderInstance,
     config: Config,
@@ -485,50 +480,4 @@ pub fn respawn_on_fail2(
     .into();
 
     MaybeRespawned(Either::Left((abort_guard, rx)))
-}
-
-/// Monitors `instance` for exit with non-zero exit code. If that happens,
-/// respawns the instance with `config` and waits for it to be ready. The
-/// respawned instance is not returned, but it will be kept alive until the end
-/// of the test (i.e., until `test_timeout` is reached).
-pub fn respawn_on_fail(
-    mut instance: PathfinderInstance,
-    config: Config,
-    ready_poll_interval: Duration,
-    ready_timeout: Duration,
-    test_timeout: Duration,
-) -> AbortGuard {
-    let mut child_signal = signal(SignalKind::child()).unwrap();
-
-    tokio::spawn(async move {
-        if child_signal.recv().await.is_some() {
-            println!("Got SIGCHLD!");
-            match instance.exited_with_error() {
-                Ok(true) => {
-                    println!("Respawning {}...", instance.name());
-                    let watch = instance.rpc_port_watch();
-                    drop(instance);
-                    let instance = PathfinderInstance::spawn(config)?.with_rpc_port_watch(watch);
-                    instance
-                        .wait_for_ready(ready_poll_interval, ready_timeout)
-                        .await?;
-                    println!("{} is ready again", instance.name());
-                    // Let the instance exist for the rest of the test.
-                    tokio::time::sleep(test_timeout).await;
-                }
-                Ok(false) => {
-                    println!("{} exited cleanly, not respawning", instance.name());
-                    drop(instance);
-                }
-                Err(e) => {
-                    eprintln!("Error checking if {} exited cleanly: {e}", instance.name());
-                    // Assume that the process did not exit, the worst that can
-                    // happen is that the kill on drop will fail.
-                }
-            }
-        }
-
-        Ok(())
-    })
-    .into()
 }

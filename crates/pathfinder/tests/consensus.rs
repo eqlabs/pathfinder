@@ -27,7 +27,7 @@ mod test {
     use rstest::rstest;
 
     use crate::common::feeder_gateway::FeederGateway;
-    use crate::common::pathfinder_instance::{respawn_on_fail2, PathfinderInstance};
+    use crate::common::pathfinder_instance::{respawn_on_fail, PathfinderInstance};
     use crate::common::rpc_client::{
         get_cached_artifacts_info,
         get_consensus_info,
@@ -140,7 +140,7 @@ mod test {
         let bob_committed = wait_for_block_exists(&bob, target_height, POLL_HEIGHT);
         let charlie_committed = wait_for_block_exists(&charlie, target_height, POLL_HEIGHT);
 
-        let maybe_bob = respawn_on_fail2(
+        let maybe_bob = respawn_on_fail(
             inject_failure.is_some(),
             bob,
             bob_cfg,
