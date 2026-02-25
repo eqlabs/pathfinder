@@ -341,6 +341,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         consensus_p2p_event_processing_handle,
         consensus_engine_handle,
         consensus_channels,
+        worker_pool,
     } = if let Some(consensus_config) = &config.consensus {
         let wal_directory = config.data_directory.join("consensus").join("wal");
         if !wal_directory.exists() {
@@ -467,6 +468,20 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         }
         Err(_) => {
             tracing::error!("Some tasks failed to finish in time, forcing exit");
+        }
+    }
+
+    // Join all worker pool threads so that they don't panic when the `p2p_task` is
+    // cancelled.
+    if let Some(worker_pool) = worker_pool {
+        match Arc::try_unwrap(worker_pool) {
+            Ok(pool) => pool.join(),
+            Err(pool) => {
+                tracing::error!(
+                    "Failed to join worker pool, refcount is: {}",
+                    Arc::strong_count(&pool)
+                );
+            }
         }
     }
 

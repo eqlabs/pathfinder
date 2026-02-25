@@ -63,7 +63,7 @@ pub fn start(
         watch::channel(consensus_info::ConsensusInfo::default());
     let finalized_blocks = HashMap::new();
 
-    let consensus_p2p_event_processing_handle = p2p_task::spawn(
+    let (consensus_p2p_event_processing_handle, worker_pool) = p2p_task::spawn(
         chain_id,
         (&config).into(),
         p2p_consensus_client,
@@ -98,6 +98,7 @@ pub fn start(
             consensus_info_watch,
             sync_to_consensus_tx,
         }),
+        worker_pool: Some(worker_pool),
     }
 }
 

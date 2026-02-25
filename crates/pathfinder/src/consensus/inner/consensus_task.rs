@@ -109,7 +109,13 @@ pub fn spawn(
                     }
                 }
                 from_p2p = rx_from_p2p.recv() => {
-                    from_p2p.expect("Consensus task event receiver not to be dropped")
+                    match from_p2p {
+                        Some(command) => command,
+                        None => {
+                            tracing::warn!("Receiver for commands from the P2P task was dropped, exiting Consensus task");
+                            anyhow::bail!("Receiver for commands from the P2P task was dropped, exiting Consensus task");
+                        }
+                    }
                 }
             };
 

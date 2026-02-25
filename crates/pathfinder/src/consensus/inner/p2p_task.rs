@@ -104,7 +104,10 @@ pub fn spawn(
     gas_price_provider: Option<L1GasPriceProvider>,
     // Does nothing in production builds. Used for integration testing only.
     inject_failure: Option<InjectFailureConfig>,
-) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+) -> (
+    tokio::task::JoinHandle<anyhow::Result<()>>,
+    ValidatorWorkerPool,
+) {
     let validator_address = config.my_validator_address;
     // Contains transaction batches and proposal finalizations that are
     // waiting for previous block to be committed before they can be executed.
@@ -112,6 +115,10 @@ pub fn spawn(
     // Create worker pool for concurrent transaction execution
     let worker_pool: ValidatorWorkerPool =
         ExecutorWorkerPool::<ConcurrentStateReader>::auto().get();
+    // This clone is used to be able to `join()` the worker pool, so that its
+    // threads don't panic when the `p2p_task` is cancelled.
+    let worker_pool_for_cleanup = worker_pool.clone();
+
     // Manages batch execution with concurrent execution support
     let mut batch_execution_manager =
         BatchExecutionManager::new(gas_price_provider.clone(), worker_pool.clone());
@@ -126,7 +133,7 @@ pub fn spawn(
 
     let data_directory = data_directory.to_path_buf();
 
-    util::task::spawn(async move {
+    let jh = util::task::spawn(async move {
         let main_readonly_storage = main_storage.clone();
         let mut main_db_conn = main_storage
             .connection()
@@ -159,8 +166,8 @@ pub fn spawn(
                     match p2p_event {
                         Some(event) => P2PTaskEvent::P2PEvent(event),
                         None => {
-                            tracing::warn!("P2P event receiver was dropped, exiting P2P task");
-                            anyhow::bail!("P2P event receiver was dropped, exiting P2P task");
+                            tracing::warn!("P2P network event receiver was dropped, exiting P2P task");
+                            anyhow::bail!("P2P network event receiver was dropped, exiting P2P task");
                         }
                     }
                 }
@@ -660,7 +667,9 @@ pub fn spawn(
                 }
             }
         }
-    })
+    });
+
+    (jh, worker_pool_for_cleanup)
 }
 
 /// Handle decide confirmation for a finalized block at given height and round.

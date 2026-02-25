@@ -8,6 +8,7 @@ use tokio::sync::{mpsc, watch};
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
 use crate::gas_price::L1GasPriceProvider;
+use crate::validator::ValidatorWorkerPool;
 use crate::SyncMessageToConsensus;
 
 mod error;
@@ -23,6 +24,9 @@ pub struct ConsensusTaskHandles {
     pub consensus_p2p_event_processing_handle: ConsensusP2PEventProcessingTaskHandle,
     pub consensus_engine_handle: ConsensusEngineTaskHandle,
     pub consensus_channels: Option<ConsensusChannels>,
+    // Use to `join()` the worker pool, so that it's threads don't panic when the `p2p_task` is
+    // cancelled.
+    pub worker_pool: Option<ValidatorWorkerPool>,
 }
 
 /// Various channels used to communicate with the consensus engine.
@@ -40,6 +44,7 @@ impl ConsensusTaskHandles {
             consensus_p2p_event_processing_handle: tokio::task::spawn(std::future::pending()),
             consensus_engine_handle: tokio::task::spawn(std::future::pending()),
             consensus_channels: None,
+            worker_pool: None,
         }
     }
 }
