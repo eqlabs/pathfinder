@@ -46,8 +46,9 @@ pub fn start(
     p2p_event_rx: mpsc::UnboundedReceiver<Event>,
     wal_directory: PathBuf,
     data_directory: &Path,
-    verify_tree_hashes: bool,
     gas_price_provider: Option<L1GasPriceProvider>,
+    verify_tree_hashes: bool,
+    compiler_resource_limits: pathfinder_compiler::ResourceLimits,
     inject_failure_config: Option<InjectFailureConfig>,
 ) -> ConsensusTaskHandles {
     // Events that are produced by the P2P task and consumed by the consensus task.
@@ -75,6 +76,7 @@ pub fn start(
         main_storage.clone(),
         finalized_blocks,
         data_directory,
+        compiler_resource_limits,
         verify_tree_hashes,
         gas_price_provider,
         inject_failure_config,

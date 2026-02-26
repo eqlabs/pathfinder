@@ -52,6 +52,7 @@ pub struct Sync<P, G> {
     pub public_key: PublicKey,
     pub l1_checkpoint_override: Option<EthereumStateUpdate>,
     pub verify_tree_hashes: bool,
+    pub compiler_resource_limits: pathfinder_compiler::ResourceLimits,
     pub block_hash_db: Option<BlockHashDb>,
 }
 
@@ -127,6 +128,7 @@ where
                 chain_id: self.chain_id,
                 public_key: self.public_key,
                 verify_tree_hashes: self.verify_tree_hashes,
+                compiler_resource_limits: self.compiler_resource_limits,
                 block_hash_db: self.block_hash_db.clone(),
             }
             .run(checkpoint)
@@ -188,6 +190,7 @@ where
                 chain_id: self.chain_id,
                 public_key: self.public_key,
                 verify_tree_hashes: self.verify_tree_hashes,
+                compiler_resource_limits: self.compiler_resource_limits,
                 block_hash_db: self.block_hash_db.clone(),
             }
             .run(&mut next, &mut parent_hash, self.fgw_client.clone())
@@ -490,6 +493,7 @@ mod tests {
                 block_hash: last_checkpoint_header.hash,
             }),
             verify_tree_hashes: true,
+            compiler_resource_limits: pathfinder_compiler::ResourceLimits::recommended(),
             block_hash_db: None,
         };
 

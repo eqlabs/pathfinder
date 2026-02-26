@@ -84,6 +84,7 @@ httpmock = "0.7.0-rc.1"
 hyper = "1.0.0"
 ipnet = "2.9.0"
 jemallocator = "0.5.4"
+libc = "0.2.182"
 libp2p = { version = "0.55.0", default-features = false }
 libp2p-identity = "0.2.2"
 libp2p-plaintext = "0.43.0"

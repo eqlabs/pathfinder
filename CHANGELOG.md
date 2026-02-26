@@ -18,9 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `starknet_traceBlockTransactions` parameter `trace_flags` is not optional (as required by the spec).
 - Starknet 0.14.2 blocks are now using the correct versioned constants.
 
+### Changed
+
+- The Pathfinder binary now has two subcommands:
+  - `node` - runs the Pathfinder node as before, serving JSON-RPC and syncing with the network.
+    This is the default subcommand and will run if no subcommand is passed.
+  - `compile` - compile a Sierra class (passed via `stdin`) to CASM (output to `stdout`).
+
 ### Added
 
 - Forwarding gateway HTTP error 413 when handling `starknet_addDeclareTransaction`.
+- Two new CLI options for the `node` subcommand:
+  - `compiler.max-memory-usage-mib` - maximum memory usage for the compiler process, in MiB.
+  - `compiler.max-cpu-time-secs` - maximum (active) CPU time for the compiler process, in seconds.
 
 ## [0.22.0-beta.2] - 2026-02-16
 

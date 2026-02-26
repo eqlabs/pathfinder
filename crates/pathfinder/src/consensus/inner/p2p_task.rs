@@ -100,6 +100,7 @@ pub fn spawn(
     main_storage: Storage,
     mut finalized_blocks: HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
     data_directory: &Path,
+    compiler_resource_limits: pathfinder_compiler::ResourceLimits,
     verify_tree_hashes: bool,
     gas_price_provider: Option<L1GasPriceProvider>,
     // Does nothing in production builds. Used for integration testing only.
@@ -113,8 +114,11 @@ pub fn spawn(
     let worker_pool: ValidatorWorkerPool =
         ExecutorWorkerPool::<ConcurrentStateReader>::auto().get();
     // Manages batch execution with concurrent execution support
-    let mut batch_execution_manager =
-        BatchExecutionManager::new(gas_price_provider.clone(), worker_pool.clone());
+    let mut batch_execution_manager = BatchExecutionManager::new(
+        gas_price_provider.clone(),
+        worker_pool.clone(),
+        compiler_resource_limits,
+    );
     // Keep track of whether we've already emitted a warning about the
     // event channel size exceeding the limit, to avoid spamming the logs.
     let mut channel_size_warning_emitted = false;
@@ -1546,7 +1550,11 @@ mod tests {
     fn regression_rollback_to_nonzero_batch_from_h10_onwards_clears_system_contract_0x1() {
         let main_storage = StorageBuilder::in_tempdir().unwrap();
         let worker_pool = create_test_worker_pool();
-        let mut batch_execution_manager = BatchExecutionManager::new(None, worker_pool.clone());
+        let mut batch_execution_manager = BatchExecutionManager::new(
+            None,
+            worker_pool.clone(),
+            pathfinder_compiler::ResourceLimits::recommended(),
+        );
         let dummy_data_dir = PathBuf::new();
 
         let mut incoming_proposals = HashMap::new();

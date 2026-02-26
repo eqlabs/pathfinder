@@ -78,6 +78,7 @@ pub struct RpcConfig {
     pub submission_tracker_time_limit: NonZeroU64,
     pub submission_tracker_size_limit: NonZeroUsize,
     pub block_trace_cache_size: NonZeroUsize,
+    pub compiler_resource_limits: pathfinder_compiler::ResourceLimits,
 }
 
 #[derive(Clone)]
@@ -249,6 +250,7 @@ impl RpcContext {
             submission_tracker_time_limit: NonZeroU64::new(300).unwrap(),
             submission_tracker_size_limit: NonZeroUsize::new(30000).unwrap(),
             block_trace_cache_size: NonZeroUsize::new(1).unwrap(),
+            compiler_resource_limits: pathfinder_compiler::ResourceLimits::recommended(),
         };
 
         let ethereum =

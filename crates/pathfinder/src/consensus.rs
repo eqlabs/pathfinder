@@ -53,8 +53,9 @@ pub fn start(
     p2p_event_rx: mpsc::UnboundedReceiver<Event>,
     wal_directory: PathBuf,
     data_directory: &Path,
-    verify_tree_hashes: bool,
     gas_price_provider: Option<L1GasPriceProvider>,
+    verify_tree_hashes: bool,
+    compiler_resource_limits: pathfinder_compiler::ResourceLimits,
     // Does nothing in production builds. Used for integration testing only.
     inject_failure_config: Option<InjectFailureConfig>,
 ) -> ConsensusTaskHandles {
@@ -66,8 +67,9 @@ pub fn start(
         p2p_event_rx,
         wal_directory,
         data_directory,
-        verify_tree_hashes,
         gas_price_provider,
+        verify_tree_hashes,
+        compiler_resource_limits,
         inject_failure_config,
     )
 }
@@ -85,8 +87,9 @@ mod inner {
         _: mpsc::UnboundedReceiver<Event>,
         _: PathBuf,
         _: &Path,
-        _: bool,
         _: Option<L1GasPriceProvider>,
+        _: bool,
+        _: pathfinder_compiler::ResourceLimits,
         _: Option<InjectFailureConfig>,
     ) -> ConsensusTaskHandles {
         ConsensusTaskHandles::pending()

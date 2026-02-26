@@ -231,7 +231,10 @@ pub(crate) fn create(
     ));
 
     validator
-        .execute_batch::<ProdTransactionMapper>(txns_to_execute)
+        .execute_batch::<ProdTransactionMapper>(
+            txns_to_execute,
+            pathfinder_compiler::ResourceLimits::recommended(),
+        )
         .unwrap();
 
     let block = validator.consensus_finalize0().unwrap();

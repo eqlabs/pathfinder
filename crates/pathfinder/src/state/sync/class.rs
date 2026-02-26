@@ -18,6 +18,7 @@ pub enum DownloadedClass {
 pub async fn download_class<SequencerClient: GatewayApi>(
     sequencer: &SequencerClient,
     class_hash: ClassHash,
+    compiler_resource_limit: pathfinder_compiler::ResourceLimits,
     fetch_casm_from_fgw: bool,
 ) -> Result<DownloadedClass, anyhow::Error> {
     use pathfinder_class_hash::compute_class_hash;
@@ -75,9 +76,11 @@ pub async fn download_class<SequencerClient: GatewayApi>(
                 let (send, recv) = tokio::sync::oneshot::channel();
                 rayon::spawn(move || {
                     let _span = span.entered();
-                    let compile_result = pathfinder_compiler::compile_to_casm_ser(&definition)
-                        .context("Compiling Sierra class");
-
+                    let compile_result = pathfinder_compiler::compile_sierra_to_casm(
+                        &definition,
+                        compiler_resource_limit,
+                    )
+                    .context("Compiling Sierra class");
                     let _ = send.send((compile_result, definition));
                 });
                 let (casm_definition, sierra_definition) =

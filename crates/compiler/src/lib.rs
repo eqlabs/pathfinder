@@ -1,39 +1,306 @@
+use std::io::Write;
+
 use anyhow::Context;
 use pathfinder_common::{class_definition, felt, CasmHash};
 use pathfinder_crypto::Felt;
 
+/// Resource limits for the compiler child process.
+#[derive(Debug, Clone, Copy)]
+pub struct ResourceLimits {
+    /// Virtual memory limit for the child process, in bytes.
+    pub memory_usage: u64,
+    /// CPU time limit for the child process, in whole seconds.
+    pub cpu_time: u64,
+}
+
+impl ResourceLimits {
+    /// Recommended virtual memory limit for the compiler child process, in
+    /// bytes.
+    ///
+    /// See [`Self::RECOMMENDED_MEMORY_USAGE_LIMIT_MIB`].
+    pub const RECOMMENDED_MEMORY_USAGE_LIMIT: u64 =
+        Self::RECOMMENDED_MEMORY_USAGE_LIMIT_MIB * 1024 * 1024;
+
+    /// Recommended virtual memory limit for the compiler child process, in MiB.
+    ///
+    /// A limit of 512 MiB should be sufficient, even for large Sierra
+    /// contracts. Setting it any lower could risk failures.
+    pub const RECOMMENDED_MEMORY_USAGE_LIMIT_MIB: u64 = 512;
+
+    /// Recommended CPU time limit for the compiler child process, in seconds.
+    ///
+    /// This should be more than enough for most contracts to be compiled but
+    /// `RLIMIT_CPU` has whole-second granularity so 1 is the minimum.
+    pub const RECOMMENDED_CPU_TIME_LIMIT: u64 = 1;
+
+    /// Create a new [`ResourceLimits`] with the recommended limits.
+    pub const fn recommended() -> Self {
+        Self {
+            memory_usage: Self::RECOMMENDED_MEMORY_USAGE_LIMIT,
+            cpu_time: Self::RECOMMENDED_CPU_TIME_LIMIT,
+        }
+    }
+
+    /// Create a new [`ResourceLimits`] with custom limits.
+    pub fn new(memory_usage: u64, cpu_time: u64) -> Self {
+        Self {
+            memory_usage,
+            cpu_time,
+        }
+    }
+}
+
+/// Compile a Sierra class definition into CASM using an isolated child process.
+///
+/// Runs the `pathfinder compile` command in a child process, passes
+/// `sierra_definition` via stdin, and returns the serialized CASM output read
+/// from stdout. Resource limits are applied before the child process starts to
+/// prevent runaway compilation from consuming unbounded CPU or memory.
+///
+/// This is a blocking function. When used inside an async runtime, it should be
+/// called on a blocking thread.
+///
+/// # Arguments
+///
+/// * `sierra_definition` — raw JSON-encoded Sierra class definition.
+///
+/// * `max_memory_usage` — virtual address space limit for the child process, in
+///   **bytes**. See [`ResourceLimits::RECOMMENDED_MEMORY_USAGE_LIMIT`].
+///
+/// * `max_cpu_time` — CPU time limit for the child process, in **whole
+///   seconds**. See [`ResourceLimits::RECOMMENDED_CPU_TIME_LIMIT`].
+///
+/// # Platform support
+///
+/// Resource limits are applied via `setrlimit(2)` and are **Unix-only**. On
+/// non-Unix platforms no resource limits are applied; the child process still
+/// runs but without any resource constraints.
+pub fn compile_sierra_to_casm(
+    sierra_definition: &[u8],
+    resource_limits: ResourceLimits,
+) -> anyhow::Result<Vec<u8>> {
+    let mut pathfinder_cmd = pathfinder_exe()
+        .context("reading pathfinder executable path")
+        .map(std::process::Command::new)?;
+
+    pathfinder_cmd
+        .arg("compile")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    let mut child = set_resource_limits(pathfinder_cmd, resource_limits)
+        .context("setting resource limits")?
+        .spawn()
+        .context("spawning compiler child process")?;
+
+    {
+        let mut ch_stdin = child.stdin.take().context("opening child stdin")?;
+        ch_stdin
+            .write_all(sierra_definition)
+            .context("writing Sierra definition to child stdin")?;
+        ch_stdin.flush().context("flushing child stdin")?;
+    }
+
+    let output = child
+        .wait_with_output()
+        .context("waiting for compiler child process")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!(
+            "compiler child process failed with status: {}; stderr: {}",
+            output.status,
+            stderr
+        );
+    }
+
+    Ok(output.stdout)
+}
+
+/// Compile a Sierra class definition into CASM using an isolated child process.
+///
+/// Because the definition is serialized before being to the child process,
+/// there is some extra overhead compared to [`compile_sierra_to_casm`]. If
+/// possible, try to use [`compile_sierra_to_casm`] directly to avoid this
+/// overhead.
+///
+/// For more details see [`compile_sierra_to_casm`].
+pub fn compile_sierra_to_casm_deser(
+    sierra_definition: class_definition::Sierra<'_>,
+    resource_limits: ResourceLimits,
+) -> anyhow::Result<Vec<u8>> {
+    serde_json::to_vec(&sierra_definition)
+        .context("serializing Sierra definition")
+        .map(|sierra_definition| compile_sierra_to_casm(&sierra_definition, resource_limits))?
+}
+
+/// Get the path to the `pathfinder` executable.
+///
+/// In release builds, we assume this is the path to the current executable. In
+/// debug builds, the previous assumption doesn't hold because we could either
+/// be running the debug build of `pathfinder` or running from within `cargo
+/// test`. Tricky.
+fn pathfinder_exe() -> anyhow::Result<std::path::PathBuf> {
+    let current_exe = std::env::current_exe().context("reading current executable path")?;
+    let is_pathfinder_exe = current_exe
+        .file_stem()
+        .is_some_and(|name| name == "pathfinder");
+
+    #[cfg(not(debug_assertions))]
+    {
+        if is_pathfinder_exe {
+            // We're inside the release build of `pathfinder`, so we can just run the
+            // current executable.
+            Ok(current_exe)
+        } else {
+            // We're running a release build of a different executable, which is not
+            // supported for now.
+            anyhow::bail!(
+                "In release builds, the compiler can only be used from the `pathfinder` \
+                 executable. Current executable: {:?}",
+                current_exe
+            );
+        }
+    }
+    #[cfg(debug_assertions)]
+    {
+        if is_pathfinder_exe {
+            // We're inside the debug build of `pathfinder`, so we can just run the current
+            // executable.
+            Ok(current_exe)
+        } else {
+            // We're probably running from `cargo test`, so we need to find the `pathfinder`
+            // executable in the target directory. If this fails, we're running a debug
+            // build of a different executable, which won't be supported for now.
+            let debug_dir = current_exe
+                .parent() // target/debug/deps
+                .context("getting deps directory")?
+                .parent() // target/debug
+                .context("getting debug directory")?;
+
+            let pathfinder_exe = debug_dir.join("pathfinder");
+            anyhow::ensure!(
+                pathfinder_exe.exists(),
+                "pathfinder executable not found in target directory: {:?}",
+                pathfinder_exe
+            );
+
+            Ok(pathfinder_exe)
+        }
+    }
+}
+
+/// Set resource limits for the child process using `setrlimit(2)` on Unix.
+///
+/// Returns a [`spawn::Spawn`] which can be used to spawn the resource-limited
+/// child process.
+#[cfg(unix)]
+fn set_resource_limits(
+    mut cmd: std::process::Command,
+    resource_limits: ResourceLimits,
+) -> anyhow::Result<spawn::Spawn> {
+    use std::os::unix::process::CommandExt;
+
+    // SAFETY: We call `libc::setrlimit` with valid arguments. We do not use
+    // any parent process memory, do not allocate memory, access environment
+    // variables etc. inside the closure.
+    unsafe {
+        cmd.pre_exec(move || {
+            let mem_limit = libc::rlimit {
+                rlim_cur: resource_limits.memory_usage,
+                rlim_max: resource_limits.memory_usage,
+            };
+            if libc::setrlimit(libc::RLIMIT_AS, &mem_limit) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+
+            let cpu_limit = libc::rlimit {
+                rlim_cur: resource_limits.cpu_time,
+                rlim_max: resource_limits.cpu_time,
+            };
+            if libc::setrlimit(libc::RLIMIT_CPU, &cpu_limit) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+
+            Ok(())
+        });
+    }
+
+    Ok(spawn::Spawn::new(cmd))
+}
+
+/// Set resource limits for the child process on non-Unix platforms.
+///
+/// # Critical
+///
+/// Resource limits are **not supported** on non-Unix platforms. This function
+/// logs a warning and returns the command unmodified, allowing the child
+/// process to run without any resource constraints.
+#[cfg(not(unix))]
+fn set_resource_limits(
+    cmd: std::process::Command,
+    _: ResourceLimits,
+) -> anyhow::Result<spawn::Spawn> {
+    tracing::warn!(
+        "Resource limits are not supported on this platform. Running `pathfinder-compiler` \
+         without resource limits."
+    );
+
+    Ok(spawn::Spawn::new(cmd))
+}
+
+// The extra module will hide the `Command` to prevent misuse before spawning.
+mod spawn {
+    /// A helper struct to allow spawning the child process after setting
+    /// resource limits while preventing misuse in the meantime.
+    pub struct Spawn(std::process::Command);
+
+    impl Spawn {
+        pub fn new(cmd: std::process::Command) -> Self {
+            Self(cmd)
+        }
+
+        pub fn spawn(&mut self) -> std::io::Result<std::process::Child> {
+            self.0.spawn()
+        }
+    }
+}
+
 /// Compile a serialized Sierra class definition into CASM.
 ///
-/// The class representation expected by the compiler doesn't match the
-/// representation used by the feeder gateway for Sierra classes, so we have to
-/// convert the JSON to something that can be parsed into the expected input
-/// format for the compiler.
-pub fn compile_to_casm_ser(sierra_definition: &[u8]) -> anyhow::Result<Vec<u8>> {
+/// Calling this function directly will compile the Sierra class in-process,
+/// which is not recommended. Use [`compile_sierra_to_casm`] to compile in an
+/// isolated child process with resource limits.
+pub fn compile_sierra_to_casm_impl(sierra_definition: &[u8]) -> anyhow::Result<Vec<u8>> {
+    // The class representation expected by the compiler doesn't match the
+    // representation used by the feeder gateway for Sierra classes, so we have to
+    // convert the JSON to something that can be parsed into the expected input
+    // format for the compiler.
     serde_json::from_slice::<class_definition::Sierra<'_>>(sierra_definition)
         .context("Parsing Sierra class")
-        .map(compile_to_casm_deser)?
-        .context("Compiling to CASM")
+        .map(compile_sierra_to_casm_deser_impl)?
+        .context("Compiling Sierra to CASM")
 }
 
 /// Compile a deserialized Sierra class definition into CASM.
 ///
-/// The class representation expected by the compiler doesn't match the
-/// representation used by the feeder gateway for Sierra classes, so we have to
-/// convert the JSON to something that can be parsed into the expected input
-/// format for the compiler.
-pub fn compile_to_casm_deser(definition: class_definition::Sierra<'_>) -> anyhow::Result<Vec<u8>> {
-    let sierra_version =
-        parse_sierra_version(&definition.sierra_program).context("Parsing Sierra version")?;
+/// Calling this function directly will compile the Sierra class in-process,
+/// which is not recommended. Use [`compile_sierra_to_casm_deser`] to compile
+/// in an isolated child process with resource limits.
+pub fn compile_sierra_to_casm_deser_impl(
+    sierra_definition: class_definition::Sierra<'_>,
+) -> anyhow::Result<Vec<u8>> {
+    let version = parse_sierra_version(&sierra_definition.sierra_program)
+        .context("Parsing Sierra version")?;
 
     let started_at = std::time::Instant::now();
-
-    let result = std::panic::catch_unwind(|| match sierra_version {
-        SierraVersion(0, 1, 0) => v1_0_0_alpha6::compile(definition),
-        SierraVersion(1, 0, 0) => v1_0_0_rc0::compile(definition),
-        SierraVersion(1, 1, 0) => v1_1_1::compile(definition),
-        _ => v2::compile(definition),
+    let result = std::panic::catch_unwind(|| match version {
+        SierraVersion(0, 1, 0) => v1_0_0_alpha6::compile(sierra_definition),
+        SierraVersion(1, 0, 0) => v1_0_0_rc0::compile(sierra_definition),
+        SierraVersion(1, 1, 0) => v1_1_1::compile(sierra_definition),
+        _ => v2::compile(sierra_definition),
     });
-
     tracing::trace!(elapsed=?started_at.elapsed(), "Sierra class compilation finished");
 
     result.unwrap_or_else(|e| Err(panic_error(e)))
@@ -273,7 +540,7 @@ mod v2 {
 
 #[cfg(test)]
 mod tests {
-    use super::compile_to_casm_ser;
+    use super::compile_sierra_to_casm_impl;
 
     mod parse_version {
         use pathfinder_common::class_definition;
@@ -319,7 +586,7 @@ mod tests {
 
         #[test]
         fn test_compile_ser() {
-            compile_to_casm_ser(CAIRO_1_0_0_ALPHA5_SIERRA).unwrap();
+            compile_sierra_to_casm_impl(CAIRO_1_0_0_ALPHA5_SIERRA).unwrap();
         }
     }
 
@@ -342,7 +609,7 @@ mod tests {
 
         #[test]
         fn test_compile_ser() {
-            compile_to_casm_ser(CAIRO_1_0_0_RC0_SIERRA).unwrap();
+            compile_sierra_to_casm_impl(CAIRO_1_0_0_RC0_SIERRA).unwrap();
         }
     }
 
@@ -368,13 +635,13 @@ mod tests {
 
         #[test]
         fn test_compile_ser() {
-            compile_to_casm_ser(CAIRO_1_1_0_RC0_SIERRA).unwrap();
+            compile_sierra_to_casm_impl(CAIRO_1_1_0_RC0_SIERRA).unwrap();
         }
 
         #[test]
         fn regression_stack_overflow() {
             // This class caused a stack-overflow in v2 compilers <= v2.0.1
-            compile_to_casm_ser(CAIRO_2_0_0_STACK_OVERFLOW).unwrap();
+            compile_sierra_to_casm_impl(CAIRO_2_0_0_STACK_OVERFLOW).unwrap();
         }
     }
 }
