@@ -96,7 +96,8 @@ pathfinder-compiler = { path = "../compiler" }
 pathfinder-executor = { path = "../executor" }
 pathfinder-rpc = { path = "../rpc" }
 pathfinder-storage = { path = "../storage", features = [
-    "small_aggregate_filters",
+    # Breaks consensus tests because integration tests use prod DB with normal bloom filter size
+    # "small_aggregate_filters",
 ] }
 pretty_assertions_sorted = { workspace = true }
 proptest = { workspace = true }

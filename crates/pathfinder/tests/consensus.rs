@@ -80,7 +80,8 @@ mod test {
         // Happy path is the only scenario which starts consensus from genesis at the
         // expense of all transactions being reverted since they're random, invalid L1
         // handlers.
-        let (configs, boot_height, stopwatch) = utils::setup(NUM_NODES, false).unwrap();
+        let (configs, boot_height, stopwatch) =
+            utils::setup(NUM_NODES, true /* temporary for testing */).unwrap();
         // utils::setup(NUM_NODES, inject_failure.is_some()).unwrap();
 
         // System contracts start to matter after block 10 but we have a separate
@@ -172,7 +173,8 @@ mod test {
             .unwrap();
         assert!(
             alice_artifacts.is_empty(),
-            "Alice should not have leftover cached consensus data: {alice_artifacts:#?}"
+            "Alice should not have leftover cached consensus data:
+        {alice_artifacts:#?}"
         );
 
         if let Some(bob) = maybe_bob.instance() {

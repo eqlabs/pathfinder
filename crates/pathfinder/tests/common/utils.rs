@@ -34,14 +34,6 @@ pub fn setup(
 
     let stopwatch = Instant::now();
 
-    let (boot_db, boot_height) = if init_devnet_db {
-        let (devnet_config, latest_boot_block) =
-            devnet::init_db(Address(Felt::ONE) /* Alice */)?;
-        (Some(devnet_config), latest_boot_block)
-    } else {
-        (None, 0)
-    };
-
     let pathfinder_bin = pathfinder_bin();
     anyhow::ensure!(pathfinder_bin.exists(), "Pathfinder binary not found");
     let fixture_dir = fixture_dir();
@@ -50,6 +42,41 @@ pub fn setup(
         .context("Creating temporary directory for test artifacts")?
         .keep();
     println!("Test artifacts will be stored in {}", test_dir.display());
+
+    let (boot_db, boot_height) = if init_devnet_db {
+        let (devnet_config, latest_boot_block) =
+        // TODO
+        // bloom filter size didn't match...
+            devnet::init_db(Address(Felt::ONE) /* Alice */)?;
+        (Some(devnet_config), latest_boot_block)
+    } else {
+        (None, 0)
+    };
+
+    // let configs = Config::for_set(
+    //     num_instances,
+    //     &pathfinder_bin,
+    //     &fixture_dir,
+    //     test_dir,
+    //     boot_db.clone(),
+    // );
+
+    // if let Some(devnet_config) = &boot_db {
+    //     let source = devnet_config.path();
+
+    //     for config in &configs {
+    //         let db_dir = config.db_dir();
+    //         let destination = db_dir.join("custom.sqlite");
+    //         std::fs::create_dir_all(&db_dir).context("Creating db
+    // directory")?;         std::fs::copy(source,
+    // &destination).context(format!(             "Copying bootstrap DB from
+    // {} to {}",             source.display(),
+    //             destination.display(),
+    //         ))?;
+    //     }
+    // }
+
+    // Ok((configs, boot_height, stopwatch))
 
     Ok((
         Config::for_set(

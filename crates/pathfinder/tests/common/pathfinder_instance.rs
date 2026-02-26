@@ -67,8 +67,8 @@ impl PathfinderInstance {
         let id_file = config.fixture_dir.join(format!("id_{}.json", config.name));
         let db_dir = config.db_dir();
 
-        if let Some(devnet_config) = &config.boot_db {
-            let source = devnet_config.path();
+        if let Some(boot_db) = &config.boot_db {
+            let source = boot_db.path();
             let destination = db_dir.join("custom.sqlite");
             std::fs::create_dir_all(&db_dir).context("Creating db directory")?;
             std::fs::copy(source, &destination).context(format!(
@@ -147,16 +147,17 @@ impl PathfinderInstance {
             ));
         }
         command.arg(format!("--sync.enable={}", config.sync_enabled));
-        command.arg("--integration-tests.disable-gas-price-validation=true");
+        command.args([
+            "--integration-tests.disable-db-verification=true",
+            "--integration-tests.disable-gas-price-validation=true",
+        ]);
 
         config.inject_failure.map(|i| {
-            command
-                .arg(format!(
-                    "--integration-tests.inject-failure={},{}",
-                    i.height,
-                    i.trigger.as_str()
-                ))
-                .arg("--integration-tests.disable-db-verification=true")
+            command.arg(format!(
+                "--integration-tests.inject-failure={},{}",
+                i.height,
+                i.trigger.as_str()
+            ))
         });
 
         let process = command

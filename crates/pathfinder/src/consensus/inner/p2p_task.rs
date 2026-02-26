@@ -1563,13 +1563,13 @@ mod tests {
                 Round::new(0),
                 ContractAddress::ZERO,
                 main_storage.clone(),
+                ResourceLimits::recommended(),
                 // The smallest config that reproduced the issue until it was fixed
                 Some(ProposalCreationConfig {
                     num_batches: NonZeroUsize::new(3).unwrap(),
                     batch_len: NonZeroUsize::new(1).unwrap(),
                     num_executed_txns: NonZeroUsize::new(2).unwrap(),
                 }),
-                ResourceLimits::recommended(),
             )
             .unwrap();
 

@@ -151,12 +151,19 @@ pub fn spawn(
                             .await
                             .context("Waiting for parent block to be committed")?;
 
-                            match dummy_proposal::create(
+                            // match dummy_proposal::create(
+                            //     height,
+                            //     round.into(),
+                            //     validator_address,
+                            //     main_storage.clone(),
+                            //     None, // Randomize
+                            // ) {
+                            match dummy_proposal::create2(
                                 height,
                                 round.into(),
+                                &account,
                                 validator_address,
                                 main_storage.clone(),
-                                None, // Randomize
                                 compiler_resource_limits,
                             ) {
                                 Ok((wire_proposal, finalized_block)) => {
