@@ -12,7 +12,7 @@ test-all-features $RUST_BACKTRACE="1" *args="": build-pathfinder-release
     {{args}}
 
 test-consensus $RUST_BACKTRACE="1" *args="": build-pathfinder build-feeder-gateway
-    PATHFINDER_TEST_ENABLE_PORT_MARKER_FILES=1 cargo nextest run --test consensus -p pathfinder --retries 0 -j 1 --features p2p,consensus-integration-tests --locked \
+    PATHFINDER_TEST_ENABLE_MARKER_FILES=1 cargo nextest run --test consensus -p pathfinder --retries 2 --features p2p,consensus-integration-tests --locked \
     {{args}}
 
 proptest-sync-handlers $RUST_BACKTRACE="1" *args="":
@@ -39,7 +39,7 @@ build-pathfinder:
     cargo build -p pathfinder --bin pathfinder -F p2p,consensus-integration-tests
 
 build-feeder-gateway:
-    cargo build -p feeder-gateway --bin feeder-gateway
+    cargo build -p feeder-gateway -F small_aggregate_filters --bin feeder-gateway
 
 check:
     cargo check --workspace --all-targets

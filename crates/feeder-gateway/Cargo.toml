@@ -6,6 +6,9 @@ edition = { workspace = true }
 license = { workspace = true }
 rust-version = { workspace = true }
 
+[features]
+small_aggregate_filters = ["pathfinder-storage/small_aggregate_filters"]
+
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }

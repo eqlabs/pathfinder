@@ -1,6 +1,8 @@
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::RwLock;
 use std::u128;
 
+use anyhow::Context as _;
 use num_bigint::BigUint;
 use p2p::sync::client::conv::ToDto as _;
 use p2p_proto::common::Hash;
@@ -13,6 +15,7 @@ use pathfinder_common::transaction::{
 use pathfinder_common::{
     entry_point,
     BlockId,
+    BlockNumber,
     CallParam,
     ChainId,
     ContractAddress,
@@ -46,7 +49,7 @@ pub struct Account {
     /// collisions
     deployment_salt: AtomicU64,
     /// Hello starknet deployments so far.
-    deployed: Vec<ContractAddress>,
+    deployed: RwLock<Vec<ContractAddress>>,
 }
 
 impl Account {
@@ -61,23 +64,46 @@ impl Account {
             strk_fee_token_address: fixtures::STRK_ERC20_CONTRACT_ADDRESS,
             nonce: AtomicU64::new(0),
             deployment_salt: AtomicU64::new(0),
-            deployed: Vec::new(),
+            deployed: RwLock::new(Vec::new()),
         }
     }
 
     /// Creates a new account from fixture and recovers its nonce from storage.
     pub fn from_storage(db_txn: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<Self> {
-        let mut account = Self::new_from_fixture();
+        let account = Self::new_from_fixture();
+        account.update_nonce(db_txn)?;
+        Ok(account)
+    }
+
+    /// Updates the account nonce and deployed contracts. The both need to be
+    /// updated from storage, because not all transactions produced by this
+    /// entity will end up in committed blocks.
+    pub fn update(
+        &self,
+        db_txn: &pathfinder_storage::Transaction<'_>,
+        latest_height: Option<BlockNumber>,
+    ) -> anyhow::Result<()> {
+        self.update_nonce(db_txn)?;
+        if let Some(latest_height) = latest_height {
+            let new_deployed =
+                db_txn.deployed_contracts(fixtures::HELLO_CLASS_HASH, latest_height)?;
+            self.deployed.write().unwrap().extend(new_deployed);
+        }
+        Ok(())
+    }
+
+    fn update_nonce(&self, db_txn: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<()> {
         let nonce = db_txn
-            .contract_nonce(account.address, BlockId::Latest)?
+            .contract_nonce(self.address, BlockId::Latest)?
             // If the account has not been used before, it won't have the nonce in storage yet, so
             // we default to 0
             .unwrap_or_default();
-        let nonce_bytes = nonce.0.as_be_bytes();
-        let mut buf = [0u8; 8];
-        buf.copy_from_slice(&nonce_bytes[24..]);
-        account.nonce = AtomicU64::new(u64::from_be_bytes(buf));
-        Ok(account)
+        let nonce: u64 = nonce
+            .0
+            .try_into()
+            .context("Nonce in storage does not fit into u64")?;
+        self.nonce.store(nonce, Ordering::Relaxed);
+        Ok(())
     }
 
     pub(super) fn predeploy(&self, state_update: &mut StateUpdateData) -> anyhow::Result<()> {
@@ -187,14 +213,8 @@ impl Account {
 
     /// Returns the addresses of hello starknet contract instances deployed so
     /// far.
-    pub fn deployed(&self) -> &[ContractAddress] {
-        &self.deployed
-    }
-
-    /// Records the deployment of a hello starknet contract instance at the
-    /// given address.
-    pub fn insert_deployed(&mut self, address: ContractAddress) {
-        self.deployed.push(address);
+    pub fn deployed(&self) -> Vec<ContractAddress> {
+        self.deployed.read().unwrap().clone()
     }
 
     /// Create an invoke transaction deploying another instance of hello
@@ -288,6 +308,7 @@ impl Account {
     pub fn hello_starknet_increase_balance(
         &self,
         contract_address: ContractAddress,
+        by_amount: u64,
     ) -> p2p_proto::consensus::Transaction {
         let selector = EntryPoint::hashed(b"increase_balance");
         assert_eq!(
@@ -314,7 +335,7 @@ impl Account {
                 // Calldata length
                 CallParam(Felt::ONE),
                 // Hello starknet increase_balance argument
-                CallParam(Felt::from_u64(0xFF)), // TODO randomize or add param
+                CallParam(Felt::from_u64(by_amount)),
             ],
             sender_address: self.address(),
             proof_facts: vec![],

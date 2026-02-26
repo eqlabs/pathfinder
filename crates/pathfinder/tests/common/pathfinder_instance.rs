@@ -8,8 +8,8 @@ use std::time::{Duration, Instant};
 use anyhow::Context as _;
 use futures::future::Either;
 use http::StatusCode;
+use pathfinder_common::integration_testing::debug_create_marker_file;
 use pathfinder_lib::config::integration_testing::InjectFailureConfig;
-use pathfinder_lib::devnet::BootDb;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
@@ -46,7 +46,7 @@ pub struct Config {
     pub test_dir: PathBuf,
     pub inject_failure: Option<InjectFailureConfig>,
     pub local_feeder_gateway_port: Option<u16>,
-    pub boot_db: Option<BootDb>,
+    pub boot_db: Option<PathBuf>,
 }
 
 pub type RpcPortWatch = (watch::Sender<(u32, u16)>, watch::Receiver<(u32, u16)>);
@@ -67,8 +67,7 @@ impl PathfinderInstance {
         let id_file = config.fixture_dir.join(format!("id_{}.json", config.name));
         let db_dir = config.db_dir();
 
-        if let Some(boot_db) = &config.boot_db {
-            let source = boot_db.path();
+        if let Some(source) = &config.boot_db {
             let destination = db_dir.join("custom.sqlite");
             std::fs::create_dir_all(&db_dir).context("Creating db directory")?;
             std::fs::copy(source, &destination).context(format!(
@@ -274,7 +273,11 @@ impl PathfinderInstance {
             }
         };
         match tokio::time::timeout(timeout, fut).await {
-            Ok(Ok(_)) => Ok(()),
+            Ok(Ok(_)) => {
+                // This is to let other processes know
+                debug_create_marker_file(&format!("{}_ready", self.name), &self.db_dir);
+                Ok(())
+            }
             Ok(Err(e)) => Err(e),
             Err(_) => {
                 anyhow::bail!(
@@ -353,7 +356,7 @@ impl Config {
         pathfinder_bin: &Path,
         fixture_dir: &Path,
         test_dir: PathBuf,
-        boot_db: Option<BootDb>,
+        boot_db: Option<PathBuf>,
     ) -> Vec<Self> {
         assert!(
             set_size <= Self::NAMES.len(),

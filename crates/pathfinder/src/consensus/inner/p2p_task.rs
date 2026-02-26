@@ -592,6 +592,9 @@ pub fn spawn(
                                 worker_pool.clone(),
                             )
                         } else {
+                            // TODO integrate decided blocks into storage adapter
+                            // See issue: https://github.com/eqlabs/pathfinder/issues/3248
+                            /*
                             on_finalized_block_decided(
                                 &height_and_round,
                                 &validator_cache,
@@ -603,6 +606,9 @@ pub fn spawn(
                                 gas_price_provider.clone(),
                                 worker_pool.clone(),
                             )
+                            */
+
+                            Ok(ComputationSuccess::Continue)
                         };
 
                         tracing::info!(
@@ -1532,7 +1538,10 @@ mod tests {
     use pathfinder_storage::StorageBuilder;
 
     use super::*;
-    use crate::consensus::inner::dummy_proposal::{create, ProposalCreationConfig};
+    use crate::consensus::inner::dummy_proposal::{
+        create_with_invalid_l1_handler_transactions,
+        ProposalCreationConfig,
+    };
     use crate::validator::ValidatorWorkerPool;
 
     /// Creates a worker pool for tests.
@@ -1557,8 +1566,12 @@ mod tests {
         let validator_cache = ValidatorCache::new();
         let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
 
+        let mut db_conn = main_storage.connection().unwrap();
+        let db_txn = db_conn.transaction().unwrap();
+
         for h in 0..20 {
-            let (proposal_parts, block) = create(
+            let (proposal_parts, block) = create_with_invalid_l1_handler_transactions(
+                &db_txn,
                 h,
                 Round::new(0),
                 ContractAddress::ZERO,

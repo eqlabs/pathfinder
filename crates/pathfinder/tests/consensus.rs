@@ -5,7 +5,7 @@
 //!
 //! Run the test:
 //! ```
-//! PATHFINDER_TEST_ENABLE_PORT_MARKER_FILES=1 cargo nextest run --test consensus -p pathfinder --features p2p,consensus-integration-tests
+//! PATHFINDER_TEST_ENABLE_MARKER_FILES=1 cargo nextest run --test consensus -p pathfinder --features p2p,consensus-integration-tests
 //! ```
 //!
 //! # Important
@@ -173,8 +173,7 @@ mod test {
             .unwrap();
         assert!(
             alice_artifacts.is_empty(),
-            "Alice should not have leftover cached consensus data:
-        {alice_artifacts:#?}"
+            "Alice should not have leftover cached consensus data: {alice_artifacts:#?}"
         );
 
         if let Some(bob) = maybe_bob.instance() {

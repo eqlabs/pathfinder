@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use anyhow::Context as _;
 use p2p_proto::common::Address;
 use pathfinder_crypto::Felt;
-use pathfinder_lib::devnet;
+use pathfinder_lib::devnet::{init_db, BootDb};
 use tempfile::TempDir;
 use tokio::task::{JoinError, JoinHandle};
 use tokio::time::sleep;
@@ -43,27 +43,15 @@ pub fn setup(
         .keep();
     println!("Test artifacts will be stored in {}", test_dir.display());
 
-    let (boot_db, boot_height) = if init_devnet_db {
-        let (devnet_config, latest_boot_block) =
-        // TODO
-        // bloom filter size didn't match...
-            devnet::init_db(Address(Felt::ONE) /* Alice */)?;
-        (Some(devnet_config), latest_boot_block)
+    let (boot_db, num_boot_blocks) = if init_devnet_db {
+        let BootDb {
+            db_file_path,
+            num_boot_blocks,
+        } = init_db(&test_dir, Address(Felt::ONE /* Alice */))?;
+        (Some(db_file_path), num_boot_blocks)
     } else {
         (None, 0)
     };
-
-    if let Some(devnet_config) = &boot_db {
-        let src_file = devnet_config.path();
-        let dest_dir = test_dir.join("fgw");
-        let dest_file = dest_dir.join("custom.sqlite");
-        std::fs::create_dir_all(&dest_dir).context("Creating db directory")?;
-        std::fs::copy(src_file, &dest_file).context(format!(
-            "Copying bootstrap DB from {} to {}",
-            src_file.display(),
-            dest_file.display(),
-        ))?;
-    }
 
     Ok((
         Config::for_set(
@@ -73,7 +61,7 @@ pub fn setup(
             test_dir,
             boot_db,
         ),
-        boot_height,
+        num_boot_blocks,
         stopwatch,
     ))
 }
