@@ -27,6 +27,7 @@ use tracing::info;
 
 use crate::config::{NetworkConfig, StateTries};
 
+mod http_client_refresh;
 mod update;
 
 // The Cairo VM allocates felts on the stack, so during execution it's making
@@ -400,6 +401,10 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         None => rpc_server,
     };
 
+    let http_client_refresh_handle = util::task::spawn(
+        http_client_refresh::refresh_http_client_periodically(pathfinder_context.gateway.clone()),
+    );
+
     let sync_handle = if config.is_sync_enabled {
         start_sync(
             sync_storage,
@@ -451,6 +456,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         result = consensus_p2p_handle => handle_critical_task_result("Consensus P2P network", result),
         result = consensus_p2p_event_processing_handle => handle_critical_task_result("Consensus P2P event processing", result),
         result = consensus_engine_handle => handle_critical_task_result("Consensus engine", result),
+        result = http_client_refresh_handle => handle_critical_task_result("HTTP client refresh", result),
         _ = term_signal.recv() => {
             tracing::info!("TERM signal received");
             Ok(())
