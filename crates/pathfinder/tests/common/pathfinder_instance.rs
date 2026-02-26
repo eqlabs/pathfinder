@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use anyhow::Context as _;
 use futures::future::Either;
 use http::StatusCode;
+use pathfinder_common::integration_testing::debug_create_marker_file;
 use pathfinder_lib::config::integration_testing::InjectFailureConfig;
 use pathfinder_lib::devnet::BootDb;
 use tokio::signal::unix::{signal, SignalKind};
@@ -274,7 +275,11 @@ impl PathfinderInstance {
             }
         };
         match tokio::time::timeout(timeout, fut).await {
-            Ok(Ok(_)) => Ok(()),
+            Ok(Ok(_)) => {
+                // This is to let other processes know
+                debug_create_marker_file(&format!("{}_ready", self.name), &self.db_dir);
+                Ok(())
+            }
             Ok(Err(e)) => Err(e),
             Err(_) => {
                 anyhow::bail!(

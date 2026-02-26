@@ -53,17 +53,17 @@ pub fn setup(
         (None, 0)
     };
 
-    if let Some(devnet_config) = &boot_db {
-        let src_file = devnet_config.path();
-        let dest_dir = test_dir.join("fgw");
-        let dest_file = dest_dir.join("custom.sqlite");
-        std::fs::create_dir_all(&dest_dir).context("Creating db directory")?;
-        std::fs::copy(src_file, &dest_file).context(format!(
-            "Copying bootstrap DB from {} to {}",
-            src_file.display(),
-            dest_file.display(),
-        ))?;
-    }
+    // if let Some(devnet_config) = &boot_db {
+    //     let src_file = devnet_config.path();
+    //     let dest_dir = test_dir.join("fgw");
+    //     let dest_file = dest_dir.join("custom.sqlite");
+    //     std::fs::create_dir_all(&dest_dir).context("Creating db directory")?;
+    //     std::fs::copy(src_file, &dest_file).context(format!(
+    //         "Copying bootstrap DB from {} to {}",
+    //         src_file.display(),
+    //         dest_file.display(),
+    //     ))?;
+    // }
 
     Ok((
         Config::for_set(

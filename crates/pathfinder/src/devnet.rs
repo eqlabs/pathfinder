@@ -173,6 +173,24 @@ pub fn init_db(proposer: Address) -> anyhow::Result<(BootDb, u64)> {
     ))
 }
 
+pub fn is_db_bootstrapped(db_txn: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<bool> {
+    let block_0_commitment = db_txn
+        .state_diff_commitment(BlockNumber::GENESIS)?
+        .context("DB is empty")?;
+    if block_0_commitment != fixtures::BLOCK_0_COMMITMENT {
+        return Ok(false);
+    }
+
+    let block_1_commitment = db_txn
+        .state_diff_commitment(BlockNumber::GENESIS + 1)?
+        .context("DB has only genesis block")?;
+    if block_1_commitment != fixtures::BLOCK_1_COMMITMENT {
+        return Ok(false);
+    }
+
+    Ok(true)
+}
+
 #[derive(Debug, Clone)]
 pub struct BootDb {
     // We keep the temp dir around to ensure it isn't deleted until we're done
@@ -427,6 +445,7 @@ pub mod tests {
         BlockHash,
         BlockHeader,
         BlockId,
+        BlockNumber,
         ClassHash,
         ConsensusFinalizedL2Block,
         ContractAddress,
@@ -464,6 +483,7 @@ pub mod tests {
 
         let mut db_conn = storage.connection().unwrap();
         let db_txn = db_conn.transaction().unwrap();
+
         let block_1_header = db_txn.block_header(BlockId::Latest).unwrap().unwrap();
         let account = Account::from_storage(&db_txn).unwrap();
         drop(db_txn);
@@ -505,7 +525,8 @@ pub mod tests {
             worker_pool.clone(),
         )
         .unwrap();
-        let increase_balance = account.hello_starknet_increase_balance(hello_contract_address);
+        let increase_balance =
+            account.hello_starknet_increase_balance(hello_contract_address, 0xABCD);
         let get_balance = account.hello_starknet_get_balance(hello_contract_address);
         validator
             .execute_batch::<ProdTransactionMapper>(vec![increase_balance, get_balance])
