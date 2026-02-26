@@ -1,4 +1,3 @@
-use p2p_proto::common::Address;
 use pathfinder_common::transaction::{ResourceBound, ResourceBounds};
 use pathfinder_common::{
     casm_hash,
@@ -6,6 +5,7 @@ use pathfinder_common::{
     felt,
     public_key,
     sierra_hash,
+    state_diff_commitment,
     CasmHash,
     ContractAddress,
     GasPrice,
@@ -13,6 +13,7 @@ use pathfinder_common::{
     ResourceAmount,
     ResourcePricePerUnit,
     SierraHash,
+    StateDiffCommitment,
 };
 use pathfinder_crypto::Felt;
 
@@ -104,6 +105,11 @@ pub const RESOURCE_BOUNDS: ResourceBounds = ResourceBounds {
     },
     l1_data_gas: None,
 };
+
+pub const BLOCK_0_COMMITMENT: StateDiffCommitment =
+    state_diff_commitment!("0x07065AC2DCB09AFCBE485B270FED390B4F45BB9F8360D6D7B2A190272B885257");
+pub const BLOCK_1_COMMITMENT: StateDiffCommitment =
+    state_diff_commitment!("0x046C66069A1C2C2FA09026C5E55A769C11A1BC2BE9CBDA43237EB4BA54C40C9F");
 
 #[cfg(test)]
 mod tests {

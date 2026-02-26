@@ -64,6 +64,12 @@ pub enum JournalMode {
 #[derive(Clone)]
 pub struct Storage(Inner);
 
+impl Storage {
+    pub fn dump_pool_info(&self) {
+        eprintln!("Connection pool state: {:#?}", self.0.pool.state());
+    }
+}
+
 #[derive(Clone)]
 struct Inner {
     /// Uses [`Arc`] to allow _shallow_ [Storage] cloning
@@ -395,7 +401,6 @@ impl StorageBuilder {
         open_flags.remove(OpenFlags::SQLITE_OPEN_CREATE);
         let mut connection = rusqlite::Connection::open_with_flags(&database_path, open_flags)
             .context("Opening DB to load running event filter")?;
-
         let init_num_blocks_kept = connection
             .query_row(
                 "SELECT value FROM storage_options WHERE option = 'prune_blockchain'",

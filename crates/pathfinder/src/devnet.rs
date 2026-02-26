@@ -46,7 +46,6 @@ use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
 use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_storage::pruning::BlockchainHistoryMode;
 use pathfinder_storage::{Storage, StorageBuilder, TriePruneMode};
-use tempfile::TempDir;
 
 pub use crate::devnet::account::Account;
 use crate::devnet::class::{preprocess_sierra, PrepocessedSierra};
@@ -71,13 +70,11 @@ use fixtures::{ETH_TO_FRI_RATE, GAS_PRICE};
 /// predeployed and initialized if necessary: Cairo 1 account, ETH and STRK
 /// ERC20s, and the UDC. The following contract is already declared but not
 /// deployed: Hello Starknet.
-pub fn init_db(proposer: Address) -> anyhow::Result<(BootDb, u64)> {
+pub fn init_db(db_dir: &Path, proposer: Address) -> anyhow::Result<BootDb> {
     let stopwatch = Instant::now();
 
     let timestamp = strictly_increasing_timestamp(None);
-    let _db_dir = Arc::new(TempDir::new()?);
-
-    let db_file_path = _db_dir.path().join("bootstrap.sqlite");
+    let db_file_path = db_dir.join("bootstrap.sqlite");
 
     let storage = StorageBuilder::file(db_file_path.clone())
         .trie_prune_mode(Some(TriePruneMode::Archive))
@@ -164,26 +161,34 @@ pub fn init_db(proposer: Address) -> anyhow::Result<(BootDb, u64)> {
     let db_txn = db_conn.transaction()?;
     let latest_block_number = db_txn.block_number(BlockId::Latest)?.context("Empty DB")?;
 
-    Ok((
-        BootDb {
-            _db_dir,
-            db_file_path,
-        },
-        latest_block_number.get() + 1,
-    ))
+    Ok(BootDb {
+        db_file_path,
+        num_boot_blocks: latest_block_number.get() + 1,
+    })
 }
 
-#[derive(Debug, Clone)]
-pub struct BootDb {
-    // We keep the temp dir around to ensure it isn't deleted until we're done
-    _db_dir: Arc<TempDir>,
-    db_file_path: PathBuf,
-}
-
-impl BootDb {
-    pub fn path(&self) -> &Path {
-        &self.db_file_path
+pub fn is_db_bootstrapped(db_txn: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<bool> {
+    let block_0_commitment = db_txn
+        .state_diff_commitment(BlockNumber::GENESIS)?
+        .context("DB is empty")?;
+    if block_0_commitment != fixtures::BLOCK_0_COMMITMENT {
+        return Ok(false);
     }
+
+    let block_1_commitment = db_txn
+        .state_diff_commitment(BlockNumber::GENESIS + 1)?
+        .context("DB has only genesis block")?;
+    if block_1_commitment != fixtures::BLOCK_1_COMMITMENT {
+        return Ok(false);
+    }
+
+    Ok(true)
+}
+
+#[derive(Debug)]
+pub struct BootDb {
+    pub db_file_path: PathBuf,
+    pub num_boot_blocks: u64,
 }
 
 /// Declare a Cairo 1 class (sierra bytecode) via the DeclareV3
@@ -436,25 +441,24 @@ pub mod tests {
     use pathfinder_crypto::Felt;
     use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
     use pathfinder_merkle_tree::starknet_state::update_starknet_state;
-    use pathfinder_storage::Storage;
+    use pathfinder_storage::{Storage, StorageBuilder};
+    use tempfile::TempDir;
 
     use crate::devnet::account::Account;
-    use crate::devnet::{fixtures, init_proposal_and_validator};
+    use crate::devnet::{fixtures, init_db, init_proposal_and_validator, BootDb};
     use crate::state::block_hash::compute_final_hash;
     use crate::validator::{ProdTransactionMapper, ValidatorWorkerPool};
 
     #[test_log::test]
     fn init_declare_deploy_invoke_hello_abi() {
-        use pathfinder_storage::StorageBuilder;
-
         // Block 0 - predeploys and initializes contracts, including the account we'll
         // use for testing
         // Block 1 - declare the Hello Starknet contract class
         let proposer = Address(Felt::ONE);
-        let (boot_db, _) = crate::devnet::init_db(proposer).unwrap();
-        let path = boot_db.path().to_owned();
+        let db_dir = TempDir::new().unwrap();
+        let BootDb { db_file_path, .. } = init_db(db_dir.path(), proposer).unwrap();
 
-        let storage = StorageBuilder::file(path)
+        let storage = StorageBuilder::file(db_file_path)
             .migrate()
             .unwrap()
             .create_pool(
@@ -464,6 +468,7 @@ pub mod tests {
 
         let mut db_conn = storage.connection().unwrap();
         let db_txn = db_conn.transaction().unwrap();
+
         let block_1_header = db_txn.block_header(BlockId::Latest).unwrap().unwrap();
         let account = Account::from_storage(&db_txn).unwrap();
         drop(db_txn);
@@ -505,7 +510,8 @@ pub mod tests {
             worker_pool.clone(),
         )
         .unwrap();
-        let increase_balance = account.hello_starknet_increase_balance(hello_contract_address);
+        let increase_balance =
+            account.hello_starknet_increase_balance(hello_contract_address, 0xABCD);
         let get_balance = account.hello_starknet_get_balance(hello_contract_address);
         validator
             .execute_batch::<ProdTransactionMapper>(vec![increase_balance, get_balance])

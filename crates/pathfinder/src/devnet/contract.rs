@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use anyhow::Context as _;
 use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::{
     ClassHash,

@@ -22,6 +22,7 @@ use pathfinder_consensus::Round;
 use pathfinder_crypto::Felt;
 use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
 use pathfinder_storage::Storage;
+use rand::seq::SliceRandom;
 use rand::{thread_rng, Rng, SeedableRng};
 
 use crate::devnet::{self, strictly_increasing_timestamp, Account};
@@ -82,32 +83,133 @@ pub(crate) async fn wait_for_parent_committed(
     Ok(())
 }
 
-#[derive(Debug)]
-pub(crate) struct ProposalCreationConfig {
-    pub num_batches: NonZeroUsize,
-    pub batch_len: NonZeroUsize,
-    pub num_executed_txns: NonZeroUsize,
+/// Creates a dummy proposal for the given height and round, filling it with
+/// realistic transactions based on the state of the main storage DB, if it is
+/// bootstrapped, or with invalid L1 handler transactions otherwise.
+pub(crate) fn create(
+    height: u64,
+    round: Round,
+    account: &Account,
+    proposer: ContractAddress,
+    main_storage: Storage,
+    config: Option<ProposalCreationConfig>,
+) -> anyhow::Result<(Vec<ProposalPart>, ConsensusFinalizedL2Block)> {
+    let mut db_conn = main_storage.connection()?;
+    let db_txn = db_conn.transaction()?;
+
+    if devnet::is_db_bootstrapped(&db_txn)? {
+        create_from_bootstrapped_devnet_db(&db_txn, height, round, account, proposer, main_storage)
+    } else {
+        create_with_invalid_l1_handler_transactions(
+            &db_txn,
+            height,
+            round,
+            proposer,
+            main_storage,
+            config,
+        )
+    }
 }
 
-/// TODO
-pub(crate) fn create2(
+/// Creates a proposal with realistic transactions for the given height and
+/// round, which:
+/// - Deploys the "Hello Starknet" contract if it has not been deployed yet
+/// - Invokes the "increase_balance" and "get_balance" functions of random
+///   deployed instances
+/// - Deploys more instances of the "Hello Starknet" contract randomly
+pub(crate) fn create_from_bootstrapped_devnet_db(
+    db_txn: &pathfinder_storage::Transaction<'_>,
     height: u64,
     round: Round,
     account: &Account,
     proposer: ContractAddress,
     main_storage: Storage,
 ) -> anyhow::Result<(Vec<ProposalPart>, ConsensusFinalizedL2Block)> {
+    // TODO setting these constant to higher values can lead to weird panics in
+    // other validator (Pathfinder) nodes, which we need to investigate
+    const MAX_NUM_BATCHES: usize = 5;
+    // Number of loop iterations per batch, each iteration can add at most 3
+    // transactions, so max batch length is MAX_BATCH_TRIES * 3.
+    const MAX_BATCH_TRIES: usize = 3;
+
     let round = round.as_u32().context(format!(
         "Attempted to create proposal with Nil round at height {height}"
     ))?;
 
-    let mut db_conn = main_storage.connection()?;
-    let db_txn = db_conn.transaction()?;
+    // We update the account entity each time, because the previosly created
+    // transactions could have not gone into the committed block and thus we
+    // want to be sure we have the correct initial account nonce value and we are
+    // sure of the previous deployments before we start the new proposal.
+    account.update(
+        &db_txn,
+        BlockNumber::new(height)
+            .context("Height exceeds i64::MAX")?
+            .parent(),
+    )?;
+
+    let deployed_in_db = account.deployed();
+
+    // We generate up to 10 batches of up to 30 transactions and then randomly pick
+    // how many of those transactions we execute.
+    let seed = thread_rng().gen::<u64>();
+    tracing::debug!(%height, %round, %seed, "Creating dummy proposal");
+    let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
+
+    let mut batches = Vec::new();
+    let mut next_txn_idx_start = 0;
+
+    // If there are no deployments in the DB yet, create one batch with a
+    // deployment
+    if deployed_in_db.is_empty() {
+        let first_batch = vec![account.hello_starknet_deploy()?];
+        next_txn_idx_start += first_batch.len();
+        batches.push(first_batch);
+    }
+
+    let num_batches = rng.gen_range(1..=MAX_NUM_BATCHES);
+
+    for _ in 0..num_batches {
+        let batch_tries = rng.gen_range(1..=MAX_BATCH_TRIES);
+        let mut batch = Vec::new();
+
+        for _ in 0..batch_tries {
+            // Maybe deploy a new instance
+            if rng.gen() {
+                batch.push(account.hello_starknet_deploy()?);
+            }
+
+            // Invoke a random contract instance if there are any deployments in the DB
+            if let Some(contract_address) = deployed_in_db.choose(&mut rng) {
+                batch.push(
+                    account.hello_starknet_increase_balance(
+                        *contract_address,
+                        rng.gen_range(1..=1000),
+                    ),
+                );
+                // This is a view function, but it still gives us a realistic transaction
+                batch.push(account.hello_starknet_get_balance(*contract_address));
+            }
+
+            next_txn_idx_start += batch.len();
+        }
+
+        if !batch.is_empty() {
+            batches.push(batch);
+        }
+    }
+
+    let num_executed_txns = rng.gen_range(1..=next_txn_idx_start);
+    let txns_to_execute = batches
+        .iter()
+        .flatten()
+        .take(num_executed_txns)
+        .cloned()
+        .collect();
+
     // This is fine because `wait_for_parent_committed` is called first
     let latest_timestamp = db_txn.block_header(BlockId::Latest)?.map(|h| h.timestamp);
 
-    let worker_pool = ExecutorWorkerPool::<ConcurrentStateReader>::new(1).get();
-
+    let worker_pool = ExecutorWorkerPool::<ConcurrentStateReader>::auto().get();
     let (mut validator, mut parts) = devnet::init_proposal_and_validator(
         BlockNumber::new(height).context("Height exceeds i64::MAX")?,
         round,
@@ -116,43 +218,41 @@ pub(crate) fn create2(
         main_storage.clone(),
         worker_pool.clone(),
     )?;
-
-    let batch = if account.deployed().is_empty() {
-        vec![account.hello_starknet_deploy()?]
-    } else {
-        let contract_address = account.deployed()[0];
-        vec![
-            account.hello_starknet_increase_balance(contract_address),
-            account.hello_starknet_get_balance(contract_address),
-        ]
-    };
-
-    validator.execute_batch::<ProdTransactionMapper>(batch.clone())?;
-
+    validator.execute_batch::<ProdTransactionMapper>(txns_to_execute)?;
     let block = validator.consensus_finalize0()?;
+    let worker_pool = Arc::into_inner(worker_pool).context("Failed join worker pool")?;
+    worker_pool.join();
 
-    let batch_len = batch.len() as u64;
-
-    parts.push(ProposalPart::TransactionBatch(batch));
-    parts.push(ProposalPart::ExecutedTransactionCount(batch_len));
+    parts.extend(batches.into_iter().map(ProposalPart::TransactionBatch));
+    parts.push(ProposalPart::ExecutedTransactionCount(
+        num_executed_txns as u64,
+    ));
     parts.push(ProposalPart::Fin(ProposalFin {
         proposal_commitment: Hash(block.header.state_diff_commitment.0),
     }));
 
-    let worker_pool = Arc::into_inner(worker_pool).context("Failed join worker pool")?;
-    worker_pool.join();
-
     Ok((parts, block))
 }
 
-/// Creates a dummy proposal for the given height and round.
-///
-/// The number of batches, batch length, and number of executed transactions
-/// are randomized unless specified in the `config` parameter.
+#[derive(Debug)]
+pub(crate) struct ProposalCreationConfig {
+    pub num_batches: NonZeroUsize,
+    pub batch_len: NonZeroUsize,
+    pub num_executed_txns: NonZeroUsize,
+}
+
+// TODO use this fn for a "happy path from genesis" test where we cannot use a
+// bootstrapping DB. Such a test case is important to test the entirety of
+// consensus aware sync logic, specifically due to the fact that the initial DB
+// is empty.
+//
+/// Creates a dummy proposal for the given height and round, filling it with
+/// random L1 handler transactions, which all ultimately will be reverted.
 ///
 /// TODO: Until empty proposals reintroduce timestamps, we cannot create
 /// empty proposals here.
-pub(crate) fn create(
+pub(crate) fn create_with_invalid_l1_handler_transactions(
+    db_txn: &pathfinder_storage::Transaction<'_>,
     height: u64,
     round: Round,
     proposer: ContractAddress,
@@ -163,13 +263,11 @@ pub(crate) fn create(
         "Attempted to create proposal with Nil round at height {height}"
     ))?;
 
-    let mut db_conn = main_storage.connection()?;
-    let db_txn = db_conn.transaction()?;
     // This is fine because `wait_for_parent_committed` is called first
     let latest_timestamp = db_txn.block_header(BlockId::Latest)?.map(|h| h.timestamp);
 
     let seed = thread_rng().gen::<u64>();
-    tracing::debug!(%height, %round, %seed, ?config, "Creating dummy proposal");
+    tracing::debug!(%height, %round, %seed, ?config, "Creating dummy proposal with invalid L1 handler transactions");
     let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
 
     let mut batches = Vec::new();

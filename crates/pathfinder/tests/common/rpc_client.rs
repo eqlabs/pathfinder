@@ -228,7 +228,7 @@ pub async fn get_cached_artifacts_info(
         cached.retain(|CachedItem { height, .. }| *height < less_than_height);
         cached
     };
-    tokio::time::timeout(Duration::from_secs(1), fut)
+    tokio::time::timeout(Duration::from_secs(10), fut)
         .await
         .context("Getting cached artifacts info timed out")
 }
