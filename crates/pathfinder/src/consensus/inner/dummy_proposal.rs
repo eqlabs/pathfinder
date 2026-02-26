@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
@@ -23,8 +24,8 @@ use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
 use pathfinder_storage::Storage;
 use rand::{thread_rng, Rng, SeedableRng};
 
-use crate::devnet::{strictly_increasing_timestamp, Account};
-use crate::validator::{ProdTransactionMapper, ValidatorBlockInfoStage, ValidatorWorkerPool};
+use crate::devnet::{self, strictly_increasing_timestamp, Account};
+use crate::validator::{ProdTransactionMapper, ValidatorBlockInfoStage};
 
 /// Blocks consensus tasks's processing loop until the parent block of height is
 /// committed in main storage without blocking the async runtime.
@@ -81,11 +82,6 @@ pub(crate) async fn wait_for_parent_committed(
     Ok(())
 }
 
-/// Creates a worker pool for tests.
-fn create_test_worker_pool() -> ValidatorWorkerPool {
-    ExecutorWorkerPool::<ConcurrentStateReader>::new(1).get()
-}
-
 #[derive(Debug)]
 pub(crate) struct ProposalCreationConfig {
     pub num_batches: NonZeroUsize,
@@ -100,109 +96,53 @@ pub(crate) fn create2(
     account: &Account,
     proposer: ContractAddress,
     main_storage: Storage,
-    config: Option<ProposalCreationConfig>,
 ) -> anyhow::Result<(Vec<ProposalPart>, ConsensusFinalizedL2Block)> {
     let round = round.as_u32().context(format!(
         "Attempted to create proposal with Nil round at height {height}"
     ))?;
 
-    todo!();
+    let mut db_conn = main_storage.connection()?;
+    let db_txn = db_conn.transaction()?;
+    // This is fine because `wait_for_parent_committed` is called first
+    let latest_timestamp = db_txn.block_header(BlockId::Latest)?.map(|h| h.timestamp);
 
-    #[cfg(disable)]
-    {
-        let mut db_conn = main_storage.connection()?;
-        let db_txn = db_conn.transaction()?;
-        // This is fine because `wait_for_parent_committed` is called first
-        let latest_timestamp = db_txn.block_header(BlockId::Latest)?.map(|h| h.timestamp);
+    let worker_pool = ExecutorWorkerPool::<ConcurrentStateReader>::new(1).get();
 
-        let seed = thread_rng().gen::<u64>();
-        tracing::debug!(%height, %round, %seed, ?config, "Creating dummy proposal");
-        let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
+    let (mut validator, mut parts) = devnet::init_proposal_and_validator(
+        BlockNumber::new(height).context("Height exceeds i64::MAX")?,
+        round,
+        Address(proposer.0),
+        latest_timestamp,
+        main_storage.clone(),
+        worker_pool.clone(),
+    )?;
 
-        let mut batches = Vec::new();
-        let num_batches = config
-            .as_ref()
-            .map(|c| c.num_batches.get())
-            .unwrap_or_else(|| rng.gen_range(1..=10));
+    let batch = if account.deployed().is_empty() {
+        vec![account.hello_starknet_deploy()?]
+    } else {
+        let contract_address = account.deployed()[0];
+        vec![
+            account.hello_starknet_increase_balance(contract_address),
+            account.hello_starknet_get_balance(contract_address),
+        ]
+    };
 
-        let mut next_txn_idx_start = 0;
-        for _ in 1..=num_batches {
-            let batch_len = config
-                .as_ref()
-                .map(|c| c.batch_len.get())
-                .unwrap_or_else(|| rng.gen_range(1..=10));
+    validator.execute_batch::<ProdTransactionMapper>(batch.clone())?;
 
-            let batch = create_transaction_batch(
-                height as u32,
-                next_txn_idx_start,
-                batch_len,
-                ChainId::SEPOLIA_TESTNET,
-            );
+    let block = validator.consensus_finalize0()?;
 
-            batches.push(batch);
-            next_txn_idx_start += batch_len;
-        }
+    let batch_len = batch.len() as u64;
 
-        let proposal_init = ProposalInit {
-            height,
-            round,
-            valid_round: None,
-            proposer: Address(proposer.0),
-        };
+    parts.push(ProposalPart::TransactionBatch(batch));
+    parts.push(ProposalPart::ExecutedTransactionCount(batch_len));
+    parts.push(ProposalPart::Fin(ProposalFin {
+        proposal_commitment: Hash(block.header.state_diff_commitment.0),
+    }));
 
-        let mut parts = vec![ProposalPart::Init(proposal_init.clone())];
+    let worker_pool = Arc::into_inner(worker_pool).context("Failed join worker pool")?;
+    worker_pool.join();
 
-        let block_info = BlockInfo {
-            height,
-            builder: Address(proposer.0),
-            timestamp: strictly_increasing_timestamp(latest_timestamp).get(),
-            l2_gas_price_fri: 1_000_000,
-            l1_gas_price_wei: 1_000_000,
-            l1_data_gas_price_wei: 1_000_000,
-            eth_to_fri_rate: 1_000_000_000_000_000_000,
-            l1_da_mode: L1DataAvailabilityMode::Calldata,
-        };
-
-        parts.push(ProposalPart::BlockInfo(block_info.clone()));
-        let validator = ValidatorBlockInfoStage::new(ChainId::SEPOLIA_TESTNET, proposal_init)?;
-        let worker_pool = create_test_worker_pool();
-        let mut validator = validator.validate_block_info(
-            block_info.clone(),
-            main_storage,
-            // This is fine because `wait_for_parent_committed` is called first
-            &HashMap::new(),
-            None,
-            None,
-            worker_pool,
-        )?;
-
-        let num_executed_txns = config
-            .as_ref()
-            .map(|c| c.num_executed_txns.get())
-            .unwrap_or_else(|| rng.gen_range(1..=next_txn_idx_start));
-
-        let txns_to_execute = batches
-            .iter()
-            .flatten()
-            .take(num_executed_txns)
-            .cloned()
-            .collect();
-
-        parts.extend(batches.into_iter().map(ProposalPart::TransactionBatch));
-        parts.push(ProposalPart::ExecutedTransactionCount(
-            num_executed_txns as u64,
-        ));
-
-        validator.execute_batch::<ProdTransactionMapper>(txns_to_execute)?;
-
-        let block = validator.consensus_finalize0()?;
-
-        parts.push(ProposalPart::Fin(ProposalFin {
-            proposal_commitment: Hash(block.header.state_diff_commitment.0),
-        }));
-
-        Ok((parts, block))
-    }
+    Ok((parts, block))
 }
 
 /// Creates a dummy proposal for the given height and round.
@@ -278,7 +218,7 @@ pub(crate) fn create(
 
     parts.push(ProposalPart::BlockInfo(block_info.clone()));
     let validator = ValidatorBlockInfoStage::new(ChainId::SEPOLIA_TESTNET, proposal_init)?;
-    let worker_pool = create_test_worker_pool();
+    let worker_pool = ExecutorWorkerPool::<ConcurrentStateReader>::new(1).get();
     let mut validator = validator.validate_block_info(
         block_info.clone(),
         main_storage,

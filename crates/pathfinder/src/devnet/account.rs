@@ -185,6 +185,18 @@ impl Account {
         Ok(())
     }
 
+    /// Returns the addresses of hello starknet contract instances deployed so
+    /// far.
+    pub fn deployed(&self) -> &[ContractAddress] {
+        &self.deployed
+    }
+
+    /// Records the deployment of a hello starknet contract instance at the
+    /// given address.
+    pub fn insert_deployed(&mut self, address: ContractAddress) {
+        self.deployed.push(address);
+    }
+
     /// Create an invoke transaction deploying another instance of hello
     /// starknet contract
     pub fn hello_starknet_deploy(&self) -> anyhow::Result<p2p_proto::consensus::Transaction> {
@@ -302,13 +314,11 @@ impl Account {
                 // Calldata length
                 CallParam(Felt::ONE),
                 // Hello starknet increase_balance argument
-                CallParam(Felt::from_u64(0xFF)),
+                CallParam(Felt::from_u64(0xFF)), // TODO randomize or add param
             ],
             sender_address: self.address(),
             proof_facts: vec![],
         };
-
-        eprintln!("Invoke transaction: {invoke:#?}");
 
         let mut variant = TransactionVariant::InvokeV3(invoke);
         let txn_hash = variant.calculate_hash(ChainId::SEPOLIA_TESTNET, false);

@@ -13,7 +13,7 @@ use std::time::{Instant, SystemTime};
 use anyhow::{Context, Ok};
 use p2p::sync::client::conv::ToDto as _;
 use p2p_proto::common::{Address, Hash};
-use p2p_proto::consensus::{BlockInfo, ProposalInit};
+use p2p_proto::consensus::{BlockInfo, ProposalInit, ProposalPart};
 use p2p_proto::sync::transaction::DeclareV3WithoutClass;
 use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::transaction::{
@@ -75,10 +75,11 @@ pub fn init_db(proposer: Address) -> anyhow::Result<(BootDb, u64)> {
     let stopwatch = Instant::now();
 
     let timestamp = strictly_increasing_timestamp(None);
-    let _bootstrap_db_dir = Arc::new(TempDir::new()?);
-    let bootstrap_db_path = _bootstrap_db_dir.path().join("bootstrap.sqlite");
+    let _db_dir = Arc::new(TempDir::new()?);
 
-    let storage = StorageBuilder::file(bootstrap_db_path.clone())
+    let db_file_path = _db_dir.path().join("bootstrap.sqlite");
+
+    let storage = StorageBuilder::file(db_file_path.clone())
         .trie_prune_mode(Some(TriePruneMode::Archive))
         .blockchain_history_mode(Some(BlockchainHistoryMode::Archive))
         .migrate()?
@@ -88,7 +89,7 @@ pub fn init_db(proposer: Address) -> anyhow::Result<(BootDb, u64)> {
 
     tracing::info!(
         "Initialized devnet bootstrap DB in {}",
-        _bootstrap_db_dir.path().display(),
+        db_file_path.display(),
     );
 
     let mut db_conn = storage.connection()?;
@@ -165,8 +166,8 @@ pub fn init_db(proposer: Address) -> anyhow::Result<(BootDb, u64)> {
 
     Ok((
         BootDb {
-            _bootstrap_db_dir,
-            bootstrap_db_path,
+            _db_dir,
+            db_file_path,
         },
         latest_block_number.get() + 1,
     ))
@@ -175,13 +176,13 @@ pub fn init_db(proposer: Address) -> anyhow::Result<(BootDb, u64)> {
 #[derive(Debug, Clone)]
 pub struct BootDb {
     // We keep the temp dir around to ensure it isn't deleted until we're done
-    _bootstrap_db_dir: Arc<TempDir>,
-    bootstrap_db_path: PathBuf,
+    _db_dir: Arc<TempDir>,
+    db_file_path: PathBuf,
 }
 
 impl BootDb {
     pub fn path(&self) -> &Path {
-        &self.bootstrap_db_path
+        &self.db_file_path
     }
 }
 
@@ -211,10 +212,11 @@ pub fn declare(
         .context("DB is empty")?;
     let next_block_number = latest_header.number + 1;
 
-    let mut validator = new_validator(
+    let (mut validator, _) = init_proposal_and_validator(
         next_block_number,
+        0,
         proposer,
-        latest_header.timestamp,
+        Some(latest_header.timestamp),
         storage.clone(),
         worker_pool.clone(),
     )?;
@@ -360,42 +362,52 @@ pub fn strictly_increasing_timestamp(prev: Option<BlockTimestamp>) -> BlockTimes
     }
 }
 
-fn new_validator(
+pub fn init_proposal_and_validator(
     height: BlockNumber,
+    round: u32,
     proposer: Address,
-    prev_timestamp: BlockTimestamp,
+    prev_timestamp: Option<BlockTimestamp>,
     storage: Storage,
     worker_pool: ValidatorWorkerPool,
-) -> anyhow::Result<ValidatorTransactionBatchStage> {
-    let validator = ValidatorBlockInfoStage::new(
-        ChainId::SEPOLIA_TESTNET,
-        ProposalInit {
-            height: height.get(),
-            round: 0,
-            valid_round: None,
-            proposer,
-        },
-    )
-    .expect("valid block height");
+) -> anyhow::Result<(ValidatorTransactionBatchStage, Vec<ProposalPart>)> {
+    let proposal_init = ProposalInit {
+        height: height.get(),
+        round,
+        valid_round: None,
+        proposer,
+    };
+    let block_info = block_info(height, proposer, prev_timestamp);
+    let validator = ValidatorBlockInfoStage::new(ChainId::SEPOLIA_TESTNET, proposal_init.clone())
+        .expect("valid block height");
 
     let validator = validator.validate_block_info(
-        block_info(height, proposer, prev_timestamp),
+        block_info.clone(),
         storage.clone(),
         &HashMap::new(),
         None,
         None,
         worker_pool.clone(),
     )?;
-    Ok(validator)
+    Ok((
+        validator,
+        vec![
+            ProposalPart::Init(proposal_init),
+            ProposalPart::BlockInfo(block_info),
+        ],
+    ))
 }
 
 /// Block info for devnet blocks, sufficient for execution, provided that gas
 /// prices are not validated against any oracle.
-fn block_info(height: BlockNumber, proposer: Address, prev_timestamp: BlockTimestamp) -> BlockInfo {
+fn block_info(
+    height: BlockNumber,
+    proposer: Address,
+    prev_timestamp: Option<BlockTimestamp>,
+) -> BlockInfo {
     BlockInfo {
         height: height.get(),
         builder: proposer,
-        timestamp: strictly_increasing_timestamp(Some(prev_timestamp)).get(),
+        timestamp: strictly_increasing_timestamp(prev_timestamp).get(),
         l2_gas_price_fri: GAS_PRICE.0,
         l1_gas_price_wei: GAS_PRICE.0,
         l1_data_gas_price_wei: GAS_PRICE.0,
@@ -427,7 +439,7 @@ pub mod tests {
     use pathfinder_storage::Storage;
 
     use crate::devnet::account::Account;
-    use crate::devnet::{fixtures, new_validator};
+    use crate::devnet::{fixtures, init_proposal_and_validator};
     use crate::state::block_hash::compute_final_hash;
     use crate::validator::{ProdTransactionMapper, ValidatorWorkerPool};
 
@@ -461,10 +473,11 @@ pub mod tests {
 
         // Block 2 - deploy a Hello Starknet contract instance via the UDC
         let block_2_number = block_1_header.number + 1;
-        let mut validator = new_validator(
+        let (mut validator, _) = init_proposal_and_validator(
             block_2_number,
+            0,
             proposer,
-            block_1_header.timestamp,
+            Some(block_1_header.timestamp),
             storage.clone(),
             worker_pool.clone(),
         )
@@ -483,10 +496,11 @@ pub mod tests {
         // Block 3 - invoke increase_balance and get_balance on the deployed Hello
         // Starknet instance
         let block_3_number = block_2_header.number + 1;
-        let mut validator = new_validator(
+        let (mut validator, _) = init_proposal_and_validator(
             block_3_number,
+            0,
             proposer,
-            block_2_header.timestamp,
+            Some(block_2_header.timestamp),
             storage.clone(),
             worker_pool.clone(),
         )
