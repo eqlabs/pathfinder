@@ -253,8 +253,13 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
 /// where `N` is the consecutive retry iteration number `{1, 2, ...}`.
 #[derive(Debug, Clone)]
 pub struct Client {
-    /// This client is internally refcounted
-    inner: reqwest::Client,
+    /// Shared, replaceable HTTP client. All [Clone]s of this [Client] share the
+    /// same instance, so calling [Client::refresh] on any clone replaces the
+    /// underlying connection pool for every holder.
+    inner: std::sync::Arc<std::sync::RwLock<reqwest::Client>>,
+    /// Timeout used when constructing the `reqwest` client. Stored so that
+    /// [Client::refresh] can re-create the client with the same settings.
+    timeout: Duration,
     /// Starknet gateway URL.
     gateway: Url,
     /// Starknet feeder gateway URL.
@@ -312,17 +317,41 @@ impl Client {
         metrics::register();
 
         Ok(Self {
-            inner: reqwest::Client::builder()
-                .timeout(timeout)
-                .user_agent(pathfinder_version::USER_AGENT)
-                .gzip(true)
-                .deflate(true)
-                .build()?,
+            inner: std::sync::Arc::new(std::sync::RwLock::new(
+                reqwest::Client::builder()
+                    .timeout(timeout)
+                    .user_agent(pathfinder_version::USER_AGENT)
+                    .gzip(true)
+                    .deflate(true)
+                    .build()?,
+            )),
+            timeout,
             gateway,
             feeder_gateway,
             retry: true,
             api_key: None,
         })
+    }
+
+    /// Replaces the underlying `reqwest` HTTP client with a freshly built one,
+    /// using the same timeout and settings as the original. Because all
+    /// [Clone]s of this [Client] share the same [`std::sync::Arc`], the new
+    /// connection pool becomes visible to every holder immediately.
+    ///
+    /// Intended to be called periodically to enforce a maximum keep-alive age
+    /// on the underlying connection pool.
+    pub fn refresh(&self) -> anyhow::Result<()> {
+        let new_inner = reqwest::Client::builder()
+            .timeout(self.timeout)
+            .user_agent(pathfinder_version::USER_AGENT)
+            .gzip(true)
+            .deflate(true)
+            .build()?;
+        *self
+            .inner
+            .write()
+            .expect("gateway client inner lock is not poisoned") = new_inner;
+        Ok(())
     }
 
     /// Sets the api key to be used for each request as a value for
@@ -341,16 +370,22 @@ impl Client {
         }
     }
 
-    fn gateway_request(&self) -> builder::Request<'_, builder::stage::Method> {
-        builder::Request::builder(&self.inner, self.gateway.clone(), self.api_key.clone())
+    fn gateway_request(&self) -> builder::Request<builder::stage::Method> {
+        let client = self
+            .inner
+            .read()
+            .expect("gateway client inner lock is not poisoned")
+            .clone();
+        builder::Request::builder(client, self.gateway.clone(), self.api_key.clone())
     }
 
-    fn feeder_gateway_request(&self) -> builder::Request<'_, builder::stage::Method> {
-        builder::Request::builder(
-            &self.inner,
-            self.feeder_gateway.clone(),
-            self.api_key.clone(),
-        )
+    fn feeder_gateway_request(&self) -> builder::Request<builder::stage::Method> {
+        let client = self
+            .inner
+            .read()
+            .expect("gateway client inner lock is not poisoned")
+            .clone();
+        builder::Request::builder(client, self.feeder_gateway.clone(), self.api_key.clone())
     }
 }
 
