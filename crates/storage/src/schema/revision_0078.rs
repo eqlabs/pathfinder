@@ -1,7 +1,9 @@
 use anyhow::Context;
 
 use crate::columns::Column;
+use crate::params::RowExt;
 use crate::{
+    StoredNode,
     CONTRACT_STATE_HASHES_COLUMN,
     TRIE_CLASS_COLUMN,
     TRIE_CONTRACT_COLUMN,
@@ -15,11 +17,11 @@ pub(crate) fn migrate(
     tracing::info!("Migrating class trie to RocksDB");
     migrate_trie(tx, "trie_class", rocksdb, &TRIE_CLASS_COLUMN)?;
 
-    tracing::info!("Migrating contract trie to RocksDB");
-    migrate_trie(tx, "trie_contracts", rocksdb, &TRIE_CONTRACT_COLUMN)?;
-
     tracing::info!("Migrating storage trie to RocksDB");
     migrate_trie(tx, "trie_storage", rocksdb, &TRIE_STORAGE_COLUMN)?;
+
+    tracing::info!("Migrating contract trie to RocksDB");
+    migrate_contract_trie(tx, rocksdb)?;
 
     tracing::info!("Migrating contract state hashes to RocksDB");
     migrate_contract_state_hashes(tx, rocksdb)?;
@@ -55,7 +57,7 @@ fn migrate_trie(
         Ok((idx, hash, data))
     })?;
 
-    let column = rocksdb.get_column(column);
+    let column: std::sync::Arc<rust_rocksdb::BoundColumnFamily<'_>> = rocksdb.get_column(column);
 
     let mut buf = [0u8; 256];
     let mut batch = crate::RocksDBBatch::default();
@@ -83,6 +85,162 @@ fn migrate_trie(
     tracing::info!(%sqlite_table_name, "Migrated trie from table");
 
     Ok(())
+}
+
+fn migrate_contract_trie(
+    tx: &rusqlite::Transaction<'_>,
+    rocksdb: &crate::RocksDBInner,
+) -> anyhow::Result<()> {
+    let mut stmt = tx.prepare("SELECT idx, hash, data FROM trie_contracts")?;
+    let trie_iter = stmt.query_map([], |row| {
+        let idx: u64 = row.get(0)?;
+        let hash: [u8; 32] = row.get(1)?;
+        let data: Vec<u8> = row.get(2)?;
+        Ok((idx, hash, data))
+    })?;
+
+    let mut packed_arrays = SparsePackedArrays::new();
+
+    for (i, trie_result) in trie_iter.enumerate() {
+        let (idx, hash, data) = trie_result?;
+        packed_arrays.push(idx, &hash, &data);
+
+        if i % BATCH_SIZE == BATCH_SIZE - 1 {
+            tracing::info!("Loaded {} contract trie entries into memory", i + 1);
+        }
+    }
+
+    tracing::info!(
+        "Loaded {} contract trie entries into memory",
+        packed_arrays.len()
+    );
+
+    let mut stmt = tx.prepare("SELECT contract_address, root_index FROM contract_roots")?;
+    let roots_iter = stmt.query_map([], |row| {
+        let contract_address: [u8; 32] = row.get(0)?;
+        let root_index = row.get_optional_i64(1)?;
+        Ok((contract_address, root_index))
+    })?;
+
+    let column: std::sync::Arc<rust_rocksdb::BoundColumnFamily<'_>> =
+        rocksdb.get_column(&TRIE_CONTRACT_COLUMN);
+
+    let mut output = Vec::new();
+    let mut key_buf = [0u8; 40];
+
+    for (i, root_result) in roots_iter.enumerate() {
+        let (contract_address, root_index) = root_result?;
+
+        if let Some(root_index) = root_index {
+            walk_tree(
+                &packed_arrays,
+                root_index.try_into().expect("root index fits into u64"),
+                &mut output,
+            );
+
+            let mut batch = crate::RocksDBBatch::default();
+
+            for node_idx in &output {
+                let node_data = packed_arrays
+                    .get(*node_idx)
+                    .expect("node index should exist in packed arrays");
+
+                contract_trie_key(&contract_address, *node_idx, &mut key_buf);
+                batch.put_cf(&column, key_buf, node_data);
+            }
+
+            rocksdb.rocksdb.write_without_wal(&batch)?;
+
+            if i % 10000 == 9999 {
+                tracing::info!("Migrated {} contract trie roots", i + 1);
+            }
+
+            output.clear();
+        }
+    }
+
+    Ok(())
+}
+
+fn walk_tree(packed_arrays: &SparsePackedArrays, node_idx: u64, output: &mut Vec<u64>) {
+    const CODEC_CFG: bincode::config::Configuration = bincode::config::standard();
+
+    let node_data = packed_arrays
+        .get(node_idx)
+        .expect("node index should exist in packed arrays");
+
+    // parse node_data to determine if it's a leaf, extension, or branch node
+    // and recursively walk child nodes if necessary
+    let (node, _): (StoredSerde, usize) =
+        bincode::borrow_decode_from_slice(&node_data[32..], CODEC_CFG)
+            .expect("decoding node data should succeed");
+
+    output.push(node_idx);
+
+    match node {
+        StoredSerde::Binary { left, right } => {
+            walk_tree(packed_arrays, left, output);
+            walk_tree(packed_arrays, right, output);
+        }
+        StoredSerde::Edge { child, .. } => {
+            walk_tree(packed_arrays, child, output);
+        }
+        StoredSerde::LeafBinary | StoredSerde::LeafEdge { .. } => {
+            // leaf node, no children to walk
+        }
+    }
+}
+
+#[derive(Clone, Debug, bincode::Encode, bincode::BorrowDecode)]
+enum StoredSerde {
+    Binary { left: u64, right: u64 },
+    Edge { child: u64, path: Vec<u8> },
+    LeafBinary,
+    LeafEdge { path: Vec<u8> },
+}
+
+fn contract_trie_key(prefix: &[u8; 32], storage_idx: u64, buf: &mut [u8; 40]) {
+    buf[..32].copy_from_slice(prefix);
+    let storage_idx_be_bytes = storage_idx.to_be_bytes();
+    buf[32..].copy_from_slice(&storage_idx_be_bytes);
+}
+
+pub struct SparsePackedArrays {
+    cursor: usize,
+    keys: Vec<u64>,      // sorted
+    offsets: Vec<usize>, // parallel to keys, + 1 sentinel
+    data: Vec<u8>,
+}
+
+impl SparsePackedArrays {
+    pub fn new() -> Self {
+        Self {
+            cursor: 0,
+            keys: Vec::new(),
+            offsets: vec![0],
+            data: Vec::new(),
+        }
+    }
+
+    pub fn push(&mut self, key: u64, hash: &[u8], blob: &[u8]) {
+        self.keys.push(key);
+        *self.offsets.last_mut().unwrap() = self.cursor;
+        self.data.extend_from_slice(hash);
+        self.data.extend_from_slice(blob);
+        self.cursor += hash.len() + blob.len();
+        self.offsets.push(self.cursor); // sentinel
+    }
+
+    pub fn get(&self, key: u64) -> Option<&[u8]> {
+        let idx = self.keys.binary_search(&key).ok()?;
+        let start = self.offsets[idx] as usize;
+        let end = self.offsets[idx + 1] as usize;
+        Some(&self.data[start..end])
+    }
+
+    pub fn len(&self) -> usize {
+        self.keys.len()
+    }
 }
 
 fn contract_state_hashes_key(block_number: u64, contract_address: &[u8; 32]) -> [u8; 36] {
