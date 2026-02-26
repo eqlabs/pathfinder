@@ -34,6 +34,7 @@ ipnet = { workspace = true }
 jemallocator = { workspace = true }
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
+num-bigint = { workspace = true }
 p2p = { path = "../p2p" }
 p2p_proto = { path = "../p2p_proto" }
 paste = { workspace = true }
@@ -95,6 +96,7 @@ pathfinder-compiler = { path = "../compiler" }
 pathfinder-executor = { path = "../executor" }
 pathfinder-rpc = { path = "../rpc" }
 pathfinder-storage = { path = "../storage", features = [
+    # Breaks consensus tests because integration tests use prod DB with normal bloom filter size
     "small_aggregate_filters",
 ] }
 pretty_assertions_sorted = { workspace = true }

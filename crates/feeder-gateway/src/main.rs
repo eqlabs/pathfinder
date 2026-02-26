@@ -71,14 +71,13 @@ struct Cli {
     pub port: u16,
     #[arg(
         long,
-        long_help = "If set, the process will wait for the database file to become available and \
-                     fully migrated. If the database is not immediately available, the feeder \
-                     gateway will keep retrying until a timeout occurs. WARNING: CUSTOM chain is \
-                     assumed regardless of the database contents.",
-        default_value = "false",
+        long_help = "If set, the process will wait for the marker file to become available. \
+                     If the marker file is not immediately available, the feeder gateway \
+                     will keep retrying until a timeout occurs.",
+        value_name = "MARKER_FILE_PATH",
         action=ArgAction::Set
     )]
-    pub wait_for_custom_db_ready: bool,
+    pub wait_for_marker_file: Option<PathBuf>,
     #[command(flatten)]
     pub reorg: ReorgCli,
 }
@@ -108,12 +107,11 @@ async fn main() -> anyhow::Result<()> {
         .with(EnvFilter::from_default_env())
         .init();
 
-    let db_path = cli.database_path.clone();
-
-    if !cli.wait_for_custom_db_ready {
-        let storage = pathfinder_storage::StorageBuilder::file(db_path.clone())
+    if cli.wait_for_marker_file.is_none() {
+        let storage = pathfinder_storage::StorageBuilder::file(cli.database_path.clone())
             .readonly()?
             .create_read_only_pool(NonZeroU32::new(10).unwrap())?;
+
         let chain = {
             let mut connection = storage.connection()?;
             let tx = connection.transaction()?;
@@ -123,9 +121,14 @@ async fn main() -> anyhow::Result<()> {
     }
 
     tokio::select! {
-        storage_err = wait_for_storage(
-            cli.wait_for_custom_db_ready,
-            &db_path,
+        // We wait for a marker file, because in a test scenario where the FGw opens an existing DB before Pathfinder,
+        // wal and shm files will be created. Sqlite3 engine in Pathfinder will attempt to perform recovery
+        // using those files, which requires locking the DB and will fail with `SQLITE_BUSY` (DB locked)
+        // because there already are open RO connections from the FGw's pool and recovery requires no locks,
+        // even if they are RO.
+        storage_err = wait_for_marker_file(
+            cli.wait_for_marker_file.clone(),
+            cli.database_path.clone(),
             storage_tx,
             Duration::from_millis(500),
             Duration::from_secs(30),
@@ -144,34 +147,29 @@ struct ReorgConfig {
     pub reorg_to_block: BlockNumber,
 }
 
-/// Waits for the storage to become available and fully migrated. The task
-/// **does not join** if the storage becomes available or the `enable` flag
-/// is `false` (which means the databases file is expected to be available
-/// immediately), it just returns **a pending future**. The task only returns if
-/// an error is encountered, including a timeout.
-fn wait_for_storage(
-    enable: bool,
-    path: &Path,
+/// Waits for the marker file to become available and then attempts to create a
+/// read-only connection pool to the database. The task **does not join** if the
+/// marker file becomes available or the `enable` flag is `false`, it just
+/// returns **a pending future**. The task only returns if an error is
+/// encountered, including a timeout.
+fn wait_for_marker_file(
+    marker_file: Option<PathBuf>,
+    db_file: PathBuf,
     storage_tx: Sender<Option<(Storage, Chain)>>,
     poll_interval: Duration,
     timeout: Duration,
 ) -> impl Future<Output = anyhow::Error> {
-    if !enable {
+    let Some(marker_file) = marker_file else {
         return futures::future::pending().boxed();
-    }
+    };
 
-    let path = path.to_path_buf();
     let jh = tokio::task::spawn_blocking(move || {
         let stopwatch = std::time::Instant::now();
         loop {
-            // All kinds of *exists() APIs are prone to TOCTOU issues
-            match std::fs::File::open(path.clone()) {
-                Ok(file) => {
-                    drop(file);
-                    tracing::info!("Database file found, attempting to connect...");
-
+            match std::fs::exists(marker_file.clone()) {
+                Ok(true) => {
                     let Ok(storage_manager) =
-                        pathfinder_storage::StorageBuilder::file(path.clone()).readonly()
+                        pathfinder_storage::StorageBuilder::file(db_file.clone()).readonly()
                     else {
                         tracing::info!(
                             "Creating read only storage manager failed, database is not ready, \
@@ -185,7 +183,8 @@ fn wait_for_storage(
                         storage_manager.create_read_only_pool(NonZeroU32::new(10).unwrap())
                     else {
                         tracing::info!(
-                            "Creating connection pool failed, database is not ready, retrying..."
+                            "Creating read only connection pool failed, database is not ready, \
+                             retrying..."
                         );
                         std::thread::sleep(poll_interval);
                         continue;
@@ -203,8 +202,12 @@ fn wait_for_storage(
                     tracing::info!("Database is now available");
                     return anyhow::Ok((storage, chain));
                 }
+                Ok(false) => {
+                    tracing::info!("Marker file not yet available, retrying...");
+                    std::thread::sleep(poll_interval);
+                }
                 Err(_) => {
-                    tracing::info!("Database file not yet available, retrying...");
+                    tracing::info!("Could not check if marker file exists, retrying...");
                     std::thread::sleep(poll_interval);
                 }
             }

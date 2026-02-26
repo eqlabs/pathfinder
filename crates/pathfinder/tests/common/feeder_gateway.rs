@@ -23,6 +23,8 @@ impl FeederGateway {
     /// [`FeederGateway`] is dropped.
     pub fn spawn(proposer_config: &Config) -> anyhow::Result<Self> {
         let db_dir = proposer_config.db_dir();
+        let marker_file = db_dir.join(format!("{}_ready", proposer_config.name));
+        // let db_dir = proposer_config.test_dir.join("fgw");
         let stdout_path = proposer_config.test_dir.join("fgw_stdout.log");
         let stdout_file = create_log_file("Feeder Gateway", &stdout_path)?;
         let stderr_path = proposer_config.test_dir.join("fgw_stderr.log");
@@ -32,7 +34,8 @@ impl FeederGateway {
         let process = Command::new(feeder_bin)
             .args([
                 "--port=0",
-                "--wait-for-custom-db-ready=true",
+                // "--wait-for-custom-db-ready=true",
+                &format!("--wait-for-marker-file={}", marker_file.display()),
                 db_dir.join("custom.sqlite").to_str().expect("Valid utf8"),
             ])
             .stdout(stdout_file)

@@ -36,6 +36,7 @@ use super::{integration_testing, ConsensusTaskEvent, ConsensusValue, HeightExt, 
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
 use crate::consensus::inner::dummy_proposal;
+use crate::devnet::Account;
 
 #[allow(clippy::too_many_arguments)]
 pub fn spawn(
@@ -52,6 +53,14 @@ pub fn spawn(
     let data_directory = data_directory.to_path_buf();
 
     util::task::spawn(async move {
+        let main_storage_clone = main_storage.clone();
+        let account = util::task::spawn_blocking(move |_| {
+            let mut db_conn = main_storage_clone.connection()?;
+            let db_txn = db_conn.transaction()?;
+            Account::from_storage(&db_txn)
+        })
+        .await??;
+
         let highest_committed = highest_committed(&main_storage)
             .context("Failed to read highest committed block at startup")?;
         // Get the validator address and validator set provider
@@ -109,7 +118,13 @@ pub fn spawn(
                     }
                 }
                 from_p2p = rx_from_p2p.recv() => {
-                    from_p2p.expect("Consensus task event receiver not to be dropped")
+                    match from_p2p {
+                        Some(command) => command,
+                        None => {
+                            tracing::warn!("Receiver for commands from the P2P task was dropped, exiting Consensus task");
+                            anyhow::bail!("Receiver for commands from the P2P task was dropped, exiting Consensus task");
+                        }
+                    }
                 }
             };
 
@@ -138,9 +153,10 @@ pub fn spawn(
                             match dummy_proposal::create(
                                 height,
                                 round.into(),
+                                &account,
                                 validator_address,
                                 main_storage.clone(),
-                                None, // Randomize
+                                None,
                             ) {
                                 Ok((wire_proposal, finalized_block)) => {
                                     let ProposalFin {

@@ -1,0 +1,2 @@
+The exact version as in OpenZeppelin/cairo-contracts v1.0.0
+Compiled with scarb 2.9.4

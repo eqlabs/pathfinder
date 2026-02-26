@@ -6,14 +6,17 @@ use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
+use futures::future::Either;
 use http::StatusCode;
+use pathfinder_common::integration_testing::debug_create_marker_file;
 use pathfinder_lib::config::integration_testing::InjectFailureConfig;
+use pathfinder_lib::devnet::BootDb;
 use tokio::signal::unix::{signal, SignalKind};
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 
-use crate::common::utils::{self, create_log_file};
+use crate::common::utils;
 
 /// Represents a running Pathfinder instance.
 pub struct PathfinderInstance {
@@ -44,6 +47,7 @@ pub struct Config {
     pub test_dir: PathBuf,
     pub inject_failure: Option<InjectFailureConfig>,
     pub local_feeder_gateway_port: Option<u16>,
+    pub boot_db: Option<BootDb>,
 }
 
 pub type RpcPortWatch = (watch::Sender<(u32, u16)>, watch::Receiver<(u32, u16)>);
@@ -63,12 +67,24 @@ impl PathfinderInstance {
     pub fn spawn(config: Config) -> anyhow::Result<Self> {
         let id_file = config.fixture_dir.join(format!("id_{}.json", config.name));
         let db_dir = config.db_dir();
+
+        if let Some(boot_db) = &config.boot_db {
+            let source = boot_db.path();
+            let destination = db_dir.join("custom.sqlite");
+            std::fs::create_dir_all(&db_dir).context("Creating db directory")?;
+            std::fs::copy(source, &destination).context(format!(
+                "Copying bootstrap DB from {} to {}",
+                source.display(),
+                destination.display(),
+            ))?;
+        }
+
         let stdout_path = config.test_dir.join(format!("{}_stdout.log", config.name));
         let stdout_file =
-            create_log_file(format!("Pathfinder instance {}", config.name), &stdout_path)?;
+            utils::create_log_file(format!("Pathfinder instance {}", config.name), &stdout_path)?;
         let stderr_path = config.test_dir.join(format!("{}_stderr.log", config.name));
         let stderr_file =
-            create_log_file(format!("Pathfinder instance {}", config.name), &stderr_path)?;
+            utils::create_log_file(format!("Pathfinder instance {}", config.name), &stderr_path)?;
 
         let mut command = Command::new(config.pathfinder_bin);
         let command = command
@@ -119,8 +135,6 @@ impl PathfinderInstance {
             )
             .as_str(),
             "--consensus.history-depth=2",
-            "--consensus.l1-gas-price-tolerance=100",
-            "--consensus.l1-gas-price-max-time-gap=3600",
             format!("--p2p.consensus.identity-config-file={}", id_file.display()).as_str(),
             "--p2p.consensus.listen-on=/ip4/127.0.0.1/tcp/0",
             "--p2p.consensus.experimental.direct-connection-timeout=1",
@@ -134,16 +148,17 @@ impl PathfinderInstance {
             ));
         }
         command.arg(format!("--sync.enable={}", config.sync_enabled));
-        command.arg("--integration-tests.disable-gas-price-validation=true");
+        command.args([
+            "--integration-tests.disable-db-verification=true",
+            "--integration-tests.disable-gas-price-validation=true",
+        ]);
 
         config.inject_failure.map(|i| {
-            command
-                .arg(format!(
-                    "--integration-tests.inject-failure={},{}",
-                    i.height,
-                    i.trigger.as_str()
-                ))
-                .arg("--integration-tests.disable-db-verification=true")
+            command.arg(format!(
+                "--integration-tests.inject-failure={},{}",
+                i.height,
+                i.trigger.as_str()
+            ))
         });
 
         let process = command
@@ -260,7 +275,11 @@ impl PathfinderInstance {
             }
         };
         match tokio::time::timeout(timeout, fut).await {
-            Ok(Ok(_)) => Ok(()),
+            Ok(Ok(_)) => {
+                // This is to let other processes know
+                debug_create_marker_file(&format!("{}_ready", self.name), &self.db_dir);
+                Ok(())
+            }
             Ok(Err(e)) => Err(e),
             Err(_) => {
                 anyhow::bail!(
@@ -338,7 +357,8 @@ impl Config {
         set_size: usize,
         pathfinder_bin: &Path,
         fixture_dir: &Path,
-        test_dir: &Path,
+        test_dir: PathBuf,
+        boot_db: Option<BootDb>,
     ) -> Vec<Self> {
         assert!(
             set_size <= Self::NAMES.len(),
@@ -354,11 +374,12 @@ impl Config {
                 // The set is deduplicated when consensus task is started, so including the own
                 // validator address is fine.
                 validator_addresses: (1..=set_size as u8).collect::<Vec<_>>(),
-                test_dir: test_dir.to_path_buf(),
+                test_dir: test_dir.clone(),
                 pathfinder_bin: pathfinder_bin.to_path_buf(),
                 fixture_dir: fixture_dir.to_path_buf(),
                 inject_failure: None,
                 local_feeder_gateway_port: None,
+                boot_db: boot_db.clone(),
             })
             .collect()
     }
@@ -405,20 +426,35 @@ impl From<JoinHandle<anyhow::Result<()>>> for AbortGuard {
     }
 }
 
+pub struct MaybeRespawned(
+    Either<(AbortGuard, mpsc::Receiver<PathfinderInstance>), PathfinderInstance>,
+);
+
+impl MaybeRespawned {
+    pub fn instance(self) -> Option<PathfinderInstance> {
+        match self.0 {
+            Either::Left((_, mut rx)) => rx.try_recv().ok(),
+            Either::Right(instance) => Some(instance),
+        }
+    }
+}
+
 /// Monitors `instance` for exit with non-zero exit code. If that happens,
-/// respawns the instance with `config` and waits for it to be ready. The
-/// respawned instance is not returned, but it will be kept alive until the end
-/// of the test (i.e., until `test_timeout` is reached).
+/// respawns the instance with `config` and waits for it to be ready.
 pub fn respawn_on_fail(
+    inject_failure: bool,
     mut instance: PathfinderInstance,
     config: Config,
     ready_poll_interval: Duration,
     ready_timeout: Duration,
-    test_timeout: Duration,
-) -> AbortGuard {
-    let mut child_signal = signal(SignalKind::child()).unwrap();
+) -> MaybeRespawned {
+    if !inject_failure {
+        return MaybeRespawned(Either::Right(instance));
+    }
 
-    tokio::spawn(async move {
+    let mut child_signal = signal(SignalKind::child()).unwrap();
+    let (tx, rx) = mpsc::channel(1);
+    let abort_guard = tokio::spawn(async move {
         if child_signal.recv().await.is_some() {
             println!("Got SIGCHLD!");
             match instance.exited_with_error() {
@@ -431,8 +467,7 @@ pub fn respawn_on_fail(
                         .wait_for_ready(ready_poll_interval, ready_timeout)
                         .await?;
                     println!("{} is ready again", instance.name());
-                    // Let the instance exist for the rest of the test.
-                    tokio::time::sleep(test_timeout).await;
+                    let _ = tx.send(instance).await;
                 }
                 Ok(false) => {
                     println!("{} exited cleanly, not respawning", instance.name());
@@ -448,5 +483,7 @@ pub fn respawn_on_fail(
 
         Ok(())
     })
-    .into()
+    .into();
+
+    MaybeRespawned(Either::Left((abort_guard, rx)))
 }

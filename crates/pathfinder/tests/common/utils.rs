@@ -7,7 +7,10 @@ use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
-use tempfile::Builder;
+use p2p_proto::common::Address;
+use pathfinder_crypto::Felt;
+use pathfinder_lib::devnet;
+use tempfile::TempDir;
 use tokio::task::{JoinError, JoinHandle};
 use tokio::time::sleep;
 
@@ -21,7 +24,10 @@ use crate::common::pathfinder_instance::{Config, PathfinderInstance};
 /// - verifies that the Pathfinder binary and fixtures directory exist,
 /// - starts an [`std::time::Instant`] to measure test setup duration,
 /// - returns configuration for the number of nodes specified and the instant.
-pub fn setup(num_instances: usize) -> anyhow::Result<(Vec<Config>, Instant)> {
+pub fn setup(
+    num_instances: usize,
+    init_devnet_db: bool,
+) -> anyhow::Result<(Vec<Config>, u64, Instant)> {
     PathfinderInstance::enable_log_dump(
         std::env::var_os("PATHFINDER_CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL").is_some(),
     );
@@ -32,22 +38,42 @@ pub fn setup(num_instances: usize) -> anyhow::Result<(Vec<Config>, Instant)> {
     anyhow::ensure!(pathfinder_bin.exists(), "Pathfinder binary not found");
     let fixture_dir = fixture_dir();
     anyhow::ensure!(fixture_dir.exists(), "Fixture directory not found");
-    let test_dir = Builder::new()
-        .disable_cleanup(true)
-        .tempdir()
-        .context("Creating temporary directory for test artifacts")?;
-    println!(
-        "Test artifacts will be stored in {}",
-        test_dir.path().display()
-    );
+    let test_dir = TempDir::new()
+        .context("Creating temporary directory for test artifacts")?
+        .keep();
+    println!("Test artifacts will be stored in {}", test_dir.display());
+
+    let (boot_db, boot_height) = if init_devnet_db {
+        let (devnet_config, latest_boot_block) =
+        // TODO
+        // bloom filter size didn't match...
+            devnet::init_db(Address(Felt::ONE) /* Alice */)?;
+        (Some(devnet_config), latest_boot_block)
+    } else {
+        (None, 0)
+    };
+
+    // if let Some(devnet_config) = &boot_db {
+    //     let src_file = devnet_config.path();
+    //     let dest_dir = test_dir.join("fgw");
+    //     let dest_file = dest_dir.join("custom.sqlite");
+    //     std::fs::create_dir_all(&dest_dir).context("Creating db directory")?;
+    //     std::fs::copy(src_file, &dest_file).context(format!(
+    //         "Copying bootstrap DB from {} to {}",
+    //         src_file.display(),
+    //         dest_file.display(),
+    //     ))?;
+    // }
 
     Ok((
         Config::for_set(
             num_instances,
             &pathfinder_bin,
             &fixture_dir,
-            test_dir.path(),
+            test_dir,
+            boot_db,
         ),
+        boot_height,
         stopwatch,
     ))
 }

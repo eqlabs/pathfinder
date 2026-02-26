@@ -5,7 +5,7 @@
 //!
 //! Run the test:
 //! ```
-//! PATHFINDER_TEST_ENABLE_PORT_MARKER_FILES=1 cargo nextest run --test consensus -p pathfinder --features p2p,consensus-integration-tests
+//! PATHFINDER_TEST_ENABLE_MARKER_FILES=1 cargo nextest run --test consensus -p pathfinder --features p2p,consensus-integration-tests
 //! ```
 //!
 //! # Important
@@ -22,7 +22,6 @@ mod test {
     use std::time::Duration;
     use std::vec;
 
-    use futures::future::Either;
     use futures::StreamExt;
     use pathfinder_lib::config::integration_testing::{InjectFailureConfig, InjectFailureTrigger};
     use rstest::rstest;
@@ -58,36 +57,40 @@ mod test {
     // - [ ] ??? any missing significant failure injection points ???.
     #[rstest]
     #[case::happy_path(None)]
-    #[case::fail_on_proposal_init_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ProposalInitRx }))]
-    #[case::fail_on_block_info_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::BlockInfoRx }))]
-    #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::TransactionBatchRx }))]
-    #[case::fail_on_executed_transaction_count_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ExecutedTransactionCountRx }))]
-    #[case::fail_on_proposal_fin_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ProposalFinRx }))]
-    #[case::fail_on_proposal_finalized(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ProposalFinalized }))]
-    #[case::fail_on_prevote_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::PrevoteRx }))]
-    #[case::fail_on_precommit_rx(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::PrecommitRx }))]
-    #[case::fail_on_proposal_decided(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ProposalDecided }))]
-    #[case::fail_on_proposal_committed(Some(InjectFailureConfig { height: 2, trigger: InjectFailureTrigger::ProposalCommitted }))]
+    #[case::fail_on_proposal_init_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalInitRx }))]
+    #[case::fail_on_block_info_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::BlockInfoRx }))]
+    #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::TransactionBatchRx }))]
+    #[case::fail_on_executed_transaction_count_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ExecutedTransactionCountRx }))]
+    #[case::fail_on_proposal_fin_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalFinRx }))]
+    #[case::fail_on_proposal_finalized(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalFinalized }))]
+    #[case::fail_on_prevote_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::PrevoteRx }))]
+    #[case::fail_on_precommit_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::PrecommitRx }))]
+    #[case::fail_on_proposal_decided(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalDecided }))]
+    #[case::fail_on_proposal_committed(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalCommitted }))]
     #[tokio::test]
-    async fn consensus_3_nodes_with_failures(
-        #[case] inject_failure: Option<InjectFailureConfig>,
-    ) -> anyhow::Result<()> {
+    async fn consensus_3_nodes_with_failures(#[case] inject_failure: Option<InjectFailureConfig>) {
         use tokio::sync::mpsc;
 
         const NUM_NODES: usize = 3;
-        // System contracts start to matter after block 10 but we have a separate
-        // regression test for that, which checks that rollback at H>10 works correctly.
-        const HEIGHT: u64 = 4;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
         const TEST_TIMEOUT: Duration = Duration::from_secs(120);
         const POLL_READY: Duration = Duration::from_millis(500);
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
-        let (configs, stopwatch) = utils::setup(NUM_NODES)?;
+        // Happy path is the only scenario which starts consensus from genesis at the
+        // expense of all transactions being reverted since they're random, invalid L1
+        // handlers.
+        let (configs, boot_height, stopwatch) =
+            utils::setup(NUM_NODES, true /* temporary for testing */).unwrap();
+        // utils::setup(NUM_NODES, inject_failure.is_some()).unwrap();
+
+        // System contracts start to matter after block 10 but we have a separate
+        // regression test for that, which checks that rollback at H>10 works correctly.
+        let target_height: u64 = boot_height + 5;
 
         let alice_cfg = configs.first().unwrap();
-        let mut fgw = FeederGateway::spawn(alice_cfg)?;
-        fgw.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
+        let mut fgw = FeederGateway::spawn(alice_cfg).unwrap();
+        fgw.wait_for_ready(POLL_READY, READY_TIMEOUT).await.unwrap();
 
         // We want everybody to have sync enabled so that not only Alice, Bob, and
         // Charlie decide upon the new blocks but also they are able to **commit the
@@ -105,49 +108,48 @@ mod test {
                 .with_sync_enabled()
         });
 
-        let alice = PathfinderInstance::spawn(configs.next().unwrap())?;
-        alice.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
+        let alice = PathfinderInstance::spawn(configs.next().unwrap()).unwrap();
+        alice
+            .wait_for_ready(POLL_READY, READY_TIMEOUT)
+            .await
+            .unwrap();
 
         let boot_port = alice.consensus_p2p_port();
         let mut configs = configs.map(|cfg| cfg.with_boot_port(boot_port));
 
         let bob_cfg = configs.next().unwrap().with_inject_failure(inject_failure);
 
-        let bob = PathfinderInstance::spawn(bob_cfg.clone())?;
-        let charlie = PathfinderInstance::spawn(configs.next().unwrap())?;
+        let bob = PathfinderInstance::spawn(bob_cfg.clone()).unwrap();
+        let charlie = PathfinderInstance::spawn(configs.next().unwrap()).unwrap();
 
         let (bob_rdy, charlie_rdy) = tokio::join!(
             bob.wait_for_ready(POLL_READY, READY_TIMEOUT),
             charlie.wait_for_ready(POLL_READY, READY_TIMEOUT)
         );
-        bob_rdy?;
-        charlie_rdy?;
+        bob_rdy.unwrap();
+        charlie_rdy.unwrap();
 
         utils::log_elapsed(stopwatch);
 
-        let (tx, rx) = mpsc::channel(HEIGHT as usize * 3);
+        let (tx, rx) = mpsc::channel(target_height as usize * 3);
         let rx = tokio_stream::wrappers::ReceiverStream::new(rx);
 
-        let alice_decided = wait_for_height(&alice, HEIGHT, POLL_HEIGHT, Some(tx));
-        let bob_decided = wait_for_height(&bob, HEIGHT, POLL_HEIGHT, None);
-        let charlie_decided = wait_for_height(&charlie, HEIGHT, POLL_HEIGHT, None);
-        let alice_committed = wait_for_block_exists(&alice, HEIGHT, POLL_HEIGHT);
-        let bob_committed = wait_for_block_exists(&bob, HEIGHT, POLL_HEIGHT);
-        let charlie_committed = wait_for_block_exists(&charlie, HEIGHT, POLL_HEIGHT);
+        let alice_decided = wait_for_height(&alice, target_height, POLL_HEIGHT, Some(tx));
+        let bob_decided = wait_for_height(&bob, target_height, POLL_HEIGHT, None);
+        let charlie_decided = wait_for_height(&charlie, target_height, POLL_HEIGHT, None);
+        let alice_committed = wait_for_block_exists(&alice, target_height, POLL_HEIGHT);
+        let bob_committed = wait_for_block_exists(&bob, target_height, POLL_HEIGHT);
+        let charlie_committed = wait_for_block_exists(&charlie, target_height, POLL_HEIGHT);
 
-        // Either to work around clippy: "manual implementation of `Option::map`"
-        let _maybe_guard = match inject_failure {
-            Some(_) => Either::Left(respawn_on_fail(
-                bob,
-                bob_cfg,
-                POLL_READY,
-                READY_TIMEOUT,
-                TEST_TIMEOUT,
-            )),
-            None => Either::Right(bob),
-        };
+        let maybe_bob = respawn_on_fail(
+            inject_failure.is_some(),
+            bob,
+            bob_cfg,
+            POLL_READY,
+            READY_TIMEOUT,
+        );
 
-        let result = utils::join_all(
+        utils::join_all(
             vec![
                 alice_decided,
                 bob_decided,
@@ -158,33 +160,60 @@ mod test {
             ],
             TEST_TIMEOUT,
         )
-        .await;
+        .await
+        .unwrap();
 
         let decided_hnrs = rx.collect::<Vec<_>>().await;
         if let Some(x) = decided_hnrs.iter().find(|hnr| hnr.round() > 0) {
             println!("Network failed to recover in round 0 at (h:r): {x}");
         }
 
-        result
+        let alice_artifacts = get_cached_artifacts_info(&alice, target_height)
+            .await
+            .unwrap();
+        assert!(
+            alice_artifacts.is_empty(),
+            "Alice should not have leftover cached consensus data: {alice_artifacts:#?}"
+        );
+
+        if let Some(bob) = maybe_bob.instance() {
+            let bob_artifacts = get_cached_artifacts_info(&bob, target_height)
+                .await
+                .unwrap();
+            assert!(
+                bob_artifacts.is_empty(),
+                "Bob should not have leftover cached consensus data after respawn: \
+                 {bob_artifacts:#?}"
+            );
+        }
+
+        let charlie_artifacts = get_cached_artifacts_info(&charlie, target_height)
+            .await
+            .unwrap();
+        assert!(
+            charlie_artifacts.is_empty(),
+            "Charlie should not have leftover cached consensus data: {charlie_artifacts:#?}"
+        );
     }
 
     #[tokio::test]
-    async fn consensus_3_nodes_fourth_node_joins_late_can_catch_up() -> anyhow::Result<()> {
+    async fn consensus_3_nodes_fourth_node_joins_late_can_catch_up() {
         const NUM_NODES: usize = 4;
-        // System contracts start to matter after block 10
-        const HEIGHT_TO_ADD_FOURTH_NODE: u64 = 2;
-        const FINAL_HEIGHT: u64 = 4;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
         const RUNUP_TIMEOUT: Duration = Duration::from_secs(60);
         const CATCHUP_TIMEOUT: Duration = Duration::from_secs(60);
         const POLL_READY: Duration = Duration::from_millis(500);
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
-        let (configs, stopwatch) = utils::setup(NUM_NODES)?;
+        let (configs, boot_height, stopwatch) = utils::setup(NUM_NODES, true).unwrap();
+
+        // System contracts start to matter after block 10
+        let height_to_add_fourth_node: u64 = boot_height + 3;
+        let target_height: u64 = height_to_add_fourth_node + 2;
 
         let alice_cfg = configs.first().unwrap();
-        let mut fgw = FeederGateway::spawn(alice_cfg)?;
-        fgw.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
+        let mut fgw = FeederGateway::spawn(alice_cfg).unwrap();
+        fgw.wait_for_ready(POLL_READY, READY_TIMEOUT).await.unwrap();
 
         // We want everybody to have sync enabled so that not only Alice, Bob, and
         // Charlie decide upon the new blocks but also they are able to **commit the
@@ -206,33 +235,36 @@ mod test {
             cfg.with_local_feeder_gateway(fgw.port())
                 .with_sync_enabled()
         });
-        let alice = PathfinderInstance::spawn(configs.next().unwrap())?;
-        alice.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
+        let alice = PathfinderInstance::spawn(configs.next().unwrap()).unwrap();
+        alice
+            .wait_for_ready(POLL_READY, READY_TIMEOUT)
+            .await
+            .unwrap();
 
         let boot_port = alice.consensus_p2p_port();
         let mut configs = configs.map(|cfg| cfg.with_boot_port(boot_port));
 
-        let bob = PathfinderInstance::spawn(configs.next().unwrap())?;
-        let charlie = PathfinderInstance::spawn(configs.next().unwrap())?;
+        let bob = PathfinderInstance::spawn(configs.next().unwrap()).unwrap();
+        let charlie = PathfinderInstance::spawn(configs.next().unwrap()).unwrap();
 
         let (bob_rdy, charlie_rdy) = tokio::join!(
             bob.wait_for_ready(POLL_READY, READY_TIMEOUT),
             charlie.wait_for_ready(POLL_READY, READY_TIMEOUT)
         );
-        bob_rdy?;
-        charlie_rdy?;
+        bob_rdy.unwrap();
+        charlie_rdy.unwrap();
 
         utils::log_elapsed(stopwatch);
 
         // Use channels to send and update the rpc port
-        let alice_decided = wait_for_height(&alice, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT, None);
-        let bob_decided = wait_for_height(&bob, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT, None);
+        let alice_decided = wait_for_height(&alice, height_to_add_fourth_node, POLL_HEIGHT, None);
+        let bob_decided = wait_for_height(&bob, height_to_add_fourth_node, POLL_HEIGHT, None);
         let charlie_decided =
-            wait_for_height(&charlie, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT, None);
-        let alice_committed = wait_for_block_exists(&alice, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
-        let bob_committed = wait_for_block_exists(&bob, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
+            wait_for_height(&charlie, height_to_add_fourth_node, POLL_HEIGHT, None);
+        let alice_committed = wait_for_block_exists(&alice, height_to_add_fourth_node, POLL_HEIGHT);
+        let bob_committed = wait_for_block_exists(&bob, height_to_add_fourth_node, POLL_HEIGHT);
         let charlie_committed =
-            wait_for_block_exists(&charlie, HEIGHT_TO_ADD_FOURTH_NODE, POLL_HEIGHT);
+            wait_for_block_exists(&charlie, height_to_add_fourth_node, POLL_HEIGHT);
 
         utils::join_all(
             vec![
@@ -245,23 +277,24 @@ mod test {
             ],
             RUNUP_TIMEOUT,
         )
-        .await?;
+        .await
+        .unwrap();
 
         let dan_cfg = configs.next().unwrap().with_sync_enabled();
 
-        let dan = PathfinderInstance::spawn(dan_cfg.clone())?;
-        dan.wait_for_ready(POLL_READY, READY_TIMEOUT).await?;
+        let dan = PathfinderInstance::spawn(dan_cfg.clone()).unwrap();
+        dan.wait_for_ready(POLL_READY, READY_TIMEOUT).await.unwrap();
 
-        let alice_decided = wait_for_height(&alice, FINAL_HEIGHT, POLL_HEIGHT, None);
-        let bob_decided = wait_for_height(&bob, FINAL_HEIGHT, POLL_HEIGHT, None);
-        let charlie_decided = wait_for_height(&charlie, FINAL_HEIGHT, POLL_HEIGHT, None);
-        let dan_decided = wait_for_height(&dan, FINAL_HEIGHT, POLL_HEIGHT, None);
-        let alice_committed = wait_for_block_exists(&alice, FINAL_HEIGHT, POLL_HEIGHT);
-        let bob_committed = wait_for_block_exists(&bob, FINAL_HEIGHT, POLL_HEIGHT);
-        let charlie_committed = wait_for_block_exists(&charlie, FINAL_HEIGHT, POLL_HEIGHT);
-        let dan_committed = wait_for_block_exists(&dan, FINAL_HEIGHT, POLL_HEIGHT);
+        let alice_decided = wait_for_height(&alice, target_height, POLL_HEIGHT, None);
+        let bob_decided = wait_for_height(&bob, target_height, POLL_HEIGHT, None);
+        let charlie_decided = wait_for_height(&charlie, target_height, POLL_HEIGHT, None);
+        let dan_decided = wait_for_height(&dan, target_height, POLL_HEIGHT, None);
+        let alice_committed = wait_for_block_exists(&alice, target_height, POLL_HEIGHT);
+        let bob_committed = wait_for_block_exists(&bob, target_height, POLL_HEIGHT);
+        let charlie_committed = wait_for_block_exists(&charlie, target_height, POLL_HEIGHT);
+        let dan_committed = wait_for_block_exists(&dan, target_height, POLL_HEIGHT);
 
-        let join_result = utils::join_all(
+        utils::join_all(
             vec![
                 alice_decided,
                 bob_decided,
@@ -274,33 +307,40 @@ mod test {
             ],
             CATCHUP_TIMEOUT,
         )
-        .await;
+        .await
+        .unwrap();
 
-        let alice_artifacts = get_cached_artifacts_info(&alice, FINAL_HEIGHT).await;
+        let alice_artifacts = get_cached_artifacts_info(&alice, target_height)
+            .await
+            .unwrap();
         assert!(
             alice_artifacts.is_empty(),
             "Alice should not have leftover cached consensus data: {alice_artifacts:#?}"
         );
 
-        let bob_artifacts = get_cached_artifacts_info(&bob, FINAL_HEIGHT).await;
+        let bob_artifacts = get_cached_artifacts_info(&bob, target_height)
+            .await
+            .unwrap();
         assert!(
             bob_artifacts.is_empty(),
             "Bob should not have leftover cached consensus data: {bob_artifacts:#?}"
         );
 
-        let charlie_artifacts = get_cached_artifacts_info(&charlie, FINAL_HEIGHT).await;
+        let charlie_artifacts = get_cached_artifacts_info(&charlie, target_height)
+            .await
+            .unwrap();
         assert!(
             charlie_artifacts.is_empty(),
             "Charlie should not have leftover cached consensus data: {charlie_artifacts:#?}"
         );
 
-        let dan_artifacts = get_cached_artifacts_info(&dan, FINAL_HEIGHT).await;
+        let dan_artifacts = get_cached_artifacts_info(&dan, target_height)
+            .await
+            .unwrap();
         assert!(
             dan_artifacts.is_empty(),
             "Dan should not have leftover cached consensus data: {dan_artifacts:#?}"
         );
-
-        join_result
     }
 
     /// A slightly different failure scenario from
@@ -315,9 +355,9 @@ mod test {
         const POLL_READY: Duration = Duration::from_millis(500);
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
-        const LAST_VALID_HEIGHT: u64 = 4;
+        let (configs, boot_blocks, stopwatch) = utils::setup(NUM_NODES, true).unwrap();
 
-        let (configs, stopwatch) = utils::setup(NUM_NODES).unwrap();
+        let last_valid_height: u64 = boot_blocks + 5;
 
         let alice_cfg = configs.first().unwrap();
         let mut fgw = FeederGateway::spawn(alice_cfg).unwrap();
@@ -325,12 +365,12 @@ mod test {
 
         let inject_failure = InjectFailureConfig {
             // Starting from this height..
-            height: LAST_VALID_HEIGHT + 1,
+            height: last_valid_height + 1,
             // ..send outdated votes.
             trigger: InjectFailureTrigger::OutdatedVote,
         };
         // Do this for all three nodes, one of them will be picked to send a proposal
-        // at LAST_VALID_HEIGHT + 1 and the other two will be the sabotaging nodes.
+        // at last_valid_height + 1 and the other two will be the sabotaging nodes.
         let mut configs = configs.into_iter().map(|cfg| {
             cfg.with_inject_failure(Some(inject_failure))
                 .with_local_feeder_gateway(fgw.port())
@@ -360,12 +400,12 @@ mod test {
         utils::log_elapsed(stopwatch);
 
         // Wait until all three nodes reach `LAST_VALID_HEIGHT`..
-        let alice_decided = wait_for_height(&alice, LAST_VALID_HEIGHT, POLL_HEIGHT, None);
-        let bob_decided = wait_for_height(&bob, LAST_VALID_HEIGHT, POLL_HEIGHT, None);
-        let charlie_decided = wait_for_height(&charlie, LAST_VALID_HEIGHT, POLL_HEIGHT, None);
-        let alice_committed = wait_for_block_exists(&alice, LAST_VALID_HEIGHT, POLL_HEIGHT);
-        let bob_committed = wait_for_block_exists(&bob, LAST_VALID_HEIGHT, POLL_HEIGHT);
-        let charlie_committed = wait_for_block_exists(&charlie, LAST_VALID_HEIGHT, POLL_HEIGHT);
+        let alice_decided = wait_for_height(&alice, last_valid_height, POLL_HEIGHT, None);
+        let bob_decided = wait_for_height(&bob, last_valid_height, POLL_HEIGHT, None);
+        let charlie_decided = wait_for_height(&charlie, last_valid_height, POLL_HEIGHT, None);
+        let alice_committed = wait_for_block_exists(&alice, last_valid_height, POLL_HEIGHT);
+        let bob_committed = wait_for_block_exists(&bob, last_valid_height, POLL_HEIGHT);
+        let charlie_committed = wait_for_block_exists(&charlie, last_valid_height, POLL_HEIGHT);
 
         utils::join_all(
             vec![
@@ -384,9 +424,9 @@ mod test {
         // ..then wait a bit more for the next height, which should never become decided
         // upon because one of the nodes is sabotaging the consensus network (sending
         // outdated votes) and getting punished by the other two nodes.
-        let alice_decided = wait_for_height(&alice, LAST_VALID_HEIGHT + 1, POLL_HEIGHT, None);
-        let bob_decided = wait_for_height(&bob, LAST_VALID_HEIGHT + 1, POLL_HEIGHT, None);
-        let charlie_decided = wait_for_height(&charlie, LAST_VALID_HEIGHT + 1, POLL_HEIGHT, None);
+        let alice_decided = wait_for_height(&alice, last_valid_height + 1, POLL_HEIGHT, None);
+        let bob_decided = wait_for_height(&bob, last_valid_height + 1, POLL_HEIGHT, None);
+        let charlie_decided = wait_for_height(&charlie, last_valid_height + 1, POLL_HEIGHT, None);
 
         let err = utils::join_all(
             vec![alice_decided, bob_decided, charlie_decided],
@@ -407,19 +447,25 @@ mod test {
             "At least one node should have changed peer scores after punishing the sabotaging node"
         );
 
-        let alice_artifacts = get_cached_artifacts_info(&alice, LAST_VALID_HEIGHT).await;
+        let alice_artifacts = get_cached_artifacts_info(&alice, last_valid_height)
+            .await
+            .unwrap();
         assert!(
             alice_artifacts.is_empty(),
             "Alice should not have leftover cached consensus data: {alice_artifacts:#?}"
         );
 
-        let bob_artifacts = get_cached_artifacts_info(&bob, LAST_VALID_HEIGHT).await;
+        let bob_artifacts = get_cached_artifacts_info(&bob, last_valid_height)
+            .await
+            .unwrap();
         assert!(
             bob_artifacts.is_empty(),
             "Bob should not have leftover cached consensus data: {bob_artifacts:#?}"
         );
 
-        let charlie_artifacts = get_cached_artifacts_info(&charlie, LAST_VALID_HEIGHT).await;
+        let charlie_artifacts = get_cached_artifacts_info(&charlie, last_valid_height)
+            .await
+            .unwrap();
         assert!(
             charlie_artifacts.is_empty(),
             "Charlie should not have leftover cached consensus data: {charlie_artifacts:#?}"

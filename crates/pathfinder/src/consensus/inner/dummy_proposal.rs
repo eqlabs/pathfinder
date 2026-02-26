@@ -5,9 +5,8 @@
 
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
-use std::sync::atomic::AtomicU64;
-use std::sync::LazyLock;
-use std::time::{Duration, SystemTime};
+use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context;
 use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
@@ -15,9 +14,7 @@ use p2p_proto::consensus::{BlockInfo, ProposalFin, ProposalInit, ProposalPart};
 use pathfinder_common::{
     BlockId,
     BlockNumber,
-    BlockTimestamp,
     ChainId,
-    ConsensusFinalizedBlockHeader,
     ConsensusFinalizedL2Block,
     ContractAddress,
 };
@@ -25,9 +22,11 @@ use pathfinder_consensus::Round;
 use pathfinder_crypto::Felt;
 use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
 use pathfinder_storage::Storage;
+use rand::seq::SliceRandom;
 use rand::{thread_rng, Rng, SeedableRng};
 
-use crate::validator::{ProdTransactionMapper, ValidatorBlockInfoStage, ValidatorWorkerPool};
+use crate::devnet::{self, strictly_increasing_timestamp, Account};
+use crate::validator::{ProdTransactionMapper, ValidatorBlockInfoStage};
 
 /// Blocks consensus tasks's processing loop until the parent block of height is
 /// committed in main storage without blocking the async runtime.
@@ -84,9 +83,155 @@ pub(crate) async fn wait_for_parent_committed(
     Ok(())
 }
 
-/// Creates a worker pool for tests.
-fn create_test_worker_pool() -> ValidatorWorkerPool {
-    ExecutorWorkerPool::<ConcurrentStateReader>::new(1).get()
+/// Creates a dummy proposal for the given height and round, filling it with
+/// realistic transactions based on the state of the main storage DB, if it is
+/// bootstrapped, or with invalid L1 handler transactions otherwise.
+pub(crate) fn create(
+    height: u64,
+    round: Round,
+    account: &Account,
+    proposer: ContractAddress,
+    main_storage: Storage,
+    config: Option<ProposalCreationConfig>,
+) -> anyhow::Result<(Vec<ProposalPart>, ConsensusFinalizedL2Block)> {
+    let mut db_conn = main_storage.connection()?;
+    let db_txn = db_conn.transaction()?;
+
+    if devnet::is_db_bootstrapped(&db_txn)? {
+        create_from_bootstrapped_devnet_db(&db_txn, height, round, account, proposer, main_storage)
+    } else {
+        create_with_invalid_l1_handler_transactions(
+            &db_txn,
+            height,
+            round,
+            proposer,
+            main_storage,
+            config,
+        )
+    }
+}
+
+/// Creates a proposal with realistic transactions for the given height and
+/// round, which:
+/// - Deploys the "Hello Starknet" contract if it has not been deployed yet
+/// - Invokes the "increase_balance" and "get_balance" functions of random
+///   deployed instances
+/// - Deploys more instances of the "Hello Starknet" contract randomly
+pub(crate) fn create_from_bootstrapped_devnet_db(
+    db_txn: &pathfinder_storage::Transaction<'_>,
+    height: u64,
+    round: Round,
+    account: &Account,
+    proposer: ContractAddress,
+    main_storage: Storage,
+) -> anyhow::Result<(Vec<ProposalPart>, ConsensusFinalizedL2Block)> {
+    // TODO setting these constant to higher values can lead to weird panics in
+    // other validator (Pathfinder) nodes, which we need to investigate
+    const MAX_NUM_BATCHES: usize = 5;
+    // Number of loop iterations per batch, each iteration can add at most 3
+    // transactions, so max batch length is MAX_BATCH_TRIES * 3.
+    const MAX_BATCH_TRIES: usize = 3;
+
+    let round = round.as_u32().context(format!(
+        "Attempted to create proposal with Nil round at height {height}"
+    ))?;
+
+    // We update the account entity each time, because the previosly created
+    // transactions could have not gone into the committed block and thus we
+    // want to be sure we have the correct initial account nonce value and we are
+    // sure of the previous deployments before we start the new proposal.
+    account.update(
+        &db_txn,
+        BlockNumber::new(height)
+            .context("Height exceeds i64::MAX")?
+            .parent(),
+    )?;
+
+    let deployed_in_db = account.deployed();
+
+    // We generate up to 10 batches of up to 30 transactions and then randomly pick
+    // how many of those transactions we execute.
+    let seed = thread_rng().gen::<u64>();
+    tracing::debug!(%height, %round, %seed, "Creating dummy proposal");
+    let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
+
+    let mut batches = Vec::new();
+    let mut next_txn_idx_start = 0;
+
+    // If there are no deployments in the DB yet, create one batch with a
+    // deployment
+    if deployed_in_db.is_empty() {
+        let first_batch = vec![account.hello_starknet_deploy()?];
+        next_txn_idx_start += first_batch.len();
+        batches.push(first_batch);
+    }
+
+    let num_batches = rng.gen_range(1..=MAX_NUM_BATCHES);
+
+    for _ in 0..num_batches {
+        let batch_tries = rng.gen_range(1..=MAX_BATCH_TRIES);
+        let mut batch = Vec::new();
+
+        for _ in 0..batch_tries {
+            // Maybe deploy a new instance
+            if rng.gen() {
+                batch.push(account.hello_starknet_deploy()?);
+            }
+
+            // Invoke a random contract instance if there are any deployments in the DB
+            if let Some(contract_address) = deployed_in_db.choose(&mut rng) {
+                batch.push(
+                    account.hello_starknet_increase_balance(
+                        *contract_address,
+                        rng.gen_range(1..=1000),
+                    ),
+                );
+                // This is a view function, but it still gives us a realistic transaction
+                batch.push(account.hello_starknet_get_balance(*contract_address));
+            }
+
+            next_txn_idx_start += batch.len();
+        }
+
+        if !batch.is_empty() {
+            batches.push(batch);
+        }
+    }
+
+    let num_executed_txns = rng.gen_range(1..=next_txn_idx_start);
+    let txns_to_execute = batches
+        .iter()
+        .flatten()
+        .take(num_executed_txns)
+        .cloned()
+        .collect();
+
+    // This is fine because `wait_for_parent_committed` is called first
+    let latest_timestamp = db_txn.block_header(BlockId::Latest)?.map(|h| h.timestamp);
+
+    let worker_pool = ExecutorWorkerPool::<ConcurrentStateReader>::auto().get();
+    let (mut validator, mut parts) = devnet::init_proposal_and_validator(
+        BlockNumber::new(height).context("Height exceeds i64::MAX")?,
+        round,
+        Address(proposer.0),
+        latest_timestamp,
+        main_storage.clone(),
+        worker_pool.clone(),
+    )?;
+    validator.execute_batch::<ProdTransactionMapper>(txns_to_execute)?;
+    let block = validator.consensus_finalize0()?;
+    let worker_pool = Arc::into_inner(worker_pool).context("Failed join worker pool")?;
+    worker_pool.join();
+
+    parts.extend(batches.into_iter().map(ProposalPart::TransactionBatch));
+    parts.push(ProposalPart::ExecutedTransactionCount(
+        num_executed_txns as u64,
+    ));
+    parts.push(ProposalPart::Fin(ProposalFin {
+        proposal_commitment: Hash(block.header.state_diff_commitment.0),
+    }));
+
+    Ok((parts, block))
 }
 
 #[derive(Debug)]
@@ -96,14 +241,18 @@ pub(crate) struct ProposalCreationConfig {
     pub num_executed_txns: NonZeroUsize,
 }
 
-/// Creates a dummy proposal for the given height and round.
-///
-/// The number of batches, batch length, and number of executed transactions
-/// are randomized unless specified in the `config` parameter.
+// TODO use this fn for a "happy path from genesis" test where we cannot use a
+// bootstrapping DB. Such a test case is important to test the entirety of
+// consensus aware sync logic, specifically due to the fact that the initial DB
+// is empty.
+//
+/// Creates a dummy proposal for the given height and round, filling it with
+/// random L1 handler transactions, which all ultimately will be reverted.
 ///
 /// TODO: Until empty proposals reintroduce timestamps, we cannot create
 /// empty proposals here.
-pub(crate) fn create(
+pub(crate) fn create_with_invalid_l1_handler_transactions(
+    db_txn: &pathfinder_storage::Transaction<'_>,
     height: u64,
     round: Round,
     proposer: ContractAddress,
@@ -114,20 +263,11 @@ pub(crate) fn create(
         "Attempted to create proposal with Nil round at height {height}"
     ))?;
 
-    static INIT_TIMESTAMP: LazyLock<u64> = LazyLock::new(|| {
-        SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs()
-    });
-
-    static TIMESTAMP_DELTA: AtomicU64 = AtomicU64::new(0);
-
-    let timestamp =
-        *INIT_TIMESTAMP + TIMESTAMP_DELTA.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    // This is fine because `wait_for_parent_committed` is called first
+    let latest_timestamp = db_txn.block_header(BlockId::Latest)?.map(|h| h.timestamp);
 
     let seed = thread_rng().gen::<u64>();
-    tracing::debug!(%height, %round, %seed, ?config, "Creating dummy proposal");
+    tracing::debug!(%height, %round, %seed, ?config, "Creating dummy proposal with invalid L1 handler transactions");
     let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
 
     let mut batches = Vec::new();
@@ -166,7 +306,7 @@ pub(crate) fn create(
     let block_info = BlockInfo {
         height,
         builder: Address(proposer.0),
-        timestamp,
+        timestamp: strictly_increasing_timestamp(latest_timestamp).get(),
         l2_gas_price_fri: 1_000_000,
         l1_gas_price_wei: 1_000_000,
         l1_data_gas_price_wei: 1_000_000,
@@ -175,43 +315,17 @@ pub(crate) fn create(
     };
 
     parts.push(ProposalPart::BlockInfo(block_info.clone()));
-
-    // This is (obviously) not the actual finalized block for H-1, but
-    // it allows `validate_block_info` to succeed since it requires that
-    // the parent block is present in the decided blocks map (or committed
-    // to DB which we cannot fake).
-    let mut fake_decided_blocks = HashMap::new();
-    if let Some(parent_height) = height.checked_sub(1) {
-        fake_decided_blocks.insert(
-            parent_height,
-            (
-                0, // Any round is fine.
-                ConsensusFinalizedL2Block {
-                    header: ConsensusFinalizedBlockHeader {
-                        number: BlockNumber::new_or_panic(parent_height),
-                        // Must be less than `block_info.timestamp` to be considered valid by
-                        // `validate_block_info`.
-                        timestamp: BlockTimestamp::new_or_panic(0),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                },
-            ),
-        );
-    }
-
-    let validator = ValidatorBlockInfoStage::new(ChainId::SEPOLIA_TESTNET, proposal_init).unwrap();
-    let worker_pool = create_test_worker_pool();
-    let mut validator = validator
-        .validate_block_info(
-            block_info.clone(),
-            main_storage,
-            &fake_decided_blocks,
-            None,
-            None,
-            worker_pool,
-        )
-        .unwrap();
+    let validator = ValidatorBlockInfoStage::new(ChainId::SEPOLIA_TESTNET, proposal_init)?;
+    let worker_pool = ExecutorWorkerPool::<ConcurrentStateReader>::new(1).get();
+    let mut validator = validator.validate_block_info(
+        block_info.clone(),
+        main_storage,
+        // This is fine because `wait_for_parent_committed` is called first
+        &HashMap::new(),
+        None,
+        None,
+        worker_pool,
+    )?;
 
     let num_executed_txns = config
         .as_ref()
@@ -230,11 +344,9 @@ pub(crate) fn create(
         num_executed_txns as u64,
     ));
 
-    validator
-        .execute_batch::<ProdTransactionMapper>(txns_to_execute)
-        .unwrap();
+    validator.execute_batch::<ProdTransactionMapper>(txns_to_execute)?;
 
-    let block = validator.consensus_finalize0().unwrap();
+    let block = validator.consensus_finalize0()?;
 
     parts.push(ProposalPart::Fin(ProposalFin {
         proposal_commitment: Hash(block.header.state_diff_commitment.0),
