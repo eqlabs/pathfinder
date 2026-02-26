@@ -53,30 +53,17 @@ pub fn setup(
         (None, 0)
     };
 
-    // let configs = Config::for_set(
-    //     num_instances,
-    //     &pathfinder_bin,
-    //     &fixture_dir,
-    //     test_dir,
-    //     boot_db.clone(),
-    // );
-
-    // if let Some(devnet_config) = &boot_db {
-    //     let source = devnet_config.path();
-
-    //     for config in &configs {
-    //         let db_dir = config.db_dir();
-    //         let destination = db_dir.join("custom.sqlite");
-    //         std::fs::create_dir_all(&db_dir).context("Creating db
-    // directory")?;         std::fs::copy(source,
-    // &destination).context(format!(             "Copying bootstrap DB from
-    // {} to {}",             source.display(),
-    //             destination.display(),
-    //         ))?;
-    //     }
-    // }
-
-    // Ok((configs, boot_height, stopwatch))
+    if let Some(devnet_config) = &boot_db {
+        let src_file = devnet_config.path();
+        let dest_dir = test_dir.join("fgw");
+        let dest_file = dest_dir.join("custom.sqlite");
+        std::fs::create_dir_all(&dest_dir).context("Creating db directory")?;
+        std::fs::copy(src_file, &dest_file).context(format!(
+            "Copying bootstrap DB from {} to {}",
+            src_file.display(),
+            dest_file.display(),
+        ))?;
+    }
 
     Ok((
         Config::for_set(
