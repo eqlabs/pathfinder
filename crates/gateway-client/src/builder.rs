@@ -21,11 +21,11 @@ use crate::BlockId;
 const X_THROTTLING_BYPASS: &str = "X-Throttling-Bypass";
 
 /// A Sequencer Request builder.
-pub struct Request<'a, S: RequestState> {
+pub struct Request<S: RequestState> {
     state: S,
     url: reqwest::Url,
     api_key: Option<String>,
-    client: &'a reqwest::Client,
+    client: reqwest::Client,
 }
 
 pub mod stage {
@@ -74,13 +74,13 @@ pub mod stage {
     impl super::RequestState for Final {}
 }
 
-impl<'a> Request<'a, stage::Init> {
+impl Request<stage::Init> {
     /// Initialize a [Request] builder.
     pub fn builder(
-        client: &'a reqwest::Client,
+        client: reqwest::Client,
         url: reqwest::Url,
         api_key: Option<String>,
-    ) -> Request<'a, stage::Method> {
+    ) -> Request<stage::Method> {
         Request {
             url,
             client,
@@ -116,7 +116,7 @@ mod request_macros {
     /// The generated method delegates the call to `method`.
     macro_rules! method {
         ($name:ident) => {
-            pub fn $name(self) -> Request<'a, stage::Params> {
+            pub fn $name(self) -> Request<stage::Params> {
                 self.method(stringify!($name))
             }
         };
@@ -137,7 +137,7 @@ mod request_macros {
     pub(super) use {method, method_defs, method_names, methods};
 }
 
-impl<'a> Request<'a, stage::Method> {
+impl Request<stage::Method> {
     request_macros::methods!(
         add_transaction,
         get_block,
@@ -154,7 +154,7 @@ impl<'a> Request<'a, stage::Method> {
     );
 
     /// Appends the given method to the request url.
-    fn method(mut self, method: &'static str) -> Request<'a, stage::Params> {
+    fn method(mut self, method: &'static str) -> Request<stage::Params> {
         self.url
             .path_segments_mut()
             .expect("Base URL is valid")
@@ -171,7 +171,7 @@ impl<'a> Request<'a, stage::Method> {
     }
 }
 
-impl<'a> Request<'a, stage::Params> {
+impl Request<stage::Params> {
     pub fn block<B: Into<BlockId>>(self, block: B) -> Self {
         use std::borrow::Cow;
 
@@ -217,7 +217,7 @@ impl<'a> Request<'a, stage::Params> {
     }
 
     /// Sets the request retry behavior.
-    pub fn retry(self, retry: bool) -> Request<'a, stage::Final> {
+    pub fn retry(self, retry: bool) -> Request<stage::Final> {
         Request {
             url: self.url,
             client: self.client,
@@ -230,7 +230,7 @@ impl<'a> Request<'a, stage::Params> {
     }
 }
 
-impl Request<'_, stage::Final> {
+impl Request<stage::Final> {
     /// Sends the Sequencer request as a REST `GET` operation and parses the
     /// response into `T`.
     pub async fn get<T>(self) -> Result<T, SequencerError>
@@ -240,7 +240,7 @@ impl Request<'_, stage::Final> {
         async fn send_request<T: serde::de::DeserializeOwned>(
             url: reqwest::Url,
             api_key: Option<String>,
-            client: &reqwest::Client,
+            client: reqwest::Client,
             meta: RequestMetadata,
         ) -> Result<T, SequencerError> {
             with_metrics(meta, async move {
@@ -263,7 +263,7 @@ impl Request<'_, stage::Final> {
                     || async {
                         let url = self.url.clone();
                         let api_key = self.api_key.clone();
-                        send_request(url, api_key, self.client, self.state.meta).await
+                        send_request(url, api_key, self.client.clone(), self.state.meta).await
                     },
                     retry_condition,
                 )
@@ -278,7 +278,7 @@ impl Request<'_, stage::Final> {
         async fn get_as_bytes_inner(
             url: reqwest::Url,
             api_key: Option<String>,
-            client: &reqwest::Client,
+            client: reqwest::Client,
             meta: RequestMetadata,
         ) -> Result<bytes::Bytes, SequencerError> {
             with_metrics(meta, async {
@@ -303,7 +303,7 @@ impl Request<'_, stage::Final> {
                     || async {
                         let url = self.url.clone();
                         let api_key = self.api_key.clone();
-                        get_as_bytes_inner(url, api_key, self.client, self.state.meta).await
+                        get_as_bytes_inner(url, api_key, self.client.clone(), self.state.meta).await
                     },
                     retry_condition,
                 )
@@ -329,7 +329,7 @@ impl Request<'_, stage::Final> {
         async fn post_with_json_inner<T, J>(
             url: reqwest::Url,
             api_key: Option<String>,
-            client: &reqwest::Client,
+            client: reqwest::Client,
             meta: RequestMetadata,
             json: &J,
             timeout: Option<std::time::Duration>,
@@ -375,7 +375,7 @@ impl Request<'_, stage::Final> {
                         post_with_json_inner(
                             url,
                             api_key,
-                            self.client,
+                            self.client.clone(),
                             self.state.meta,
                             json,
                             timeout,

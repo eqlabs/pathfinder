@@ -30,7 +30,7 @@ pub fn register() {
     // Requests and failed requests
     METRICS.iter().for_each(|&name| {
         // For all methods
-        Request::<'_, Method>::METHODS.iter().for_each(|&method| {
+        Request::<Method>::METHODS.iter().for_each(|&method| {
             let _ = metrics::counter!(name, "method" => method);
         });
 
@@ -43,14 +43,14 @@ pub fn register() {
     });
 
     // Request latency for all methods
-    Request::<'_, Method>::METHODS.iter().for_each(|&method| {
+    Request::<Method>::METHODS.iter().for_each(|&method| {
         let _ = metrics::histogram!(METRIC_REQUESTS_LATENCY, "method" => method);
     });
 
     // Failed requests for specific failure reasons
     REASONS.iter().for_each(|&reason| {
         // For all methods
-        Request::<'_, Method>::METHODS.iter().for_each(|&method| {
+        Request::<Method>::METHODS.iter().for_each(|&method| {
             let _ = metrics::counter!(METRIC_FAILED_REQUESTS, "method" => method, "reason" => reason);
         });
 

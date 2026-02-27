@@ -1,8 +1,10 @@
 //! Starknet L2 sequencer client.
 use std::fmt::Debug;
 use std::result::Result;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
+use anyhow::Context;
 use pathfinder_common::prelude::*;
 use reqwest::Url;
 use starknet_gateway_types::error::SequencerError;
@@ -148,7 +150,7 @@ pub trait GatewayApi: Sync {
 }
 
 #[async_trait::async_trait]
-impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
+impl<T: GatewayApi + Sync + Send> GatewayApi for Arc<T> {
     async fn pending_block(&self) -> Result<(PendingBlock, StateUpdate), SequencerError> {
         self.as_ref().pending_block().await
     }
@@ -253,20 +255,38 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
 /// where `N` is the consecutive retry iteration number `{1, 2, ...}`.
 #[derive(Debug, Clone)]
 pub struct Client {
-    /// This client is internally refcounted
-    inner: reqwest::Client,
+    /// Shared, replaceable HTTP client. All [Clone]s of this [Client] share the
+    /// same instance, so calling [Client::refresh] on any clone replaces the
+    /// underlying connection pool for every holder.
+    inner: Arc<RwLock<reqwest::Client>>,
+
+    /// Timeout used when constructing the `reqwest` client. Stored so that
+    /// [Client::refresh] can re-create the client with the same settings.
+    timeout: Duration,
+
     /// Starknet gateway URL.
     gateway: Url,
+
     /// Starknet feeder gateway URL.
     feeder_gateway: Url,
+
     /// Whether __read only__ requests should be retried, defaults to __true__
     /// for production.
     /// Use [disable_retry_for_tests](Client::disable_retry_for_tests) to
     /// disable retry logic for all __read only__ requests when testing.
     retry: bool,
+
     /// Api key added to each request as a value for 'X-Throttling-Bypass'
     /// header.
     api_key: Option<String>,
+
+    /// Resolved addresses for gateway URL.
+    /// Used to detect DNS changes and refresh the HTTP client accordingly.
+    resolved_gateway_addresses: Arc<RwLock<Vec<std::net::IpAddr>>>,
+
+    /// Resolved addresses for feeder gateway URL.
+    /// Used to detect DNS changes and refresh the HTTP client accordingly.
+    resolved_feeder_gateway_addresses: Arc<RwLock<Vec<std::net::IpAddr>>>,
 }
 
 impl Client {
@@ -311,18 +331,96 @@ impl Client {
     pub fn with_urls(gateway: Url, feeder_gateway: Url, timeout: Duration) -> anyhow::Result<Self> {
         metrics::register();
 
+        let resolved_gateway_addresses =
+            resolve_hosts(&gateway).context("Resolving gateway URL")?;
+        let resolved_feeder_gateway_addresses =
+            resolve_hosts(&feeder_gateway).context("Resolving feeder gateway URL")?;
+
         Ok(Self {
-            inner: reqwest::Client::builder()
-                .timeout(timeout)
-                .user_agent(pathfinder_version::USER_AGENT)
-                .gzip(true)
-                .deflate(true)
-                .build()?,
+            inner: std::sync::Arc::new(std::sync::RwLock::new(
+                reqwest::Client::builder()
+                    .timeout(timeout)
+                    .user_agent(pathfinder_version::USER_AGENT)
+                    .gzip(true)
+                    .deflate(true)
+                    .build()?,
+            )),
+            timeout,
             gateway,
             feeder_gateway,
             retry: true,
             api_key: None,
+            resolved_gateway_addresses: Arc::new(RwLock::new(resolved_gateway_addresses)),
+            resolved_feeder_gateway_addresses: Arc::new(RwLock::new(
+                resolved_feeder_gateway_addresses,
+            )),
         })
+    }
+
+    /// Resolve the gateway and feeder gateway URLs and refresh the HTTP client
+    /// if the resolved addresses have changed.
+    ///
+    /// Replaces the underlying `reqwest` HTTP client with a freshly built one,
+    /// using the same timeout and settings as the original. Because all
+    /// [Clone]s of this [Client] share the same [`std::sync::Arc`], the new
+    /// connection pool becomes visible to every holder immediately.
+    ///
+    /// Intended to be called periodically to enforce reconnection to the
+    /// gateway and feeder gateway if their IP addresses change due to DNS
+    /// updates, without needing to restart the entire application.
+    pub fn refresh(&self) -> anyhow::Result<()> {
+        // Resolve the gateway URLs to detect any DNS changes. If the resolved addresses
+        // have changed, we refresh the HTTP client to ensure that new connections are
+        // made to the correct addresses.
+        let new_resolved_gateway_addresses =
+            resolve_hosts(&self.gateway).context("Resolving gateway URL")?;
+        let new_resolved_feeder_gateway_addresses =
+            resolve_hosts(&self.feeder_gateway).context("Resolving feeder gateway URL")?;
+
+        tracing::trace!(
+            ?new_resolved_feeder_gateway_addresses,
+            ?new_resolved_gateway_addresses,
+            "Resolved gateway addresses"
+        );
+
+        let mut resolved_addresses_changed = false;
+
+        let mut old_resolved_gateway_addresses = self
+            .resolved_gateway_addresses
+            .write()
+            .expect("gateway client resolved addresses lock is not poisoned");
+        if old_resolved_gateway_addresses.as_slice() != new_resolved_gateway_addresses.as_slice() {
+            tracing::debug!(old=?old_resolved_gateway_addresses, new=?new_resolved_gateway_addresses, "Gateway URL resolved to new addresses, refreshing HTTP client");
+            *old_resolved_gateway_addresses = new_resolved_gateway_addresses;
+            resolved_addresses_changed = true;
+        }
+
+        let mut old_resolved_feeder_gateway_addresses = self
+            .resolved_feeder_gateway_addresses
+            .write()
+            .expect("gateway client resolved addresses lock is not poisoned");
+        if old_resolved_feeder_gateway_addresses.as_slice()
+            != new_resolved_feeder_gateway_addresses.as_slice()
+        {
+            tracing::debug!(old=?old_resolved_feeder_gateway_addresses, new=?new_resolved_feeder_gateway_addresses, "Feeder Gateway URL resolved to new addresses, refreshing HTTP client");
+            *old_resolved_feeder_gateway_addresses = new_resolved_feeder_gateway_addresses;
+            resolved_addresses_changed = true;
+        }
+
+        if resolved_addresses_changed {
+            let new_inner = reqwest::Client::builder()
+                .timeout(self.timeout)
+                .user_agent(pathfinder_version::USER_AGENT)
+                .gzip(true)
+                .deflate(true)
+                .build()?;
+            *self
+                .inner
+                .write()
+                .expect("gateway client inner lock is not poisoned") = new_inner;
+        }
+
+        Ok(())
     }
 
     /// Sets the api key to be used for each request as a value for
@@ -341,17 +439,34 @@ impl Client {
         }
     }
 
-    fn gateway_request(&self) -> builder::Request<'_, builder::stage::Method> {
-        builder::Request::builder(&self.inner, self.gateway.clone(), self.api_key.clone())
+    fn gateway_request(&self) -> builder::Request<builder::stage::Method> {
+        let client = self
+            .inner
+            .read()
+            .expect("gateway client inner lock is not poisoned")
+            .clone();
+        builder::Request::builder(client, self.gateway.clone(), self.api_key.clone())
     }
 
-    fn feeder_gateway_request(&self) -> builder::Request<'_, builder::stage::Method> {
-        builder::Request::builder(
-            &self.inner,
-            self.feeder_gateway.clone(),
-            self.api_key.clone(),
-        )
+    fn feeder_gateway_request(&self) -> builder::Request<builder::stage::Method> {
+        let client = self
+            .inner
+            .read()
+            .expect("gateway client inner lock is not poisoned")
+            .clone();
+        builder::Request::builder(client, self.feeder_gateway.clone(), self.api_key.clone())
     }
+}
+
+/// Resolve the URL to addresses.
+fn resolve_hosts(url: &Url) -> anyhow::Result<Vec<std::net::IpAddr>> {
+    let addresses = url
+        .socket_addrs(|| None)
+        .context("Resolving host name in URL")?
+        .into_iter()
+        .map(|socket_addr| socket_addr.ip())
+        .collect();
+    Ok(addresses)
 }
 
 #[async_trait::async_trait]

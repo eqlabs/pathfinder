@@ -27,6 +27,7 @@ use tracing::info;
 
 use crate::config::{NetworkConfig, StateTries};
 
+mod http_client_refresh;
 mod update;
 
 // The Cairo VM allocates felts on the stack, so during execution it's making
@@ -121,6 +122,7 @@ async fn node_main(args: Box<config::NodeArgs>) -> anyhow::Result<Storage> {
         &config.data_directory,
         config.gateway_api_key.clone(),
         config.gateway_timeout,
+        config.gateway_dns_refresh_interval,
     )
     .await
     .context("Configuring pathfinder")?;
@@ -400,6 +402,12 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         None => rpc_server,
     };
 
+    let http_client_refresh_handle =
+        util::task::spawn(http_client_refresh::refresh_http_client_periodically(
+            pathfinder_context.gateway.clone(),
+            pathfinder_context.gateway_dns_refresh_interval,
+        ));
+
     let sync_handle = if config.is_sync_enabled {
         start_sync(
             sync_storage,
@@ -451,6 +459,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         result = consensus_p2p_handle => handle_critical_task_result("Consensus P2P network", result),
         result = consensus_p2p_event_processing_handle => handle_critical_task_result("Consensus P2P event processing", result),
         result = consensus_engine_handle => handle_critical_task_result("Consensus engine", result),
+        result = http_client_refresh_handle => handle_critical_task_result("HTTP client refresh", result),
         _ = term_signal.recv() => {
             tracing::info!("TERM signal received");
             Ok(())
@@ -865,6 +874,7 @@ struct PathfinderContext {
     network: Chain,
     network_id: ChainId,
     gateway: starknet_gateway_client::Client,
+    gateway_dns_refresh_interval: std::time::Duration,
     database: PathBuf,
     contract_addresses: EthContractAddresses,
 }
@@ -890,12 +900,14 @@ mod pathfinder_context {
             data_directory: &Path,
             api_key: Option<String>,
             gateway_timeout: Duration,
+            gateway_dns_refresh_interval: Duration,
         ) -> anyhow::Result<Self> {
             let context = match cfg {
                 NetworkConfig::Mainnet => Self {
                     network: Chain::Mainnet,
                     network_id: ChainId::MAINNET,
                     gateway: GatewayClient::mainnet(gateway_timeout).with_api_key(api_key),
+                    gateway_dns_refresh_interval,
                     database: data_directory.join("mainnet.sqlite"),
                     contract_addresses: EthContractAddresses::new_known(core_addr::MAINNET),
                 },
@@ -903,6 +915,7 @@ mod pathfinder_context {
                     network: Chain::SepoliaTestnet,
                     network_id: ChainId::SEPOLIA_TESTNET,
                     gateway: GatewayClient::sepolia_testnet(gateway_timeout).with_api_key(api_key),
+                    gateway_dns_refresh_interval,
                     database: data_directory.join("testnet-sepolia.sqlite"),
                     contract_addresses: EthContractAddresses::new_known(core_addr::SEPOLIA_TESTNET),
                 },
@@ -911,6 +924,7 @@ mod pathfinder_context {
                     network_id: ChainId::SEPOLIA_INTEGRATION,
                     gateway: GatewayClient::sepolia_integration(gateway_timeout)
                         .with_api_key(api_key),
+                    gateway_dns_refresh_interval,
                     database: data_directory.join("integration-sepolia.sqlite"),
                     contract_addresses: EthContractAddresses::new_known(
                         core_addr::SEPOLIA_INTEGRATION,
@@ -927,6 +941,7 @@ mod pathfinder_context {
                     data_directory,
                     api_key,
                     gateway_timeout,
+                    gateway_dns_refresh_interval,
                 )
                 .await
                 .context("Configuring custom network")?,
@@ -946,6 +961,7 @@ mod pathfinder_context {
             data_directory: &Path,
             api_key: Option<String>,
             gateway_timeout: Duration,
+            gateway_dns_refresh_interval: Duration,
         ) -> anyhow::Result<Self> {
             use pathfinder_crypto::Felt;
             use starknet_gateway_client::GatewayApi;
@@ -985,6 +1001,7 @@ mod pathfinder_context {
                 network,
                 network_id,
                 gateway,
+                gateway_dns_refresh_interval,
                 database: data_directory.join("custom.sqlite"),
                 contract_addresses,
             };
