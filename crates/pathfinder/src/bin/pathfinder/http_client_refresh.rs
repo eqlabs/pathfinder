@@ -1,10 +1,16 @@
+use std::time::Duration;
+
 use starknet_gateway_client::Client;
 
-pub async fn refresh_http_client_periodically(client: Client) -> anyhow::Result<()> {
+pub async fn refresh_http_client_periodically(
+    client: Client,
+    interval: Duration,
+) -> anyhow::Result<()> {
+    let mut refresh_interval = tokio::time::interval(interval);
+    refresh_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
     loop {
-        // Refresh the HTTP client every minute to ensure that we have a fresh
-        // connection pool and updated DNS information.
-        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+        refresh_interval.tick().await;
 
         // Address resolution using `std::net` is blocking, so we need to run it in a
         // blocking context to avoid blocking the async runtime.
