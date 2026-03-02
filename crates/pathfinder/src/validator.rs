@@ -1110,7 +1110,7 @@ mod tests {
         validator_stage
             .execute_batch::<ProdTransactionMapper>(
                 batches[0].clone(),
-                pathfinder_compiler::ResourceLimits::recommended(),
+                pathfinder_compiler::ResourceLimits::for_test(),
             )
             .expect("Failed to execute batch 1");
         assert_eq!(
@@ -1123,7 +1123,7 @@ mod tests {
         validator_stage
             .execute_batch::<ProdTransactionMapper>(
                 batches[1].clone(),
-                pathfinder_compiler::ResourceLimits::recommended(),
+                pathfinder_compiler::ResourceLimits::for_test(),
             )
             .expect("Failed to execute batch 2");
         assert_eq!(
@@ -1136,7 +1136,7 @@ mod tests {
         validator_stage
             .execute_batch::<ProdTransactionMapper>(
                 batches[2].clone(),
-                pathfinder_compiler::ResourceLimits::recommended(),
+                pathfinder_compiler::ResourceLimits::for_test(),
             )
             .expect("Failed to execute batch 3");
         assert_eq!(
@@ -1217,19 +1217,19 @@ mod tests {
         validator_stage
             .execute_batch::<ProdTransactionMapper>(
                 batches[0].clone(),
-                pathfinder_compiler::ResourceLimits::recommended(),
+                pathfinder_compiler::ResourceLimits::for_test(),
             )
             .expect("Failed to execute batch 0");
         validator_stage
             .execute_batch::<ProdTransactionMapper>(
                 batches[1].clone(),
-                pathfinder_compiler::ResourceLimits::recommended(),
+                pathfinder_compiler::ResourceLimits::for_test(),
             )
             .expect("Failed to execute batch 1");
         validator_stage
             .execute_batch::<ProdTransactionMapper>(
                 batches[2].clone(),
-                pathfinder_compiler::ResourceLimits::recommended(),
+                pathfinder_compiler::ResourceLimits::for_test(),
             )
             .expect("Failed to execute batch 2");
 

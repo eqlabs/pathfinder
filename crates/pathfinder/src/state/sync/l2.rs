@@ -1745,7 +1745,7 @@ mod tests {
                 block_validation_mode: MODE,
                 storage,
                 sequencer_public_key: PublicKey::ZERO,
-                compiler_resource_limits: pathfinder_compiler::ResourceLimits::recommended(),
+                compiler_resource_limits: pathfinder_compiler::ResourceLimits::for_test(),
                 fetch_concurrency: std::num::NonZeroUsize::new(1).unwrap(),
                 fetch_casm_from_fgw: false,
             };
@@ -1788,7 +1788,7 @@ mod tests {
                 block_validation_mode: MODE,
                 storage,
                 sequencer_public_key: PublicKey::ZERO,
-                compiler_resource_limits: pathfinder_compiler::ResourceLimits::recommended(),
+                compiler_resource_limits: pathfinder_compiler::ResourceLimits::for_test(),
                 fetch_concurrency: std::num::NonZeroUsize::new(1).unwrap(),
                 fetch_casm_from_fgw: false,
             };
@@ -1820,7 +1820,7 @@ mod tests {
                 storage,
                 sequencer_public_key: PublicKey::ZERO,
                 fetch_concurrency: std::num::NonZeroUsize::new(2).unwrap(),
-                compiler_resource_limits: pathfinder_compiler::ResourceLimits::recommended(),
+                compiler_resource_limits: pathfinder_compiler::ResourceLimits::for_test(),
                 fetch_casm_from_fgw: false,
             };
 
@@ -2329,7 +2329,7 @@ mod tests {
                     )
                     .unwrap(),
                     sequencer_public_key: PublicKey::ZERO,
-                    compiler_resource_limits: pathfinder_compiler::ResourceLimits::recommended(),
+                    compiler_resource_limits: pathfinder_compiler::ResourceLimits::for_test(),
                     fetch_concurrency: std::num::NonZeroUsize::new(1).unwrap(),
                     fetch_casm_from_fgw: false,
                 };

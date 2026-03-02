@@ -138,10 +138,10 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
 ) -> anyhow::Result<(Vec<ProposalPart>, ConsensusFinalizedL2Block)> {
     // TODO setting these constant to higher values can lead to weird panics in
     // other validator (Pathfinder) nodes, which we need to investigate
-    const MAX_NUM_BATCHES: usize = 5;
+    const MAX_NUM_BATCHES: usize = 2;
     // Number of loop iterations per batch, each iteration can add at most 3
     // transactions, so max batch length is MAX_BATCH_TRIES * 3.
-    const MAX_BATCH_TRIES: usize = 3;
+    const MAX_BATCH_TRIES: usize = 2;
 
     let round = round.as_u32().context(format!(
         "Attempted to create proposal with Nil round at height {height}"

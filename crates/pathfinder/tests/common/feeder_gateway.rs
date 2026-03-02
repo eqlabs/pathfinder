@@ -34,7 +34,6 @@ impl FeederGateway {
         let process = Command::new(feeder_bin)
             .args([
                 "--port=0",
-                // "--wait-for-custom-db-ready=true",
                 &format!("--wait-for-marker-file={}", marker_file.display()),
                 db_dir.join("custom.sqlite").to_str().expect("Valid utf8"),
             ])

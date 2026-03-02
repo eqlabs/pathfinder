@@ -1559,11 +1559,8 @@ mod tests {
         let worker_pool = {
             let main_storage = StorageBuilder::in_tempdir().unwrap();
             let worker_pool = create_test_worker_pool();
-            let mut batch_execution_manager = BatchExecutionManager::new(
-                None,
-                worker_pool.clone(),
-                ResourceLimits::recommended(),
-            );
+            let mut batch_execution_manager =
+                BatchExecutionManager::new(None, worker_pool.clone(), ResourceLimits::for_test());
             let dummy_data_dir = PathBuf::new();
 
             let mut incoming_proposals = HashMap::new();
@@ -1582,7 +1579,7 @@ mod tests {
                     Round::new(0),
                     ContractAddress::ZERO,
                     main_storage.clone(),
-                    ResourceLimits::recommended(),
+                    ResourceLimits::for_test(),
                     // The smallest config that reproduced the issue until it was fixed
                     Some(ProposalCreationConfig {
                         num_batches: NonZeroUsize::new(3).unwrap(),

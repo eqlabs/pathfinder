@@ -108,7 +108,7 @@ impl TestEnvironment {
             finalized_blocks,
             // Only used for failure injection, which does not happen in these tests
             &PathBuf::default(),
-            pathfinder_compiler::ResourceLimits::recommended(),
+            pathfinder_compiler::ResourceLimits::for_test(),
             true,
             None,
             None,

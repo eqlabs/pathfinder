@@ -99,8 +99,7 @@ pub fn preprocess_sierra(
     // Re-serialize into a storage-compatible format
     let sierra_class_ser = serde_json::to_vec(&sierra_class_def).unwrap();
     let sierra_class_p2p = sierra_def_to_p2p_cairo1(&sierra_class_def);
-    let casm =
-        compile_sierra_to_casm_deser(sierra_class_def, ResourceLimits::recommended()).unwrap();
+    let casm = compile_sierra_to_casm_deser(sierra_class_def, ResourceLimits::for_test()).unwrap();
 
     let casm_hash_v2 = casm_class_hash_v2(&casm).unwrap();
 
