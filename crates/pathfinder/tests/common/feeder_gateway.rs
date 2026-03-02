@@ -24,7 +24,6 @@ impl FeederGateway {
     pub fn spawn(proposer_config: &Config) -> anyhow::Result<Self> {
         let db_dir = proposer_config.db_dir();
         let marker_file = db_dir.join(format!("{}_ready", proposer_config.name));
-        // let db_dir = proposer_config.test_dir.join("fgw");
         let stdout_path = proposer_config.test_dir.join("fgw_stdout.log");
         let stdout_file = create_log_file("Feeder Gateway", &stdout_path)?;
         let stderr_path = proposer_config.test_dir.join("fgw_stderr.log");
