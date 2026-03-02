@@ -77,12 +77,13 @@ mod test {
         const POLL_READY: Duration = Duration::from_millis(500);
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
+        // IMPORTANT:
         // Happy path is the only scenario which starts consensus from genesis at the
         // expense of all transactions being reverted since they're random, invalid L1
-        // handlers.
+        // handlers. We need this to be able to test starting completely from scratch
+        // without relying on any pre-initialized database state.
         let (configs, boot_height, stopwatch) =
-            utils::setup(NUM_NODES, true /* temporary for testing */).unwrap();
-        // utils::setup(NUM_NODES, inject_failure.is_some()).unwrap();
+            utils::setup(NUM_NODES, inject_failure.is_some()).unwrap();
 
         // System contracts start to matter after block 10 but we have a separate
         // regression test for that, which checks that rollback at H>10 works correctly.
