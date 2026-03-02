@@ -1,12 +1,15 @@
+use std::sync::atomic::AtomicUsize;
+
 use anyhow::Context;
 
 use crate::columns::Column;
 use crate::params::RowExt;
 use crate::{
-    StoredNode,
+    RocksDBBatch,
     CONTRACT_STATE_HASHES_COLUMN,
     TRIE_CLASS_COLUMN,
     TRIE_CONTRACT_COLUMN,
+    TRIE_NEXT_INDEX_COLUMN,
     TRIE_STORAGE_COLUMN,
 };
 
@@ -25,6 +28,19 @@ pub(crate) fn migrate(
 
     tracing::info!("Migrating contract state hashes to RocksDB");
     migrate_contract_state_hashes(tx, rocksdb)?;
+
+    create_next_index(tx, rocksdb, "trie_class", &TRIE_CLASS_COLUMN)?;
+    create_next_index(tx, rocksdb, "trie_contracts", &TRIE_CONTRACT_COLUMN)?;
+    create_next_index(tx, rocksdb, "trie_storage", &TRIE_STORAGE_COLUMN)?;
+
+    // HACK: drop removal markers because they are not compatible with the new
+    // serialization format: we'd need to migrate these too.
+    tx.execute_batch(
+        "
+        DELETE FROM trie_class_removals;
+        DELETE FROM trie_contracts_removals;
+        DELETE FROM trie_storage_removals;",
+    )?;
 
     // tx.execute_batch(
     //     "
@@ -91,7 +107,13 @@ fn migrate_contract_trie(
     tx: &rusqlite::Transaction<'_>,
     rocksdb: &crate::RocksDBInner,
 ) -> anyhow::Result<()> {
-    let mut stmt = tx.prepare("SELECT idx, hash, data FROM trie_contracts")?;
+    let number_of_contract_roots =
+        tx.query_one("SELECT COUNT(*) FROM contract_roots", [], |row| {
+            let count: usize = row.get(0)?;
+            Ok(count)
+        })?;
+
+    let mut stmt = tx.prepare("SELECT idx, hash, data FROM trie_contracts ORDER BY idx")?;
     let trie_iter = stmt.query_map([], |row| {
         let idx: u64 = row.get(0)?;
         let hash: [u8; 32] = row.get(1)?;
@@ -114,6 +136,7 @@ fn migrate_contract_trie(
         "Loaded {} contract trie entries into memory",
         packed_arrays.len()
     );
+    packed_arrays.clear_migrated();
 
     let mut stmt = tx.prepare("SELECT contract_address, root_index FROM contract_roots")?;
     let roots_iter = stmt.query_map([], |row| {
@@ -125,8 +148,7 @@ fn migrate_contract_trie(
     let column: std::sync::Arc<rust_rocksdb::BoundColumnFamily<'_>> =
         rocksdb.get_column(&TRIE_CONTRACT_COLUMN);
 
-    let mut output = Vec::new();
-    let mut key_buf = [0u8; 40];
+    let mut batch = crate::RocksDBBatch::default();
 
     for (i, root_result) in roots_iter.enumerate() {
         let (contract_address, root_index) = root_result?;
@@ -134,40 +156,51 @@ fn migrate_contract_trie(
         if let Some(root_index) = root_index {
             walk_tree(
                 &packed_arrays,
+                &contract_address,
                 root_index.try_into().expect("root index fits into u64"),
-                &mut output,
+                &mut batch,
+                &column,
             );
 
-            let mut batch = crate::RocksDBBatch::default();
+            if batch.len() >= BATCH_SIZE {
+                rocksdb.rocksdb.write_without_wal(&batch)?;
+                batch = crate::RocksDBBatch::default();
 
-            for node_idx in &output {
-                let node_data = packed_arrays
-                    .get(*node_idx)
-                    .expect("node index should exist in packed arrays");
-
-                contract_trie_key(&contract_address, *node_idx, &mut key_buf);
-                batch.put_cf(&column, key_buf, node_data);
+                tracing::info!(
+                    "Migrated {}/{} contract tries",
+                    i + 1,
+                    number_of_contract_roots
+                );
             }
-
-            rocksdb.rocksdb.write_without_wal(&batch)?;
-
-            if i % 10000 == 9999 {
-                tracing::info!("Migrated {} contract trie roots", i + 1);
-            }
-
-            output.clear();
         }
     }
+
+    rocksdb.rocksdb.write_without_wal(&batch)?;
 
     Ok(())
 }
 
-fn walk_tree(packed_arrays: &SparsePackedArrays, node_idx: u64, output: &mut Vec<u64>) {
+fn walk_tree(
+    packed_arrays: &SparsePackedArrays,
+    contract_address: &[u8; 32],
+    node_idx: u64,
+    batch: &mut RocksDBBatch,
+    column: &std::sync::Arc<rust_rocksdb::BoundColumnFamily<'_>>,
+) {
     const CODEC_CFG: bincode::config::Configuration = bincode::config::standard();
 
-    let node_data = packed_arrays
-        .get(node_idx)
-        .expect("node index should exist in packed arrays");
+    let Some((node_data, array_idx)) = packed_arrays.get(node_idx) else {
+        tracing::warn!(
+            node_idx,
+            "Node index not found in packed arrays, skipping node and subtree"
+        );
+        return;
+    };
+
+    if packed_arrays.is_migrated(array_idx) {
+        // already migrated this node (and subtree!), skip to avoid redundant work
+        return;
+    }
 
     // parse node_data to determine if it's a leaf, extension, or branch node
     // and recursively walk child nodes if necessary
@@ -175,20 +208,24 @@ fn walk_tree(packed_arrays: &SparsePackedArrays, node_idx: u64, output: &mut Vec
         bincode::borrow_decode_from_slice(&node_data[32..], CODEC_CFG)
             .expect("decoding node data should succeed");
 
-    output.push(node_idx);
-
     match node {
         StoredSerde::Binary { left, right } => {
-            walk_tree(packed_arrays, left, output);
-            walk_tree(packed_arrays, right, output);
+            walk_tree(packed_arrays, contract_address, left, batch, column);
+            walk_tree(packed_arrays, contract_address, right, batch, column);
         }
         StoredSerde::Edge { child, .. } => {
-            walk_tree(packed_arrays, child, output);
+            walk_tree(packed_arrays, contract_address, child, batch, column);
         }
         StoredSerde::LeafBinary | StoredSerde::LeafEdge { .. } => {
             // leaf node, no children to walk
         }
     }
+
+    let mut key_buf = [0u8; 40];
+    contract_trie_key(contract_address, node_idx, &mut key_buf);
+    batch.put_cf(column, key_buf, node_data);
+    // mark as migrated in memory to avoid re-walking this node if it's shared
+    packed_arrays.set_migrated(array_idx);
 }
 
 #[derive(Clone, Debug, bincode::Encode, bincode::BorrowDecode)]
@@ -210,6 +247,7 @@ pub struct SparsePackedArrays {
     keys: Vec<u64>,      // sorted
     offsets: Vec<usize>, // parallel to keys, + 1 sentinel
     data: Vec<u8>,
+    migrated: Vec<AtomicUsize>, // parallel to keys, tracks migration status, bit-indexed
 }
 
 impl SparsePackedArrays {
@@ -219,6 +257,7 @@ impl SparsePackedArrays {
             keys: Vec::new(),
             offsets: vec![0],
             data: Vec::new(),
+            migrated: Vec::new(),
         }
     }
 
@@ -231,15 +270,43 @@ impl SparsePackedArrays {
         self.offsets.push(self.cursor); // sentinel
     }
 
-    pub fn get(&self, key: u64) -> Option<&[u8]> {
+    pub fn get(&self, key: u64) -> Option<(&[u8], usize)> {
         let idx = self.keys.binary_search(&key).ok()?;
         let start = self.offsets[idx] as usize;
         let end = self.offsets[idx + 1] as usize;
-        Some(&self.data[start..end])
+        Some((&self.data[start..end], idx))
     }
 
     pub fn len(&self) -> usize {
         self.keys.len()
+    }
+
+    pub fn clear_migrated(&mut self) {
+        let number_of_entries = self.keys.len();
+        let number_of_atomics =
+            (number_of_entries + usize::BITS as usize - 1) / usize::BITS as usize;
+        self.migrated
+            .resize_with(number_of_atomics, Default::default);
+    }
+
+    pub fn is_migrated(&self, idx: usize) -> bool {
+        let bit_idx = idx % usize::BITS as usize;
+        let atomic_idx = idx / usize::BITS as usize;
+        if atomic_idx >= self.migrated.len() {
+            return false;
+        }
+        let mask = 1 << bit_idx;
+        (self.migrated[atomic_idx].load(std::sync::atomic::Ordering::Acquire) & mask) != 0
+    }
+
+    pub fn set_migrated(&self, idx: usize) {
+        let bit_idx = idx % usize::BITS as usize;
+        let atomic_idx = idx / usize::BITS as usize;
+        if atomic_idx >= self.migrated.len() {
+            panic!("Index out of bounds for migrated tracking");
+        }
+        let mask = 1 << bit_idx;
+        self.migrated[atomic_idx].fetch_or(mask, std::sync::atomic::Ordering::AcqRel);
     }
 }
 
@@ -295,6 +362,28 @@ fn migrate_contract_state_hashes(
         .write_without_wal(&batch)
         .context("Writing final contract state hashes batch to RocksDB")?;
     tracing::info!("Contract state hashes migration complete");
+
+    Ok(())
+}
+
+fn create_next_index(
+    tx: &rusqlite::Transaction<'_>,
+    rocksdb: &crate::RocksDBInner,
+    sqlite_table_name: &str,
+    column: &Column,
+) -> anyhow::Result<()> {
+    let mut stmt = tx.prepare(&format!("SELECT MAX(idx) FROM {}", sqlite_table_name))?;
+    let next_index: u64 = stmt.query_row([], |row| {
+        let max_idx: Option<u64> = row.get(0)?;
+        Ok(max_idx.unwrap_or(0) + 1)
+    })?;
+
+    let next_index_column = rocksdb.get_column(&TRIE_NEXT_INDEX_COLUMN);
+    rocksdb.rocksdb.put_cf(
+        &next_index_column,
+        column.name.as_bytes(),
+        &next_index.to_be_bytes(),
+    )?;
 
     Ok(())
 }
