@@ -112,6 +112,7 @@ pub enum AddDeployAccountTransactionError {
     NonAccount,
     UnsupportedTransactionVersion,
     UnexpectedError(String),
+    ForwardedError(reqwest::Error),
 }
 
 impl From<anyhow::Error> for AddDeployAccountTransactionError {
@@ -133,6 +134,7 @@ impl From<AddDeployAccountTransactionError> for crate::error::ApplicationError {
             NonAccount => Self::NonAccount,
             UnsupportedTransactionVersion => Self::UnsupportedTxVersion,
             UnexpectedError(data) => Self::UnexpectedError { data },
+            ForwardedError(error) => Self::ForwardedError(error),
         }
     }
 }
@@ -177,6 +179,11 @@ impl From<SequencerError> for AddDeployAccountTransactionError {
             }
             SequencerError::StarknetError(e) if e.code == EntryPointNotFound.into() => {
                 AddDeployAccountTransactionError::NonAccount
+            }
+            SequencerError::ReqwestError(e)
+                if e.status() == Some(reqwest::StatusCode::PAYLOAD_TOO_LARGE) =>
+            {
+                AddDeployAccountTransactionError::ForwardedError(e)
             }
             _ => AddDeployAccountTransactionError::UnexpectedError(e.to_string()),
         }

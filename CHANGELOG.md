@@ -9,10 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-### Changed
-
-- The `--ethereum.url` option now requires a WebSocket URL (`ws://` or `wss://`). HTTP/HTTPS URLs are no longer automatically converted to WebSocket and will result in an error.
-
 ### Fixed
 
 - `starknet_traceBlockTransactions` parameter `trace_flags` is not optional (as required by the spec).
@@ -20,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The `--ethereum.url` option now requires a WebSocket URL (`ws://` or `wss://`). HTTP/HTTPS URLs are no longer automatically converted to WebSocket and will result in an error.
 - The Pathfinder binary now has two subcommands:
   - `node` - runs the Pathfinder node as before, serving JSON-RPC and syncing with the network.
     This is the default subcommand and will run if no subcommand is passed.
@@ -27,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Forwarding gateway HTTP error 413 when handling `starknet_addDeclareTransaction`.
+- Forwarding gateway HTTP error 413 when handling `starknet_addDeclareTransaction`, `starknet_addDeployAccountTransaction` and `starknet_addInvokeTransaction`.
 - Two new CLI options for the `node` subcommand:
   - `compiler.max-memory-usage-mib` - maximum memory usage for the compiler process, in MiB.
   - `compiler.max-cpu-time-secs` - maximum (active) CPU time for the compiler process, in seconds.
