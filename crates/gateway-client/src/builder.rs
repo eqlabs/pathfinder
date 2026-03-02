@@ -134,7 +134,10 @@ mod request_macros {
         };
     }
 
-    pub(super) use {method, method_defs, method_names, methods};
+    pub(super) use method;
+    pub(super) use method_defs;
+    pub(super) use method_names;
+    pub(super) use methods;
 }
 
 impl<'a> Request<'a, stage::Method> {
