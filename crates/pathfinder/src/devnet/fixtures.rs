@@ -1,12 +1,10 @@
 use pathfinder_common::transaction::{ResourceBound, ResourceBounds};
 use pathfinder_common::{
-    casm_hash,
     contract_address,
     felt,
     public_key,
     sierra_hash,
     state_diff_commitment,
-    CasmHash,
     ContractAddress,
     GasPrice,
     PublicKey,
@@ -32,7 +30,7 @@ pub const PREDEPLOYED_CONTRACTS: &[(ContractAddress, SierraHash)] = &[
     (STRK_ERC20_CONTRACT_ADDRESS, STRK_ERC20_CLASS_HASH),
 ];
 
-pub const ERC20S: &[(ContractAddress, &'static str, &'static str)] = &[
+pub const ERC20S: &[(ContractAddress, &str, &str)] = &[
     (ETH_ERC20_CONTRACT_ADDRESS, ETH_ERC20_NAME, ETH_ERC20_SYMBOL),
     (
         STRK_ERC20_CONTRACT_ADDRESS,
@@ -85,8 +83,10 @@ pub const ISRC6_ID: Felt =
 pub const HELLO_CLASS: &[u8] = include_bytes!("./fixtures/hello_starknet.sierra");
 pub const HELLO_CLASS_HASH: SierraHash =
     sierra_hash!("0x0457EF47CFAA819D9FE1372E8957815CDBA2252ED3E42A15536A5A40747C8A00");
-pub const HELLO_CASM_HASH: CasmHash =
-    casm_hash!("0x0071411E420C6D4237454AD997676341D8FBFDE4256888B31F34204AB7ED912F");
+#[cfg(test)]
+pub const HELLO_CASM_HASH: pathfinder_common::CasmHash = pathfinder_common::casm_hash!(
+    "0x0071411E420C6D4237454AD997676341D8FBFDE4256888B31F34204AB7ED912F"
+);
 
 /// Some nonzero gas price
 pub const GAS_PRICE: GasPrice = GasPrice(1_000_000_000);

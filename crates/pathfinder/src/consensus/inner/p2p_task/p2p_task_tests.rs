@@ -229,11 +229,7 @@ impl Drop for TestEnvironment {
         }
 
         // Join the worker pool to ensure all threads are cleaned up properly
-        if let Some(pool) = self
-            .worker_pool
-            .take()
-            .and_then(|pool| Arc::into_inner(pool))
-        {
+        if let Some(pool) = self.worker_pool.take().and_then(Arc::into_inner) {
             pool.join();
         }
     }

@@ -152,7 +152,7 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
     // want to be sure we have the correct initial account nonce value and we are
     // sure of the previous deployments before we start the new proposal.
     account.update(
-        &db_txn,
+        db_txn,
         BlockNumber::new(height)
             .context("Height exceeds i64::MAX")?
             .parent(),

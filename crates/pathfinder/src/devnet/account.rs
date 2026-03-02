@@ -1,6 +1,5 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::RwLock;
-use std::u128;
 
 use anyhow::Context as _;
 use num_bigint::BigUint;
@@ -145,7 +144,7 @@ impl Account {
         let (high, low) = split_biguint(BigUint::from(initial_balance));
 
         for fee_token_address in [self.eth_fee_token_address, self.strk_fee_token_address] {
-            let token_address = fee_token_address.into();
+            let token_address = fee_token_address;
 
             let total_supply_low = get_storage_at(
                 state_update,
@@ -193,18 +192,13 @@ impl Account {
             "SRC5_supported_interfaces",
             &[fixtures::ISRC6_ID.into_starkfelt()],
         );
-        set_storage_at(
-            state_update,
-            self.address,
-            interface_storage_var.into(),
-            Felt::ONE,
-        )?;
+        set_storage_at(state_update, self.address, interface_storage_var, Felt::ONE)?;
 
         let public_key_storage_var = get_storage_var_address("Account_public_key", &[]);
         set_storage_at(
             state_update,
             self.address,
-            public_key_storage_var.into(),
+            public_key_storage_var,
             self.public_key.0,
         )?;
 

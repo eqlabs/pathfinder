@@ -93,7 +93,7 @@ pub fn init_db(db_dir: &Path, proposer: Address) -> anyhow::Result<BootDb> {
     let db_txn = db_conn.transaction()?;
     let mut state_update = StateUpdateData::default();
 
-    let mut account = predeploy_contracts(&db_txn, &mut state_update)?;
+    let account = predeploy_contracts(&db_txn, &mut state_update)?;
 
     let block_number = BlockNumber::GENESIS;
     let (storage_commitment, class_commitment) = update_starknet_state(
@@ -154,7 +154,7 @@ pub fn init_db(db_dir: &Path, proposer: Address) -> anyhow::Result<BootDb> {
     declare(
         storage.clone(),
         db_txn,
-        &mut account,
+        &account,
         fixtures::HELLO_CLASS,
         proposer,
     )?;

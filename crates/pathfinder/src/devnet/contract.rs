@@ -1,18 +1,8 @@
-use std::sync::Arc;
-
 use pathfinder_common::state_update::StateUpdateData;
-use pathfinder_common::{
-    ClassHash,
-    ContractAddress,
-    PublicKey,
-    SierraHash,
-    StorageAddress,
-    StorageValue,
-};
+use pathfinder_common::{ClassHash, ContractAddress, SierraHash, StorageAddress, StorageValue};
 use pathfinder_crypto::Felt;
-use pathfinder_executor::{IntoFelt as _, IntoStarkFelt as _};
+use pathfinder_executor::IntoFelt as _;
 use starknet_api::abi::abi_utils::get_storage_var_address;
-use starknet_api::core::calculate_contract_address;
 
 use crate::devnet::fixtures::ACCOUNT_ADDRESS;
 use crate::devnet::utils::cairo_short_string_to_felt;
@@ -71,15 +61,18 @@ pub fn erc20_init(
     Ok(())
 }
 
+#[cfg(test)]
 pub fn compute_address(
     sierra_hash: SierraHash,
-    public_key: PublicKey,
+    public_key: pathfinder_common::PublicKey,
 ) -> anyhow::Result<ContractAddress> {
+    use pathfinder_executor::IntoStarkFelt as _;
+
     let address = ContractAddress(
-        calculate_contract_address(
+        starknet_api::core::calculate_contract_address(
             Default::default(),
             starknet_api::core::ClassHash(sierra_hash.0.into_starkfelt()),
-            &starknet_api::transaction::fields::Calldata(Arc::new(vec![public_key
+            &starknet_api::transaction::fields::Calldata(std::sync::Arc::new(vec![public_key
                 .0
                 .into_starkfelt()])),
             Default::default(),

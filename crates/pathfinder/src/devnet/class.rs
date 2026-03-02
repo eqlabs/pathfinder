@@ -62,8 +62,8 @@ pub struct PrepocessedSierra {
 
 /// Preprocess a Sierra class definition. Class hash is computed if not
 /// provided.
-pub fn preprocess_sierra<'a>(
-    sierra_class_ser: &'a [u8],
+pub fn preprocess_sierra(
+    sierra_class_ser: &[u8],
     sierra_class_hash: Option<SierraHash>,
 ) -> anyhow::Result<PrepocessedSierra> {
     let sierra_class_hash = sierra_class_hash.unwrap_or({

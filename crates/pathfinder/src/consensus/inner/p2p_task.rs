@@ -595,7 +595,7 @@ pub fn spawn(
                             // TODO integrate decided blocks into storage adapter
                             // See issue: https://github.com/eqlabs/pathfinder/issues/3248
                             /*
-                            on_finalized_block_decided(
+                            _on_finalized_block_decided(
                                 &height_and_round,
                                 &validator_cache,
                                 deferred_executions.clone(),
@@ -688,9 +688,11 @@ pub fn spawn(
     (jh, worker_pool_for_cleanup)
 }
 
+// TODO integrate decided blocks into storage adapter
+// See issue: https://github.com/eqlabs/pathfinder/issues/3248
 /// Handle decide confirmation for a finalized block at given height and round.
 #[allow(clippy::too_many_arguments)]
-fn on_finalized_block_decided(
+fn _on_finalized_block_decided(
     height_and_round: &HeightAndRound,
     validator_cache: &ValidatorCache,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
