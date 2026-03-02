@@ -86,7 +86,8 @@ pub(super) mod i64_backed_u64 {
         };
     }
 
-    pub(crate) use {new_get_partialeq, serdes};
+    pub(crate) use new_get_partialeq;
+    pub(crate) use serdes;
 }
 
 /// Generates felt newtype-wrappers and the `macro_prelude` module.
@@ -282,7 +283,8 @@ pub(super) mod fmt {
         };
     }
 
-    pub(crate) use {thin_debug, thin_display};
+    pub(crate) use thin_debug;
+    pub(crate) use thin_display;
 }
 
 /// Creates a [Felt](pathfinder_crypto::Felt) from a hex string literal verified

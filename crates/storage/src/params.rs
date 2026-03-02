@@ -452,15 +452,13 @@ macro_rules! row_felt_wrapper {
     };
 }
 
-use {
-    row_felt_wrapper,
-    to_sql_builtin,
-    to_sql_compressed_felt,
-    to_sql_felt,
-    to_sql_int,
-    try_into_sql,
-    try_into_sql_int,
-};
+use row_felt_wrapper;
+use to_sql_builtin;
+use to_sql_compressed_felt;
+use to_sql_felt;
+use to_sql_int;
+use try_into_sql;
+use try_into_sql_int;
 
 /// Used in combination with our own [ToSql] trait to provide functionality
 /// equivalent to [rusqlite::params!] for our own foreign types.
@@ -484,7 +482,8 @@ macro_rules! named_params {
     };
 }
 
-pub(crate) use {named_params, params};
+pub(crate) use named_params;
+pub(crate) use params;
 
 #[cfg(test)]
 mod tests {
