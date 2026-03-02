@@ -166,7 +166,7 @@ mod compat {
     use serde::Deserialize;
 
     /// Necessary for class hash computation, as the
-    /// [`compute_sierra_class_hash`] function expects a different struct
+    /// [`compute_sierra_class_hash`](pathfinder_class_hash::compute_sierra_class_hash) function expects a different struct
     /// than the one used for deserialization of the class definition.
     #[derive(Debug, Deserialize)]
     pub struct SierraContractDefinition<'a> {
@@ -178,9 +178,9 @@ mod compat {
         pub entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndFunctionIndex>>,
     }
 
-    /// Necessary for compilation into casm, as the [`compile_to_casm_deser`]
-    /// function expects a different struct than the one used for
-    /// deserialization of the class definition.
+    /// Necessary for compilation into casm, as the
+    /// [`compile_sierra_to_casm_deser`](pathfinder_compiler::compile_sierra_to_casm_deser) function expects a different struct
+    /// than the one used for deserialization of the class definition.
     #[derive(Debug, Deserialize)]
     pub struct Sierra<'a> {
         #[serde(borrow)]

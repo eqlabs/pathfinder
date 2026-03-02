@@ -76,7 +76,7 @@ pub const ACCOUNT_PUBLIC_KEY: PublicKey =
 pub const ACCOUNT_ADDRESS: ContractAddress =
     contract_address!("0x02334DE23F9C31EEF53826835D99537F5C3823B7DE60F5B605819BF2EA97C6CA");
 
-/// https://github.com/OpenZeppelin/cairo-contracts/blob/89a450a88628ec3b86273f261b2d8d1ca9b1522b/src/account/interface.cairo#L7
+/// <https://github.com/OpenZeppelin/cairo-contracts/blob/89a450a88628ec3b86273f261b2d8d1ca9b1522b/src/account/interface.cairo#L7>
 pub const ISRC6_ID: Felt =
     felt!("0x2ceccef7f994940b3962a6c67e0ba4fcd37df7d131417c604f91e03caecc1cd");
 
