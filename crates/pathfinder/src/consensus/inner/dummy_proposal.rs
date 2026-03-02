@@ -147,7 +147,7 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
         "Attempted to create proposal with Nil round at height {height}"
     ))?;
 
-    // We update the account entity each time, because the previosly created
+    // We update the account entity each time, because the previously created
     // transactions could have not gone into the committed block and thus we
     // want to be sure we have the correct initial account nonce value and we are
     // sure of the previous deployments before we start the new proposal.
