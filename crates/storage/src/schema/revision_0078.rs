@@ -158,20 +158,18 @@ fn migrate_contract_trie(
                 &packed_arrays,
                 &contract_address,
                 root_index.try_into().expect("root index fits into u64"),
+                rocksdb,
                 &mut batch,
                 &column,
+            )?;
+        }
+
+        if i % 10000 == 9999 {
+            tracing::info!(
+                "Migrated {}/{} contract tries",
+                i + 1,
+                number_of_contract_roots
             );
-
-            if batch.len() >= BATCH_SIZE {
-                rocksdb.rocksdb.write_without_wal(&batch)?;
-                batch = crate::RocksDBBatch::default();
-
-                tracing::info!(
-                    "Migrated {}/{} contract tries",
-                    i + 1,
-                    number_of_contract_roots
-                );
-            }
         }
     }
 
@@ -184,9 +182,10 @@ fn walk_tree(
     packed_arrays: &SparsePackedArrays,
     contract_address: &[u8; 32],
     node_idx: u64,
+    rocksdb: &crate::RocksDBInner,
     batch: &mut RocksDBBatch,
     column: &std::sync::Arc<rust_rocksdb::BoundColumnFamily<'_>>,
-) {
+) -> anyhow::Result<()> {
     const CODEC_CFG: bincode::config::Configuration = bincode::config::standard();
 
     let Some((node_data, array_idx)) = packed_arrays.get(node_idx) else {
@@ -194,12 +193,12 @@ fn walk_tree(
             node_idx,
             "Node index not found in packed arrays, skipping node and subtree"
         );
-        return;
+        return Ok(());
     };
 
     if packed_arrays.is_migrated(array_idx) {
         // already migrated this node (and subtree!), skip to avoid redundant work
-        return;
+        return Ok(());
     }
 
     // parse node_data to determine if it's a leaf, extension, or branch node
@@ -210,11 +209,32 @@ fn walk_tree(
 
     match node {
         StoredSerde::Binary { left, right } => {
-            walk_tree(packed_arrays, contract_address, left, batch, column);
-            walk_tree(packed_arrays, contract_address, right, batch, column);
+            walk_tree(
+                packed_arrays,
+                contract_address,
+                left,
+                rocksdb,
+                batch,
+                column,
+            )?;
+            walk_tree(
+                packed_arrays,
+                contract_address,
+                right,
+                rocksdb,
+                batch,
+                column,
+            )?;
         }
         StoredSerde::Edge { child, .. } => {
-            walk_tree(packed_arrays, contract_address, child, batch, column);
+            walk_tree(
+                packed_arrays,
+                contract_address,
+                child,
+                rocksdb,
+                batch,
+                column,
+            )?;
         }
         StoredSerde::LeafBinary | StoredSerde::LeafEdge { .. } => {
             // leaf node, no children to walk
@@ -224,8 +244,16 @@ fn walk_tree(
     let mut key_buf = [0u8; 40];
     contract_trie_key(contract_address, node_idx, &mut key_buf);
     batch.put_cf(column, key_buf, node_data);
+
+    if batch.len() >= BATCH_SIZE {
+        rocksdb.rocksdb.write_without_wal(&batch)?;
+        batch.clear();
+    }
+
     // mark as migrated in memory to avoid re-walking this node if it's shared
     packed_arrays.set_migrated(array_idx);
+
+    Ok(())
 }
 
 #[derive(Clone, Debug, bincode::Encode, bincode::BorrowDecode)]
