@@ -337,7 +337,7 @@ pub(crate) fn create_with_invalid_l1_handler_transactions(
         &HashMap::new(),
         None,
         None,
-        worker_pool,
+        worker_pool.clone(),
     )?;
 
     let num_executed_txns = config
@@ -366,6 +366,9 @@ pub(crate) fn create_with_invalid_l1_handler_transactions(
     parts.push(ProposalPart::Fin(ProposalFin {
         proposal_commitment: Hash(block.header.state_diff_commitment.0),
     }));
+
+    let worker_pool = Arc::into_inner(worker_pool).context("Failed join worker pool")?;
+    worker_pool.join();
 
     Ok((parts, block))
 }
