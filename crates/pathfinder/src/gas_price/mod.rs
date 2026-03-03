@@ -6,9 +6,6 @@ mod l1;
 mod l1_to_fri;
 mod oracle;
 
-/// 1 ETH = 10^18 Wei
-pub(crate) const ETH_TO_WEI: u128 = 1_000_000_000_000_000_000;
-
 pub use l1::{
     AddSampleError,
     L1GasPriceConfig,
