@@ -322,10 +322,6 @@ impl PathfinderInstance {
             format!("Pathfinder instance {:<7}", self.name),
         );
     }
-
-    pub fn enable_log_dump(enable: bool) {
-        DUMP_LOGS_ON_DROP.store(enable, std::sync::atomic::Ordering::Relaxed);
-    }
 }
 
 impl Drop for PathfinderInstance {
@@ -335,15 +331,15 @@ impl Drop for PathfinderInstance {
         if DUMP_LOGS_ON_DROP.load(std::sync::atomic::Ordering::Relaxed) {
             let stdout = std::fs::read_to_string(&self.stdout_path)
                 .unwrap_or("Error reading file".to_string());
-            println!("Pathfinder instance {:<7} stdout log:\n{stdout}", self.name);
+            println!("Pathfinder instance {} stdout log:\n{stdout}", self.name);
             let stderr = std::fs::read_to_string(&self.stderr_path)
                 .unwrap_or("Error reading file".to_string());
-            println!("Pathfinder instance {:<7} stderr log:\n{stderr}", self.name);
+            println!("Pathfinder instance {} stderr log:\n{stderr}", self.name);
         }
     }
 }
 
-static DUMP_LOGS_ON_DROP: AtomicBool = AtomicBool::new(true);
+pub(super) static DUMP_LOGS_ON_DROP: AtomicBool = AtomicBool::new(true);
 
 impl Config {
     const NAMES: &'static [&'static str] = &[

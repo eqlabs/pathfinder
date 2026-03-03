@@ -90,9 +90,6 @@ pub const HELLO_CASM_HASH: pathfinder_common::CasmHash = pathfinder_common::casm
 
 /// Some nonzero gas price
 pub const GAS_PRICE: GasPrice = GasPrice(1_000_000_000);
-/// WEI to FRI conversion rate is 1:1 for simplicity, so ETH to FRI conversion
-/// rate is 1:1e18
-pub const ETH_TO_FRI_RATE: u128 = 1_000_000_000_000_000_000;
 /// Some nonzero resource bounds
 pub const RESOURCE_BOUNDS: ResourceBounds = ResourceBounds {
     l1_gas: ResourceBound {

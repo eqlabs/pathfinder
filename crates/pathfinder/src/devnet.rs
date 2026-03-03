@@ -64,7 +64,7 @@ mod contract;
 mod fixtures;
 mod utils;
 
-use fixtures::{ETH_TO_FRI_RATE, GAS_PRICE};
+use fixtures::GAS_PRICE;
 
 /// Initializes a devnet DB. The following contracts are predeclared,
 /// predeployed and initialized if necessary: Cairo 1 account, ETH and STRK
@@ -168,9 +168,10 @@ pub fn init_db(db_dir: &Path, proposer: Address) -> anyhow::Result<BootDb> {
 }
 
 pub fn is_db_bootstrapped(db_txn: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<bool> {
-    let block_0_commitment = db_txn
-        .state_diff_commitment(BlockNumber::GENESIS)?
-        .context("DB is empty")?;
+    let Some(block_0_commitment) = db_txn.state_diff_commitment(BlockNumber::GENESIS)? else {
+        return Ok(false);
+    };
+
     if block_0_commitment != fixtures::BLOCK_0_COMMITMENT {
         return Ok(false);
     }
@@ -416,10 +417,11 @@ fn block_info(
         height: height.get(),
         builder: proposer,
         timestamp: strictly_increasing_timestamp(prev_timestamp).get(),
+        l1_gas_price_fri: GAS_PRICE.0,
+        l1_data_gas_price_fri: GAS_PRICE.0,
         l2_gas_price_fri: GAS_PRICE.0,
         l1_gas_price_wei: GAS_PRICE.0,
         l1_data_gas_price_wei: GAS_PRICE.0,
-        eth_to_fri_rate: ETH_TO_FRI_RATE,
         l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
     }
 }

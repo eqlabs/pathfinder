@@ -103,11 +103,22 @@ jobs:
           rm -rf ~/.cargo/registry
           rm -rf ~/.cargo/git
       - name: Compile feeder gateway binary for consensus integration tests
-        run: cargo build -p feeder-gateway --bin feeder-gateway
+        run: cargo build -p feeder-gateway -F small_aggregate_filters --bin feeder-gateway
       - name: Compile pathfinder binary for consensus integration tests
         run: cargo build -p pathfinder -F p2p -F consensus-integration-tests --bin pathfinder
       - name: Run consensus integration tests
-        run: PATHFINDER_TEST_ENABLE_MARKER_FILES=1 timeout 15m cargo nextest run --test consensus -p pathfinder --features p2p,consensus-integration-tests --locked --retries 2
+        env:
+          APP_TEMP_DIR: ${{ runner.temp }}
+        run: PATHFINDER_TEST_ENABLE_MARKER_FILES=1 timeout 20m cargo nextest run --test consensus -p pathfinder --features p2p,consensus-integration-tests --locked --retries 2 -j 1
+      - name: Store test artifacts for consensus integration tests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: consensus-integration-tests
+          include-hidden-files: true
+          path: ${{ runner.temp }}/consensus-integration-tests/
+          if-no-files-found: warn
+
   test-default-features:
     needs: detect-changes
     if: needs.detect-changes.outputs.code == 'true'

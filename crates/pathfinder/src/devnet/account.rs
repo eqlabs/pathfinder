@@ -5,6 +5,7 @@ use anyhow::Context as _;
 use num_bigint::BigUint;
 use p2p::sync::client::conv::ToDto as _;
 use p2p_proto::common::Hash;
+use p2p_proto::transaction::InvokeV3WithProof;
 use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::transaction::{
     DataAvailabilityMode,
@@ -292,7 +293,10 @@ impl Account {
         };
 
         Ok(p2p_proto::consensus::Transaction {
-            txn: p2p_proto::consensus::TransactionVariant::InvokeV3(invoke),
+            txn: p2p_proto::consensus::TransactionVariant::InvokeV3(InvokeV3WithProof {
+                invoke,
+                proof: Vec::new(),
+            }),
             transaction_hash: Hash(txn_hash.0),
         })
     }
@@ -350,7 +354,10 @@ impl Account {
         };
 
         p2p_proto::consensus::Transaction {
-            txn: p2p_proto::consensus::TransactionVariant::InvokeV3(invoke),
+            txn: p2p_proto::consensus::TransactionVariant::InvokeV3(InvokeV3WithProof {
+                invoke,
+                proof: Vec::new(),
+            }),
             transaction_hash: Hash(txn_hash.0),
         }
     }
@@ -405,7 +412,10 @@ impl Account {
         };
 
         p2p_proto::consensus::Transaction {
-            txn: p2p_proto::consensus::TransactionVariant::InvokeV3(invoke),
+            txn: p2p_proto::consensus::TransactionVariant::InvokeV3(InvokeV3WithProof {
+                invoke,
+                proof: Vec::new(),
+            }),
             transaction_hash: Hash(txn_hash.0),
         }
     }
