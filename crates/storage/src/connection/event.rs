@@ -509,8 +509,7 @@ impl Transaction<'_> {
         self.running_event_filter.lock().unwrap().next_block
     }
 
-    // TODO
-    // #[cfg(feature = "small_aggregate_filters")]
+    #[cfg(feature = "small_aggregate_filters")]
     pub fn event_filter_exists(
         &self,
         from_block: BlockNumber,
