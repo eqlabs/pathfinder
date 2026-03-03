@@ -539,9 +539,10 @@ mod tests {
             builder: proposer_address,
             l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
             l2_gas_price_fri: 0,
+            l1_gas_price_fri: 0,
+            l1_data_gas_price_fri: 0,
             l1_gas_price_wei: 0,
             l1_data_gas_price_wei: 0,
-            eth_to_fri_rate: 0,
         };
 
         let worker_pool = create_test_worker_pool();

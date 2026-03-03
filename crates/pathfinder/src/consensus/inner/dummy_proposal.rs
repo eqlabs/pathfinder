@@ -168,9 +168,10 @@ pub(crate) fn create(
         builder: Address(proposer.0),
         timestamp,
         l2_gas_price_fri: 1_000_000,
+        l1_gas_price_fri: 1_000_000,
+        l1_data_gas_price_fri: 1_000_000,
         l1_gas_price_wei: 1_000_000,
         l1_data_gas_price_wei: 1_000_000,
-        eth_to_fri_rate: 1_000_000_000_000_000_000,
         l1_da_mode: L1DataAvailabilityMode::Calldata,
     };
 
@@ -326,9 +327,10 @@ pub(crate) fn create_test_proposal_init(
         builder: proposer_address,
         l1_da_mode: L1DataAvailabilityMode::default(),
         l2_gas_price_fri: 1,
+        l1_gas_price_fri: 1_000_000_000,
+        l1_data_gas_price_fri: 1,
         l1_gas_price_wei: 1_000_000_000,
         l1_data_gas_price_wei: 1,
-        eth_to_fri_rate: 1_000_000_000,
     };
 
     (proposal_init, block_info)
