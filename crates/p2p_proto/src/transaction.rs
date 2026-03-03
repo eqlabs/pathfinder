@@ -81,6 +81,12 @@ pub struct InvokeV3 {
     pub fee_data_availability_mode: VolitionDomain,
     pub nonce: Felt,
     pub proof_facts: Vec<Felt>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "crate::proto::transaction::InvokeV3WithProof")]
+pub struct InvokeV3WithProof {
+    pub invoke: InvokeV3,
     pub proof: Vec<u32>,
 }
 

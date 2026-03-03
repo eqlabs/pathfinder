@@ -5,13 +5,14 @@ package starknet.consensus.consensus;
 import "proto/common.proto";
 import "proto/transaction.proto";
 
-// Contains all variants of mempool and an L1Handler variant to cover all transactions that can be
-// in a new block.
+// Contains all transaction types that can be in a new block:
+// - User transactions (same types as MempoolTransaction: Declare, DeployAccount, Invoke)
+// - L1Handler transactions (messages from L1, not propagated via mempool)
 message ConsensusTransaction {
     oneof txn {
         starknet.transaction.DeclareV3WithClass declare_v3     = 1;
         starknet.transaction.DeployAccountV3 deploy_account_v3 = 2;
-        starknet.transaction.InvokeV3 invoke_v3                = 3;
+        starknet.transaction.InvokeV3WithProof invoke_v3       = 3;
         starknet.transaction.L1HandlerV0 l1_handler            = 4;
     }
     starknet.common.Hash transaction_hash = 5;
@@ -56,10 +57,10 @@ message BlockInfo {
     starknet.common.Address builder                   = 3;
     starknet.common.L1DataAvailabilityMode l1_da_mode = 4;
     starknet.common.Uint128 l2_gas_price_fri          = 5;
-    starknet.common.Uint128 l1_gas_price_wei          = 6;
-    starknet.common.Uint128 l1_data_gas_price_wei     = 7;
-    // TODO: consider removing and putting all fri prices instead
-    starknet.common.Uint128 eth_to_fri_rate           = 8;
+    starknet.common.Uint128 l1_gas_price_fri          = 6;
+    starknet.common.Uint128 l1_data_gas_price_fri     = 7;
+    starknet.common.Uint128 l1_gas_price_wei          = 8;
+    starknet.common.Uint128 l1_data_gas_price_wei     = 9;
 }
 
 message TransactionBatch {
