@@ -288,9 +288,6 @@ impl ToDto<p2p_proto::sync::transaction::TransactionVariant> for TransactionVari
                     fee_data_availability_mode: x.fee_data_availability_mode.to_dto(),
                     nonce: x.nonce.0,
                     proof_facts: x.proof_facts.into_iter().map(|p| p.0).collect(),
-                    // Proofs are present only when adding new invoke v3 transactions, but are then
-                    // not stored as part of the chain.
-                    proof: vec![],
                 },
             ),
             L1Handler(x) => p2p_proto::sync::transaction::TransactionVariant::L1HandlerV0(
