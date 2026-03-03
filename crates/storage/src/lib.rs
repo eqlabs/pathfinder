@@ -64,12 +64,6 @@ pub enum JournalMode {
 #[derive(Clone)]
 pub struct Storage(Inner);
 
-impl Storage {
-    pub fn dump_pool_info(&self) {
-        eprintln!("Connection pool state: {:#?}", self.0.pool.state());
-    }
-}
-
 #[derive(Clone)]
 struct Inner {
     /// Uses [`Arc`] to allow _shallow_ [Storage] cloning
