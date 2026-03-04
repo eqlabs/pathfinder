@@ -117,6 +117,8 @@ pub enum KnownStarknetErrorCode {
     DuplicatedTransaction,
     #[serde(rename = "StarknetErrorCode.INVALID_CONTRACT_CLASS_VERSION")]
     InvalidContractClassVersion,
+    #[serde(rename = "StarknetErrorCode.INVALID_PROOF")]
+    InvalidProof,
 }
 
 #[cfg(test)]

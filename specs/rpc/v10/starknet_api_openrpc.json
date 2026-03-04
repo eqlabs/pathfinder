@@ -1,7 +1,7 @@
 {
   "openrpc": "1.0.0-rc1",
   "info": {
-    "version": "0.10.1-rc.2",
+    "version": "0.10.1-rc.3",
     "title": "StarkNet Node API",
     "license": {}
   },
@@ -2356,11 +2356,9 @@
             "properties": {
               "proof": {
                 "title": "Proof",
-                "description": "Optional proof for the transaction",
-                "type": "array",
-                "items": {
-                  "type": "integer"
-                }
+                "description": "Optional proof for the transaction, encoded as a base64 string of big-endian packed u32 values",
+                "type": "string",
+                "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)?$"
               }
             }
           }
@@ -2861,7 +2859,7 @@
               },
               "proof_facts": {
                 "title": "Proof facts",
-                "description": "Optional proof facts for the transaction",
+                "description": "Proof facts for the transaction. An empty array is returned if no proof facts exist for the transaction",
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/FELT"
@@ -3656,7 +3654,7 @@
       "TXN_RESPONSE_FLAG": {
         "type": "string",
         "enum": ["INCLUDE_PROOF_FACTS"],
-        "description": "Flags that control what additional fields are included in transaction responses. INCLUDE_PROOF_FACTS: Include proof_facts field when available (only for transactions submitted through the gateway with proof facts)."
+        "description": "Flags that control what additional fields are included in transaction responses. INCLUDE_PROOF_FACTS: Include proof_facts field in the response (an empty array is returned if no proof facts exist for the transaction)."
       },
       "PRICE_UNIT_WEI": {
         "title": "Price unit wei",

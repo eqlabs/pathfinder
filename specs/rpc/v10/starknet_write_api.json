@@ -1,7 +1,7 @@
 {
   "openrpc": "1.0.0-rc1",
   "info": {
-    "version": "0.10.1-rc.2",
+    "version": "0.10.1-rc.3",
     "title": "StarkNet Node Write API",
     "license": {}
   },
@@ -61,6 +61,9 @@
         },
         {
           "$ref": "#/components/errors/UNSUPPORTED_TX_VERSION"
+        },
+        {
+          "$ref": "#/components/errors/INVALID_PROOF"
         },
         {
           "$ref": "#/components/errors/UNEXPECTED_ERROR"
@@ -307,6 +310,10 @@
       "FEE_BELOW_MINIMUM": {
         "code": 65,
         "message": "Transaction fee below minimum"
+      },
+      "INVALID_PROOF": {
+        "code": 69,
+        "message": "The proof field in the invoke v3 transaction is invalid"
       }
     }
   }

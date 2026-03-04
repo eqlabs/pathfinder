@@ -85,6 +85,8 @@ pub enum ApplicationError {
     UnexpectedError { data: String },
     #[error("Too many storage keys requested")]
     ProofLimitExceeded { limit: u32, requested: u32 },
+    #[error("The proof field in the invoke v3 transaction is invalid")]
+    InvalidProof,
     #[error("Internal error")]
     GatewayError(starknet_gateway_types::error::StarknetError),
     /// Gateway HTTP errors whose status is forwarded.
@@ -167,6 +169,7 @@ impl ApplicationError {
             ApplicationError::UnsupportedTxVersion => 61,
             ApplicationError::UnsupportedContractClassVersion => 62,
             ApplicationError::UnexpectedError { .. } => 63,
+            ApplicationError::InvalidProof => 69,
             // specs/rpc/pathfinder_rpc_api.json
             ApplicationError::ProofLimitExceeded { .. } => 10000,
             ApplicationError::ProofMissing => 10001,
@@ -311,6 +314,7 @@ impl ApplicationError {
                 "limit": limit,
                 "requested": requested,
             })),
+            ApplicationError::InvalidProof => None,
             ApplicationError::StorageProofNotSupported => None,
             ApplicationError::ProofMissing => None,
             ApplicationError::SubscriptionTransactionHashNotFound {
