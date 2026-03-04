@@ -122,6 +122,7 @@ pub enum AddInvokeTransactionError {
     DuplicateTransaction,
     NonAccount,
     UnsupportedTransactionVersion,
+    InvalidProof,
     UnexpectedError(String),
     ForwardedError(reqwest::Error),
 }
@@ -150,6 +151,7 @@ impl From<AddInvokeTransactionError> for crate::error::ApplicationError {
             AddInvokeTransactionError::DuplicateTransaction => Self::DuplicateTransaction,
             AddInvokeTransactionError::NonAccount => Self::NonAccount,
             AddInvokeTransactionError::UnsupportedTransactionVersion => Self::UnsupportedTxVersion,
+            AddInvokeTransactionError::InvalidProof => Self::InvalidProof,
             AddInvokeTransactionError::UnexpectedError(data) => Self::UnexpectedError { data },
             AddInvokeTransactionError::ForwardedError(error) => Self::ForwardedError(error),
         }
@@ -163,6 +165,7 @@ impl From<SequencerError> for AddInvokeTransactionError {
             EntryPointNotFound,
             InsufficientAccountBalance,
             InsufficientMaxFee,
+            InvalidProof,
             InvalidTransactionNonce,
             InvalidTransactionVersion,
             ValidateFailure,
@@ -192,6 +195,12 @@ impl From<SequencerError> for AddInvokeTransactionError {
             }
             SequencerError::StarknetError(e) if e.code == EntryPointNotFound.into() => {
                 AddInvokeTransactionError::NonAccount
+            }
+            SequencerError::StarknetError(e) if e.code == InvalidProof.into() => {
+                // Technically specific to JSON-RPC version >= 0.10,
+                // but for the earlier versions this error shouldn't
+                // occur, since there is no proof in the first place.
+                AddInvokeTransactionError::InvalidProof
             }
             SequencerError::ReqwestError(e)
                 if e.status() == Some(reqwest::StatusCode::PAYLOAD_TOO_LARGE) =>
