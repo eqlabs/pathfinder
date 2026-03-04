@@ -266,9 +266,10 @@ mod tests {
             builder: Address(Felt::from_hex_str("0x456").unwrap()),
             l1_da_mode: L1DataAvailabilityMode::Calldata,
             l2_gas_price_fri: 1000,
-            l1_gas_price_wei: 2000,
-            l1_data_gas_price_wei: 3000,
-            eth_to_fri_rate: 4000,
+            l1_gas_price_fri: 2000,
+            l1_data_gas_price_fri: 3000,
+            l1_gas_price_wei: 4000,
+            l1_data_gas_price_wei: 5000,
         };
         let proposal = ProposalPart::BlockInfo(block_info);
 
@@ -306,9 +307,10 @@ mod tests {
             builder: Address(Felt::from_hex_str("0x456").unwrap()),
             l1_da_mode: L1DataAvailabilityMode::Calldata,
             l2_gas_price_fri: 1000,
-            l1_gas_price_wei: 2000,
-            l1_data_gas_price_wei: 3000,
-            eth_to_fri_rate: 4000,
+            l1_gas_price_fri: 2000,
+            l1_data_gas_price_fri: 3000,
+            l1_gas_price_wei: 4000,
+            l1_data_gas_price_wei: 5000,
         };
         let proposal = ProposalPart::BlockInfo(block_info);
 
@@ -593,9 +595,10 @@ mod tests {
             builder: p2p_proto::common::Address(Felt::from_hex_str("0x456").unwrap()),
             l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
             l2_gas_price_fri: 1000 + base as u128,
-            l1_gas_price_wei: 2000 + base as u128,
-            l1_data_gas_price_wei: 3000 + base as u128,
-            eth_to_fri_rate: 4000 + base as u128,
+            l1_gas_price_fri: 2000 + base as u128,
+            l1_data_gas_price_fri: 3000 + base as u128,
+            l1_gas_price_wei: 4000 + base as u128,
+            l1_data_gas_price_wei: 5000 + base as u128,
         }));
 
         // TransactionBatch (send a few)

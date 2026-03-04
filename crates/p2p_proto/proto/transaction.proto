@@ -49,6 +49,7 @@ message DeclareV3WithClass {
 
 
 // see https://external.integration.starknet.io/feeder_gateway/get_transaction?transactionHash=0x41906f1c314cca5f43170ea75d3b1904196a10101190d2b12a41cc61cfd17c
+// An invoke V3 transaction without client-side proof (only contains proof_facts).
 message InvokeV3 {
     starknet.common.Address sender = 1;
     AccountSignature signature = 2;
@@ -61,7 +62,13 @@ message InvokeV3 {
     starknet.common.VolitionDomain fee_data_availability_mode = 9;
     starknet.common.Felt252 nonce = 10;
     repeated starknet.common.Felt252 proof_facts = 11;
-    repeated uint32 proof = 12;
+}
+
+// An invoke V3 transaction with client-side proof.
+// Used in consensus and mempool contexts where proof is included.
+message InvokeV3WithProof {
+    InvokeV3 invoke = 1;
+    repeated uint32 proof = 2;
 }
 
 // see https://external.integration.starknet.io/feeder_gateway/get_transaction?transactionHash=0x29fd7881f14380842414cdfdd8d6c0b1f2174f8916edcfeb1ede1eb26ac3ef0

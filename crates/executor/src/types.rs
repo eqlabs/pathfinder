@@ -35,8 +35,6 @@ use crate::execution_state::PathfinderExecutionState;
 use crate::state_reader::StorageAdapter;
 use crate::IntoStarkFelt as _;
 
-pub const ETH_TO_WEI_RATE: u128 = 1_000_000_000_000_000_000;
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Receipt {
     pub actual_fee: Fee,
@@ -96,13 +94,10 @@ pub struct ConsensusPriceConverter {
     pub l2_gas_price_fri: u128,
     pub l1_gas_price_wei: u128,
     pub l1_data_gas_price_wei: u128,
-    pub eth_to_fri_rate: u128,
+    pub l1_gas_price_fri: u128,
+    pub l1_data_gas_price_fri: u128,
 }
 
-// one eth_to_fri_rate is not suitable for current sepolia or integration data
-// where there are 3 pairs of gas prices in both wei & fri and they give
-// 2 different ethfri rates, often due to one of the prices in wei saturated at
-// 1
 pub enum BlockInfoPriceConverter {
     Legacy(LegacyPriceConverter),
     Consensus(ConsensusPriceConverter),
@@ -124,45 +119,38 @@ impl LegacyPriceConverter {
 
 impl ConsensusPriceConverter {
     pub fn strk_l1_gas_price(&self) -> u128 {
-        self.wei_to_fri(self.l1_gas_price_wei)
+        self.l1_gas_price_fri
     }
 
     pub fn strk_l1_data_gas_price(&self) -> u128 {
-        self.wei_to_fri(self.l1_data_gas_price_wei)
+        self.l1_data_gas_price_fri
     }
 
     pub fn eth_l2_gas_price(&self) -> u128 {
-        self.fri_to_wei(self.l2_gas_price_fri)
-    }
-
-    fn wei_to_fri(&self, wei: u128) -> u128 {
-        wei * self.eth_to_fri_rate / ETH_TO_WEI_RATE
-    }
-
-    fn fri_to_wei(&self, fri: u128) -> u128 {
-        fri * ETH_TO_WEI_RATE / self.eth_to_fri_rate
+        // Derive WEI price from the FRI price using the L1 gas price ratio.
+        // l2_gas_price_wei = l2_gas_price_fri * l1_gas_price_wei / l1_gas_price_fri
+        if self.l1_gas_price_fri == 0 {
+            0
+        } else {
+            self.l2_gas_price_fri * self.l1_gas_price_wei / self.l1_gas_price_fri
+        }
     }
 }
 
 impl BlockInfoPriceConverter {
     pub fn consensus(
         l2_gas_price_fri: u128,
+        l1_gas_price_fri: u128,
+        l1_data_gas_price_fri: u128,
         l1_gas_price_wei: u128,
         l1_data_gas_price_wei: u128,
-        eth_to_fri_rate: u128,
     ) -> Self {
-        // TODO(validator) obviously incorrect, but better than dividing by zero...
-        let cooked_rate = if eth_to_fri_rate == 0 {
-            tracing::error!("zero ETH/FRI rate");
-            1
-        } else {
-            eth_to_fri_rate
-        };
         Self::Consensus(ConsensusPriceConverter {
             l2_gas_price_fri,
             l1_gas_price_wei,
             l1_data_gas_price_wei,
-            eth_to_fri_rate: cooked_rate,
+            l1_gas_price_fri,
+            l1_data_gas_price_fri,
         })
     }
 

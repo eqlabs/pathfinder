@@ -189,9 +189,8 @@ impl ValidatorBlockInfoStage {
         if let Some(validator) = l1_to_fri_validator {
             validate_l1_to_fri_prices(
                 block_info.timestamp,
-                block_info.l1_gas_price_wei,
-                block_info.l1_data_gas_price_wei,
-                block_info.eth_to_fri_rate,
+                block_info.l1_gas_price_fri,
+                block_info.l1_data_gas_price_fri,
                 validator,
             )?;
         }
@@ -204,9 +203,10 @@ impl ValidatorBlockInfoStage {
             builder,
             l1_da_mode,
             l2_gas_price_fri,
+            l1_gas_price_fri,
+            l1_data_gas_price_fri,
             l1_gas_price_wei,
             l1_data_gas_price_wei,
-            eth_to_fri_rate,
         } = block_info;
 
         let block_info = pathfinder_executor::types::BlockInfo::try_from_proposal(
@@ -221,9 +221,10 @@ impl ValidatorBlockInfoStage {
             },
             BlockInfoPriceConverter::consensus(
                 l2_gas_price_fri,
+                l1_gas_price_fri,
+                l1_data_gas_price_fri,
                 l1_gas_price_wei,
                 l1_data_gas_price_wei,
-                eth_to_fri_rate,
             ),
             StarknetVersion::new(0, 14, 0, 0), /* TODO(validator) should probably come from
                                                 * somewhere... */
@@ -339,17 +340,11 @@ fn validate_l1_gas_prices(
 /// Apollo's approach that prioritizes liveness over strict determinism.
 fn validate_l1_to_fri_prices(
     timestamp: u64,
-    l1_gas_price_wei: u128,
-    l1_data_gas_price_wei: u128,
-    eth_to_fri_rate: u128,
+    l1_gas_price_fri: u128,
+    l1_data_gas_price_fri: u128,
     validator: &L1ToFriValidator,
 ) -> Result<(), ProposalHandlingError> {
-    match validator.validate(
-        timestamp,
-        l1_gas_price_wei,
-        l1_data_gas_price_wei,
-        eth_to_fri_rate,
-    ) {
+    match validator.validate(timestamp, l1_gas_price_fri, l1_data_gas_price_fri) {
         L1ToFriValidationResult::Valid => Ok(()),
         L1ToFriValidationResult::InvalidFriDeviation {
             proposed_fri,
@@ -842,7 +837,7 @@ impl TransactionExt for ProdTransactionMapper {
                 Some(class_info(class, compiler_resource_limits)?),
             ),
             ConsensusVariant::DeployAccountV3(v) => (SyncVariant::DeployAccountV3(v), None),
-            ConsensusVariant::InvokeV3(v) => (SyncVariant::InvokeV3(v), None),
+            ConsensusVariant::InvokeV3(v) => (SyncVariant::InvokeV3(v.invoke), None),
             ConsensusVariant::L1HandlerV0(v) => (SyncVariant::L1HandlerV0(v), None),
         };
 
@@ -1290,9 +1285,10 @@ mod tests {
             builder: p2p_proto::common::Address(Felt::from_hex_str("0x1").unwrap()),
             l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
             l2_gas_price_fri: 1,
+            l1_gas_price_fri: 1_000_000_000,
+            l1_data_gas_price_fri: 1,
             l1_gas_price_wei: 1_000_000_000,
             l1_data_gas_price_wei: 1,
-            eth_to_fri_rate: 1_000_000_000,
         };
 
         // Create validator stages (empty proposal path)
@@ -1419,9 +1415,10 @@ mod tests {
             builder: p2p_proto::common::Address(Felt::from_hex_str("0x1").unwrap()),
             l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
             l2_gas_price_fri: 1,
+            l1_gas_price_fri: 1_000_000_000,
+            l1_data_gas_price_fri: 1,
             l1_gas_price_wei: 1_000_000_000,
             l1_data_gas_price_wei: 1,
-            eth_to_fri_rate: 1_000_000_000,
         };
         let result = validator_block_info1.validate_block_info(
             block_info1,
@@ -1475,9 +1472,10 @@ mod tests {
             builder: p2p_proto::common::Address(Felt::from_hex_str("0x1").unwrap()),
             l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
             l2_gas_price_fri: 1,
+            l1_gas_price_fri: 1_000_000_000,
+            l1_data_gas_price_fri: 1,
             l1_gas_price_wei: 1_000_000_000,
             l1_data_gas_price_wei: 1,
-            eth_to_fri_rate: 1_000_000_000,
         };
 
         if proposal_height == BlockNumber::GENESIS {

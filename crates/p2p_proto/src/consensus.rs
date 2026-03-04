@@ -3,14 +3,14 @@ use prost::Message;
 use proto::consensus::consensus as consensus_proto;
 
 use crate::common::{Address, Hash, L1DataAvailabilityMode};
-use crate::transaction::{DeclareV3WithClass, DeployAccountV3, InvokeV3, L1HandlerV0};
+use crate::transaction::{DeclareV3WithClass, DeployAccountV3, InvokeV3WithProof, L1HandlerV0};
 use crate::{proto, proto_field, ProtobufSerializable, ToProtobuf, TryFromProtobuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, Dummy)]
 pub enum TransactionVariant {
     DeclareV3(DeclareV3WithClass),
     DeployAccountV3(DeployAccountV3),
-    InvokeV3(InvokeV3),
+    InvokeV3(InvokeV3WithProof),
     L1HandlerV0(L1HandlerV0),
 }
 
@@ -85,9 +85,10 @@ pub struct BlockInfo {
     pub builder: Address,
     pub timestamp: u64,
     pub l2_gas_price_fri: u128,
+    pub l1_gas_price_fri: u128,
+    pub l1_data_gas_price_fri: u128,
     pub l1_gas_price_wei: u128,
     pub l1_data_gas_price_wei: u128,
-    pub eth_to_fri_rate: u128,
     pub l1_da_mode: L1DataAvailabilityMode,
 }
 
@@ -99,9 +100,10 @@ impl<T> Dummy<T> for BlockInfo {
             timestamp: rng.gen_range(0..i64::MAX) as u64,
             // Keep the prices low enough to avoid overflow when converting between fri and wei
             l2_gas_price_fri: rng.gen_range(1..i64::MAX) as u128,
+            l1_gas_price_fri: rng.gen_range(1..i64::MAX) as u128,
+            l1_data_gas_price_fri: rng.gen_range(1..i64::MAX) as u128,
             l1_gas_price_wei: rng.gen_range(1..i64::MAX) as u128,
             l1_data_gas_price_wei: rng.gen_range(1..i64::MAX) as u128,
-            eth_to_fri_rate: rng.gen_range(1..i64::MAX) as u128,
             l1_da_mode: fake::Faker.fake_with_rng(rng),
         }
     }

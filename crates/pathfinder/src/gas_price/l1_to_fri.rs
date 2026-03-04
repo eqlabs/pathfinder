@@ -5,9 +5,9 @@
 
 use std::sync::Arc;
 
+use super::deviation_pct;
 use super::l1::L1GasPriceProvider;
 use super::oracle::EthToFriOracle;
-use super::{deviation_pct, ETH_TO_WEI};
 
 /// Configuration for L1-to-FRI price validation.
 #[derive(Debug, Clone)]
@@ -66,16 +66,14 @@ impl L1ToFriValidator {
 
     /// Validates L1 gas prices in FRI terms.
     ///
-    /// Proposer provides their Wei prices and their ETH/FRI rate.
-    /// Validator independently fetches Wei prices and uses oracle for
-    /// conversion. If the resulting FRI prices differ by more than 10%,
-    /// validation fails.
+    /// Proposer provides their FRI prices directly. Validator independently
+    /// fetches Wei prices and uses oracle for conversion. If the resulting
+    /// FRI prices differ by more than 10%, validation fails.
     pub fn validate(
         &self,
         timestamp: u64,
-        proposed_l1_gas_price_wei: u128,
-        proposed_l1_data_gas_price_wei: u128,
-        proposed_eth_to_fri_rate: u128,
+        proposed_l1_gas_price_fri: u128,
+        proposed_l1_data_gas_price_fri: u128,
     ) -> L1ToFriValidationResult {
         let (validator_base_fee_wei, validator_blob_fee_wei) =
             match self.l1_gas_provider.get_average_prices(timestamp) {
@@ -103,37 +101,31 @@ impl L1ToFriValidator {
             }
         };
 
-        // Compute proposer's FRI using their rate: fri = wei * rate / 10^18
-        let proposer_base_fee_fri =
-            proposed_l1_gas_price_wei.saturating_mul(proposed_eth_to_fri_rate) / ETH_TO_WEI;
-        let proposer_blob_fee_fri =
-            proposed_l1_data_gas_price_wei.saturating_mul(proposed_eth_to_fri_rate) / ETH_TO_WEI;
-
-        let base_deviation = deviation_pct(proposer_base_fee_fri, validator_base_fee_fri);
+        let base_deviation = deviation_pct(proposed_l1_gas_price_fri, validator_base_fee_fri);
         if base_deviation > self.config.max_fri_deviation {
             tracing::debug!(
-                proposer_base_fee_fri,
+                proposed_l1_gas_price_fri,
                 validator_base_fee_fri,
                 deviation_pct = base_deviation * 100.0,
                 "L1-to-FRI base fee deviation exceeds tolerance"
             );
             return L1ToFriValidationResult::InvalidFriDeviation {
-                proposed_fri: proposer_base_fee_fri,
+                proposed_fri: proposed_l1_gas_price_fri,
                 expected_fri: validator_base_fee_fri,
                 deviation_pct: base_deviation * 100.0,
             };
         }
 
-        let blob_deviation = deviation_pct(proposer_blob_fee_fri, validator_blob_fee_fri);
+        let blob_deviation = deviation_pct(proposed_l1_data_gas_price_fri, validator_blob_fee_fri);
         if blob_deviation > self.config.max_fri_deviation {
             tracing::debug!(
-                proposer_blob_fee_fri,
+                proposed_l1_data_gas_price_fri,
                 validator_blob_fee_fri,
                 deviation_pct = blob_deviation * 100.0,
                 "L1-to-FRI blob fee deviation exceeds tolerance"
             );
             return L1ToFriValidationResult::InvalidFriDeviation {
-                proposed_fri: proposer_blob_fee_fri,
+                proposed_fri: proposed_l1_data_gas_price_fri,
                 expected_fri: validator_blob_fee_fri,
                 deviation_pct: blob_deviation * 100.0,
             };
@@ -192,9 +184,9 @@ mod tests {
             L1ToFriValidationConfig::default(),
         );
 
-        let proposer_rate = 2 * ETH_TO_WEI;
+        // Proposer's FRI prices: 1000 wei * 2 = 2000 fri, 100 wei * 2 = 200 fri
         assert!(matches!(
-            v.validate(124, 1000, 100, proposer_rate),
+            v.validate(124, 2000, 200),
             L1ToFriValidationResult::Valid
         ));
     }
@@ -209,9 +201,9 @@ mod tests {
             L1ToFriValidationConfig::default(),
         );
 
-        let proposer_rate = 3 * ETH_TO_WEI;
+        // Proposer's FRI prices are 50% higher than expected (3000 vs 2000)
         assert!(matches!(
-            v.validate(124, 1000, 100, proposer_rate),
+            v.validate(124, 3000, 300),
             L1ToFriValidationResult::InvalidFriDeviation { .. }
         ));
 
@@ -225,7 +217,7 @@ mod tests {
             L1ToFriValidationConfig::default(),
         );
         assert!(matches!(
-            v.validate(124, 1000, 100, 2 * ETH_TO_WEI),
+            v.validate(124, 2000, 200),
             L1ToFriValidationResult::InsufficientData
         ));
     }
