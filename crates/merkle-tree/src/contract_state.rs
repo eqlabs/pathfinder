@@ -1,4 +1,5 @@
 use anyhow::Context;
+use pathfinder_common::hash::FeltHash;
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::{ReverseContractUpdate, StateUpdateError, StorageRef};
 use pathfinder_crypto::hash::pedersen_hash;
@@ -40,7 +41,7 @@ impl ContractStateUpdateResult {
 
 /// Updates a contract's state with and returns the resulting
 /// [ContractStateHash].
-pub fn update_contract_state(
+pub fn update_contract_state<H: FeltHash>(
     contract_address: ContractAddress,
     updates: StorageRef<'_>,
     new_nonce: Option<ContractNonce>,
@@ -52,10 +53,10 @@ pub fn update_contract_state(
     // Load the contract tree and insert the updates.
     let (new_root, trie_update) = if !updates.is_empty() {
         let mut contract_tree = match block.parent() {
-            Some(parent) => ContractsStorageTree::load(transaction, contract_address, parent)
+            Some(parent) => ContractsStorageTree::<H>::load(transaction, contract_address, parent)
                 .context("Loading contract storage tree")?
                 .with_verify_hashes(verify_hashes),
-            None => ContractsStorageTree::empty(transaction, contract_address),
+            None => ContractsStorageTree::<H>::empty(transaction, contract_address),
         }
         .with_verify_hashes(verify_hashes);
 
@@ -135,7 +136,7 @@ pub fn calculate_contract_state_hash(
 /// Reverts Merkle tree state for a contract.
 ///
 /// Takes Merkle tree state at `head` and applies reverse updates.
-pub fn revert_contract_state(
+pub fn revert_contract_state<H: FeltHash>(
     transaction: &Transaction<'_>,
     contract_address: ContractAddress,
     head: BlockNumber,
@@ -174,7 +175,7 @@ pub fn revert_contract_state(
 
             // Apply storage updates
             let root = if !update.storage.is_empty() {
-                let mut tree = ContractsStorageTree::load(transaction, contract_address, head)
+                let mut tree = ContractsStorageTree::<H>::load(transaction, contract_address, head)
                     .context("Loading contract state")?;
 
                 for (address, value) in update.storage {

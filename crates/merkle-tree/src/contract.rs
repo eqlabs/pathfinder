@@ -9,7 +9,7 @@ use std::ops::ControlFlow;
 use anyhow::Context;
 use bitvec::prelude::Msb0;
 use bitvec::slice::BitSlice;
-use pathfinder_common::hash::PedersenHash;
+use pathfinder_common::hash::{FeltHash, PedersenHash};
 use pathfinder_common::prelude::*;
 use pathfinder_crypto::Felt;
 use pathfinder_storage::{Transaction, TrieStorageIndex, TrieUpdate};
@@ -24,12 +24,12 @@ use crate::tree::{GetProofError, MerkleTree, TrieNodeWithHash, Visit};
 /// [values](StorageValue).
 ///
 /// Tree data is persisted by a sqlite table 'trie_contracts'.
-pub struct ContractsStorageTree<'tx> {
-    tree: MerkleTree<PedersenHash, 251>,
+pub struct ContractsStorageTree<'tx, H: FeltHash> {
+    tree: MerkleTree<H, 251>,
     storage: ContractStorage<'tx>,
 }
 
-impl<'tx> ContractsStorageTree<'tx> {
+impl<'tx, H: FeltHash> ContractsStorageTree<'tx, H> {
     pub fn empty(tx: &'tx Transaction<'tx>, contract: ContractAddress) -> Self {
         let storage = ContractStorage {
             tx,
@@ -107,7 +107,7 @@ impl<'tx> ContractsStorageTree<'tx> {
             .map(|addr| addr.0.view_bits())
             .collect::<Vec<_>>();
 
-        MerkleTree::<PedersenHash, 251>::get_proofs(root, &storage, &keys)
+        MerkleTree::<H, 251>::get_proofs(root, &storage, &keys)
     }
 
     pub fn set(&mut self, address: StorageAddress, value: StorageValue) -> anyhow::Result<()> {
@@ -139,12 +139,12 @@ impl<'tx> ContractsStorageTree<'tx> {
 /// hash](ContractStateHash).
 ///
 /// Tree data is persisted by a sqlite table 'trie_storage'.
-pub struct StorageCommitmentTree<'tx> {
-    tree: MerkleTree<PedersenHash, 251>,
+pub struct StorageCommitmentTree<'tx, H: FeltHash> {
+    tree: MerkleTree<H, 251>,
     storage: StorageTrieStorage<'tx>,
 }
 
-impl<'tx> StorageCommitmentTree<'tx> {
+impl<'tx, H: FeltHash> StorageCommitmentTree<'tx, H> {
     pub fn empty(tx: &'tx Transaction<'tx>) -> Self {
         let storage = StorageTrieStorage { tx, block: None };
         let tree = MerkleTree::empty();

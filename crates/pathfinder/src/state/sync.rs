@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
+use pathfinder_common::hash::{PedersenHash, PoseidonHash};
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::{BlockId, Chain, ConsensusFinalizedL2Block, L2Block, L2BlockToCommit};
@@ -1316,7 +1317,7 @@ fn l2_update(
     // parallel contract state updates
     storage: Storage,
 ) -> anyhow::Result<L2Block> {
-    let (storage_commitment, class_commitment) = update_starknet_state(
+    let (storage_commitment, class_commitment) = update_starknet_state::<PedersenHash, PoseidonHash>(
         transaction,
         block.state_update().as_ref(),
         verify_tree_hashes,

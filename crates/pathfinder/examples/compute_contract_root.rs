@@ -1,6 +1,7 @@
 use std::num::NonZeroU32;
 
 use anyhow::Context;
+use pathfinder_common::hash::PedersenHash;
 use pathfinder_common::{BlockNumber, ContractAddress, StorageAddress, StorageValue};
 use pathfinder_crypto::Felt;
 use pathfinder_merkle_tree::ContractsStorageTree;
@@ -40,7 +41,7 @@ pub fn main() -> anyhow::Result<()> {
     let storage_value = StorageValue(storage_value);
 
     let mut contract_tree =
-        ContractsStorageTree::load(&transaction, contract_address, block_number)?;
+        ContractsStorageTree::<PedersenHash>::load(&transaction, contract_address, block_number)?;
     contract_tree.set(storage_address, storage_value)?;
 
     let (root, _trie_update) = contract_tree.commit()?;
