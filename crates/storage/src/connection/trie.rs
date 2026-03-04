@@ -687,52 +687,55 @@ impl Transaction<'_> {
 
         let column = self.rocksdb_get_column(rocksdb_hash_column);
 
-        let mut indices = HashMap::new();
+        let mut storage_idx_base = self
+            .rocksdb
+            .next_trie_storage_index(rocksdb_hash_column, to_insert.len());
+
+        // Pre-allocate storage indices for all nodes to insert. This allows us to store
+        // nodes in any order and still be able to reference their children.
+        let indices: HashMap<usize, TrieStorageIndex> = to_insert
+            .iter()
+            .enumerate()
+            .map(|(i, node_idx)| (*node_idx, storage_idx_base + i as u64))
+            .collect();
 
         // Reusable (and oversized) buffer for encoding.
         let mut buffer = [0u8; 256];
         let mut key: [u8; 40] = [0u8; TRIE_CONTRACT_KEY_LEN];
 
-        let mut storage_idx = self
-            .rocksdb
-            .next_trie_storage_index(rocksdb_hash_column, to_insert.len());
-
         let mut batch = self.batch.lock().expect("Batch lock poisoned");
 
-        // Insert nodes in reverse to ensure children always have an assigned index for
-        // the parent to use.
-        for idx in to_insert.into_iter().rev() {
-            let (hash, node) = &update.nodes_added.get(idx).context("Node index missing")?;
+        for idx in to_insert.iter() {
+            let (hash, node) = &update.nodes_added.get(*idx).context("Node index missing")?;
 
             let node = node.as_stored(&indices)?;
 
             buffer[0..32].copy_from_slice(hash.as_be_bytes());
             let length = node.encode(&mut buffer[32..]).context("Encoding node")?;
 
+            let storage_idx = indices.get(idx).context("Storage index missing")?;
+
             let key_length = if let Some(key_prefix) = key_prefix {
-                contract_trie_key(key_prefix, storage_idx, &mut key);
+                contract_trie_key(key_prefix, *storage_idx, &mut key);
                 TRIE_CONTRACT_KEY_LEN
             } else {
                 key[..8].copy_from_slice(&storage_idx.0.to_be_bytes());
                 8
             };
 
-            indices.insert(idx, storage_idx);
-
             batch.put_cf(&column, &key[..key_length], &buffer[..length + 32]);
-
-            storage_idx.0 += 1;
 
             metrics::counter!(METRIC_TRIE_NODES_ADDED, "table" => table).increment(1);
         }
 
         // Store next index for future use. This is read after startup to determine the
         // next index to use for new nodes.
+        storage_idx_base += to_insert.len() as u64;
         let next_index_column = self.rocksdb_get_column(&TRIE_NEXT_INDEX_COLUMN);
         batch.put_cf(
             &next_index_column,
             rocksdb_hash_column.name.as_bytes(),
-            &storage_idx.0.to_be_bytes(),
+            &storage_idx_base.0.to_be_bytes(),
         );
 
         if table == "trie_storage" && block_number.get() % 100 == 0 {
@@ -1066,38 +1069,29 @@ impl StoredNode {
 }
 
 impl Node {
-    fn as_stored(
-        &self,
-        storage_indices: &HashMap<usize, TrieStorageIndex>,
-    ) -> anyhow::Result<StoredNode> {
+    fn as_stored(&self, indices: &HashMap<usize, TrieStorageIndex>) -> anyhow::Result<StoredNode> {
         let node = match self {
             Node::Binary { left, right } => {
                 let left = match left {
                     NodeRef::StorageIndex(id) => *id,
-                    NodeRef::Index(idx) => *storage_indices
-                        .get(idx)
-                        .context("Left child index missing")?,
+                    NodeRef::Index(idx) => *indices.get(idx).context("Node index missing")?,
                 };
 
                 let right = match right {
                     NodeRef::StorageIndex(id) => *id,
-                    NodeRef::Index(idx) => *storage_indices
-                        .get(idx)
-                        .context("Right child index missing")?,
+                    NodeRef::Index(idx) => *indices.get(idx).context("Node index missing")?,
                 };
 
                 StoredNode::Binary { left, right }
             }
             Node::Edge { child, path } => {
                 let child = match child {
-                    NodeRef::StorageIndex(id) => id,
-                    NodeRef::Index(idx) => {
-                        storage_indices.get(idx).context("Child index missing")?
-                    }
+                    NodeRef::StorageIndex(id) => *id,
+                    NodeRef::Index(idx) => *indices.get(idx).context("Node index missing")?,
                 };
 
                 StoredNode::Edge {
-                    child: *child,
+                    child,
                     path: path.clone(),
                 }
             }
