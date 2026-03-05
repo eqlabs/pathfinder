@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use p2p::consensus::{Event, HeightAndRound};
+use p2p::consensus::{Event, Height, HeightAndRound};
 use p2p_proto::consensus::ProposalPart;
 use pathfinder_common::{
     consensus_info,
@@ -181,7 +181,7 @@ impl HeightExt for NetworkMessage<ConsensusValue, ContractAddress> {
 /// NOTE: Until timestamps become part of an empty proposal, disseminating an
 /// empty proposal will cause timestamp discrepancies between nodes and
 /// validation errors.
-pub(crate) fn create_empty_block(height: u64) -> ConsensusFinalizedL2Block {
+pub(crate) fn create_empty_block(height: Height) -> ConsensusFinalizedL2Block {
     let timestamp = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default()

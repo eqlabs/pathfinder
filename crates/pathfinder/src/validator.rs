@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::Context;
+use p2p::consensus::{Height, NonNilRound};
 use p2p::sync::client::conv::TryFromDto;
 use p2p_proto::class::Cairo1Class;
 use p2p_proto::consensus::{BlockInfo, ProposalInit, TransactionVariant as ConsensusVariant};
@@ -70,8 +71,8 @@ pub enum ValidationResult {
 /// Determines whether validation of the proposal should be deferred based on
 /// the presence of the parent block in the decided blocks or DB.
 pub fn should_defer_validation(
-    height: u64,
-    decided_blocks: &HashMap<u64, (u32, ConsensusFinalizedL2Block)>,
+    height: Height,
+    decided_blocks: &HashMap<Height, (NonNilRound, ConsensusFinalizedL2Block)>,
     db_tx: &DbTransaction<'_>,
 ) -> Result<bool, ProposalHandlingError> {
     let Some(parent_height) = height.checked_sub(1) else {
@@ -143,7 +144,7 @@ impl ValidatorBlockInfoStage {
         self,
         block_info: BlockInfo,
         main_storage: Storage,
-        decided_blocks: &HashMap<u64, (u32, ConsensusFinalizedL2Block)>,
+        decided_blocks: &HashMap<Height, (NonNilRound, ConsensusFinalizedL2Block)>,
         gas_price_provider: Option<L1GasPriceProvider>,
         l1_to_fri_validator: Option<&L1ToFriValidator>,
         worker_pool: ValidatorWorkerPool,
@@ -246,10 +247,10 @@ impl ValidatorBlockInfoStage {
 }
 
 fn validate_block_info_timestamp(
-    height: u64,
+    height: Height,
     proposal_timestamp: u64,
     main_storage: &Storage,
-    decided_blocks: &HashMap<u64, (u32, ConsensusFinalizedL2Block)>,
+    decided_blocks: &HashMap<Height, (NonNilRound, ConsensusFinalizedL2Block)>,
 ) -> Result<(), ProposalHandlingError> {
     let Some(parent_height) = height.checked_sub(1) else {
         // Genesis block, no parent to validate against.

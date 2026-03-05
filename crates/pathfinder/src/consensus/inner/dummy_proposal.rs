@@ -10,6 +10,9 @@ use std::sync::LazyLock;
 use std::time::{Duration, SystemTime};
 
 use anyhow::Context;
+use p2p::consensus::Height;
+#[cfg(test)]
+use p2p::consensus::NonNilRound;
 use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
 use p2p_proto::consensus::{BlockInfo, ProposalFin, ProposalInit, ProposalPart};
 use pathfinder_common::{
@@ -32,7 +35,7 @@ use crate::validator::{ProdTransactionMapper, ValidatorBlockInfoStage, Validator
 /// Blocks consensus tasks's processing loop until the parent block of height is
 /// committed in main storage without blocking the async runtime.
 pub(crate) async fn wait_for_parent_committed(
-    height: u64,
+    height: Height,
     main_storage: Storage,
     poll_interval: Duration,
 ) -> anyhow::Result<()> {
@@ -104,7 +107,7 @@ pub(crate) struct ProposalCreationConfig {
 /// TODO: Until empty proposals reintroduce timestamps, we cannot create
 /// empty proposals here.
 pub(crate) fn create(
-    height: u64,
+    height: Height,
     round: Round,
     proposer: ContractAddress,
     main_storage: Storage,
@@ -304,8 +307,8 @@ pub fn create_l1_handler_transaction(
 #[cfg(test)]
 pub(crate) fn create_test_proposal_init(
     _chain_id: ChainId,
-    height: u64,
-    round: u32,
+    height: Height,
+    round: NonNilRound,
     proposer: ContractAddress,
 ) -> (ProposalInit, BlockInfo) {
     let proposer_address = Address(proposer.0);

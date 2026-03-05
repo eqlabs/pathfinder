@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
-use p2p::consensus::HeightAndRound;
+use p2p::consensus::{Height, HeightAndRound};
 use p2p_proto::consensus::{ProposalFin, ProposalPart};
 use pathfinder_common::{BlockId, ContractAddress, ProposalCommitment};
 use pathfinder_consensus::{
@@ -363,7 +363,7 @@ fn highest_committed(main_storage: &Storage) -> anyhow::Result<Option<u64>> {
 /// Starts consensus for the given height if not already active.
 fn start_height(
     consensus: &mut Consensus<ConsensusValue, ContractAddress, L2ProposerSelector>,
-    height: u64,
+    height: Height,
     validator_set: ValidatorSet<ContractAddress>,
 ) {
     if !consensus.is_height_active(height) {

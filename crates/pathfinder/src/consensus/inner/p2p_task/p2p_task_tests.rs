@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use p2p::consensus::{peer_score, Client, Event, EventKind, HeightAndRound};
+use p2p::consensus::{peer_score, Client, Event, EventKind, Height, HeightAndRound};
 use p2p::libp2p::identity::Keypair;
 use p2p::libp2p::PeerId;
 use p2p_proto::consensus::ProposalPart;
@@ -123,7 +123,7 @@ impl TestEnvironment {
         }
     }
 
-    fn create_committed_block(&self, height: u64) {
+    fn create_committed_block(&self, height: Height) {
         let block_id_felt = Felt::from(height);
         let mut db_conn = self.main_storage.connection().unwrap();
         let db_tx = db_conn.transaction().unwrap();
@@ -212,7 +212,7 @@ impl TestEnvironment {
     }
 }
 
-fn create_finalized_block(height: u64) -> ConsensusFinalizedL2Block {
+fn create_finalized_block(height: Height) -> ConsensusFinalizedL2Block {
     ConsensusFinalizedL2Block {
         header: ConsensusFinalizedBlockHeader {
             number: BlockNumber::new_or_panic(height),
@@ -317,7 +317,7 @@ async fn verify_no_proposal_event(rx: &mut mpsc::Receiver<ConsensusTaskEvent>, d
 /// Helper: Verify proposal event matches expected values
 fn verify_proposal_event(
     proposal_cmd: ConsensusCommand<ConsensusValue, ContractAddress>,
-    expected_height: u64,
+    expected_height: Height,
     expected_commitment: ProposalCommitment,
 ) {
     match proposal_cmd {

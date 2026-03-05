@@ -8,7 +8,7 @@
 use std::collections::{HashMap, HashSet};
 
 use anyhow::Context;
-use p2p::consensus::HeightAndRound;
+use p2p::consensus::{Height, HeightAndRound, NonNilRound};
 use p2p_proto::consensus as proto_consensus;
 use pathfinder_common::ConsensusFinalizedL2Block;
 use pathfinder_storage::Storage;
@@ -99,7 +99,7 @@ impl BatchExecutionManager {
         transactions: Vec<proto_consensus::Transaction>,
         validator_stage: ValidatorStage,
         main_db: Storage,
-        decided_blocks: &HashMap<u64, (u32, ConsensusFinalizedL2Block)>,
+        decided_blocks: &HashMap<Height, (NonNilRound, ConsensusFinalizedL2Block)>,
         deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
     ) -> Result<ValidatorStage, ProposalHandlingError> {
         let mut main_db_conn = main_db
@@ -375,7 +375,7 @@ mod tests {
     /// Helper function to create a committed parent block in storage
     fn create_committed_parent_block(
         storage: &pathfinder_storage::Storage,
-        parent_height: u64,
+        parent_height: Height,
     ) -> anyhow::Result<()> {
         let mut db_conn = storage.connection()?;
         let db_tx = db_conn.transaction()?;
