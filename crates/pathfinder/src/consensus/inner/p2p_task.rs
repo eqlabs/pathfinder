@@ -50,7 +50,7 @@ use crate::consensus::inner::batch_execution::{
     DeferredExecution,
     ProposalCommitmentWithOrigin,
 };
-use crate::consensus::inner::{create_empty_block, DecidedBlocks};
+use crate::consensus::inner::create_empty_block;
 use crate::consensus::{ProposalError, ProposalHandlingError};
 use crate::gas_price::L1GasPriceProvider;
 use crate::validator::{

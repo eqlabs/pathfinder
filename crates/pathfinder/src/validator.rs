@@ -41,6 +41,12 @@ use pathfinder_storage::{Storage, Transaction as DbTransaction};
 use rayon::prelude::*;
 use tracing::debug;
 
+/// Currently supported Starknet version for validation.
+///
+/// TODO: This is a temporary measure until we have a better way to provide
+/// validators with the Starknet version to validate against.
+const SUPPORTED_STARKNET_VERSION: StarknetVersion = StarknetVersion::new(0, 14, 0, 0);
+
 /// Type alias for the worker pool used by the concurrent executor.
 pub type ValidatorWorkerPool = Arc<
     pathfinder_executor::blockifier_reexports::WorkerPool<
@@ -140,6 +146,8 @@ impl ValidatorBlockInfoStage {
         self.proposal_height.get()
     }
 
+    /// Validate the block info against the parent block and L1 gas price data,
+    /// then transition to the [ValidatorTransactionBatchStage].
     pub fn validate_block_info(
         self,
         block_info: BlockInfo,
@@ -227,8 +235,70 @@ impl ValidatorBlockInfoStage {
                 l1_gas_price_wei,
                 l1_data_gas_price_wei,
             ),
-            StarknetVersion::new(0, 14, 0, 0), /* TODO(validator) should probably come from
-                                                * somewhere... */
+            SUPPORTED_STARKNET_VERSION,
+        )
+        .context("Creating internal BlockInfo representation")
+        .map_err(ProposalHandlingError::recoverable)?;
+
+        Ok(ValidatorTransactionBatchStage {
+            chain_id,
+            block_info,
+            transactions: Vec::new(),
+            receipts: Vec::new(),
+            events: Vec::new(),
+            executor: None,
+            worker_pool,
+            main_storage,
+        })
+    }
+
+    /// Skip block info validation and transition directly to the
+    /// [ValidatorTransactionBatchStage].
+    ///
+    /// Used only for testing and dummy proposal creation.
+    pub(crate) fn skip_validation(
+        self,
+        block_info: BlockInfo,
+        main_storage: Storage,
+        worker_pool: ValidatorWorkerPool,
+    ) -> Result<ValidatorTransactionBatchStage, ProposalHandlingError> {
+        let _span = tracing::debug_span!(
+            "Validator::skip_block_info_validation",
+            height = %block_info.height,
+            timestamp = %block_info.timestamp,
+            builder = %block_info.builder.0,
+        )
+        .entered();
+
+        let Self {
+            chain_id,
+            proposal_height,
+        } = self;
+
+        tracing::debug!(
+            "Skipping block info validation for height {}",
+            proposal_height
+        );
+
+        let builder = SequencerAddress(block_info.builder.0);
+        let l1_da_mode = match block_info.l1_da_mode {
+            p2p_proto::common::L1DataAvailabilityMode::Blob => L1DataAvailabilityMode::Blob,
+            p2p_proto::common::L1DataAvailabilityMode::Calldata => L1DataAvailabilityMode::Calldata,
+        };
+        let price_converter = BlockInfoPriceConverter::consensus(
+            block_info.l2_gas_price_fri,
+            block_info.l1_gas_price_wei,
+            block_info.l1_data_gas_price_wei,
+            block_info.eth_to_fri_rate,
+        );
+
+        let block_info = pathfinder_executor::types::BlockInfo::try_from_proposal(
+            block_info.height,
+            block_info.timestamp,
+            builder,
+            l1_da_mode,
+            price_converter,
+            SUPPORTED_STARKNET_VERSION,
         )
         .context("Creating internal BlockInfo representation")
         .map_err(ProposalHandlingError::recoverable)?;
@@ -386,26 +456,6 @@ pub struct ValidatorTransactionBatchStage {
 }
 
 impl ValidatorTransactionBatchStage {
-    /// Create a new ValidatorTransactionBatchStage with a shared worker pool.
-    #[cfg(test)]
-    pub fn new(
-        chain_id: ChainId,
-        block_info: pathfinder_executor::types::BlockInfo,
-        main_storage: Storage,
-        worker_pool: ValidatorWorkerPool,
-    ) -> Result<Self, ProposalHandlingError> {
-        Ok(ValidatorTransactionBatchStage {
-            chain_id,
-            block_info,
-            transactions: Vec::new(),
-            receipts: Vec::new(),
-            events: Vec::new(),
-            executor: None,
-            worker_pool,
-            main_storage,
-        })
-    }
-
     /// Get the current number of executed transactions.
     pub fn transaction_count(&self) -> usize {
         self.transactions.len()
@@ -978,13 +1028,8 @@ mod tests {
         BlockNumber,
         BlockTimestamp,
         ChainId,
-        GasPrice,
-        L1DataAvailabilityMode,
-        SequencerAddress,
-        StarknetVersion,
     };
     use pathfinder_crypto::Felt;
-    use pathfinder_executor::types::BlockInfo;
     use pathfinder_executor::ExecutorWorkerPool;
     use pathfinder_storage::StorageBuilder;
     use rstest::rstest;
@@ -995,6 +1040,31 @@ mod tests {
     /// Creates a worker pool for tests.
     fn create_test_worker_pool() -> ValidatorWorkerPool {
         ExecutorWorkerPool::<ConcurrentStateReader>::new(1).get()
+    }
+
+    fn create_test_proposal(
+        height: Height,
+    ) -> (
+        p2p_proto::consensus::ProposalInit,
+        p2p_proto::consensus::BlockInfo,
+    ) {
+        let init = p2p_proto::consensus::ProposalInit {
+            height,
+            round: 1,
+            valid_round: None,
+            proposer: p2p_proto::common::Address::default(),
+        };
+        let block_info = p2p_proto::consensus::BlockInfo {
+            height,
+            timestamp: 1000,
+            builder: p2p_proto::common::Address::default(),
+            l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
+            l2_gas_price_fri: 0,
+            l1_gas_price_wei: 0,
+            l1_data_gas_price_wei: 0,
+            eth_to_fri_rate: 0,
+        };
+        (init, block_info)
     }
 
     fn create_test_transaction(index: usize) -> p2p_proto::consensus::Transaction {
@@ -1041,24 +1111,11 @@ mod tests {
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
+        let (proposal_init, block_info) = create_test_proposal(1);
 
-        let block_info = BlockInfo {
-            number: BlockNumber::new_or_panic(1),
-            timestamp: BlockTimestamp::new_or_panic(1000),
-            sequencer_address: SequencerAddress::ZERO,
-            l1_da_mode: L1DataAvailabilityMode::Calldata,
-            eth_l1_gas_price: GasPrice::ZERO,
-            strk_l1_gas_price: GasPrice::ZERO,
-            eth_l1_data_gas_price: GasPrice::ZERO,
-            strk_l1_data_gas_price: GasPrice::ZERO,
-            strk_l2_gas_price: GasPrice::ZERO,
-            eth_l2_gas_price: GasPrice::ZERO,
-            starknet_version: StarknetVersion::new(0, 14, 0, 0),
-        };
-
-        let mut validator_stage =
-            ValidatorTransactionBatchStage::new(chain_id, block_info, storage.clone(), worker_pool)
-                .expect("Failed to create validator stage");
+        let mut validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
+            .and_then(|validator| validator.skip_validation(block_info, storage, worker_pool))
+            .expect("Failed to create validator stage");
 
         // Create batches: 3 batches with 2 transactions each
         let batches = [
@@ -1141,24 +1198,11 @@ mod tests {
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
+        let (proposal_init, block_info) = create_test_proposal(1);
 
-        let block_info = BlockInfo {
-            number: BlockNumber::new_or_panic(1),
-            timestamp: BlockTimestamp::new_or_panic(1000),
-            sequencer_address: SequencerAddress::ZERO,
-            l1_da_mode: L1DataAvailabilityMode::Calldata,
-            eth_l1_gas_price: GasPrice::ZERO,
-            strk_l1_gas_price: GasPrice::ZERO,
-            eth_l1_data_gas_price: GasPrice::ZERO,
-            strk_l1_data_gas_price: GasPrice::ZERO,
-            strk_l2_gas_price: GasPrice::ZERO,
-            eth_l2_gas_price: GasPrice::ZERO,
-            starknet_version: StarknetVersion::new(0, 14, 0, 0),
-        };
-
-        let mut validator_stage =
-            ValidatorTransactionBatchStage::new(chain_id, block_info, storage.clone(), worker_pool)
-                .expect("Failed to create validator stage");
+        let mut validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
+            .and_then(|validator| validator.skip_validation(block_info, storage, worker_pool))
+            .expect("Failed to create validator stage");
 
         // Create batches with different sizes to test boundary conditions
         // Batch 0: 3 transactions (indices 0, 1, 2)
