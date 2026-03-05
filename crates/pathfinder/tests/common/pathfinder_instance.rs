@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
-use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
@@ -26,8 +26,6 @@ pub struct PathfinderInstance {
     rpc_port_watch_tx: watch::Sender<(u32, u16)>,
     rpc_port_watch_rx: watch::Receiver<(u32, u16)>,
     db_dir: PathBuf,
-    stdout_path: PathBuf,
-    stderr_path: PathBuf,
     /// `true` if [`PathfinderInstance::exited_wit_error`] returned
     /// `Ok(_)`.
     is_terminated: bool,
@@ -183,8 +181,6 @@ impl PathfinderInstance {
             rpc_port_watch_tx,
             rpc_port_watch_rx,
             db_dir,
-            stdout_path,
-            stderr_path,
             is_terminated: false,
         })
     }
@@ -327,19 +323,8 @@ impl PathfinderInstance {
 impl Drop for PathfinderInstance {
     fn drop(&mut self) {
         self.terminate();
-
-        if DUMP_LOGS_ON_DROP.load(std::sync::atomic::Ordering::Relaxed) {
-            let stdout = std::fs::read_to_string(&self.stdout_path)
-                .unwrap_or("Error reading file".to_string());
-            println!("Pathfinder instance {} stdout log:\n{stdout}", self.name);
-            let stderr = std::fs::read_to_string(&self.stderr_path)
-                .unwrap_or("Error reading file".to_string());
-            println!("Pathfinder instance {} stderr log:\n{stderr}", self.name);
-        }
     }
 }
-
-pub(super) static DUMP_LOGS_ON_DROP: AtomicBool = AtomicBool::new(true);
 
 impl Config {
     const NAMES: &'static [&'static str] = &[
