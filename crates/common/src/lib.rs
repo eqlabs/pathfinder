@@ -37,7 +37,7 @@ pub use header::{BlockHeader, BlockHeaderBuilder, L1DataAvailabilityMode, Signed
 pub use l1::{L1BlockHash, L1BlockNumber, L1TransactionHash};
 pub use l2::{ConsensusFinalizedBlockHeader, ConsensusFinalizedL2Block, L2Block, L2BlockToCommit};
 pub use signature::BlockCommitmentSignature;
-pub use state_update::StateUpdate;
+pub use state_update::{FoundStorageValue, StateUpdate};
 
 impl ContractAddress {
     /// The contract at 0x1 is special. It was never deployed and therefore
