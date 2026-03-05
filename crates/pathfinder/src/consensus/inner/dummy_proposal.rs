@@ -252,11 +252,6 @@ pub(crate) struct ProposalCreationConfig {
     pub num_executed_txns: NonZeroUsize,
 }
 
-// TODO use this fn for a "happy path from genesis" test where we cannot use a
-// bootstrapping DB. Such a test case is important to test the entirety of
-// consensus aware sync logic, specifically due to the fact that the initial DB
-// is empty.
-//
 /// Creates a dummy proposal for the given height and round, filling it with
 /// random L1 handler transactions, which all ultimately will be reverted.
 ///
