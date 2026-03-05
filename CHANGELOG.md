@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Two new CLI options for the `node` subcommand:
   - `compiler.max-memory-usage-mib` - maximum memory usage for the compiler process, in MiB.
   - `compiler.max-cpu-time-secs` - maximum (active) CPU time for the compiler process, in seconds.
+- `starknet_getStorageAt` now returns the last update block (in addition to storage value) if the `INCLUDE_LAST_UPDATE_BLOCK` flag was set in its input.
 
 ## [0.22.0-beta.2] - 2026-02-16
 
