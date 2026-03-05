@@ -270,18 +270,27 @@ impl StateUpdate {
         contract: ContractAddress,
         key: StorageAddress,
     ) -> Option<StorageValue> {
+        self.storage_value_with_flag(contract, key)
+            .map(|pair| pair.0)
+    }
+
+    pub fn storage_value_with_flag(
+        &self,
+        contract: ContractAddress,
+        key: StorageAddress,
+    ) -> Option<(StorageValue, bool)> {
         self.contract_updates
             .get(&contract)
             .and_then(|update| {
                 update
                     .storage
                     .iter()
-                    .find_map(|(k, v)| (k == &key).then_some(*v))
+                    .find_map(|(k, v)| (k == &key).then_some((*v, false)))
                     .or_else(|| {
                         update.class.as_ref().and_then(|c| match c {
                             // If the contract has been deployed in pending but the key has not been
                             // set yet return the default value of zero.
-                            ContractClassUpdate::Deploy(_) => Some(StorageValue::ZERO),
+                            ContractClassUpdate::Deploy(_) => Some((StorageValue::ZERO, true)),
                             ContractClassUpdate::Replace(_) => None,
                         })
                     })
@@ -293,7 +302,7 @@ impl StateUpdate {
                         update
                             .storage
                             .iter()
-                            .find_map(|(k, v)| (k == &key).then_some(*v))
+                            .find_map(|(k, v)| (k == &key).then_some((*v, false)))
                     })
             })
     }
