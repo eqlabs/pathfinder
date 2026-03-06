@@ -1,7 +1,8 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use anyhow::Context;
-use pathfinder_common::StateUpdate;
+use pathfinder_common::{ContractAddress, StateUpdate};
 
 use crate::types::BlockId;
 use crate::{dto, RpcContext, RpcVersion};
@@ -9,13 +10,26 @@ use crate::{dto, RpcContext, RpcVersion};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Input {
     block_id: BlockId,
+    contract_addresses: HashSet<ContractAddress>,
 }
 
 impl crate::dto::DeserializeForVersion for Input {
     fn deserialize(value: dto::Value) -> Result<Self, serde_json::Error> {
+        let rpc_version = value.version;
         value.deserialize_map(|value| {
+            let block_id = value.deserialize("block_id")?;
+            let addresses = if rpc_version >= RpcVersion::V10 {
+                value
+                    .deserialize_optional_array("contract_addresses", |value| {
+                        value.deserialize().map(ContractAddress)
+                    })?
+                    .unwrap_or_default()
+            } else {
+                Vec::default()
+            };
             Ok(Self {
-                block_id: value.deserialize("block_id")?,
+                block_id,
+                contract_addresses: HashSet::from_iter(addresses),
             })
         })
     }
@@ -54,12 +68,17 @@ pub async fn get_state_update(
         let tx = db.transaction().context("Creating database transaction")?;
 
         if input.block_id.is_pending() {
-            let state_update = context
+            let mut state_update = context
                 .pending_data
                 .get(&tx, rpc_version)
                 .context("Query pending data")?
                 .pending_state_update();
-
+            if !input.contract_addresses.is_empty() {
+                state_update = Arc::new(filter_state_update_contracts(
+                    &state_update,
+                    &input.contract_addresses,
+                ));
+            }
             return Ok(Output::Pending(state_update));
         }
 
@@ -83,15 +102,39 @@ pub async fn get_state_update(
             }
         }
 
-        let state_update = tx
+        let mut state_update = tx
             .state_update(block_id)
             .context("Fetching state diff")?
             .ok_or(Error::BlockNotFound)?;
+        if !input.contract_addresses.is_empty() {
+            state_update = filter_state_update_contracts(&state_update, &input.contract_addresses);
+        }
 
         Ok(Output::Full(Box::new(state_update)))
     });
 
     jh.await.context("Database read panic or shutting down")?
+}
+
+fn filter_state_update_contracts(
+    state_update: &StateUpdate,
+    sought_addresses: &HashSet<ContractAddress>,
+) -> StateUpdate {
+    let mut contract_updates = state_update.contract_updates.clone();
+    StateUpdate {
+        block_hash: state_update.block_hash,
+        parent_state_commitment: state_update.parent_state_commitment,
+        state_commitment: state_update.state_commitment,
+        contract_updates: contract_updates
+            .extract_if(|addr, _| sought_addresses.contains(addr))
+            .collect(),
+        // TODO: shouldn't system contract updates also be filtered
+        // (in practice, cleared)?
+        system_contract_updates: state_update.system_contract_updates.clone(),
+        declared_cairo_classes: state_update.declared_cairo_classes.clone(),
+        declared_sierra_classes: state_update.declared_sierra_classes.clone(),
+        migrated_compiled_classes: state_update.migrated_compiled_classes.clone(),
+    }
 }
 
 #[cfg(test)]
@@ -137,7 +180,29 @@ mod tests {
     fn input_parsing(#[case] input: serde_json::Value, #[case] block_id: BlockId) {
         let input = Input::deserialize(crate::dto::Value::new(input, RpcVersion::V07)).unwrap();
 
-        let expected = Input { block_id };
+        let expected = Input {
+            block_id,
+            contract_addresses: HashSet::default(),
+        };
+
+        assert_eq!(input, expected);
+    }
+
+    #[rstest::rstest]
+    #[case::by_position(json!(["latest", ["0x42"]]), BlockId::Latest)]
+    #[case::by_name(json!({"block_id": "latest", "contract_addresses": ["0x42"]}), BlockId::Latest)]
+    fn input_parsing_contract_addresses(
+        #[case] input: serde_json::Value,
+        #[case] block_id: BlockId,
+    ) {
+        let input = Input::deserialize(crate::dto::Value::new(input, RpcVersion::V10)).unwrap();
+
+        let mut contract_addresses = HashSet::new();
+        contract_addresses.insert(contract_address!("0x42"));
+        let expected = Input {
+            block_id,
+            contract_addresses,
+        };
 
         assert_eq!(input, expected);
     }
@@ -240,6 +305,7 @@ mod tests {
             ctx,
             Input {
                 block_id: BlockId::Latest,
+                contract_addresses: HashSet::default(),
             },
             RPC_VERSION,
         )
@@ -251,6 +317,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn latest_with_filter() {
+        let (mut in_storage, ctx) = context_with_state_updates();
+
+        let full_update = in_storage.pop().unwrap();
+        let contract_addresses: Vec<ContractAddress> = full_update
+            .contract_updates
+            .iter()
+            .take(1)
+            .map(|(k, _v)| *k)
+            .collect();
+        let exp_len = contract_addresses.len();
+        // the update is not filtered if contract_addresses is empty
+        let maybe_partial_update = get_state_update(
+            ctx,
+            Input {
+                block_id: BlockId::Latest,
+                contract_addresses: HashSet::from_iter(contract_addresses),
+            },
+            RpcVersion::V10,
+        )
+        .await
+        .unwrap()
+        .unwrap_full();
+
+        assert_eq!(maybe_partial_update.contract_updates.len(), exp_len);
+    }
+
+    #[tokio::test]
     async fn by_number() {
         let (in_storage, ctx) = context_with_state_updates();
 
@@ -258,6 +352,7 @@ mod tests {
             ctx,
             Input {
                 block_id: BlockId::Number(BlockNumber::GENESIS),
+                contract_addresses: HashSet::default(),
             },
             RPC_VERSION,
         )
@@ -276,6 +371,7 @@ mod tests {
             ctx,
             Input {
                 block_id: BlockId::Hash(in_storage[1].block_hash),
+                contract_addresses: HashSet::default(),
             },
             RPC_VERSION,
         )
@@ -294,6 +390,7 @@ mod tests {
             ctx,
             Input {
                 block_id: BlockId::Number(BlockNumber::MAX),
+                contract_addresses: HashSet::default(),
             },
             RPC_VERSION,
         )
@@ -310,6 +407,7 @@ mod tests {
             ctx,
             Input {
                 block_id: BlockId::Hash(block_hash_bytes!(b"non-existent")),
+                contract_addresses: HashSet::default(),
             },
             RPC_VERSION,
         )
@@ -323,6 +421,7 @@ mod tests {
         let context = RpcContext::for_tests_with_pending().await;
         let input = Input {
             block_id: BlockId::Pending,
+            contract_addresses: HashSet::default(),
         };
 
         let expected = context.pending_data.get_unchecked().pending_state_update();
@@ -340,6 +439,7 @@ mod tests {
         let context = RpcContext::for_tests_with_pre_confirmed().await;
         let input = Input {
             block_id: BlockId::Pending,
+            contract_addresses: HashSet::default(),
         };
 
         let expected = context.pending_data.get_unchecked().pending_state_update();
