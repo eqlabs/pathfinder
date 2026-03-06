@@ -28,7 +28,7 @@ impl Column {
         block_based_options.set_ribbon_filter(10.0);
 
         options.optimize_level_style_compaction(512 * 1024 * 1024);
-        options.set_bottommost_compression_type(DBCompressionType::Zstd);
+        // options.set_bottommost_compression_type(DBCompressionType::Zstd);
 
         if self.point_lookup {
             block_based_options.set_block_size(4096);
