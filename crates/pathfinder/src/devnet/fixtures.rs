@@ -18,7 +18,6 @@ use pathfinder_crypto::Felt;
 /// All classes that are predeclared in the devnet.
 pub const PREDECLARED_CLASSES: &[(&[u8], SierraHash)] = &[
     (CAIRO_1_ACCOUNT_CLASS, CAIRO_1_ACCOUNT_CLASS_HASH),
-    (ETH_ERC20_CLASS, ETH_ERC20_CLASS_HASH),
     (STRK_ERC20_CLASS, STRK_ERC20_CLASS_HASH),
     (UDC_CLASS, UDC_CLASS_HASH),
 ];
@@ -26,29 +25,19 @@ pub const PREDECLARED_CLASSES: &[(&[u8], SierraHash)] = &[
 /// Excludes accounts!
 pub const PREDEPLOYED_CONTRACTS: &[(ContractAddress, SierraHash)] = &[
     (UDC_CONTRACT_ADDRESS, UDC_CLASS_HASH),
-    (ETH_ERC20_CONTRACT_ADDRESS, ETH_ERC20_CLASS_HASH),
     (STRK_ERC20_CONTRACT_ADDRESS, STRK_ERC20_CLASS_HASH),
 ];
 
-pub const ERC20S: &[(ContractAddress, &str, &str)] = &[
-    (ETH_ERC20_CONTRACT_ADDRESS, ETH_ERC20_NAME, ETH_ERC20_SYMBOL),
-    (
-        STRK_ERC20_CONTRACT_ADDRESS,
-        STRK_ERC20_NAME,
-        STRK_ERC20_SYMBOL,
-    ),
-];
+pub const ERC20S: &[(ContractAddress, &str, &str)] = &[(
+    STRK_ERC20_CONTRACT_ADDRESS,
+    STRK_ERC20_NAME,
+    STRK_ERC20_SYMBOL,
+)];
 
 pub const CAIRO_1_ACCOUNT_CLASS: &[u8] =
     include_bytes!("./fixtures/account/OpenZeppelin/1.0.0/Account.cairo/Account.sierra");
 pub const CAIRO_1_ACCOUNT_CLASS_HASH: SierraHash =
     sierra_hash!("0x05b4b537eaa2399e3aa99c4e2e0208ebd6c71bc1467938cd52c798c601e43564");
-
-pub const ETH_ERC20_CLASS: &[u8] = include_bytes!("./fixtures/system/erc20_eth.sierra");
-pub const ETH_ERC20_CLASS_HASH: SierraHash =
-    sierra_hash!("0x9524a94b41c4440a16fd96d7c1ef6ad6f44c1c013e96662734502cd4ee9b1f");
-pub const ETH_ERC20_CONTRACT_ADDRESS: ContractAddress =
-    contract_address!("0x49D36570D4E46F48E99674BD3FCC84644DDD6B96F7C741B1562B82F9E004DC7");
 
 pub const STRK_ERC20_CLASS: &[u8] = include_bytes!("./fixtures/system/erc20_strk.sierra");
 pub const STRK_ERC20_CLASS_HASH: SierraHash =
@@ -58,8 +47,6 @@ pub const STRK_ERC20_CONTRACT_ADDRESS: ContractAddress =
 
 // Original comment from starknet-rust-core: ERC20 contracts storage variables; available in source at https://github.com/starknet-io/starkgate-contracts
 // Note (Chris): I wasn't able to find these values in the source
-pub const ETH_ERC20_NAME: &str = "Ether";
-pub const ETH_ERC20_SYMBOL: &str = "ETH";
 pub const STRK_ERC20_NAME: &str = "StarkNet Token";
 pub const STRK_ERC20_SYMBOL: &str = "STRK";
 
