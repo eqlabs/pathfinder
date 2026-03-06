@@ -29,7 +29,7 @@ impl crate::dto::DeserializeForVersion for Input {
             };
             Ok(Self {
                 block_id,
-                contract_addresses: HashSet::from_iter(addresses.into_iter()),
+                contract_addresses: HashSet::from_iter(addresses),
             })
         })
     }
