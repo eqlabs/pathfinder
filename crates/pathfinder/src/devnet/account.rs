@@ -41,7 +41,6 @@ pub struct Account {
     private_key: Felt,
     public_key: PublicKey,
     address: ContractAddress,
-    eth_fee_token_address: ContractAddress,
     strk_fee_token_address: ContractAddress,
     // Account nonce
     nonce: AtomicU64,
@@ -60,7 +59,6 @@ impl Account {
             private_key: fixtures::ACCOUNT_PRIVATE_KEY,
             public_key: fixtures::ACCOUNT_PUBLIC_KEY,
             address: fixtures::ACCOUNT_ADDRESS,
-            eth_fee_token_address: fixtures::ETH_ERC20_CONTRACT_ADDRESS,
             strk_fee_token_address: fixtures::STRK_ERC20_CONTRACT_ADDRESS,
             nonce: AtomicU64::new(0),
             deployment_salt: AtomicU64::new(0),
@@ -144,7 +142,7 @@ impl Account {
 
         let (high, low) = split_biguint(BigUint::from(initial_balance));
 
-        for fee_token_address in [self.eth_fee_token_address, self.strk_fee_token_address] {
+        for fee_token_address in [self.strk_fee_token_address] {
             let token_address = fee_token_address;
 
             let total_supply_low = get_storage_at(
