@@ -74,12 +74,8 @@ pub async fn get_state_update(
                 .context("Query pending data")?
                 .pending_state_update();
             if !input.contract_addresses.is_empty() {
-                let own_state_update = match Arc::try_unwrap(state_update) {
-                    Ok(unwrapped) => unwrapped,
-                    Err(original) => original.as_ref().clone(),
-                };
                 state_update = Arc::new(filter_state_update_contracts(
-                    own_state_update,
+                    &state_update,
                     &input.contract_addresses,
                 ));
             }
@@ -111,7 +107,7 @@ pub async fn get_state_update(
             .context("Fetching state diff")?
             .ok_or(Error::BlockNotFound)?;
         if !input.contract_addresses.is_empty() {
-            state_update = filter_state_update_contracts(state_update, &input.contract_addresses);
+            state_update = filter_state_update_contracts(&state_update, &input.contract_addresses);
         }
 
         Ok(Output::Full(Box::new(state_update)))
@@ -121,23 +117,23 @@ pub async fn get_state_update(
 }
 
 fn filter_state_update_contracts(
-    mut state_update: StateUpdate,
+    state_update: &StateUpdate,
     sought_addresses: &HashSet<ContractAddress>,
 ) -> StateUpdate {
+    let mut contract_updates = state_update.contract_updates.clone();
     StateUpdate {
         block_hash: state_update.block_hash,
         parent_state_commitment: state_update.parent_state_commitment,
         state_commitment: state_update.state_commitment,
-        contract_updates: state_update
-            .contract_updates
+        contract_updates: contract_updates
             .extract_if(|addr, _| sought_addresses.contains(addr))
             .collect(),
         // TODO: shouldn't system contract updates also be filtered
         // (in practice, cleared)?
-        system_contract_updates: state_update.system_contract_updates,
-        declared_cairo_classes: state_update.declared_cairo_classes,
-        declared_sierra_classes: state_update.declared_sierra_classes,
-        migrated_compiled_classes: state_update.migrated_compiled_classes,
+        system_contract_updates: state_update.system_contract_updates.clone(),
+        declared_cairo_classes: state_update.declared_cairo_classes.clone(),
+        declared_sierra_classes: state_update.declared_sierra_classes.clone(),
+        migrated_compiled_classes: state_update.migrated_compiled_classes.clone(),
     }
 }
 
