@@ -626,11 +626,23 @@ impl Transaction<'_> {
         contract_address: ContractAddress,
         key: StorageAddress,
     ) -> anyhow::Result<Option<StorageValue>> {
+        self.storage_value_with_block(block, contract_address, key)
+            .map(|opt_pair| opt_pair.map(|pair| pair.0))
+    }
+
+    pub fn storage_value_with_block(
+        &self,
+        block: BlockId,
+        contract_address: ContractAddress,
+        key: StorageAddress,
+    ) -> anyhow::Result<Option<(StorageValue, BlockNumber)>> {
+        let handle_row =
+            |row: &rusqlite::Row<'_>| Ok((row.get_storage_value(0)?, row.get_block_number(1)?));
         match block {
             BlockId::Latest => {
                 let mut stmt = self.inner().prepare_cached(
                     r"
-                    SELECT storage_value
+                    SELECT storage_value, block_number
                     FROM storage_updates
                     JOIN contract_addresses ON contract_addresses.id = storage_updates.contract_address_id
                     JOIN storage_addresses ON storage_addresses.id = storage_updates.storage_address_id
@@ -638,14 +650,12 @@ impl Transaction<'_> {
                     ORDER BY block_number DESC LIMIT 1
                     ",
                 )?;
-                stmt.query_row(params![&contract_address, &key], |row| {
-                    row.get_storage_value(0)
-                })
+                stmt.query_row(params![&contract_address, &key], handle_row)
             }
             BlockId::Number(number) => {
                 let mut stmt = self.inner().prepare_cached(
                     r"
-                    SELECT storage_value
+                    SELECT storage_value, block_number
                     FROM storage_updates
                     JOIN contract_addresses ON contract_addresses.id = storage_updates.contract_address_id
                     JOIN storage_addresses ON storage_addresses.id = storage_updates.storage_address_id
@@ -653,14 +663,12 @@ impl Transaction<'_> {
                     ORDER BY block_number DESC LIMIT 1
                     ",
                 )?;
-                stmt.query_row(params![&contract_address, &key, &number], |row| {
-                    row.get_storage_value(0)
-                })
+                stmt.query_row(params![&contract_address, &key, &number], handle_row)
             }
             BlockId::Hash(hash) => {
                 let mut stmt = self.inner().prepare_cached(
                     r"
-                    SELECT storage_value
+                    SELECT storage_value, block_number
                     FROM storage_updates
                     JOIN contract_addresses ON contract_addresses.id = storage_updates.contract_address_id
                     JOIN storage_addresses ON storage_addresses.id = storage_updates.storage_address_id
@@ -670,9 +678,7 @@ impl Transaction<'_> {
                     ORDER BY block_number DESC LIMIT 1
                     ",
                 )?;
-                stmt.query_row(params![&contract_address, &key, &hash], |row| {
-                    row.get_storage_value(0)
-                })
+                stmt.query_row(params![&contract_address, &key, &hash], handle_row)
             }
         }
         .optional()

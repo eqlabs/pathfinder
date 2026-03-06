@@ -1,10 +1,19 @@
 use std::collections::HashMap;
 
 use pathfinder_common::prelude::*;
+use serde::de::Error;
 use serde::Serialize;
 
 use crate::dto::{SerializeForVersion, Serializer};
 use crate::{dto, RpcVersion};
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct StorageResponseFlags(pub Vec<StorageResponseFlag>);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum StorageResponseFlag {
+    IncludeLastUpdateBlock,
+}
 
 pub struct StateUpdate<'a>(pub &'a pathfinder_common::StateUpdate);
 pub struct PendingStateUpdate<'a>(pub &'a pathfinder_common::StateUpdate);
@@ -17,6 +26,23 @@ pub struct ContractStorageDiffItem<'a> {
 pub struct DeployedContractItem<'a> {
     address: &'a ContractAddress,
     class_hash: &'a ClassHash,
+}
+
+impl crate::dto::DeserializeForVersion for StorageResponseFlag {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let value: String = value.deserialize()?;
+        match value.as_str() {
+            "INCLUDE_LAST_UPDATE_BLOCK" => Ok(Self::IncludeLastUpdateBlock),
+            _ => Err(serde_json::Error::custom("Invalid response flag")),
+        }
+    }
+}
+
+impl crate::dto::DeserializeForVersion for StorageResponseFlags {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let array = value.deserialize_array(StorageResponseFlag::deserialize)?;
+        Ok(Self(array))
+    }
 }
 
 impl SerializeForVersion for StateUpdate<'_> {
