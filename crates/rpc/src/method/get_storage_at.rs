@@ -18,6 +18,9 @@ impl crate::dto::DeserializeForVersion for Input {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
         let rpc_version = value.version;
         value.deserialize_map(|value| {
+            let contract_address = value.deserialize("contract_address").map(ContractAddress)?;
+            let key = value.deserialize("key").map(StorageAddress)?;
+            let block_id = value.deserialize("block_id")?;
             let response_flags = if rpc_version >= RpcVersion::V10 {
                 value
                     .deserialize_optional("response_flags")?
@@ -26,9 +29,9 @@ impl crate::dto::DeserializeForVersion for Input {
                 StorageResponseFlags::default()
             };
             Ok(Self {
-                contract_address: value.deserialize("contract_address").map(ContractAddress)?,
-                key: value.deserialize("key").map(StorageAddress)?,
-                block_id: value.deserialize("block_id")?,
+                contract_address,
+                key,
+                block_id,
                 response_flags,
             })
         })
@@ -170,20 +173,29 @@ mod tests {
         assert_eq!(input, expected);
     }
 
-    #[test]
-    fn deserialize_v10_with_response_flags() {
+    #[rstest::rstest]
+    #[case::positional(json!(["1", "2", "latest"]))]
+    #[case::named(json!({"contract_address": "0x1", "key": "0x2", "block_id": "latest"}))]
+    fn deserialize_v10_with_default(#[case] input: serde_json::Value) {
+        let expected = Input {
+            contract_address: contract_address!("0x1"),
+            key: storage_address!("0x2"),
+            block_id: BlockId::Latest,
+            response_flags: StorageResponseFlags::default(),
+        };
+
+        let input = Input::deserialize(crate::dto::Value::new(input, RpcVersion::V10)).unwrap();
+
+        assert_eq!(input, expected);
+    }
+
+    #[rstest::rstest]
+    #[case::positional(json!(["1", "2", "latest", ["INCLUDE_LAST_UPDATE_BLOCK"]]))]
+    #[case::named(json!({"contract_address": "0x1", "key": "0x2", "block_id": "latest", "response_flags": ["INCLUDE_LAST_UPDATE_BLOCK"]}))]
+    fn deserialize_v10_with_flag(#[case] json: serde_json::Value) {
         use crate::dto::DeserializeForVersion;
 
-        let json = r#"{
-            "contract_address": "0x1",
-            "key": "0x2",
-            "block_id": "latest",
-            "response_flags": ["INCLUDE_LAST_UPDATE_BLOCK"]
-        }"#;
-        let value = crate::dto::Value::new(
-            serde_json::from_str::<serde_json::Value>(json).unwrap(),
-            RpcVersion::V10,
-        );
+        let value = crate::dto::Value::new(json, RpcVersion::V10);
         let input = Input::deserialize(value).unwrap();
 
         assert_eq!(
