@@ -602,16 +602,13 @@ impl PendingData {
 
     /// Find a storage value by its contract and storage address in
     /// the pending/pre-confirmed or pre-latest block (in that order).
-    /// Second value of the returned pair flags the default zero value
-    /// for a contract that has been deployed, but didn't have an
-    /// explicit storage update.
     pub fn find_storage_value(
         &self,
         contract_address: pathfinder_common::ContractAddress,
         storage_address: pathfinder_common::StorageAddress,
-    ) -> Option<(pathfinder_common::StorageValue, bool)> {
+    ) -> Option<pathfinder_common::FoundStorageValue> {
         self.aggregated_state_update()
-            .storage_value_with_flag(contract_address, storage_address)
+            .storage_value_with_provenance(contract_address, storage_address)
     }
 
     /// Find a transaction by its hash in the pending/pre-confirmed block,

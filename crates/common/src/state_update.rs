@@ -85,6 +85,16 @@ pub enum StorageRefIter<'a> {
     Vec(slice::Iter<'a, (StorageAddress, StorageValue)>),
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum FoundStorageValue {
+    /// The default zero value for a contract that has been deployed,
+    /// but didn't have an explicit storage update at the sought
+    /// address.
+    Zero,
+    /// An explicitly set value (including zero).
+    Set(StorageValue),
+}
+
 impl ContractUpdate {
     pub fn replaced_class(&self) -> Option<&ClassHash> {
         match &self.class {
@@ -270,27 +280,30 @@ impl StateUpdate {
         contract: ContractAddress,
         key: StorageAddress,
     ) -> Option<StorageValue> {
-        self.storage_value_with_flag(contract, key)
-            .map(|pair| pair.0)
+        self.storage_value_with_provenance(contract, key)
+            .map(|found| match found {
+                FoundStorageValue::Zero => StorageValue::ZERO,
+                FoundStorageValue::Set(inner) => inner,
+            })
     }
 
-    pub fn storage_value_with_flag(
+    pub fn storage_value_with_provenance(
         &self,
         contract: ContractAddress,
         key: StorageAddress,
-    ) -> Option<(StorageValue, bool)> {
+    ) -> Option<FoundStorageValue> {
         self.contract_updates
             .get(&contract)
             .and_then(|update| {
                 update
                     .storage
                     .iter()
-                    .find_map(|(k, v)| (k == &key).then_some((*v, false)))
+                    .find_map(|(k, v)| (k == &key).then_some(FoundStorageValue::Set(*v)))
                     .or_else(|| {
                         update.class.as_ref().and_then(|c| match c {
                             // If the contract has been deployed in pending but the key has not been
                             // set yet return the default value of zero.
-                            ContractClassUpdate::Deploy(_) => Some((StorageValue::ZERO, true)),
+                            ContractClassUpdate::Deploy(_) => Some(FoundStorageValue::Zero),
                             ContractClassUpdate::Replace(_) => None,
                         })
                     })
@@ -302,7 +315,7 @@ impl StateUpdate {
                         update
                             .storage
                             .iter()
-                            .find_map(|(k, v)| (k == &key).then_some((*v, false)))
+                            .find_map(|(k, v)| (k == &key).then_some(FoundStorageValue::Set(*v)))
                     })
             })
     }

@@ -1,5 +1,11 @@
 use anyhow::Context;
-use pathfinder_common::{BlockNumber, ContractAddress, StorageAddress, StorageValue};
+use pathfinder_common::{
+    BlockNumber,
+    ContractAddress,
+    FoundStorageValue,
+    StorageAddress,
+    StorageValue,
+};
 
 use crate::context::RpcContext;
 use crate::dto::{StorageResponseFlag, StorageResponseFlags};
@@ -75,16 +81,14 @@ pub async fn get_storage_at(
                 .pending_data
                 .get(&tx, rpc_version)
                 .context("Querying pending data")?;
-            let opt_pair = pending_data.find_storage_value(input.contract_address, input.key);
-            if let Some(pair) = opt_pair {
-                let last_update_block = if pair.1 {
-                    assert_eq!(pair.0, StorageValue::ZERO);
-                    BlockNumber::new_or_panic(0)
-                } else {
-                    pending_data.pending_block_number()
+            let opt_found = pending_data.find_storage_value(input.contract_address, input.key);
+            if let Some(found) = opt_found {
+                let (value, last_update_block) = match found {
+                    FoundStorageValue::Zero => (StorageValue::ZERO, BlockNumber::new_or_panic(0)),
+                    FoundStorageValue::Set(v) => (v, pending_data.pending_block_number()),
                 };
                 return Ok(Output {
-                    value: pair.0,
+                    value,
                     last_update_block,
                     include_last_update_block,
                 });
