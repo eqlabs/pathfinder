@@ -103,7 +103,7 @@ pub fn update_contract_state<H: FeltHash>(
             .unwrap_or_default()
     };
 
-    let state_hash = calculate_contract_state_hash(class_hash, new_root, nonce);
+    let state_hash = calculate_contract_state_hash::<H>(class_hash, new_root, nonce);
 
     Ok(ContractStateUpdateResult {
         contract_address,
@@ -114,7 +114,7 @@ pub fn update_contract_state<H: FeltHash>(
 }
 
 /// Calculates the contract state hash from its preimage.
-pub fn calculate_contract_state_hash(
+pub fn calculate_contract_state_hash<H: FeltHash>(
     hash: ClassHash,
     root: ContractRoot,
     nonce: ContractNonce,
@@ -123,9 +123,9 @@ pub fn calculate_contract_state_hash(
 
     // The contract state hash is defined as H(H(H(hash, root), nonce),
     // CONTRACT_STATE_HASH_VERSION)
-    let hash = pedersen_hash(hash.0, root.0);
-    let hash = pedersen_hash(hash, nonce.0);
-    let hash = pedersen_hash(hash, CONTRACT_STATE_HASH_VERSION);
+    let hash = H::hash(hash.0, root.0);
+    let hash = H::hash(hash, nonce.0);
+    let hash = H::hash(hash, CONTRACT_STATE_HASH_VERSION);
 
     // Compare this with the HashChain construction used in the contract_hash: the
     // number of elements is not hashed to this hash, and this is supposed to be
@@ -206,7 +206,7 @@ pub fn revert_contract_state<H: FeltHash>(
                 // deleted
                 ContractStateHash::ZERO
             } else {
-                calculate_contract_state_hash(class_hash, root, nonce)
+                calculate_contract_state_hash::<H>(class_hash, root, nonce)
             };
 
             tracing::debug!(%state_hash, %contract_address, "Contract state rolled back");
@@ -218,6 +218,7 @@ pub fn revert_contract_state<H: FeltHash>(
 
 #[cfg(test)]
 mod tests {
+    use pathfinder_common::hash::PedersenHash;
     use pathfinder_common::{felt, ClassHash, ContractNonce, ContractRoot, ContractStateHash};
 
     use super::calculate_contract_state_hash;
@@ -235,7 +236,7 @@ mod tests {
         let expected = felt!("0x7161b591c893836263a64f2a7e0d829c92f6956148a60ce5e99a3f55c7973f3");
         let expected = ContractStateHash(expected);
 
-        let result = calculate_contract_state_hash(hash, root, nonce);
+        let result = calculate_contract_state_hash::<PedersenHash>(hash, root, nonce);
 
         assert_eq!(result, expected);
     }

@@ -82,7 +82,7 @@ impl<'tx, H: FeltHash> ContractsStorageTree<'tx, H> {
             contract,
         };
 
-        MerkleTree::<PedersenHash, 251>::get_proof(root, &storage, key)
+        MerkleTree::<H, 251>::get_proof(root, &storage, key)
     }
 
     /// Generates proofs for the given list of `keys`. See
@@ -211,7 +211,7 @@ impl<'tx, H: FeltHash> StorageCommitmentTree<'tx, H> {
             block: Some(block),
         };
 
-        MerkleTree::<PedersenHash, 251>::get_proof(root, &storage, address.view_bits())
+        MerkleTree::<H, 251>::get_proof(root, &storage, address.view_bits())
     }
 
     /// Generates proofs for the given list of `addresses`. See
@@ -234,7 +234,7 @@ impl<'tx, H: FeltHash> StorageCommitmentTree<'tx, H> {
             .map(|addr| addr.0.view_bits())
             .collect::<Vec<_>>();
 
-        MerkleTree::<PedersenHash, 251>::get_proofs(root, &storage, &keys)
+        MerkleTree::<H, 251>::get_proofs(root, &storage, &keys)
     }
 
     /// See [`MerkleTree::dfs`]

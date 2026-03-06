@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::hash::{FeltHash, PedersenHash};
+use pathfinder_common::hash::FeltHash;
 use pathfinder_common::state_update::{StateUpdateError, StateUpdateRef};
 use pathfinder_common::{BlockNumber, ClassCommitment, StorageCommitment};
 use pathfinder_storage::{Storage, Transaction};
@@ -19,7 +19,7 @@ pub fn update_starknet_state<H: FeltHash, C: FeltHash>(
     use rayon::prelude::*;
 
     let mut storage_commitment_tree = match block.parent() {
-        Some(parent) => StorageCommitmentTree::<PedersenHash>::load(transaction, parent)
+        Some(parent) => StorageCommitmentTree::<H>::load(transaction, parent)
             .context("Loading storage commitment tree")?,
         None => StorageCommitmentTree::empty(transaction),
     }
@@ -202,8 +202,11 @@ mod tests {
         let (contract_root, _) = contract_tree.commit().unwrap();
 
         // For system contracts: class_hash = 0, nonce = 0.
-        let contract_state_hash =
-            calculate_contract_state_hash(ClassHash::ZERO, contract_root, ContractNonce::ZERO);
+        let contract_state_hash = calculate_contract_state_hash::<PedersenHash>(
+            ClassHash::ZERO,
+            contract_root,
+            ContractNonce::ZERO,
+        );
 
         // Create storage commitment tree with the contract.
         let mut storage_commitment_tree = StorageCommitmentTree::<PedersenHash>::empty(&tx);
