@@ -387,6 +387,15 @@ This should only be enabled for debugging purposes as it adds substantial proces
     feeder_gateway_fetch_concurrency: std::num::NonZeroUsize,
 
     #[arg(
+        long = "gateway.check-for-dns-updates-interval",
+        value_name = "Seconds",
+        long_help = "Interval for checking DNS updates for the gateway and feeder gateway URLs",
+        env = "PATHFINDER_GATEWAY_CHECK_FOR_DNS_UPDATES_INTERVAL",
+        default_value = "60"
+    )]
+    gateway_dns_refresh_interval: std::num::NonZeroU64,
+
+    #[arg(
         long = "storage.event-filter-cache-size",
         long_help = format!(
             "The number of aggregate event bloom filters to cache in memory. Each filter covers a {} block range.
@@ -1019,6 +1028,7 @@ pub struct Config {
     pub is_rpc_enabled: bool,
     pub gateway_api_key: Option<String>,
     pub gateway_timeout: Duration,
+    pub gateway_dns_refresh_interval: Duration,
     pub event_filter_cache_size: NonZeroUsize,
     pub get_events_event_filter_block_range_limit: NonZeroUsize,
     pub blockchain_history: Option<BlockchainHistory>,
@@ -1313,6 +1323,9 @@ impl Config {
             get_events_event_filter_block_range_limit: args
                 .get_events_event_filter_block_range_limit,
             gateway_timeout: Duration::from_secs(args.gateway_timeout.get()),
+            gateway_dns_refresh_interval: Duration::from_secs(
+                args.gateway_dns_refresh_interval.get(),
+            ),
             feeder_gateway_fetch_concurrency: args.feeder_gateway_fetch_concurrency,
             blockchain_history: args.blockchain_history,
             state_tries: args.state_tries,
