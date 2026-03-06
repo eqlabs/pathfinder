@@ -1554,7 +1554,7 @@ mod tests {
                 stream::iter(streamed_classes),
                 storage.clone(),
                 FakeFgw,
-                pathfinder_compiler::ResourceLimits::recommended(),
+                pathfinder_compiler::ResourceLimits::for_test(),
                 declared_classes.to_stream(),
             )
             .await
@@ -1613,7 +1613,7 @@ mod tests {
                         stream::once(std::future::ready(Ok(data))),
                         storage,
                         FakeFgw,
-                    pathfinder_compiler::ResourceLimits::recommended(),
+                    pathfinder_compiler::ResourceLimits::for_test(),
                         Faker.fake::<DeclaredClasses>().to_stream(),
                     )
                     .await,
@@ -1645,7 +1645,7 @@ mod tests {
                         stream::iter(streamed_classes),
                         storage,
                         FakeFgw,
-                    pathfinder_compiler::ResourceLimits::recommended(),
+                    pathfinder_compiler::ResourceLimits::for_test(),
                         declared_classes.to_stream(),
                     )
                     .await,
@@ -1659,7 +1659,7 @@ mod tests {
                     stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
                     StorageBuilder::in_memory().unwrap(),
                     FakeFgw,
-                    pathfinder_compiler::ResourceLimits::recommended(),
+                    pathfinder_compiler::ResourceLimits::for_test(),
                     Faker.fake::<DeclaredClasses>().to_stream(),
                 )
                 .await,

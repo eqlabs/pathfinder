@@ -1045,6 +1045,26 @@ impl Transaction<'_> {
         rows.collect::<Result<Vec<_>, _>>()
             .context("Iterating over reverse Sierra declarations")
     }
+
+    pub fn deployed_contracts(
+        &self,
+        sierra_hash: SierraHash,
+        block_number: BlockNumber,
+    ) -> anyhow::Result<Vec<ContractAddress>> {
+        let mut stmt = self
+            .inner()
+            .prepare_cached(r"SELECT contract_address FROM contract_updates WHERE class_hash = ? AND block_number = ?")
+            .context("Preparing deployed contracts query statement")?;
+
+        let rows = stmt
+            .query_map(params![&sierra_hash, &block_number], |row| {
+                row.get_contract_address(0)
+            })
+            .context("Querying deployed contracts")?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .context("Iterating over deployed contracts")
+    }
 }
 
 #[cfg(test)]

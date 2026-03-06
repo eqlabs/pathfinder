@@ -493,7 +493,7 @@ mod tests {
                 block_hash: last_checkpoint_header.hash,
             }),
             verify_tree_hashes: true,
-            compiler_resource_limits: pathfinder_compiler::ResourceLimits::recommended(),
+            compiler_resource_limits: pathfinder_compiler::ResourceLimits::for_test(),
             block_hash_db: None,
         };
 
