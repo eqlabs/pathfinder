@@ -321,6 +321,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn latest_with_filter() {
+        let (mut in_storage, ctx) = context_with_state_updates();
+
+        let full_update = in_storage.pop().unwrap();
+        let contract_addresses: Vec<ContractAddress> = full_update
+            .contract_updates
+            .iter()
+            .take(1)
+            .map(|(k, _v)| *k)
+            .collect();
+        let exp_len = contract_addresses.len();
+        // the update is not filtered if contract_addresses is empty
+        let maybe_partial_update = get_state_update(
+            ctx,
+            Input {
+                block_id: BlockId::Latest,
+                contract_addresses: HashSet::from_iter(contract_addresses),
+            },
+            RpcVersion::V10,
+        )
+        .await
+        .unwrap()
+        .unwrap_full();
+
+        assert_eq!(maybe_partial_update.contract_updates.len(), exp_len);
+    }
+
+    #[tokio::test]
     async fn by_number() {
         let (in_storage, ctx) = context_with_state_updates();
 
