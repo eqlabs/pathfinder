@@ -214,7 +214,7 @@ jobs:
       - uses: baptiste0928/cargo-install@v3
         with:
           crate: cargo-sort
-          version: "^2.0.1"
+          version: "~2.0.2"
       - run: |
           cargo sort --check --workspace
 
