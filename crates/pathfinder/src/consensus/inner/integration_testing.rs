@@ -4,6 +4,7 @@
 
 use std::path::Path;
 
+use p2p::consensus::Height;
 use p2p_proto::consensus::ProposalPart;
 
 use crate::config::integration_testing::{InjectFailureConfig, InjectFailureTrigger};
@@ -25,7 +26,7 @@ use crate::config::integration_testing::{InjectFailureConfig, InjectFailureTrigg
 /// remove it when the file exists.
 pub fn debug_fail_on(
     _trigger_match_fn: impl FnOnce(InjectFailureTrigger) -> bool,
-    _current_height: u64,
+    _current_height: Height,
     _config: Option<InjectFailureConfig>,
     _data_directory: &Path,
 ) {
@@ -44,7 +45,7 @@ pub fn debug_fail_on(
 ))]
 fn debug_fail_on_impl(
     trigger_match_fn: impl FnOnce(InjectFailureTrigger) -> bool,
-    current_height: u64,
+    current_height: Height,
     config: Option<InjectFailureConfig>,
     data_directory: &Path,
 ) {
@@ -97,7 +98,7 @@ fn debug_fail_on_impl(
 
 pub fn debug_fail_on_proposal_part(
     proposal_part: &ProposalPart,
-    height: u64,
+    height: Height,
     config: Option<InjectFailureConfig>,
     data_directory: &Path,
 ) {
@@ -128,7 +129,7 @@ pub fn debug_fail_on_proposal_part(
 }
 
 pub fn debug_fail_on_proposal_finalized(
-    height: u64,
+    height: Height,
     inject_failure: Option<InjectFailureConfig>,
     data_directory: &Path,
 ) {
@@ -141,7 +142,7 @@ pub fn debug_fail_on_proposal_finalized(
 }
 
 pub fn debug_fail_on_proposal_committed(
-    height: u64,
+    height: Height,
     inject_failure: Option<InjectFailureConfig>,
     data_directory: &Path,
 ) {
@@ -178,7 +179,7 @@ pub fn debug_fail_on_vote(
 }
 
 pub fn debug_fail_on_decided(
-    height: u64,
+    height: Height,
     inject_failure: Option<InjectFailureConfig>,
     data_directory: &Path,
 ) {
@@ -195,7 +196,10 @@ pub fn debug_fail_on_decided(
     feature = "consensus-integration-tests",
     debug_assertions
 ))]
-pub fn send_outdated_vote(vote_height: u64, inject_failure: Option<InjectFailureConfig>) -> bool {
+pub fn send_outdated_vote(
+    vote_height: Height,
+    inject_failure: Option<InjectFailureConfig>,
+) -> bool {
     matches!(inject_failure,
         Some(InjectFailureConfig {
             height,
@@ -210,7 +214,7 @@ pub fn send_outdated_vote(vote_height: u64, inject_failure: Option<InjectFailure
     debug_assertions
 )))]
 pub fn send_outdated_vote(
-    _proposal_height: u64,
+    _proposal_height: Height,
     _inject_failure: Option<InjectFailureConfig>,
 ) -> bool {
     false

@@ -73,6 +73,8 @@ impl FromStr for InjectFailureTrigger {
     debug_assertions
 ))]
 mod enabled {
+    use p2p::consensus::Height;
+
     #[derive(clap::Args)]
     pub struct IntegrationTestingCli {
         #[arg(
@@ -99,13 +101,13 @@ mod enabled {
 
     #[derive(Copy, Clone)]
     pub struct InjectFailureConfig {
-        pub height: u64,
+        pub height: Height,
         pub trigger: super::InjectFailureTrigger,
     }
 
     fn parse_inject_failure(s: &str) -> Result<InjectFailureConfig, String> {
         let mut items = s.split(',');
-        let height: u64 = items
+        let height: Height = items
             .next()
             .ok_or_else(|| "Expected block height".to_string())?
             .parse()
@@ -158,6 +160,8 @@ mod enabled {
     debug_assertions
 )))]
 mod disabled {
+    use p2p::consensus::Height;
+
     #[derive(Default)]
     pub struct IntegrationTestingCli;
 
@@ -166,7 +170,7 @@ mod disabled {
 
     #[derive(Copy, Clone)]
     pub struct InjectFailureConfig {
-        pub height: u64,
+        pub height: Height,
         pub trigger: super::InjectFailureTrigger,
     }
 

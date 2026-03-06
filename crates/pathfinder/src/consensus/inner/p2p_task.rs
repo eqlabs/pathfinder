@@ -15,7 +15,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
-use p2p::consensus::{peer_score, Client, Event, EventKind, HeightAndRound};
+use p2p::consensus::{peer_score, Client, Event, EventKind, Height, HeightAndRound, NonNilRound};
 use p2p::libp2p::PeerId;
 use p2p_proto::common::{Address, Hash};
 use p2p_proto::consensus::{ProposalFin, ProposalInit, ProposalPart};
@@ -140,7 +140,7 @@ pub fn spawn(
         let validator_cache = ValidatorCache::new();
         let mut incoming_proposals = HashMap::new();
         let mut own_proposal_parts = HashMap::new();
-        let mut decided_blocks = HashMap::<u64, (u32, ConsensusFinalizedL2Block)>::new();
+        let mut decided_blocks = HashMap::new();
 
         loop {
             let p2p_task_event = tokio::select! {
@@ -667,7 +667,7 @@ fn on_finalized_block_decided(
     batch_execution_manager: &mut BatchExecutionManager,
     main_db: Storage,
     finalized_blocks: &mut HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
-    decided_blocks: &mut HashMap<u64, (u32, ConsensusFinalizedL2Block)>,
+    decided_blocks: &mut HashMap<Height, (NonNilRound, ConsensusFinalizedL2Block)>,
     gas_price_provider: Option<L1GasPriceProvider>,
     worker_pool: ValidatorWorkerPool,
 ) -> Result<ComputationSuccess, anyhow::Error> {
@@ -728,7 +728,7 @@ fn on_finalized_block_committed(
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
     main_db: Storage,
-    decided_blocks: &mut HashMap<u64, (u32, ConsensusFinalizedL2Block)>,
+    decided_blocks: &mut HashMap<Height, (NonNilRound, ConsensusFinalizedL2Block)>,
     finalized_blocks: &mut HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
     number: BlockNumber,
     gas_price_provider: Option<L1GasPriceProvider>,
@@ -793,13 +793,13 @@ impl ValidatorCache {
 
 #[allow(clippy::too_many_arguments)]
 fn execute_deferred_for_next_height<T: TransactionExt>(
-    height: u64,
+    height: Height,
     validator_cache: ValidatorCache,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
     main_db: Storage,
     finalized_blocks: &mut HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
-    decided_blocks: &HashMap<u64, (u32, ConsensusFinalizedL2Block)>,
+    decided_blocks: &HashMap<Height, (NonNilRound, ConsensusFinalizedL2Block)>,
     gas_price_provider: Option<L1GasPriceProvider>,
     worker_pool: ValidatorWorkerPool,
 ) -> anyhow::Result<Option<(HeightAndRound, ProposalCommitmentWithOrigin)>> {
@@ -1012,7 +1012,7 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
     proposal_part: ProposalPart,
     incoming_proposals: &mut HashMap<HeightAndRound, ProposalPartsValidator>,
     finalized_blocks: &mut HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
-    decided_blocks: &HashMap<u64, (u32, ConsensusFinalizedL2Block)>,
+    decided_blocks: &HashMap<Height, (NonNilRound, ConsensusFinalizedL2Block)>,
     mut validator_cache: ValidatorCache,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     main_readonly_storage: Storage,
@@ -1250,7 +1250,7 @@ fn defer_or_execute_proposal_fin<T: TransactionExt>(
     main_db: Storage,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
-    decided_blocks: &HashMap<u64, (u32, ConsensusFinalizedL2Block)>,
+    decided_blocks: &HashMap<Height, (NonNilRound, ConsensusFinalizedL2Block)>,
     finalized_blocks: &mut HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
     validator_cache: &mut ValidatorCache,
     gas_price_provider: Option<L1GasPriceProvider>,
@@ -1462,7 +1462,7 @@ fn update_info_watch(
     incoming_proposals: &HashMap<HeightAndRound, ProposalPartsValidator>,
     own_proposal_parts: &HashMap<HeightAndRound, Vec<ProposalPart>>,
     finalized_blocks: &HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
-    decided_blocks: &HashMap<u64, (u32, ConsensusFinalizedL2Block)>,
+    decided_blocks: &HashMap<Height, (NonNilRound, ConsensusFinalizedL2Block)>,
     info_watch_tx: &watch::Sender<consensus_info::ConsensusInfo>,
 ) -> Result<(), ProposalHandlingError> {
     let mut cached = BTreeMap::<u64, consensus_info::CachedAtHeight>::new();

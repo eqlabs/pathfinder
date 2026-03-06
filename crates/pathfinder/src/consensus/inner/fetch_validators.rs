@@ -1,3 +1,4 @@
+use p2p::consensus::Height;
 use pathfinder_common::{ChainId, ContractAddress};
 use pathfinder_consensus::{PublicKey, SigningKey, Validator, ValidatorSet};
 use pathfinder_consensus_fetcher as consensus_fetcher;
@@ -26,7 +27,7 @@ impl L2ValidatorSetProvider {
 impl pathfinder_consensus::ValidatorSetProvider<ContractAddress> for L2ValidatorSetProvider {
     fn get_validator_set(
         &self,
-        height: u64,
+        height: Height,
     ) -> Result<ValidatorSet<ContractAddress>, anyhow::Error> {
         fetch_validators(&self.storage, self.chain_id, height, &self.config)
     }
@@ -53,7 +54,7 @@ impl pathfinder_consensus::ValidatorSetProvider<ContractAddress> for L2Validator
 pub fn fetch_validators(
     storage: &Storage,
     chain_id: ChainId,
-    height: u64,
+    height: Height,
     config: &ConsensusConfig,
 ) -> Result<ValidatorSet<ContractAddress>, anyhow::Error> {
     if config.validator_addresses.is_empty() {
@@ -97,7 +98,7 @@ fn create_validators_from_config(
 fn fetch_validators_from_l2(
     storage: &Storage,
     chain_id: ChainId,
-    height: u64,
+    height: Height,
 ) -> Result<ValidatorSet<ContractAddress>, anyhow::Error> {
     let validators = consensus_fetcher::get_validators_at_height(storage, chain_id, height)?;
     let validators = validators

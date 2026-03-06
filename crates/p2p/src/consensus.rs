@@ -18,7 +18,7 @@ mod stream;
 
 pub use behaviour::Behaviour;
 pub use client::Client;
-pub use height_and_round::HeightAndRound;
+pub use height_and_round::{Height, HeightAndRound, NonNilRound};
 
 /// The topic for proposal messages in the consensus network.
 pub const TOPIC_PROPOSALS: &str = "consensus_proposals";
@@ -574,10 +574,10 @@ mod tests {
     }
 
     fn create_proposal_stream(
-        height: u64,
-        round: u32,
+        height: Height,
+        round: NonNilRound,
         base: u64,
-    ) -> ((u64, u32), Vec<ProposalPart>) {
+    ) -> ((Height, NonNilRound), Vec<ProposalPart>) {
         let mut stream = Vec::new();
 
         // ProposalInit

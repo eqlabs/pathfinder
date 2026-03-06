@@ -3,21 +3,21 @@
 //! This module provides utilities for creating realistic test transactions
 //! and testing consensus scenarios with actual transaction execution.
 
-use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::atomic::AtomicU64;
 use std::sync::LazyLock;
 use std::time::{Duration, SystemTime};
 
 use anyhow::Context;
+use p2p::consensus::Height;
+#[cfg(test)]
+use p2p::consensus::NonNilRound;
 use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
 use p2p_proto::consensus::{BlockInfo, ProposalFin, ProposalInit, ProposalPart};
 use pathfinder_common::{
     BlockId,
     BlockNumber,
-    BlockTimestamp,
     ChainId,
-    ConsensusFinalizedBlockHeader,
     ConsensusFinalizedL2Block,
     ContractAddress,
 };
@@ -32,7 +32,7 @@ use crate::validator::{ProdTransactionMapper, ValidatorBlockInfoStage, Validator
 /// Blocks consensus tasks's processing loop until the parent block of height is
 /// committed in main storage without blocking the async runtime.
 pub(crate) async fn wait_for_parent_committed(
-    height: u64,
+    height: Height,
     main_storage: Storage,
     poll_interval: Duration,
 ) -> anyhow::Result<()> {
@@ -104,7 +104,7 @@ pub(crate) struct ProposalCreationConfig {
 /// TODO: Until empty proposals reintroduce timestamps, we cannot create
 /// empty proposals here.
 pub(crate) fn create(
-    height: u64,
+    height: Height,
     round: Round,
     proposer: ContractAddress,
     main_storage: Storage,
@@ -177,41 +177,10 @@ pub(crate) fn create(
 
     parts.push(ProposalPart::BlockInfo(block_info.clone()));
 
-    // This is (obviously) not the actual finalized block for H-1, but
-    // it allows `validate_block_info` to succeed since it requires that
-    // the parent block is present in the decided blocks map (or committed
-    // to DB which we cannot fake).
-    let mut fake_decided_blocks = HashMap::new();
-    if let Some(parent_height) = height.checked_sub(1) {
-        fake_decided_blocks.insert(
-            parent_height,
-            (
-                0, // Any round is fine.
-                ConsensusFinalizedL2Block {
-                    header: ConsensusFinalizedBlockHeader {
-                        number: BlockNumber::new_or_panic(parent_height),
-                        // Must be less than `block_info.timestamp` to be considered valid by
-                        // `validate_block_info`.
-                        timestamp: BlockTimestamp::new_or_panic(0),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                },
-            ),
-        );
-    }
-
     let validator = ValidatorBlockInfoStage::new(ChainId::SEPOLIA_TESTNET, proposal_init).unwrap();
     let worker_pool = create_test_worker_pool();
     let mut validator = validator
-        .validate_block_info(
-            block_info.clone(),
-            main_storage,
-            &fake_decided_blocks,
-            None,
-            None,
-            worker_pool,
-        )
+        .skip_validation(block_info.clone(), main_storage, worker_pool)
         .unwrap();
 
     let num_executed_txns = config
@@ -304,8 +273,8 @@ pub fn create_l1_handler_transaction(
 #[cfg(test)]
 pub(crate) fn create_test_proposal_init(
     _chain_id: ChainId,
-    height: u64,
-    round: u32,
+    height: Height,
+    round: NonNilRound,
     proposer: ContractAddress,
 ) -> (ProposalInit, BlockInfo) {
     let proposer_address = Address(proposer.0);

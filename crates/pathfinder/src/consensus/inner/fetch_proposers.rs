@@ -1,3 +1,4 @@
+use p2p::consensus::{Height, NonNilRound};
 use pathfinder_common::{ChainId, ContractAddress};
 use pathfinder_consensus::{PublicKey, SigningKey, Validator, ValidatorSet};
 use pathfinder_consensus_fetcher as consensus_fetcher;
@@ -28,8 +29,8 @@ impl pathfinder_consensus::ProposerSelector<ContractAddress> for L2ProposerSelec
     fn select_proposer<'a>(
         &self,
         validator_set: &'a ValidatorSet<ContractAddress>,
-        height: u64,
-        _round: u32,
+        height: Height,
+        _round: NonNilRound,
     ) -> &'a Validator<ContractAddress> {
         // Fetch proposers from L2 using the same logic as validators
         let proposer_set = fetch_proposers(&self.storage, self.chain_id, height, &self.config)
@@ -76,7 +77,7 @@ impl pathfinder_consensus::ProposerSelector<ContractAddress> for L2ProposerSelec
 pub fn fetch_proposers(
     storage: &Storage,
     chain_id: ChainId,
-    height: u64,
+    height: Height,
     config: &ConsensusConfig,
 ) -> Result<ValidatorSet<ContractAddress>, anyhow::Error> {
     if config.proposer_addresses.is_empty() {
@@ -118,7 +119,7 @@ pub fn create_proposers_from_config(
 fn fetch_proposers_from_l2(
     storage: &Storage,
     chain_id: ChainId,
-    height: u64,
+    height: Height,
 ) -> Result<ValidatorSet<ContractAddress>, anyhow::Error> {
     let proposers = consensus_fetcher::get_proposers_at_height(storage, chain_id, height)?;
     let proposers = proposers
