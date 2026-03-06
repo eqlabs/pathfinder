@@ -142,44 +142,50 @@ impl Account {
 
         let (high, low) = split_biguint(BigUint::from(initial_balance));
 
-        for fee_token_address in [self.strk_fee_token_address] {
-            let token_address = fee_token_address;
+        let total_supply_low = get_storage_at(
+            state_update,
+            self.strk_fee_token_address,
+            total_supply_storage_address_low,
+        );
+        let total_supply_high = get_storage_at(
+            state_update,
+            self.strk_fee_token_address,
+            total_supply_storage_address_high,
+        );
 
-            let total_supply_low = get_storage_at(
-                state_update,
-                token_address,
-                total_supply_storage_address_low,
-            );
-            let total_supply_high = get_storage_at(
-                state_update,
-                token_address,
-                total_supply_storage_address_high,
-            );
+        let new_total_supply =
+            join_felts(total_supply_high, total_supply_low) + BigUint::from(initial_balance);
 
-            let new_total_supply =
-                join_felts(total_supply_high, total_supply_low) + BigUint::from(initial_balance);
+        let (new_total_supply_high, new_total_supply_low) = split_biguint(new_total_supply);
 
-            let (new_total_supply_high, new_total_supply_low) = split_biguint(new_total_supply);
+        // set balance in ERC20_balances
+        set_storage_at(
+            state_update,
+            self.strk_fee_token_address,
+            storage_var_address_low,
+            low,
+        )?;
+        set_storage_at(
+            state_update,
+            self.strk_fee_token_address,
+            storage_var_address_high,
+            high,
+        )?;
 
-            // set balance in ERC20_balances
-            set_storage_at(state_update, token_address, storage_var_address_low, low)?;
-            set_storage_at(state_update, token_address, storage_var_address_high, high)?;
+        // set total supply in ERC20_total_supply
+        set_storage_at(
+            state_update,
+            self.strk_fee_token_address,
+            total_supply_storage_address_low,
+            new_total_supply_low,
+        )?;
 
-            // set total supply in ERC20_total_supply
-            set_storage_at(
-                state_update,
-                token_address,
-                total_supply_storage_address_low,
-                new_total_supply_low,
-            )?;
-
-            set_storage_at(
-                state_update,
-                token_address,
-                total_supply_storage_address_high,
-                new_total_supply_high,
-            )?;
-        }
+        set_storage_at(
+            state_update,
+            self.strk_fee_token_address,
+            total_supply_storage_address_high,
+            new_total_supply_high,
+        )?;
 
         Ok(())
     }
