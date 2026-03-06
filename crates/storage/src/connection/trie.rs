@@ -738,7 +738,7 @@ impl Transaction<'_> {
             &storage_idx_base.0.to_be_bytes(),
         );
 
-        if table == "trie_storage" && block_number.get() % 100 == 0 {
+        if table == "trie_storage" && block_number.get() % 10000 == 9999 {
             self.rocksdb.log_stats();
         }
 
