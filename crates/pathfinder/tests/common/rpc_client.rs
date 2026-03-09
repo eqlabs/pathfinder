@@ -2,9 +2,9 @@
 
 use std::time::Duration;
 
-use anyhow::Context;
+use anyhow::Context as _;
 use p2p::consensus::HeightAndRound;
-use pathfinder_common::consensus_info;
+use pathfinder_common::{consensus_info, TransactionHash};
 use serde::Deserialize;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
@@ -20,6 +20,7 @@ pub fn wait_for_height(
     height: u64,
     poll_interval: Duration,
     next_hnr_tx: Option<mpsc::Sender<HeightAndRound>>,
+    err_tx: mpsc::Sender<anyhow::Error>,
 ) -> JoinHandle<()> {
     tokio::spawn(wait_for_height_fut(
         instance.name(),
@@ -27,6 +28,7 @@ pub fn wait_for_height(
         height,
         poll_interval,
         next_hnr_tx,
+        err_tx,
     ))
 }
 
@@ -38,6 +40,7 @@ async fn wait_for_height_fut(
     height: u64,
     poll_interval: Duration,
     next_hnr_tx: Option<mpsc::Sender<HeightAndRound>>,
+    error_tx: mpsc::Sender<anyhow::Error>,
 ) {
     let mut last_hnr = None;
 
@@ -57,16 +60,21 @@ async fn wait_for_height_fut(
                 continue;
             };
 
-        let Ok(JsonRpcReply {
-            result: Output {
+        let highest_decided = match handle_reply(
+            get_consensus_info(rpc_port).await,
+            name,
+            pid,
+            rpc_port,
+            "consensus info",
+            error_tx.clone(),
+        )
+        .await
+        {
+            HandleReplyResult::Process(ConsensusInfoOutput {
                 highest_decided, ..
-            },
-        }) = get_consensus_info(name, rpc_port).await
-        else {
-            println!(
-                "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} not responding yet"
-            );
-            continue;
+            }) => highest_decided,
+            HandleReplyResult::Continue => continue,
+            HandleReplyResult::Bail => return,
         };
 
         println!(
@@ -98,12 +106,16 @@ pub fn wait_for_block_exists(
     instance: &PathfinderInstance,
     block_height: u64,
     poll_interval: Duration,
+    disallow_reverted_txns: bool,
+    error_tx: mpsc::Sender<anyhow::Error>,
 ) -> JoinHandle<()> {
     tokio::spawn(wait_for_block_exists_fut(
         instance.name(),
         instance.rpc_port_watch_rx().clone(),
         block_height,
         poll_interval,
+        disallow_reverted_txns,
+        error_tx,
     ))
 }
 
@@ -112,40 +124,12 @@ async fn wait_for_block_exists_fut(
     mut rpc_port_watch_rx: watch::Receiver<(u32, u16)>,
     block_height: u64,
     poll_interval: Duration,
+    disallow_reverted_txns: bool,
+    // Propagates deserialization and unexpected reverted transaction errors back to the test. This
+    // way we can bail out earlier instead of waiting for the `utils::join_all` timeout, which will
+    // still mask the actual error.
+    error_tx: mpsc::Sender<anyhow::Error>,
 ) {
-    #[derive(Deserialize)]
-    struct Block {
-        block_number: u64,
-    }
-
-    async fn get_latest_block_with_receipts(
-        rpc_port: u16,
-    ) -> anyhow::Result<JsonRpcReply<Option<Block>>> {
-        let reply = reqwest::Client::new()
-            .post(format!("http://127.0.0.1:{rpc_port}"))
-            .body(
-                r#"{
-                    "jsonrpc": "2.0",
-                    "id": 0,
-                    "method": "starknet_getBlockWithReceipts",
-                    "params": {
-                        "block_id": "latest"
-                    }
-                }"#,
-            )
-            .header("Content-Type", "application/json")
-            .send()
-            .await
-            .context("Sending JSON-RPC request to get latest block")?;
-
-        let parsed = reply
-            .json::<JsonRpcReply<Option<Block>>>()
-            .await
-            .context("Sending JSON-RPC request to get latest block")?;
-
-        Ok(parsed)
-    }
-
     loop {
         // Sleeping first actually makes sense here, because the node will likely not
         // have any decided heights immediately after the RPC server is ready.
@@ -162,35 +146,105 @@ async fn wait_for_block_exists_fut(
                 continue;
             };
 
-        let Ok(reply) = get_latest_block_with_receipts(rpc_port).await else {
-            println!(
-                "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} not responding yet"
-            );
-            continue;
+        let block = match handle_reply(
+            get_latest_block_with_receipts(rpc_port).await,
+            name,
+            pid,
+            rpc_port,
+            "latest block",
+            error_tx.clone(),
+        )
+        .await
+        {
+            HandleReplyResult::Process(block) => block,
+            HandleReplyResult::Continue => continue,
+            HandleReplyResult::Bail => return,
         };
 
-        if let Some(b) = reply.result {
-            if b.block_number < block_height {
-                println!(
-                    "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} has block {} < \
-                     {block_height}",
-                    b.block_number
-                );
-            } else {
-                println!(
-                    "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} has block \
-                     {block_height}",
-                );
-                return;
+        if disallow_reverted_txns {
+            let reverted_txns = block
+                .transactions
+                .iter()
+                .filter_map(|tx| {
+                    matches!(tx.receipt.execution_status, ExecutionStatus::Reverted)
+                        .then_some(tx.receipt.transaction_hash)
+                })
+                .collect::<Vec<_>>();
+            if !reverted_txns.is_empty() {
+                error_tx
+                    .send(anyhow::anyhow!(
+                        "Unexpected reverted transactions in block {}: {reverted_txns:?}",
+                        block.block_number
+                    ))
+                    .await
+                    .unwrap();
             }
+        }
+
+        if block.block_number < block_height {
+            println!(
+                "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} has block {} < \
+                 {block_height}",
+                block.block_number
+            );
+        } else {
+            println!(
+                "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} has block \
+                 {block_height}",
+            );
+            // Finally, success!
+            return;
+        }
+    }
+}
+
+enum HandleReplyResult<T> {
+    Process(T),
+    Continue,
+    Bail,
+}
+
+async fn handle_reply<T>(
+    reply: Result<JsonRpcReply2<T>, reqwest::Error>,
+    name: &'static str,
+    pid: u32,
+    rpc_port: u16,
+    artifact_name: &'static str,
+    error_tx: mpsc::Sender<anyhow::Error>,
+) -> HandleReplyResult<T> {
+    match reply {
+        Ok(JsonRpcReply2::Success { result, .. }) => HandleReplyResult::Process(result),
+        Ok(JsonRpcReply2::Error { .. }) => {
+            println!(
+                "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} {artifact_name} \
+                 unavailable yet"
+            );
+            // It seems like the node does not have this artifact available yet, but it
+            // might be available soon, so let's just wait.
+            HandleReplyResult::Continue
+        }
+        Err(error) if error.is_decode() => {
+            error_tx
+                .send(anyhow::Error::new(error).context(format!(
+                    "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} malformed RPC \
+                     response"
+                )))
+                .await
+                .unwrap();
+            // We're can't fix the issue here, waiting won't work either, we're done
+            HandleReplyResult::Bail
+        }
+        Err(_) => {
+            // There's not much we can do here. Some of these maybe be send errors due to
+            // the node being in the process of being respawned, so let's just wait.
+            HandleReplyResult::Continue
         }
     }
 }
 
 pub async fn get_consensus_info(
-    name: &'static str,
     rpc_port: u16,
-) -> anyhow::Result<JsonRpcReply<Output>> {
+) -> Result<JsonRpcReply2<ConsensusInfoOutput>, reqwest::Error> {
     reqwest::Client::new()
         .post(format!(
             "http://127.0.0.1:{rpc_port}/rpc/pathfinder/unstable"
@@ -198,11 +252,9 @@ pub async fn get_consensus_info(
         .body(r#"{"jsonrpc":"2.0","id":0,"method":"pathfinder_consensusInfo","params":[]}"#)
         .header("Content-Type", "application/json")
         .send()
+        .await?
+        .json::<JsonRpcReply2<ConsensusInfoOutput>>()
         .await
-        .with_context(|| format!("Sending JSON-RPC request as {name}"))?
-        .json::<JsonRpcReply<Output>>()
-        .await
-        .with_context(|| format!("Parsing JSON-RPC response as {name}"))
 }
 
 pub async fn get_cached_artifacts_info(
@@ -220,26 +272,56 @@ pub async fn get_cached_artifacts_info(
             } else {
                 panic!("Rpc port watch for {name} is closed");
             };
-        let JsonRpcReply {
-            result: Output { mut cached, .. },
-        } = get_consensus_info(name, rpc_port)
-            .await
-            .unwrap_or_else(|_| panic!("Couldn't get consensus info for {name} (pid: {pid})"));
+
+        let mut cached = match get_consensus_info(rpc_port).await {
+            Ok(JsonRpcReply2::Success {
+                result: ConsensusInfoOutput { cached, .. },
+                ..
+            }) => cached,
+            Ok(JsonRpcReply2::Error { .. }) => {
+                anyhow::bail!(
+                    "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} consensus info \
+                     unavailable yet"
+                );
+            }
+            Err(error) => {
+                return Err(anyhow::Error::new(error).context(format!(
+                    "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} malformed RPC \
+                     response"
+                )));
+            }
+        };
         cached.retain(|CachedItem { height, .. }| *height < less_than_height);
-        cached
+        Ok(cached)
     };
     tokio::time::timeout(Duration::from_secs(10), fut)
         .await
         .context("Getting cached artifacts info timed out")
+        .flatten()
 }
 
 #[derive(Deserialize)]
-pub struct JsonRpcReply<T> {
-    pub result: T,
+#[serde(untagged)]
+pub enum JsonRpcReply2<T> {
+    Success {
+        #[serde(rename = "id")]
+        _id: u64,
+        #[serde(rename = "jsonrpc")]
+        _jsonrpc: serde_json::Value,
+        result: T,
+    },
+    Error {
+        #[serde(rename = "id")]
+        _id: u64,
+        #[serde(rename = "jsonrpc")]
+        _jsonrpc: serde_json::Value,
+        #[serde(rename = "error")]
+        _error: serde_json::Value,
+    },
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Output {
+pub struct ConsensusInfoOutput {
     pub highest_decided: Option<consensus_info::Decision>,
     pub application_peer_scores: Vec<ApplicationPeerScore>,
     pub cached: Vec<CachedItem>,
@@ -259,4 +341,50 @@ pub struct CachedItem {
     pub _proposals: Vec<consensus_info::ProposalParts>,
     #[serde(alias = "blocks")]
     pub _blocks: Vec<consensus_info::FinalizedBlock>,
+}
+
+#[derive(Deserialize)]
+struct Block {
+    block_number: u64,
+    transactions: Vec<ReceiptAndTransaction>,
+}
+
+#[derive(Deserialize)]
+struct ReceiptAndTransaction {
+    receipt: Receipt,
+}
+
+#[derive(Deserialize)]
+struct Receipt {
+    execution_status: ExecutionStatus,
+    transaction_hash: TransactionHash,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+enum ExecutionStatus {
+    Succeeded,
+    Reverted,
+}
+
+async fn get_latest_block_with_receipts(
+    rpc_port: u16,
+) -> Result<JsonRpcReply2<Block>, reqwest::Error> {
+    reqwest::Client::new()
+        .post(format!("http://127.0.0.1:{rpc_port}"))
+        .body(
+            r#"{
+                    "jsonrpc": "2.0",
+                    "id": 0,
+                    "method": "starknet_getBlockWithReceipts",
+                    "params": {
+                        "block_id": "latest"
+                    }
+                }"#,
+        )
+        .header("Content-Type", "application/json")
+        .send()
+        .await?
+        .json::<JsonRpcReply2<Block>>()
+        .await
 }

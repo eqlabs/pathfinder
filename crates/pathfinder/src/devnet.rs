@@ -93,7 +93,7 @@ pub fn init_db(db_dir: &Path, proposer: Address) -> anyhow::Result<BootDb> {
     let db_txn = db_conn.transaction()?;
     let mut state_update = StateUpdateData::default();
 
-    let account = predeploy_contracts(&db_txn, &mut state_update)?;
+    let _account = predeploy_contracts(&db_txn, &mut state_update)?;
 
     let block_number = BlockNumber::GENESIS;
     let (storage_commitment, class_commitment) = update_starknet_state(
@@ -150,40 +150,26 @@ pub fn init_db(db_dir: &Path, proposer: Address) -> anyhow::Result<BootDb> {
         stopwatch.elapsed().as_millis(),
     );
 
-    let db_txn = db_conn.transaction()?;
-    declare(
-        storage.clone(),
-        db_txn,
-        &account,
-        fixtures::HELLO_CLASS,
-        proposer,
-    )?;
-    let db_txn = db_conn.transaction()?;
-    let latest_block_number = db_txn.block_number(BlockId::Latest)?.context("Empty DB")?;
-
     Ok(BootDb {
         db_file_path,
-        num_boot_blocks: latest_block_number.get() + 1,
+        num_boot_blocks: block_number.get() + 1,
     })
 }
 
-pub fn is_db_bootstrapped(db_txn: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<bool> {
+/// Returns `Some(latest_bootstrapped_DB_block_number)` if the DB is
+/// bootstrapped and `None` if it is not.
+pub fn is_db_bootstrapped(
+    db_txn: &pathfinder_storage::Transaction<'_>,
+) -> anyhow::Result<Option<BlockNumber>> {
     let Some(block_0_commitment) = db_txn.state_diff_commitment(BlockNumber::GENESIS)? else {
-        return Ok(false);
+        return Ok(None);
     };
 
-    if block_0_commitment != fixtures::BLOCK_0_COMMITMENT {
-        return Ok(false);
+    if block_0_commitment != fixtures::GENESIS_COMMITMENT {
+        return Ok(None);
     }
 
-    let block_1_commitment = db_txn
-        .state_diff_commitment(BlockNumber::GENESIS + 1)?
-        .context("DB has only genesis block")?;
-    if block_1_commitment != fixtures::BLOCK_1_COMMITMENT {
-        return Ok(false);
-    }
-
-    Ok(true)
+    Ok(Some(BlockNumber::GENESIS))
 }
 
 #[derive(Debug)]
@@ -292,7 +278,13 @@ pub fn declare(
         state_update,
         transactions_and_receipts,
         events,
+        declared_classes,
     } = next_block;
+
+    assert_eq!(declared_classes.len(), 1);
+    let declared_class = &declared_classes[0];
+    assert_eq!(declared_class.sierra_hash, sierra_class_hash);
+    assert_eq!(declared_class.casm_hash_v2, casm_hash_v2);
 
     let next_header = header.compute_hash(latest_header.hash, state_commitment, compute_final_hash);
 
@@ -437,10 +429,10 @@ pub mod tests {
         BlockHash,
         BlockHeader,
         BlockId,
-        BlockNumber,
         ClassHash,
         ConsensusFinalizedL2Block,
         ContractAddress,
+        DeclaredClass,
         StarknetVersion,
         StateCommitment,
     };
@@ -459,7 +451,6 @@ pub mod tests {
     fn init_declare_deploy_invoke_hello_abi() {
         // Block 0 - predeploys and initializes contracts, including the account we'll
         // use for testing
-        // Block 1 - declare the Hello Starknet contract class
         let proposer = Address(Felt::ONE);
         let db_dir = TempDir::new().unwrap();
         let BootDb { db_file_path, .. } = init_db(db_dir.path(), proposer).unwrap();
@@ -475,17 +466,10 @@ pub mod tests {
         let mut db_conn = storage.connection().unwrap();
         let db_txn = db_conn.transaction().unwrap();
 
-        let block_0_state_diff_commitment = db_txn
-            .state_diff_commitment(BlockNumber::GENESIS)
-            .unwrap()
-            .unwrap();
-        assert_eq!(block_0_state_diff_commitment, fixtures::BLOCK_0_COMMITMENT);
-
-        let block_1_header = db_txn.block_header(BlockId::Latest).unwrap().unwrap();
-
+        let block_0_header = db_txn.block_header(BlockId::Latest).unwrap().unwrap();
         assert_eq!(
-            block_1_header.state_diff_commitment,
-            fixtures::BLOCK_1_COMMITMENT
+            block_0_header.state_diff_commitment,
+            fixtures::GENESIS_COMMITMENT
         );
 
         let account = Account::from_storage(&db_txn).unwrap();
@@ -493,6 +477,30 @@ pub mod tests {
 
         let worker_pool: ValidatorWorkerPool =
             ExecutorWorkerPool::<ConcurrentStateReader>::new(1).get();
+
+        // Block 1 - declare the Hello Starknet contract class
+        let block_1_number = block_0_header.number + 1;
+        let (mut validator, _) = init_proposal_and_validator(
+            block_1_number,
+            0,
+            proposer,
+            Some(block_0_header.timestamp),
+            storage.clone(),
+            worker_pool.clone(),
+        )
+        .unwrap();
+        let declare = account.hello_starknet_declare().unwrap();
+        validator
+            .execute_batch::<ProdTransactionMapper>(
+                vec![declare],
+                pathfinder_compiler::ResourceLimits::for_test(),
+            )
+            .unwrap();
+        let block_1 = validator.consensus_finalize0().unwrap();
+
+        let db_txn = db_conn.transaction().unwrap();
+        let (block_1_header, _) =
+            insert_block(storage.clone(), db_txn, block_1, block_0_header.hash);
 
         // Block 2 - deploy a Hello Starknet contract instance via the UDC
         let block_2_number = block_1_header.number + 1;
@@ -574,7 +582,27 @@ pub mod tests {
             state_update,
             transactions_and_receipts,
             events,
+            declared_classes,
         } = block;
+
+        declared_classes
+            .into_iter()
+            .try_for_each(
+                |DeclaredClass {
+                     sierra_hash,
+                     casm_hash_v2,
+                     sierra_def,
+                     casm_def,
+                 }| {
+                    db_txn.insert_sierra_class_definition(
+                        &sierra_hash,
+                        &sierra_def,
+                        &casm_def,
+                        &casm_hash_v2,
+                    )
+                },
+            )
+            .unwrap();
 
         let hello_contract_address =
             state_update

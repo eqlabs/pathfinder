@@ -24,10 +24,12 @@ use pathfinder_common::{
     ChainId,
     ConsensusFinalizedBlockHeader,
     ConsensusFinalizedL2Block,
+    DeclaredClass,
     EntryPoint,
     L1DataAvailabilityMode,
     ProposalCommitment,
     SequencerAddress,
+    SierraHash,
     StarknetVersion,
     TransactionHash,
 };
@@ -256,6 +258,7 @@ impl ValidatorBlockInfoStage {
             executor: None,
             worker_pool,
             main_storage,
+            declared_classes: Vec::new(),
         })
     }
 
@@ -321,6 +324,7 @@ impl ValidatorBlockInfoStage {
             executor: None,
             worker_pool,
             main_storage,
+            declared_classes: Vec::new(),
         })
     }
 }
@@ -462,6 +466,7 @@ pub struct ValidatorTransactionBatchStage {
     worker_pool: ValidatorWorkerPool,
     /// Storage for creating new connections
     main_storage: Storage,
+    declared_classes: Vec<DeclaredClass>,
 }
 
 impl ValidatorTransactionBatchStage {
@@ -488,13 +493,23 @@ impl ValidatorTransactionBatchStage {
             self.transactions.len()
         );
 
-        // Convert transactions to executor format
+        // Convert transactions to executor format, use `par_iter` because any declare
+        // transactions will require sierra compilation and casm hash computation. Both
+        // are blocking.
         let txns = transactions
-            .iter()
+            .par_iter()
             .map(|t| T::try_map_transaction(t.clone(), compiler_resource_limits))
             .collect::<anyhow::Result<Vec<_>>>()
             .map_err(ProposalHandlingError::recoverable)?;
-        let (common_txns, executor_txns): (Vec<_>, Vec<_>) = txns.into_iter().unzip();
+        let mut common_txns = Vec::with_capacity(txns.len());
+        let mut executor_txns = Vec::with_capacity(txns.len());
+        let mut declared_classes = Vec::with_capacity(txns.len());
+
+        txns.into_iter().for_each(|txn| {
+            common_txns.push(txn.common);
+            executor_txns.push(txn.executor);
+            declared_classes.push(txn.class_definition);
+        });
 
         // Verify transaction hashes
         let txn_hashes = common_txns
@@ -563,6 +578,23 @@ impl ValidatorTransactionBatchStage {
             .collect();
 
         // Update accumulated state
+        //
+        // IMPORTANT
+        // Filter out declarations which were not reverted and add only those to
+        // the declared_classes list, which if the block is decide, goes to storage and
+        // hence updates the state.
+        receipts
+            .iter()
+            .zip(declared_classes.into_iter())
+            .for_each(|(receipt, class_def)| {
+                if let Some(class_def) = class_def {
+                    if !receipt.is_reverted() {
+                        self.declared_classes.push(class_def);
+                    }
+                }
+            });
+
+        // Update accumulated state (continued)
         self.transactions.extend(common_txns);
         self.receipts.extend(receipts);
         self.events.extend(events);
@@ -713,6 +745,7 @@ impl ValidatorTransactionBatchStage {
             transactions,
             receipts,
             events,
+            declared_classes,
             ..
         } = self;
 
@@ -790,6 +823,7 @@ impl ValidatorTransactionBatchStage {
             state_update,
             transactions_and_receipts: transactions.into_iter().zip(receipts).collect::<Vec<_>>(),
             events,
+            declared_classes,
         })
     }
 }
@@ -864,12 +898,15 @@ pub trait TransactionExt {
     fn try_map_transaction(
         transaction: p2p_proto::consensus::Transaction,
         compiler_resource_limits: pathfinder_compiler::ResourceLimits,
-    ) -> anyhow::Result<(
-        pathfinder_common::transaction::Transaction,
-        pathfinder_executor::Transaction,
-    )>;
+    ) -> anyhow::Result<MappedTransaction>;
 
     fn verify_hash(transaction: &Transaction, chain_id: ChainId) -> bool;
+}
+
+pub struct MappedTransaction {
+    pub common: pathfinder_common::transaction::Transaction,
+    pub executor: pathfinder_executor::Transaction,
+    pub class_definition: Option<DeclaredClass>,
 }
 
 pub struct ProdTransactionMapper;
@@ -878,10 +915,7 @@ impl TransactionExt for ProdTransactionMapper {
     fn try_map_transaction(
         transaction: p2p_proto::consensus::Transaction,
         compiler_resource_limits: pathfinder_compiler::ResourceLimits,
-    ) -> anyhow::Result<(
-        pathfinder_common::transaction::Transaction,
-        pathfinder_executor::Transaction,
-    )> {
+    ) -> anyhow::Result<MappedTransaction> {
         let p2p_proto::consensus::Transaction {
             txn,
             transaction_hash,
@@ -930,13 +964,18 @@ impl TransactionExt for ProdTransactionMapper {
                         common,
                         class_hash: Hash(class_hash.0),
                     }),
-                    Some(class_info(class, compiler_resource_limits)?),
+                    Some(class_info(
+                        SierraHash(class_hash.0),
+                        class,
+                        compiler_resource_limits,
+                    )?),
                 )
             }
             ConsensusVariant::DeployAccountV3(v) => (SyncVariant::DeployAccountV3(v), None),
             ConsensusVariant::InvokeV3(v) => (SyncVariant::InvokeV3(v.invoke), None),
             ConsensusVariant::L1HandlerV0(v) => (SyncVariant::L1HandlerV0(v), None),
         };
+        let (class_info, for_storage) = class_info.unzip();
 
         let common_txn_variant = TransactionVariant::try_from_dto(variant)?;
 
@@ -966,7 +1005,11 @@ impl TransactionExt for ProdTransactionMapper {
             variant: common_txn_variant,
         };
 
-        Ok((common_txn, executor_txn))
+        Ok(MappedTransaction {
+            common: common_txn,
+            executor: executor_txn,
+            class_definition: for_storage,
+        })
     }
 
     fn verify_hash(transaction: &Transaction, chain_id: ChainId) -> bool {
@@ -975,9 +1018,10 @@ impl TransactionExt for ProdTransactionMapper {
 }
 
 fn class_info(
+    sierra_hash: SierraHash,
     class: Cairo1Class,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
-) -> anyhow::Result<ClassInfo> {
+) -> anyhow::Result<(ClassInfo, DeclaredClass)> {
     let Cairo1Class {
         abi,
         entry_points,
@@ -1022,21 +1066,28 @@ fn class_info(
                 .collect(),
         },
     };
-    let casm_contract_definition =
-        pathfinder_compiler::compile_sierra_to_casm_deser(definition, compiler_resource_limits)?;
+    let sierra_def = serde_json::to_vec(&definition)?;
+    let casm_def =
+        pathfinder_compiler::compile_sierra_to_casm(&sierra_def, compiler_resource_limits)?;
+    let casm_hash_v2 = pathfinder_compiler::casm_class_hash_v2(&casm_def)?;
 
-    let casm_contract_definition = pathfinder_executor::parse_casm_definition(
-        casm_contract_definition,
-        sierra_version.clone(),
-    )
-    .context("Parsing CASM contract definition")?;
+    let for_storage = DeclaredClass {
+        sierra_hash,
+        casm_hash_v2,
+        sierra_def,
+        casm_def: casm_def.clone(),
+    };
+
+    let casm_contract_definition =
+        pathfinder_executor::parse_casm_definition(casm_def, sierra_version.clone())
+            .context("Parsing CASM contract definition")?;
     let ci = ClassInfo::new(
         &casm_contract_definition,
         sierra_program_length,
         abi_length,
         sierra_version,
     )?;
-    Ok(ci)
+    Ok((ci, for_storage))
 }
 
 pub fn deployed_address(txnv: &TransactionVariant) -> Option<starknet_api::core::ContractAddress> {

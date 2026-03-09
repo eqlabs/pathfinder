@@ -22,10 +22,10 @@ mod test {
     use std::time::Duration;
     use std::vec;
 
-    use anyhow::Context;
     use futures::StreamExt;
     use pathfinder_lib::config::integration_testing::{InjectFailureConfig, InjectFailureTrigger};
     use rstest::rstest;
+    use tokio::sync::mpsc;
 
     use crate::common::feeder_gateway::FeederGateway;
     use crate::common::pathfinder_instance::{respawn_on_fail, PathfinderInstance};
@@ -35,17 +35,19 @@ mod test {
         wait_for_block_exists,
         wait_for_height,
         ApplicationPeerScore,
+        ConsensusInfoOutput,
+        JsonRpcReply2,
     };
     use crate::common::utils;
 
     // TODO Test cases that should be supported by the integration tests:
     // - proposals:
-    //   - [x] non-empty proposals (L1 handlers + transactions that modify storage):
-    //      - ProposalInit,
-    //      - BlockInfo,
-    //      - TransactionBatch(/*Non-empty vec of transactions*/),
-    //      - ExecutedTransactionCount,
-    //      - ProposalFin,
+    //   - [x] non-empty proposals (transactions that modify storage):
+    //      - Garbage L1-transaction handlers, that get reverted, but we get to test
+    //        from clear genesis (no bootstrap devnet DB), exercised in the happy
+    //        path scenario
+    //      - Valid declare, deploy, and invoke transactions, exercised in all the
+    //        other scenarios, thanks to a bootstrapped devnet DB
     //   - [ ] empty proposals, which follow the spec, ie. no transaction batches:
     //      - ProposalInit,
     //      - ProposalFin,
@@ -58,7 +60,9 @@ mod test {
     //   different stages),
     // - [ ] ??? any missing significant failure injection points ???.
     #[rstest]
+    // No bootstrap DB, all txns get reverted, testing the flow from clear genesis
     #[case::happy_path(None)]
+    // Bootstrap DB, none of the transactions should get reverted
     #[case::fail_on_proposal_init_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalInitRx }))]
     #[case::fail_on_block_info_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::BlockInfoRx }))]
     #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::TransactionBatchRx }))]
@@ -71,8 +75,6 @@ mod test {
     #[case::fail_on_proposal_committed(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalCommitted }))]
     #[tokio::test]
     async fn consensus_3_nodes_with_failures(#[case] inject_failure: Option<InjectFailureConfig>) {
-        use tokio::sync::mpsc;
-
         const NUM_NODES: usize = 3;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
         const TEST_TIMEOUT: Duration = Duration::from_secs(120);
@@ -84,8 +86,10 @@ mod test {
         // expense of all transactions being reverted since they're random, invalid L1
         // handlers. We need this to be able to test starting completely from scratch
         // without relying on any pre-initialized database state.
+        let disallow_reverted_txns = inject_failure.is_some();
+
         let (configs, boot_height, stopwatch) =
-            utils::setup(NUM_NODES, inject_failure.is_some()).unwrap();
+            utils::setup(NUM_NODES, disallow_reverted_txns).unwrap();
 
         // System contracts start to matter after block 10 but we have a separate
         // regression test for that, which checks that rollback at H>10 works correctly.
@@ -134,15 +138,41 @@ mod test {
 
         utils::log_elapsed(stopwatch);
 
-        let (tx, rx) = mpsc::channel(target_height as usize * 3);
-        let rx = tokio_stream::wrappers::ReceiverStream::new(rx);
+        let (hnr_tx, hnr_rx) = mpsc::channel(target_height as usize * 3);
+        let hnr_rx = tokio_stream::wrappers::ReceiverStream::new(hnr_rx);
+        let (err_tx, err_rx) = mpsc::channel(6);
 
-        let alice_decided = wait_for_height(&alice, target_height, POLL_HEIGHT, Some(tx));
-        let bob_decided = wait_for_height(&bob, target_height, POLL_HEIGHT, None);
-        let charlie_decided = wait_for_height(&charlie, target_height, POLL_HEIGHT, None);
-        let alice_committed = wait_for_block_exists(&alice, target_height, POLL_HEIGHT);
-        let bob_committed = wait_for_block_exists(&bob, target_height, POLL_HEIGHT);
-        let charlie_committed = wait_for_block_exists(&charlie, target_height, POLL_HEIGHT);
+        let alice_decided = wait_for_height(
+            &alice,
+            target_height,
+            POLL_HEIGHT,
+            Some(hnr_tx),
+            err_tx.clone(),
+        );
+        let bob_decided = wait_for_height(&bob, target_height, POLL_HEIGHT, None, err_tx.clone());
+        let charlie_decided =
+            wait_for_height(&charlie, target_height, POLL_HEIGHT, None, err_tx.clone());
+        let alice_committed = wait_for_block_exists(
+            &alice,
+            target_height,
+            POLL_HEIGHT,
+            disallow_reverted_txns,
+            err_tx.clone(),
+        );
+        let bob_committed = wait_for_block_exists(
+            &bob,
+            target_height,
+            POLL_HEIGHT,
+            disallow_reverted_txns,
+            err_tx.clone(),
+        );
+        let charlie_committed = wait_for_block_exists(
+            &charlie,
+            target_height,
+            POLL_HEIGHT,
+            disallow_reverted_txns,
+            err_tx.clone(),
+        );
 
         let maybe_bob = respawn_on_fail(
             inject_failure.is_some(),
@@ -152,6 +182,8 @@ mod test {
             READY_TIMEOUT,
         );
 
+        // Wait for: the test to pass, timeout, user interruption, or bail out early if
+        // the RPC client encounters an error
         utils::join_all(
             vec![
                 alice_decided,
@@ -162,11 +194,12 @@ mod test {
                 charlie_committed,
             ],
             TEST_TIMEOUT,
+            err_rx,
         )
         .await
         .unwrap();
 
-        let decided_hnrs = rx.collect::<Vec<_>>().await;
+        let decided_hnrs = hnr_rx.collect::<Vec<_>>().await;
         if let Some(x) = decided_hnrs.iter().find(|hnr| hnr.round() > 0) {
             println!("Network failed to recover in round 0 at (h:r): {x}");
         }
@@ -259,15 +292,50 @@ mod test {
 
         utils::log_elapsed(stopwatch);
 
-        // Use channels to send and update the rpc port
-        let alice_decided = wait_for_height(&alice, height_to_add_fourth_node, POLL_HEIGHT, None);
-        let bob_decided = wait_for_height(&bob, height_to_add_fourth_node, POLL_HEIGHT, None);
-        let charlie_decided =
-            wait_for_height(&charlie, height_to_add_fourth_node, POLL_HEIGHT, None);
-        let alice_committed = wait_for_block_exists(&alice, height_to_add_fourth_node, POLL_HEIGHT);
-        let bob_committed = wait_for_block_exists(&bob, height_to_add_fourth_node, POLL_HEIGHT);
-        let charlie_committed =
-            wait_for_block_exists(&charlie, height_to_add_fourth_node, POLL_HEIGHT);
+        let (err_tx, err_rx) = mpsc::channel(6);
+
+        let alice_decided = wait_for_height(
+            &alice,
+            height_to_add_fourth_node,
+            POLL_HEIGHT,
+            None,
+            err_tx.clone(),
+        );
+        let bob_decided = wait_for_height(
+            &bob,
+            height_to_add_fourth_node,
+            POLL_HEIGHT,
+            None,
+            err_tx.clone(),
+        );
+        let charlie_decided = wait_for_height(
+            &charlie,
+            height_to_add_fourth_node,
+            POLL_HEIGHT,
+            None,
+            err_tx.clone(),
+        );
+        let alice_committed = wait_for_block_exists(
+            &alice,
+            height_to_add_fourth_node,
+            POLL_HEIGHT,
+            true,
+            err_tx.clone(),
+        );
+        let bob_committed = wait_for_block_exists(
+            &bob,
+            height_to_add_fourth_node,
+            POLL_HEIGHT,
+            true,
+            err_tx.clone(),
+        );
+        let charlie_committed = wait_for_block_exists(
+            &charlie,
+            height_to_add_fourth_node,
+            POLL_HEIGHT,
+            true,
+            err_tx.clone(),
+        );
 
         utils::join_all(
             vec![
@@ -279,6 +347,7 @@ mod test {
                 charlie_committed,
             ],
             RUNUP_TIMEOUT,
+            err_rx,
         )
         .await
         .unwrap();
@@ -288,14 +357,22 @@ mod test {
         let dan = PathfinderInstance::spawn(dan_cfg.clone()).unwrap();
         dan.wait_for_ready(POLL_READY, READY_TIMEOUT).await.unwrap();
 
-        let alice_decided = wait_for_height(&alice, target_height, POLL_HEIGHT, None);
-        let bob_decided = wait_for_height(&bob, target_height, POLL_HEIGHT, None);
-        let charlie_decided = wait_for_height(&charlie, target_height, POLL_HEIGHT, None);
-        let dan_decided = wait_for_height(&dan, target_height, POLL_HEIGHT, None);
-        let alice_committed = wait_for_block_exists(&alice, target_height, POLL_HEIGHT);
-        let bob_committed = wait_for_block_exists(&bob, target_height, POLL_HEIGHT);
-        let charlie_committed = wait_for_block_exists(&charlie, target_height, POLL_HEIGHT);
-        let dan_committed = wait_for_block_exists(&dan, target_height, POLL_HEIGHT);
+        let (err_tx, err_rx) = mpsc::channel(8);
+
+        let alice_decided =
+            wait_for_height(&alice, target_height, POLL_HEIGHT, None, err_tx.clone());
+        let bob_decided = wait_for_height(&bob, target_height, POLL_HEIGHT, None, err_tx.clone());
+        let charlie_decided =
+            wait_for_height(&charlie, target_height, POLL_HEIGHT, None, err_tx.clone());
+        let dan_decided = wait_for_height(&dan, target_height, POLL_HEIGHT, None, err_tx.clone());
+        let alice_committed =
+            wait_for_block_exists(&alice, target_height, POLL_HEIGHT, true, err_tx.clone());
+        let bob_committed =
+            wait_for_block_exists(&bob, target_height, POLL_HEIGHT, true, err_tx.clone());
+        let charlie_committed =
+            wait_for_block_exists(&charlie, target_height, POLL_HEIGHT, true, err_tx.clone());
+        let dan_committed =
+            wait_for_block_exists(&dan, target_height, POLL_HEIGHT, true, err_tx.clone());
 
         utils::join_all(
             vec![
@@ -309,6 +386,7 @@ mod test {
                 dan_committed,
             ],
             CATCHUP_TIMEOUT,
+            err_rx,
         )
         .await
         .unwrap();
@@ -402,13 +480,31 @@ mod test {
 
         utils::log_elapsed(stopwatch);
 
+        let (err_tx, err_rx) = mpsc::channel(6);
+
         // Wait until all three nodes reach `LAST_VALID_HEIGHT`..
-        let alice_decided = wait_for_height(&alice, last_valid_height, POLL_HEIGHT, None);
-        let bob_decided = wait_for_height(&bob, last_valid_height, POLL_HEIGHT, None);
-        let charlie_decided = wait_for_height(&charlie, last_valid_height, POLL_HEIGHT, None);
-        let alice_committed = wait_for_block_exists(&alice, last_valid_height, POLL_HEIGHT);
-        let bob_committed = wait_for_block_exists(&bob, last_valid_height, POLL_HEIGHT);
-        let charlie_committed = wait_for_block_exists(&charlie, last_valid_height, POLL_HEIGHT);
+        let alice_decided =
+            wait_for_height(&alice, last_valid_height, POLL_HEIGHT, None, err_tx.clone());
+        let bob_decided =
+            wait_for_height(&bob, last_valid_height, POLL_HEIGHT, None, err_tx.clone());
+        let charlie_decided = wait_for_height(
+            &charlie,
+            last_valid_height,
+            POLL_HEIGHT,
+            None,
+            err_tx.clone(),
+        );
+        let alice_committed =
+            wait_for_block_exists(&alice, last_valid_height, POLL_HEIGHT, true, err_tx.clone());
+        let bob_committed =
+            wait_for_block_exists(&bob, last_valid_height, POLL_HEIGHT, true, err_tx.clone());
+        let charlie_committed = wait_for_block_exists(
+            &charlie,
+            last_valid_height,
+            POLL_HEIGHT,
+            true,
+            err_tx.clone(),
+        );
 
         utils::join_all(
             vec![
@@ -420,20 +516,42 @@ mod test {
                 charlie_committed,
             ],
             RUNUP_TIMEOUT,
+            err_rx,
         )
         .await
         .unwrap();
 
+        let (err_tx, err_rx) = mpsc::channel(3);
+
         // ..then wait a bit more for the next height, which should never become decided
         // upon because one of the nodes is sabotaging the consensus network (sending
         // outdated votes) and getting punished by the other two nodes.
-        let alice_decided = wait_for_height(&alice, last_valid_height + 1, POLL_HEIGHT, None);
-        let bob_decided = wait_for_height(&bob, last_valid_height + 1, POLL_HEIGHT, None);
-        let charlie_decided = wait_for_height(&charlie, last_valid_height + 1, POLL_HEIGHT, None);
+        let alice_decided = wait_for_height(
+            &alice,
+            last_valid_height + 1,
+            POLL_HEIGHT,
+            None,
+            err_tx.clone(),
+        );
+        let bob_decided = wait_for_height(
+            &bob,
+            last_valid_height + 1,
+            POLL_HEIGHT,
+            None,
+            err_tx.clone(),
+        );
+        let charlie_decided = wait_for_height(
+            &charlie,
+            last_valid_height + 1,
+            POLL_HEIGHT,
+            None,
+            err_tx.clone(),
+        );
 
         let err = utils::join_all(
             vec![alice_decided, bob_decided, charlie_decided],
             POLL_HEIGHT * 10,
+            err_rx,
         )
         .await
         .unwrap_err();
@@ -481,9 +599,19 @@ mod test {
         instance: &PathfinderInstance,
     ) -> anyhow::Result<Vec<ApplicationPeerScore>> {
         let rpc_port = instance.rpc_port_watch().1.borrow().1;
-        get_consensus_info(instance.name(), rpc_port)
-            .await
-            .context("Getting consensus info")
-            .map(|reply| reply.result.application_peer_scores)
+
+        match get_consensus_info(rpc_port).await? {
+            JsonRpcReply2::Success {
+                result:
+                    ConsensusInfoOutput {
+                        application_peer_scores,
+                        ..
+                    },
+                ..
+            } => Ok(application_peer_scores),
+            JsonRpcReply2::Error { _error, .. } => {
+                anyhow::bail!("{:#?}", serde_json::to_string(&_error));
+            }
+        }
     }
 }

@@ -1442,6 +1442,7 @@ fn verify_gateway_block_commitments_and_hash(
 
     let computed_transaction_commitment =
         calculate_transaction_commitment(&block.transactions, block.starknet_version)?;
+    let block_number = block.block_number;
 
     // Older blocks on mainnet don't carry a precalculated transaction commitment.
     if block.transaction_commitment == TransactionCommitment::ZERO {
@@ -1449,7 +1450,7 @@ fn verify_gateway_block_commitments_and_hash(
         // possible.
         header.transaction_commitment = computed_transaction_commitment;
     } else if computed_transaction_commitment != header.transaction_commitment {
-        tracing::debug!(%computed_transaction_commitment, actual_transaction_commitment=%header.transaction_commitment, "Transaction commitment mismatch");
+        tracing::debug!(%block_number, %computed_transaction_commitment, actual_transaction_commitment=%header.transaction_commitment, "Transaction commitment mismatch");
         return Ok(VerifyResult::Mismatch);
     }
 
@@ -1463,7 +1464,7 @@ fn verify_gateway_block_commitments_and_hash(
     // Older blocks on mainnet don't carry a precalculated receipt commitment.
     if let Some(receipt_commitment) = block.receipt_commitment {
         if computed_receipt_commitment != receipt_commitment {
-            tracing::debug!(%computed_receipt_commitment, actual_receipt_commitment=%receipt_commitment, "Receipt commitment mismatch");
+            tracing::debug!(%block_number, %computed_receipt_commitment, actual_receipt_commitment=%receipt_commitment, "Receipt commitment mismatch");
             return Ok(VerifyResult::Mismatch);
         }
     } else {
@@ -1477,6 +1478,7 @@ fn verify_gateway_block_commitments_and_hash(
         .iter()
         .map(|(receipt, events)| (receipt.transaction_hash, events.as_slice()))
         .collect::<Vec<_>>();
+
     let event_commitment =
         calculate_event_commitment(&events_with_tx_hashes, block.starknet_version)?;
 
@@ -1487,7 +1489,7 @@ fn verify_gateway_block_commitments_and_hash(
         // possible.
         header.event_commitment = event_commitment;
     } else if event_commitment != block.event_commitment {
-        tracing::debug!(computed_event_commitment=%event_commitment, actual_event_commitment=%block.event_commitment, "Event commitment mismatch");
+        tracing::debug!(%block_number, computed_event_commitment=%event_commitment, actual_event_commitment=%block.event_commitment, "Event commitment mismatch");
         return Ok(VerifyResult::Mismatch);
     }
 

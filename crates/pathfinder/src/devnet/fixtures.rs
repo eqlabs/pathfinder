@@ -90,10 +90,8 @@ pub const RESOURCE_BOUNDS: ResourceBounds = ResourceBounds {
     l1_data_gas: None,
 };
 
-pub const BLOCK_0_COMMITMENT: StateDiffCommitment =
+pub const GENESIS_COMMITMENT: StateDiffCommitment =
     state_diff_commitment!("0x010237DE0F720E51B3BD9DE011D575DE1BF4DCF0F4527CC258D9EFB699817544");
-pub const BLOCK_1_COMMITMENT: StateDiffCommitment =
-    state_diff_commitment!("0x046C66069A1C2C2FA09026C5E55A769C11A1BC2BE9CBDA43237EB4BA54C40C9F");
 
 #[cfg(test)]
 mod tests {
