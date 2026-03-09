@@ -20,7 +20,6 @@ pub fn predeclare(
 ) -> anyhow::Result<()> {
     let PrepocessedSierra {
         sierra_class_hash,
-
         sierra_class_ser,
         casm_hash_v2,
         casm,
