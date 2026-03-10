@@ -105,7 +105,10 @@ pub fn spawn(
     gas_price_provider: Option<L1GasPriceProvider>,
     // Does nothing in production builds. Used for integration testing only.
     inject_failure: Option<InjectFailureConfig>,
-) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+) -> (
+    tokio::task::JoinHandle<anyhow::Result<()>>,
+    ValidatorWorkerPool,
+) {
     let validator_address = config.my_validator_address;
     // Contains transaction batches and proposal finalizations that are
     // waiting for previous block to be committed before they can be executed.
@@ -113,6 +116,10 @@ pub fn spawn(
     // Create worker pool for concurrent transaction execution
     let worker_pool: ValidatorWorkerPool =
         ExecutorWorkerPool::<ConcurrentStateReader>::auto().get();
+    // This clone is used to be able to `join()` the worker pool, so that its
+    // threads don't panic when the `p2p_task` is cancelled.
+    let worker_pool_for_cleanup = worker_pool.clone();
+
     // Manages batch execution with concurrent execution support
     let mut batch_execution_manager = BatchExecutionManager::new(
         gas_price_provider.clone(),
@@ -130,7 +137,7 @@ pub fn spawn(
 
     let data_directory = data_directory.to_path_buf();
 
-    util::task::spawn(async move {
+    let jh = util::task::spawn(async move {
         let main_readonly_storage = main_storage.clone();
         let mut main_db_conn = main_storage
             .connection()
@@ -163,8 +170,8 @@ pub fn spawn(
                     match p2p_event {
                         Some(event) => P2PTaskEvent::P2PEvent(event),
                         None => {
-                            tracing::warn!("P2P event receiver was dropped, exiting P2P task");
-                            anyhow::bail!("P2P event receiver was dropped, exiting P2P task");
+                            tracing::warn!("P2P network event receiver was dropped, exiting P2P task");
+                            anyhow::bail!("P2P network event receiver was dropped, exiting P2P task");
                         }
                     }
                 }
@@ -503,6 +510,34 @@ pub fn spawn(
                         );
                         let stopwatch = std::time::Instant::now();
 
+                        // `None` is possible here if the node has been respawned when precommit for
+                        // this height has already been agreed by the quorum. We loose the finalized
+                        // block for the height, but the consensus engine should still be able to
+                        // decide on the block (thanks to WAL) and move on to the next height. The
+                        // actual missing block will be fetched by the sync task from the FGw.
+                        if let Some(block) = finalized_blocks.remove(&height_and_round) {
+                            decided_blocks.insert(
+                                height_and_round.height(),
+                                (height_and_round.round(), block),
+                            );
+                        }
+
+                        tracing::info!(
+                            "🖧  💾 {validator_address} Finalized and prepared block for \
+                             committing to the database at {height_and_round} in {} ms",
+                            stopwatch.elapsed().as_millis()
+                        );
+
+                        // Remove all finalized blocks for previous rounds at this height
+                        // because they will not be committed to the main DB.
+                        finalized_blocks.retain(|hnr, _| hnr.height() != height_and_round.height());
+
+                        tracing::debug!(
+                            "🖧  🗑️ {validator_address} removed my undecided finalized blocks for \
+                             height {}",
+                            height_and_round.height()
+                        );
+
                         // Clean up batch execution state for this height
                         batch_execution_manager.cleanup(&height_and_round);
                         tracing::debug!(
@@ -521,30 +556,21 @@ pub fn spawn(
                             height_and_round.height()
                         );
 
-                        // Remove all finalized blocks for previous rounds at this height because
-                        // they will not be committed to the main DB. Do not remove the block which
-                        // has just been marked as decided upon, and will be committed by the sync
-                        // task until it is confirmed that the block was indeed committed.
-                        finalized_blocks.retain(|hnr, _| {
-                            hnr.height() != height_and_round.height()
-                                || hnr.round() == height_and_round.round()
-                        });
-
                         tracing::debug!(
                             "🖧  🗑️ {validator_address} removed my undecided finalized blocks for \
                              height {}",
                             height_and_round.height()
                         );
 
+                        // There is a rare but still possible scenario where the FGw is ahead of
+                        // consensus for some nodes due to low network latency and their consensus
+                        // engines not notifying those nodes internally fast enough that the
+                        // executed proposal has been decided upon. In such case we can check if the
+                        // finalized block has already been committed to the main DB by the fgw sync
+                        // task without waiting for a commit confirmation which had already arrived
+                        // in the past.
                         let block_number = BlockNumber::new(height_and_round.height())
                             .context("height exceeds i64::MAX")?;
-
-                        // Consistency of our storage is more important than any irrational
-                        // scenarios that in theory cannot occur. In the abnormal case that
-                        // the FGw is actually ahead of consensus, we can check if the finalized
-                        // block has already been committed to the main DB without waiting for a
-                        // commit confirmation which had already arrived in the past and will result
-                        // in finalized blocks for last rounds piling up without ever being removed.
                         let is_already_committed =
                             main_db_tx.block_exists(BlockId::Number(block_number))?;
 
@@ -566,10 +592,11 @@ pub fn spawn(
                                 worker_pool.clone(),
                             )
                         } else {
-                            on_finalized_block_decided(
+                            // TODO integrate decided blocks into storage adapter
+                            // See issue: https://github.com/eqlabs/pathfinder/issues/3248
+                            /*
+                            _on_finalized_block_decided(
                                 &height_and_round,
-                                &value,
-                                validator_address,
                                 &validator_cache,
                                 deferred_executions.clone(),
                                 &mut batch_execution_manager,
@@ -579,6 +606,9 @@ pub fn spawn(
                                 gas_price_provider.clone(),
                                 worker_pool.clone(),
                             )
+                            */
+
+                            Ok(ComputationSuccess::Continue)
                         };
 
                         tracing::info!(
@@ -653,15 +683,17 @@ pub fn spawn(
                 }
             }
         }
-    })
+    });
+
+    (jh, worker_pool_for_cleanup)
 }
 
+// TODO integrate decided blocks into storage adapter
+// See issue: https://github.com/eqlabs/pathfinder/issues/3248
 /// Handle decide confirmation for a finalized block at given height and round.
 #[allow(clippy::too_many_arguments)]
-fn on_finalized_block_decided(
+fn _on_finalized_block_decided(
     height_and_round: &HeightAndRound,
-    decided_value: &ConsensusValue,
-    validator_address: ContractAddress,
     validator_cache: &ValidatorCache,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
@@ -671,34 +703,6 @@ fn on_finalized_block_decided(
     gas_price_provider: Option<L1GasPriceProvider>,
     worker_pool: ValidatorWorkerPool,
 ) -> Result<ComputationSuccess, anyhow::Error> {
-    // The block will not be in the `finalized_blocks` map if:
-    //  1) It has already been downloaded from the feeder gateway and committed to
-    //  the main DB by the sync task. This can happen in fast local testnets
-    //  where the FGw is sometimes serving blocks from the proposers faster than
-    //  the consensus engine internally notifies Pathfinder about a positive
-    //  decision on the executed proposal.
-    //  2) The node joined the network after the proposal was finalized, so it has
-    //  not received the proposal parts and the finalized block for this height
-    //  and round.
-    if let Some(finalized_block) = finalized_blocks.remove(height_and_round) {
-        assert_eq!(
-            decided_value.0 .0, finalized_block.header.state_diff_commitment.0,
-            "Proposal commitment mismatch"
-        );
-
-        tracing::debug!(
-            "🖧  🗑️ {} removed finalized block for last round at height {} after commit \
-             confirmation",
-            validator_address,
-            height_and_round.height()
-        );
-
-        decided_blocks.insert(
-            height_and_round.height(),
-            (height_and_round.round(), finalized_block),
-        );
-    }
-
     let exec_success = execute_deferred_for_next_height::<ProdTransactionMapper>(
         height_and_round.height(),
         validator_cache.clone(),
@@ -925,7 +929,7 @@ fn is_outdated_p2p_event(
             return Ok(true);
         }
     } else {
-        // Fallback to main database if no finalized blocks in consensus DB yet
+        // Fallback to main database if no finalized blocks in consensus cache yet
         let latest_committed = db_tx
             .block_number(BlockId::Latest)
             .context("Failed to query latest committed block for outdated event check")?;
@@ -1530,12 +1534,16 @@ mod tests {
     use std::path::PathBuf;
 
     use pathfinder_common::{BlockHash, ConsensusFinalizedL2Block, StateCommitment};
+    use pathfinder_compiler::ResourceLimits;
     use pathfinder_crypto::Felt;
     use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
     use pathfinder_storage::StorageBuilder;
 
     use super::*;
-    use crate::consensus::inner::dummy_proposal::{create, ProposalCreationConfig};
+    use crate::consensus::inner::dummy_proposal::{
+        create_with_invalid_l1_handler_transactions,
+        ProposalCreationConfig,
+    };
     use crate::validator::ValidatorWorkerPool;
 
     /// Creates a worker pool for tests.
@@ -1548,84 +1556,94 @@ mod tests {
     /// - rollback to batch `B`, `B > 0`
     #[test]
     fn regression_rollback_to_nonzero_batch_from_h10_onwards_clears_system_contract_0x1() {
-        let main_storage = StorageBuilder::in_tempdir().unwrap();
-        let worker_pool = create_test_worker_pool();
-        let mut batch_execution_manager = BatchExecutionManager::new(
-            None,
-            worker_pool.clone(),
-            pathfinder_compiler::ResourceLimits::recommended(),
-        );
-        let dummy_data_dir = PathBuf::new();
+        let worker_pool = {
+            let main_storage = StorageBuilder::in_tempdir().unwrap();
+            let worker_pool = create_test_worker_pool();
+            let mut batch_execution_manager =
+                BatchExecutionManager::new(None, worker_pool.clone(), ResourceLimits::for_test());
+            let dummy_data_dir = PathBuf::new();
 
-        let mut incoming_proposals = HashMap::new();
-        let mut finalized_blocks = HashMap::new();
-        let decided_blocks = HashMap::new();
-        let validator_cache = ValidatorCache::new();
-        let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
+            let mut incoming_proposals = HashMap::new();
+            let mut finalized_blocks = HashMap::new();
+            let decided_blocks = HashMap::new();
+            let validator_cache = ValidatorCache::new();
+            let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
 
-        for h in 0..20 {
-            let (proposal_parts, block) = create(
-                h,
-                Round::new(0),
-                ContractAddress::ZERO,
-                main_storage.clone(),
-                // The smallest config that reproduced the issue until it was fixed
-                Some(ProposalCreationConfig {
-                    num_batches: NonZeroUsize::new(3).unwrap(),
-                    batch_len: NonZeroUsize::new(1).unwrap(),
-                    num_executed_txns: NonZeroUsize::new(2).unwrap(),
-                }),
-            )
-            .unwrap();
+            let mut db_conn = main_storage.connection().unwrap();
 
-            for proposal_part in proposal_parts {
-                let is_fin = proposal_part.is_proposal_fin();
-                let proposal_commitment = handle_incoming_proposal_part::<ProdTransactionMapper>(
-                    ChainId::SEPOLIA_TESTNET,
-                    HeightAndRound::new(h, 0),
-                    proposal_part,
-                    &mut incoming_proposals,
-                    &mut finalized_blocks,
-                    &decided_blocks,
-                    validator_cache.clone(),
-                    deferred_executions.clone(),
+            for h in 0..20 {
+                let db_txn = db_conn.transaction().unwrap();
+                let (proposal_parts, block) = create_with_invalid_l1_handler_transactions(
+                    &db_txn,
+                    h,
+                    Round::new(0),
+                    ContractAddress::ZERO,
                     main_storage.clone(),
-                    &mut batch_execution_manager,
-                    &dummy_data_dir,
-                    None,
-                    None,
-                    worker_pool.clone(),
+                    ResourceLimits::for_test(),
+                    // The smallest config that reproduced the issue until it was fixed
+                    Some(ProposalCreationConfig {
+                        num_batches: NonZeroUsize::new(3).unwrap(),
+                        batch_len: NonZeroUsize::new(1).unwrap(),
+                        num_executed_txns: NonZeroUsize::new(2).unwrap(),
+                    }),
                 )
                 .unwrap();
-                if is_fin {
-                    assert_eq!(
-                        proposal_commitment.unwrap().proposal_commitment.0,
-                        block.header.state_diff_commitment.0,
-                        "height={h}"
-                    );
+
+                drop(db_txn);
+
+                for proposal_part in proposal_parts {
+                    let is_fin = proposal_part.is_proposal_fin();
+                    let proposal_commitment =
+                        handle_incoming_proposal_part::<ProdTransactionMapper>(
+                            ChainId::SEPOLIA_TESTNET,
+                            HeightAndRound::new(h, 0),
+                            proposal_part,
+                            &mut incoming_proposals,
+                            &mut finalized_blocks,
+                            &decided_blocks,
+                            validator_cache.clone(),
+                            deferred_executions.clone(),
+                            main_storage.clone(),
+                            &mut batch_execution_manager,
+                            &dummy_data_dir,
+                            None,
+                            None,
+                            worker_pool.clone(),
+                        )
+                        .unwrap();
+                    if is_fin {
+                        assert_eq!(
+                            proposal_commitment.unwrap().proposal_commitment.0,
+                            block.header.state_diff_commitment.0,
+                            "height={h}"
+                        );
+                    }
                 }
+
+                // Commit block at `h`, otherwise h+1 will be deferred
+                let main_db_tx = db_conn.transaction().unwrap();
+                let ConsensusFinalizedL2Block {
+                    header,
+                    state_update,
+                    ..
+                } = block;
+                // Fake trie updates - we don't care about actual trie state in this test
+                let header = header.compute_hash(
+                    BlockHash(Felt::from_u64(h.saturating_sub(1))),
+                    StateCommitment::ZERO,
+                    |_| BlockHash(Felt::from_u64(h)),
+                );
+
+                main_db_tx.insert_block_header(&header).unwrap();
+                main_db_tx
+                    .insert_state_update_data(header.number, &state_update)
+                    .unwrap();
+                main_db_tx.commit().unwrap();
             }
 
-            // Commit block at `h`, otherwise h+1 will be deferred
-            let mut main_db_conn = main_storage.connection().unwrap();
-            let main_db_tx = main_db_conn.transaction().unwrap();
-            let ConsensusFinalizedL2Block {
-                header,
-                state_update,
-                ..
-            } = block;
-            // Fake trie updates - we don't care about actual trie state in this test
-            let header = header.compute_hash(
-                BlockHash(Felt::from_u64(h.saturating_sub(1))),
-                StateCommitment::ZERO,
-                |_| BlockHash(Felt::from_u64(h)),
-            );
-
-            main_db_tx.insert_block_header(&header).unwrap();
-            main_db_tx
-                .insert_state_update_data(header.number, &state_update)
-                .unwrap();
-            main_db_tx.commit().unwrap();
-        }
+            worker_pool.clone()
+        };
+        let worker_pool = Arc::into_inner(worker_pool).unwrap();
+        worker_pool.join();
     }
 }

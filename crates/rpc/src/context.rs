@@ -250,7 +250,7 @@ impl RpcContext {
             submission_tracker_time_limit: NonZeroU64::new(300).unwrap(),
             submission_tracker_size_limit: NonZeroUsize::new(30000).unwrap(),
             block_trace_cache_size: NonZeroUsize::new(1).unwrap(),
-            compiler_resource_limits: pathfinder_compiler::ResourceLimits::recommended(),
+            compiler_resource_limits: pathfinder_compiler::ResourceLimits::for_test(),
         };
 
         let ethereum =

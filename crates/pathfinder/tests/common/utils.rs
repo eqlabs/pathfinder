@@ -7,11 +7,14 @@ use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
-use tempfile::Builder;
+use p2p_proto::common::Address;
+use pathfinder_crypto::Felt;
+use pathfinder_lib::devnet::{init_db, BootDb};
+use tempfile::TempDir;
 use tokio::task::{JoinError, JoinHandle};
 use tokio::time::sleep;
 
-use crate::common::pathfinder_instance::{Config, PathfinderInstance};
+use crate::common::pathfinder_instance::Config;
 
 /// This function does a few things at the beginning of an integration test:
 /// - sets up dumping stdout and stderr logs of Pathfinder instances to the
@@ -21,33 +24,49 @@ use crate::common::pathfinder_instance::{Config, PathfinderInstance};
 /// - verifies that the Pathfinder binary and fixtures directory exist,
 /// - starts an [`std::time::Instant`] to measure test setup duration,
 /// - returns configuration for the number of nodes specified and the instant.
-pub fn setup(num_instances: usize) -> anyhow::Result<(Vec<Config>, Instant)> {
-    PathfinderInstance::enable_log_dump(
-        std::env::var_os("PATHFINDER_CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL").is_some(),
-    );
-
+pub fn setup(
+    num_instances: usize,
+    init_devnet_db: bool,
+) -> anyhow::Result<(Vec<Config>, u64, Instant)> {
     let stopwatch = Instant::now();
 
     let pathfinder_bin = pathfinder_bin();
     anyhow::ensure!(pathfinder_bin.exists(), "Pathfinder binary not found");
     let fixture_dir = fixture_dir();
     anyhow::ensure!(fixture_dir.exists(), "Fixture directory not found");
-    let test_dir = Builder::new()
-        .disable_cleanup(true)
-        .tempdir()
-        .context("Creating temporary directory for test artifacts")?;
-    println!(
-        "Test artifacts will be stored in {}",
-        test_dir.path().display()
-    );
+
+    // CI uses `APP_TEMP_DIR`
+    let tmp_path = std::env::var("APP_TEMP_DIR")
+        .map(PathBuf::from)
+        .unwrap_or(std::env::temp_dir());
+    let parent_dir = tmp_path.join("consensus-integration-tests");
+    std::fs::create_dir_all(&parent_dir)
+        .context("Creating parent directory for all integration tests")?;
+
+    let test_dir = TempDir::new_in(&parent_dir)
+        .context("Creating temporary directory for test artifacts")?
+        .keep();
+    println!("Test artifacts will be stored in {}", test_dir.display());
+
+    let (boot_db, num_boot_blocks) = if init_devnet_db {
+        let BootDb {
+            db_file_path,
+            num_boot_blocks,
+        } = init_db(&test_dir, Address(Felt::ONE /* Alice */))?;
+        (Some(db_file_path), num_boot_blocks)
+    } else {
+        (None, 0)
+    };
 
     Ok((
         Config::for_set(
             num_instances,
             &pathfinder_bin,
             &fixture_dir,
-            test_dir.path(),
+            test_dir,
+            boot_db,
         ),
+        num_boot_blocks,
         stopwatch,
     ))
 }
@@ -74,8 +93,6 @@ pub async fn join_all(
 
         test_result = futures::future::join_all(rpc_client_handles) => {
             test_result.into_iter().collect::<Result<Vec<_>, JoinError>>().context("Joining all RPC client tasks")?;
-            // Don't dump logs if the test succeeded.
-            PathfinderInstance::enable_log_dump(false);
             Ok(())
         }
 
