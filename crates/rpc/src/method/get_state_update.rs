@@ -122,6 +122,9 @@ fn filter_state_update_contracts(
     state_update
         .contract_updates
         .retain(|addr, _| sought_addresses.contains(addr));
+    state_update
+        .system_contract_updates
+        .retain(|addr, _| sought_addresses.contains(addr));
 }
 
 #[cfg(test)]
