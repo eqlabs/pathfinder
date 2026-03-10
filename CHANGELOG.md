@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `compiler.max-cpu-time-secs` - maximum (active) CPU time for the compiler process, in seconds.
 - Pathfinder is now polling for DNS changes for the feeder gateway and gateway host name. By default the host names are resolved every 60s and the HTTP client connection pool is re-created to force reconnecting to the new address. The interval is configurable with the new `--gateway.check-for-dns-updates-interval` CLI option.
 - `starknet_getStorageAt` now returns the last update block (in addition to storage value) if the `INCLUDE_LAST_UPDATE_BLOCK` flag was set in its input.
+- `starknet_getStateUpdate` now supports an address filter.
 
 ## [0.22.0-beta.2] - 2026-02-16
 
