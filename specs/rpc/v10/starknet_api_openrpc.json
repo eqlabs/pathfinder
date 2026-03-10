@@ -168,6 +168,18 @@
             "title": "Block id",
             "$ref": "#/components/schemas/BLOCK_ID"
           }
+        },
+        {
+          "name": "contract_addresses",
+          "description": "If specified, only state diffs related to these contract addresses will be returned. Class declarations are unaffected by this filter. If omitted, the full state diff is returned.",
+          "required": false,
+          "schema": {
+            "title": "Contract addresses",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ADDRESS"
+            }
+          }
         }
       ],
       "result": {
@@ -225,15 +237,38 @@
             "title": "Block id",
             "$ref": "#/components/schemas/BLOCK_ID"
           }
+        },
+        {
+          "name": "response_flags",
+          "description": "Flags that control what additional fields are included in the response",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/STORAGE_RESPONSE_FLAG"
+            },
+            "default": []
+          }
         }
       ],
       "result": {
         "name": "result",
-        "description": "The value at the given key for the given contract. 0 if no value is found",
+        "description": "The value at the given key for the given contract. 0 if no value is found. When response_flags includes INCLUDE_LAST_UPDATE_BLOCK, the result is an object containing the value and the block number of the most recent storage update",
         "summary": "The value at the given key for the given contract.",
         "schema": {
-          "title": "Field element",
-          "$ref": "#/components/schemas/FELT"
+          "title": "Storage value result",
+          "oneOf": [
+            {
+              "title": "Field element",
+              "description": "The storage value as a plain field element, returned when no response flags are set",
+              "$ref": "#/components/schemas/FELT"
+            },
+            {
+              "title": "Storage result with metadata",
+              "description": "The storage value with additional metadata, returned when response flags are set",
+              "$ref": "#/components/schemas/STORAGE_RESULT"
+            }
+          ]
         }
       },
       "errors": [
@@ -3655,6 +3690,29 @@
         "type": "string",
         "enum": ["INCLUDE_PROOF_FACTS"],
         "description": "Flags that control what additional fields are included in transaction responses. INCLUDE_PROOF_FACTS: Include proof_facts field in the response (an empty array is returned if no proof facts exist for the transaction)."
+      },
+      "STORAGE_RESPONSE_FLAG": {
+        "type": "string",
+        "enum": ["INCLUDE_LAST_UPDATE_BLOCK"],
+        "description": "Flags that control what additional fields are included in storage responses. INCLUDE_LAST_UPDATE_BLOCK: changes the return type to include the block number of the most recent block that modified this storage slot."
+      },
+      "STORAGE_RESULT": {
+        "title": "Storage result with metadata",
+        "description": "The storage value along with additional metadata about the storage slot",
+        "type": "object",
+        "properties": {
+          "value": {
+            "title": "Value",
+            "description": "The value at the given key for the given contract. 0 if no value is found",
+            "$ref": "#/components/schemas/FELT"
+          },
+          "last_update_block": {
+            "title": "Last update block",
+            "description": "The block number of the most recent block that included a modification to this storage slot. 0 if the storage slot has never been modified (i.e. the value is 0)",
+            "$ref": "#/components/schemas/BLOCK_NUMBER"
+          }
+        },
+        "required": ["value", "last_update_block"]
       },
       "PRICE_UNIT_WEI": {
         "title": "Price unit wei",
