@@ -437,6 +437,7 @@ pub mod tests {
         BlockHash,
         BlockHeader,
         BlockId,
+        BlockNumber,
         ClassHash,
         ConsensusFinalizedL2Block,
         ContractAddress,
@@ -474,7 +475,19 @@ pub mod tests {
         let mut db_conn = storage.connection().unwrap();
         let db_txn = db_conn.transaction().unwrap();
 
+        let block_0_state_diff_commitment = db_txn
+            .state_diff_commitment(BlockNumber::GENESIS)
+            .unwrap()
+            .unwrap();
+        assert_eq!(block_0_state_diff_commitment, fixtures::BLOCK_0_COMMITMENT);
+
         let block_1_header = db_txn.block_header(BlockId::Latest).unwrap().unwrap();
+
+        assert_eq!(
+            block_1_header.state_diff_commitment,
+            fixtures::BLOCK_1_COMMITMENT
+        );
+
         let account = Account::from_storage(&db_txn).unwrap();
         drop(db_txn);
 
