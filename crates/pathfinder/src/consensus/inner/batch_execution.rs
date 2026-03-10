@@ -434,7 +434,7 @@ mod tests {
         let mut batch_execution_manager = BatchExecutionManager::new(
             None,
             worker_pool,
-            pathfinder_compiler::ResourceLimits::recommended(),
+            pathfinder_compiler::ResourceLimits::for_test(),
         );
         let height_and_round = HeightAndRound::new(2, 1);
 
@@ -549,7 +549,7 @@ mod tests {
         let mut batch_execution_manager = BatchExecutionManager::new(
             None,
             worker_pool,
-            pathfinder_compiler::ResourceLimits::recommended(),
+            pathfinder_compiler::ResourceLimits::for_test(),
         );
 
         let decided_blocks = std::collections::HashMap::new();
@@ -663,7 +663,7 @@ mod tests {
         let mut batch_execution_manager = BatchExecutionManager::new(
             None,
             worker_pool.clone(),
-            pathfinder_compiler::ResourceLimits::recommended(),
+            pathfinder_compiler::ResourceLimits::for_test(),
         );
 
         let decided_blocks = std::collections::HashMap::new();
@@ -811,7 +811,7 @@ mod tests {
         let mut batch_execution_manager = BatchExecutionManager::new(
             None,
             worker_pool,
-            pathfinder_compiler::ResourceLimits::recommended(),
+            pathfinder_compiler::ResourceLimits::for_test(),
         );
         let height_and_round = HeightAndRound::new(2, 1);
 
@@ -938,7 +938,7 @@ mod tests {
         let mut batch_execution_manager = BatchExecutionManager::new(
             None,
             worker_pool,
-            pathfinder_compiler::ResourceLimits::recommended(),
+            pathfinder_compiler::ResourceLimits::for_test(),
         );
         let height_and_round = HeightAndRound::new(2, 1);
 
@@ -991,7 +991,7 @@ mod tests {
         let mut batch_execution_manager = BatchExecutionManager::new(
             None,
             worker_pool,
-            pathfinder_compiler::ResourceLimits::recommended(),
+            pathfinder_compiler::ResourceLimits::for_test(),
         );
         let height_and_round = HeightAndRound::new(2, 1);
 
@@ -1048,7 +1048,7 @@ mod tests {
         let mut batch_execution_manager = BatchExecutionManager::new(
             None,
             worker_pool,
-            pathfinder_compiler::ResourceLimits::recommended(),
+            pathfinder_compiler::ResourceLimits::for_test(),
         );
         let height_and_round = HeightAndRound::new(2, 1);
 

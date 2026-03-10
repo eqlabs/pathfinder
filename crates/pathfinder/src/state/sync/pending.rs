@@ -550,7 +550,7 @@ mod tests {
                 StorageBuilder::in_memory().unwrap(),
                 latest,
                 current,
-                pathfinder_compiler::ResourceLimits::recommended(),
+                pathfinder_compiler::ResourceLimits::for_test(),
                 false,
             )
             .await
@@ -624,7 +624,7 @@ mod tests {
                 StorageBuilder::in_memory().unwrap(),
                 rx_latest,
                 rx_current,
-                pathfinder_compiler::ResourceLimits::recommended(),
+                pathfinder_compiler::ResourceLimits::for_test(),
                 false,
             )
             .await
@@ -679,7 +679,7 @@ mod tests {
                 StorageBuilder::in_memory().unwrap(),
                 rx_latest,
                 rx_current,
-                pathfinder_compiler::ResourceLimits::recommended(),
+                pathfinder_compiler::ResourceLimits::for_test(),
                 false,
             )
             .await
@@ -779,7 +779,7 @@ mod tests {
                 StorageBuilder::in_memory().unwrap(),
                 rx_latest,
                 rx_current,
-                pathfinder_compiler::ResourceLimits::recommended(),
+                pathfinder_compiler::ResourceLimits::for_test(),
                 false,
             )
             .await
@@ -865,7 +865,7 @@ mod tests {
                 &StorageBuilder::in_memory().unwrap(),
                 &rx_latest,
                 &rx_current,
-                pathfinder_compiler::ResourceLimits::recommended(),
+                pathfinder_compiler::ResourceLimits::for_test(),
                 false,
             )
             .await
@@ -955,7 +955,7 @@ mod tests {
                 &StorageBuilder::in_memory().unwrap(),
                 &rx_latest,
                 &rx_current,
-                pathfinder_compiler::ResourceLimits::recommended(),
+                pathfinder_compiler::ResourceLimits::for_test(),
                 false,
             )
             .await

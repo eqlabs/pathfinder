@@ -41,6 +41,19 @@ impl ResourceLimits {
         }
     }
 
+    /// Create a new [`ResourceLimits`] with the limits suitable for executing
+    /// many tests in parallel.
+    pub fn for_test() -> Self {
+        let cpu_time = std::thread::available_parallelism()
+            .map(|n| n.get() as u64)
+            .unwrap_or(Self::RECOMMENDED_CPU_TIME_LIMIT);
+
+        Self {
+            memory_usage: Self::RECOMMENDED_MEMORY_USAGE_LIMIT,
+            cpu_time,
+        }
+    }
+
     /// Create a new [`ResourceLimits`] with custom limits.
     pub fn new(memory_usage: u64, cpu_time: u64) -> Self {
         Self {
