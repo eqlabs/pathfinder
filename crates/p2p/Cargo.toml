@@ -16,23 +16,7 @@ flate2 = { workspace = true }
 futures = { workspace = true }
 governor = { workspace = true }
 ipnet = { workspace = true }
-libp2p = { workspace = true, features = [
-    "autonat",
-    "dcutr",
-    "dns",
-    "identify",
-    "gossipsub",
-    "kad",
-    "macros",
-    "noise",
-    "ping",
-    "relay",
-    "request-response",
-    "serde",
-    "tcp",
-    "tokio",
-    "yamux",
-] }
+libp2p = { workspace = true, features = ["autonat", "dcutr", "dns", "identify", "gossipsub", "kad", "macros", "noise", "ping", "relay", "request-response", "serde", "tcp", "tokio", "yamux"] }
 p2p_proto = { path = "../p2p_proto" }
 p2p_stream = { path = "../p2p_stream" }
 pathfinder-common = { path = "../common" }

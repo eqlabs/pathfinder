@@ -10,13 +10,13 @@ use std::collections::{HashMap, HashSet};
 use anyhow::Context;
 use p2p::consensus::HeightAndRound;
 use p2p_proto::consensus as proto_consensus;
-use pathfinder_common::ConsensusFinalizedL2Block;
 use pathfinder_storage::Storage;
 
 use crate::consensus::ProposalHandlingError;
 use crate::gas_price::L1GasPriceProvider;
 use crate::validator::{
     should_defer_validation,
+    DecidedBlock,
     TransactionExt,
     ValidatorStage,
     ValidatorTransactionBatchStage,
@@ -99,7 +99,7 @@ impl BatchExecutionManager {
         transactions: Vec<proto_consensus::Transaction>,
         validator_stage: ValidatorStage,
         main_db: Storage,
-        decided_blocks: &HashMap<u64, (u32, ConsensusFinalizedL2Block)>,
+        decided_blocks: &HashMap<u64, DecidedBlock>,
         deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
     ) -> Result<ValidatorStage, ProposalHandlingError> {
         let mut main_db_conn = main_db
@@ -352,11 +352,12 @@ impl Default for ProposalCommitmentWithOrigin {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use p2p::consensus::HeightAndRound;
     use pathfinder_common::prelude::*;
     use pathfinder_common::BlockId;
     use pathfinder_crypto::Felt;
-    use pathfinder_executor::types::BlockInfo;
     use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
     use pathfinder_storage::StorageBuilder;
 
@@ -399,21 +400,30 @@ mod tests {
         Ok(())
     }
 
-    /// Helper function to create BlockInfo for tests
-    fn create_test_block_info(number: u64) -> BlockInfo {
-        BlockInfo {
-            number: BlockNumber::new_or_panic(number),
-            timestamp: BlockTimestamp::new_or_panic(1000),
-            sequencer_address: SequencerAddress::ZERO,
-            l1_da_mode: L1DataAvailabilityMode::Calldata,
-            eth_l1_gas_price: GasPrice::ZERO,
-            strk_l1_gas_price: GasPrice::ZERO,
-            eth_l1_data_gas_price: GasPrice::ZERO,
-            strk_l1_data_gas_price: GasPrice::ZERO,
-            strk_l2_gas_price: GasPrice::ZERO,
-            eth_l2_gas_price: GasPrice::ZERO,
-            starknet_version: StarknetVersion::new(0, 14, 0, 0),
-        }
+    fn create_test_proposal(
+        height: u64,
+    ) -> (
+        p2p_proto::consensus::ProposalInit,
+        p2p_proto::consensus::BlockInfo,
+    ) {
+        let init = p2p_proto::consensus::ProposalInit {
+            height,
+            round: 1,
+            valid_round: None,
+            proposer: p2p_proto::common::Address::default(),
+        };
+        let block_info = p2p_proto::consensus::BlockInfo {
+            height,
+            timestamp: 1000,
+            builder: p2p_proto::common::Address::default(),
+            l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
+            l2_gas_price_fri: 0,
+            l1_gas_price_wei: 0,
+            l1_data_gas_price_wei: 0,
+            l1_gas_price_fri: 0,
+            l1_data_gas_price_fri: 0,
+        };
+        (init, block_info)
     }
 
     /// Test that BatchExecutionManager correctly tracks execution state and
@@ -425,12 +435,11 @@ mod tests {
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
-        let block_info = create_test_block_info(1);
+        let (proposal_init, block_info) = create_test_proposal(1);
 
-        let mut validator_stage =
-            ValidatorTransactionBatchStage::new(chain_id, block_info, storage, worker_pool.clone())
-                .expect("Failed to create validator stage");
-
+        let mut validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
+            .and_then(|v| v.skip_validation(block_info, storage, Arc::clone(&worker_pool)))
+            .expect("Failed to create validator stage");
         let mut batch_execution_manager = BatchExecutionManager::new(
             None,
             worker_pool,
@@ -752,15 +761,14 @@ mod tests {
         // with the blockifier's ConcurrentTransactionExecutor and shared worker pools.
         let worker_pool_2 = create_test_worker_pool();
         let height_and_round_2 = HeightAndRound::new(3, 1);
-        let validator_stage_2 = ValidatorTransactionBatchStage::new(
-            chain_id,
-            create_test_block_info(2),
-            storage.clone(),
-            worker_pool_2,
-        )
-        .map(Box::new)
-        .map(ValidatorStage::TransactionBatch)
-        .expect("Failed to create validator stage");
+        let (proposal_init, block_info) = create_test_proposal(height_and_round_2.height());
+        let validator_stage_2 = ValidatorBlockInfoStage::new(chain_id, proposal_init)
+            .and_then(|validator| {
+                validator.skip_validation(block_info, storage.clone(), worker_pool_2.clone())
+            })
+            .map(Box::new)
+            .map(ValidatorStage::TransactionBatch)
+            .expect("Failed to create validator stage");
 
         create_committed_parent_block(&storage, 2).expect("Failed to create parent block");
 
@@ -798,15 +806,11 @@ mod tests {
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
-        let block_info = create_test_block_info(1);
+        let (proposal_init, block_info) = create_test_proposal(1);
 
-        let mut validator_stage = ValidatorTransactionBatchStage::new(
-            chain_id,
-            block_info,
-            storage.clone(),
-            worker_pool.clone(),
-        )
-        .expect("Failed to create validator stage");
+        let mut validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
+            .and_then(|v| v.skip_validation(block_info, storage, Arc::clone(&worker_pool)))
+            .expect("Failed to create validator stage");
 
         let mut batch_execution_manager = BatchExecutionManager::new(
             None,
@@ -867,13 +871,10 @@ mod tests {
 
         // Re-execute batches to get back to 14 transactions
         let storage_2 = StorageBuilder::in_tempdir().expect("Failed to create temp database");
-        let mut validator_stage_2 = ValidatorTransactionBatchStage::new(
-            chain_id,
-            create_test_block_info(1),
-            storage_2,
-            worker_pool_2,
-        )
-        .expect("Failed to create validator stage");
+        let (proposal_init, block_info) = create_test_proposal(1);
+        let mut validator_stage_2 = ValidatorBlockInfoStage::new(chain_id, proposal_init)
+            .and_then(|validator| validator.skip_validation(block_info, storage_2, worker_pool_2))
+            .expect("Failed to create validator stage");
 
         let batch1_2 = create_transaction_batch(0, 0, 3, chain_id);
         let batch2_2 = create_transaction_batch(0, 3, 7, chain_id);
@@ -929,11 +930,11 @@ mod tests {
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
-        let block_info = create_test_block_info(1);
+        let (proposal_init, block_info) = create_test_proposal(1);
 
-        let mut validator_stage =
-            ValidatorTransactionBatchStage::new(chain_id, block_info, storage, worker_pool.clone())
-                .expect("Failed to create validator stage");
+        let mut validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
+            .and_then(|v| v.skip_validation(block_info, storage, Arc::clone(&worker_pool)))
+            .expect("Failed to create validator stage");
 
         let mut batch_execution_manager = BatchExecutionManager::new(
             None,
@@ -982,11 +983,11 @@ mod tests {
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
-        let block_info = create_test_block_info(1);
+        let (proposal_init, block_info) = create_test_proposal(1);
 
-        let mut validator_stage =
-            ValidatorTransactionBatchStage::new(chain_id, block_info, storage, worker_pool.clone())
-                .expect("Failed to create validator stage");
+        let mut validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
+            .and_then(|v| v.skip_validation(block_info, storage, Arc::clone(&worker_pool)))
+            .expect("Failed to create validator stage");
 
         let mut batch_execution_manager = BatchExecutionManager::new(
             None,
@@ -1039,11 +1040,11 @@ mod tests {
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
-        let block_info = create_test_block_info(1);
+        let (proposal_init, block_info) = create_test_proposal(1);
 
-        let mut validator_stage =
-            ValidatorTransactionBatchStage::new(chain_id, block_info, storage, worker_pool.clone())
-                .expect("Failed to create validator stage");
+        let mut validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
+            .and_then(|v| v.skip_validation(block_info, storage, Arc::clone(&worker_pool)))
+            .expect("Failed to create validator stage");
 
         let mut batch_execution_manager = BatchExecutionManager::new(
             None,

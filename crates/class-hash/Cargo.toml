@@ -21,10 +21,7 @@ pathfinder-common = { version = "0.22.0-beta.3", path = "../common" }
 pathfinder-crypto = { version = "0.22.0-beta.3", path = "../crypto" }
 primitive-types = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true, features = [
-    "arbitrary_precision",
-    "raw_value",
-] }
+serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
 serde_with = { workspace = true }
 sha3 = { workspace = true }
 thiserror = { workspace = true }
