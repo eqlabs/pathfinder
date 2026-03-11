@@ -61,6 +61,6 @@ pub mod penalty {
     ///
     /// <https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.1.md?plain=1#L236-L237>
     const fn penalty(err_count: u16) -> f64 {
-        (INITIAL_APPLICATION_SCORE - GRAYLIST_THRESHOLD) / APP_SPECIFIC_WEIGHT / (err_count as f64)
+        (GRAYLIST_THRESHOLD - INITIAL_APPLICATION_SCORE) / APP_SPECIFIC_WEIGHT / (err_count as f64)
     }
 }
