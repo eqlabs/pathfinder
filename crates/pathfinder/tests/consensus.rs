@@ -22,6 +22,7 @@ mod test {
     use std::time::Duration;
     use std::vec;
 
+    use anyhow::Context;
     use futures::StreamExt;
     use pathfinder_lib::config::integration_testing::{InjectFailureConfig, InjectFailureTrigger};
     use rstest::rstest;
@@ -33,6 +34,7 @@ mod test {
         get_consensus_info,
         wait_for_block_exists,
         wait_for_height,
+        ApplicationPeerScore,
     };
     use crate::common::utils;
 
@@ -349,7 +351,7 @@ mod test {
     /// exit but instead forcing nodes to send outdated votes which leads to
     /// them being punished by their peers (via peer score penalties).
     #[tokio::test]
-    async fn consensus_3_nodes_outdated_votes_lead_to_peer_score_changes() {
+    async fn consensus_3_nodes_outdated_votes_lead_to_peer_score_penalty() {
         const NUM_NODES: usize = 3;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
         const RUNUP_TIMEOUT: Duration = Duration::from_secs(60);
@@ -437,15 +439,17 @@ mod test {
         .unwrap_err();
         assert!(err.to_string().contains("Test timed out"));
 
-        let alice_peer_score_changes = get_peer_score_changes(&alice).await.unwrap();
-        let bob_peer_score_changes = get_peer_score_changes(&bob).await.unwrap();
-        let charlie_peer_score_changes = get_peer_score_changes(&charlie).await.unwrap();
+        let alice_peer_scores = get_peer_scores(&alice).await.unwrap();
+        let bob_peer_scores = get_peer_scores(&bob).await.unwrap();
+        let charlie_peer_scores = get_peer_scores(&charlie).await.unwrap();
+
+        let peer_score_penalty_applied = alice_peer_scores.iter().any(|score| score.score < 0.0)
+            || bob_peer_scores.iter().any(|score| score.score < 0.0)
+            || charlie_peer_scores.iter().any(|score| score.score < 0.0);
 
         assert!(
-            alice_peer_score_changes > 0
-                || bob_peer_score_changes > 0
-                || charlie_peer_score_changes > 0,
-            "At least one node should have changed peer scores after punishing the sabotaging node"
+            peer_score_penalty_applied,
+            "At least one node should have applied a peer score penalty for outdated votes"
         );
 
         let alice_artifacts = get_cached_artifacts_info(&alice, last_valid_height)
@@ -473,10 +477,13 @@ mod test {
         );
     }
 
-    async fn get_peer_score_changes(instance: &PathfinderInstance) -> anyhow::Result<u64> {
+    async fn get_peer_scores(
+        instance: &PathfinderInstance,
+    ) -> anyhow::Result<Vec<ApplicationPeerScore>> {
         let rpc_port = instance.rpc_port_watch().1.borrow().1;
-        let reply = get_consensus_info(instance.name(), rpc_port).await?;
-        let peer_score_changes = reply.result.peer_score_change_counter.unwrap_or_default();
-        Ok(peer_score_changes)
+        get_consensus_info(instance.name(), rpc_port)
+            .await
+            .context("Getting consensus info")
+            .map(|reply| reply.result.application_peer_scores)
     }
 }

@@ -241,6 +241,18 @@ mod numerics {
             serializer.serialize_u64(self.get())
         }
     }
+
+    impl SerializeForVersion for f32 {
+        fn serialize(&self, serializer: Serializer) -> Result<dto::Ok, dto::Error> {
+            serializer.serialize_f32(*self)
+        }
+    }
+
+    impl SerializeForVersion for f64 {
+        fn serialize(&self, serializer: Serializer) -> Result<dto::Ok, dto::Error> {
+            serializer.serialize_f64(*self)
+        }
+    }
 }
 
 mod strings {

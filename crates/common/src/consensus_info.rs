@@ -8,8 +8,11 @@ use crate::{BlockNumber, ContractAddress, ProposalCommitment};
 pub struct ConsensusInfo {
     /// Highest decided height and value.
     pub highest_decision: Option<Decision>,
-    /// Track the number of times peer scores were changed.
-    pub peer_score_change_counter: u64,
+    /// Application-specific peer scores, keyed by base58-encoded peer ID.
+    ///
+    /// A peer score will only appear in the map if it has changed from the
+    /// initial value.
+    pub application_peer_scores: BTreeMap<String, f64>,
     /// Track the state of cached proposals and finalized blocks.
     pub cached: BTreeMap<u64, CachedAtHeight>,
 }

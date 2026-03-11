@@ -646,7 +646,10 @@ pub fn spawn(
                     p2p_client.change_peer_score(peer_id, delta);
 
                     info_watch_tx.send_modify(|info| {
-                        info.peer_score_change_counter += 1;
+                        info.application_peer_scores
+                            .entry(peer_id.to_base58())
+                            .and_modify(|score| *score += delta)
+                            .or_insert(delta);
                     });
                 }
                 ComputationSuccess::IncomingProposalCommitment(height_and_round, commitment) => {

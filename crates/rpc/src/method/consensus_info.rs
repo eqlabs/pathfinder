@@ -4,10 +4,10 @@ use pathfinder_common::consensus_info::{CachedAtHeight, Decision, FinalizedBlock
 
 use crate::context::RpcContext;
 
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq)]
 pub struct Output {
     highest_decided: Option<Decision>,
-    peer_score_change_counter: Option<u64>,
+    application_peer_scores: BTreeMap<String, f64>,
     cached: BTreeMap<u64, CachedAtHeight>,
 }
 
@@ -19,7 +19,7 @@ pub async fn consensus_info(context: RpcContext) -> Result<Output, Error> {
 
         Output {
             highest_decided: info.highest_decision,
-            peer_score_change_counter: Some(info.peer_score_change_counter),
+            application_peer_scores: info.application_peer_scores,
             cached: info.cached,
         }
     } else {
@@ -34,8 +34,11 @@ impl crate::dto::SerializeForVersion for Output {
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_optional("highest_decided", self.highest_decided.as_ref())?;
-        serializer
-            .serialize_optional("peer_score_change_counter", self.peer_score_change_counter)?;
+        serializer.serialize_iter(
+            "application_peer_scores",
+            self.application_peer_scores.len(),
+            &mut self.application_peer_scores.iter(),
+        )?;
         serializer.serialize_iter("cached", self.cached.len(), &mut self.cached.iter())?;
         serializer.end()
     }
@@ -50,6 +53,18 @@ impl crate::dto::SerializeForVersion for &Decision {
         serializer.serialize_field("height", &self.height)?;
         serializer.serialize_field("round", &self.round)?;
         serializer.serialize_field("value", &self.value)?;
+        serializer.end()
+    }
+}
+
+impl crate::dto::SerializeForVersion for (&String, &f64) {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("peer_id", self.0)?;
+        serializer.serialize_field("score", self.1)?;
         serializer.end()
     }
 }

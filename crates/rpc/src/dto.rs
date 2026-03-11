@@ -101,6 +101,16 @@ impl Serializer {
         BaseSerializer {}.serialize_u128(value)
     }
 
+    pub fn serialize_f32(self, value: f32) -> Result<Ok, Error> {
+        use serde::Serializer;
+        BaseSerializer {}.serialize_f32(value)
+    }
+
+    pub fn serialize_f64(self, value: f64) -> Result<Ok, Error> {
+        use serde::Serializer;
+        BaseSerializer {}.serialize_f64(value)
+    }
+
     pub fn serialize_bool(self, value: bool) -> Result<Ok, Error> {
         use serde::Serializer;
         BaseSerializer {}.serialize_bool(value)

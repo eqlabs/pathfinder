@@ -241,8 +241,15 @@ pub struct JsonRpcReply<T> {
 #[derive(Debug, Deserialize)]
 pub struct Output {
     pub highest_decided: Option<consensus_info::Decision>,
-    pub peer_score_change_counter: Option<u64>,
+    pub application_peer_scores: Vec<ApplicationPeerScore>,
     pub cached: Vec<CachedItem>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ApplicationPeerScore {
+    #[serde(alias = "peer_id")]
+    pub _peer_id: String,
+    pub score: f64,
 }
 
 #[derive(Debug, Deserialize)]
