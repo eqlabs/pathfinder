@@ -49,10 +49,7 @@ axum = "0.8.4"
 base64 = "0.22.1"
 bincode = "2.0.1"
 bitvec = "1.0.1"
-blockifier = { version = "0.18.0-dev.0", features = [
-    "node_api",
-    "reexecution",
-] }
+blockifier = { version = "0.18.0-dev.0", features = ["node_api", "reexecution"] }
 bytes = "1.4.0"
 cached = "0.44.0"
 # This one needs to match the version used by blockifier
@@ -109,13 +106,7 @@ r2d2_sqlite = "0.31.0"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
 rayon = "1.11.0"
-reqwest = { version = "0.12.23", default-features = false, features = [
-    "http2",
-    "rustls-tls-native-roots",
-    "charset",
-    "gzip",
-    "deflate",
-] }
+reqwest = { version = "0.12.23", default-features = false, features = ["http2", "rustls-tls-native-roots", "charset", "gzip", "deflate"] }
 rstest = "0.18.2"
 rusqlite = "0.37.0"
 rustls = "0.23.35"

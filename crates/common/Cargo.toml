@@ -34,10 +34,7 @@ pathfinder-tagged-debug-derive = { version = "0.1.0", path = "../tagged-debug-de
 primitive-types = { workspace = true, features = ["serde"] }
 rand = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true, features = [
-    "arbitrary_precision",
-    "raw_value",
-] }
+serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
 serde_with = { workspace = true }
 sha3 = { workspace = true }
 thiserror = { workspace = true }

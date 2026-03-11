@@ -35,10 +35,7 @@ pathfinder-version = { path = "../version" }
 primitive-types = { workspace = true, features = ["serde"] }
 reqwest = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true, features = [
-    "arbitrary_precision",
-    "raw_value",
-] }
+serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
 serde_with = { workspace = true }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
@@ -48,13 +45,7 @@ starknet_api = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "process"] }
 tower = { workspace = true, features = ["filter", "util", "limit", "timeout"] }
-tower-http = { workspace = true, features = [
-    "cors",
-    "limit",
-    "request-id",
-    "trace",
-    "util",
-] }
+tower-http = { workspace = true, features = ["cors", "limit", "request-id", "trace", "util"] }
 tracing = { workspace = true }
 util = { path = "../util" }
 zstd = { workspace = true }
@@ -68,9 +59,7 @@ flate2 = { workspace = true }
 gateway-test-utils = { path = "../gateway-test-utils" }
 hex = { workspace = true }
 pathfinder-crypto = { path = "../crypto" }
-pathfinder-storage = { path = "../storage", features = [
-    "small_aggregate_filters",
-] }
+pathfinder-storage = { path = "../storage", features = ["small_aggregate_filters"] }
 pretty_assertions_sorted = { workspace = true }
 rayon = { workspace = true }
 rstest = { workspace = true }

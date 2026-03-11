@@ -3,7 +3,6 @@
 //! This module provides utilities for creating realistic test transactions
 //! and testing consensus scenarios with actual transaction execution.
 
-use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -323,17 +322,11 @@ pub(crate) fn create_with_invalid_l1_handler_transactions(
     };
 
     parts.push(ProposalPart::BlockInfo(block_info.clone()));
+
     let validator = ValidatorBlockInfoStage::new(ChainId::SEPOLIA_TESTNET, proposal_init)?;
     let worker_pool = ExecutorWorkerPool::<ConcurrentStateReader>::new(1).get();
-    let mut validator = validator.validate_block_info(
-        block_info.clone(),
-        main_storage,
-        // This is fine because `wait_for_parent_committed` is called first
-        &HashMap::new(),
-        None,
-        None,
-        worker_pool.clone(),
-    )?;
+    let mut validator =
+        validator.skip_validation(block_info.clone(), main_storage, worker_pool.clone())?;
 
     let num_executed_txns = config
         .as_ref()

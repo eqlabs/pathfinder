@@ -62,10 +62,7 @@ reqwest = { workspace = true }
 rustls = { workspace = true }
 semver = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true, features = [
-    "arbitrary_precision",
-    "raw_value",
-] }
+serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
 sha3 = { workspace = true }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
@@ -76,11 +73,7 @@ time = { workspace = true, features = ["macros"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
 tokio-stream = { workspace = true, features = ["sync"] }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = [
-    "env-filter",
-    "time",
-    "ansi",
-] }
+tracing-subscriber = { workspace = true, features = ["env-filter", "time", "ansi"] }
 url = { workspace = true }
 util = { path = "../util" }
 zeroize = { workspace = true }
@@ -95,9 +88,7 @@ pathfinder-common = { path = "../common", features = ["full-serde"] }
 pathfinder-compiler = { path = "../compiler" }
 pathfinder-executor = { path = "../executor" }
 pathfinder-rpc = { path = "../rpc" }
-pathfinder-storage = { path = "../storage", features = [
-    "small_aggregate_filters",
-] }
+pathfinder-storage = { path = "../storage", features = ["small_aggregate_filters"] }
 pretty_assertions_sorted = { workspace = true }
 proptest = { workspace = true }
 rstest = { workspace = true }
