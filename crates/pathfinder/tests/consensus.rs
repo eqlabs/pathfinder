@@ -36,7 +36,7 @@ mod test {
         wait_for_height,
         ApplicationPeerScore,
         ConsensusInfoOutput,
-        JsonRpcReply2,
+        JsonRpcReply,
     };
     use crate::common::utils;
 
@@ -601,7 +601,7 @@ mod test {
         let rpc_port = instance.rpc_port_watch().1.borrow().1;
 
         match get_consensus_info(rpc_port).await? {
-            JsonRpcReply2::Success {
+            JsonRpcReply::Success {
                 result:
                     ConsensusInfoOutput {
                         application_peer_scores,
@@ -609,7 +609,7 @@ mod test {
                     },
                 ..
             } => Ok(application_peer_scores),
-            JsonRpcReply2::Error { _error, .. } => {
+            JsonRpcReply::Error { _error, .. } => {
                 anyhow::bail!("{:#?}", serde_json::to_string(&_error));
             }
         }

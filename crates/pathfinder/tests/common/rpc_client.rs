@@ -205,7 +205,7 @@ enum HandleReplyResult<T> {
 }
 
 async fn handle_reply<T>(
-    reply: Result<JsonRpcReply2<T>, reqwest::Error>,
+    reply: Result<JsonRpcReply<T>, reqwest::Error>,
     name: &'static str,
     pid: u32,
     rpc_port: u16,
@@ -213,8 +213,8 @@ async fn handle_reply<T>(
     error_tx: mpsc::Sender<anyhow::Error>,
 ) -> HandleReplyResult<T> {
     match reply {
-        Ok(JsonRpcReply2::Success { result, .. }) => HandleReplyResult::Process(result),
-        Ok(JsonRpcReply2::Error { .. }) => {
+        Ok(JsonRpcReply::Success { result, .. }) => HandleReplyResult::Process(result),
+        Ok(JsonRpcReply::Error { .. }) => {
             println!(
                 "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} {artifact_name} \
                  unavailable yet"
@@ -244,7 +244,7 @@ async fn handle_reply<T>(
 
 pub async fn get_consensus_info(
     rpc_port: u16,
-) -> Result<JsonRpcReply2<ConsensusInfoOutput>, reqwest::Error> {
+) -> Result<JsonRpcReply<ConsensusInfoOutput>, reqwest::Error> {
     reqwest::Client::new()
         .post(format!(
             "http://127.0.0.1:{rpc_port}/rpc/pathfinder/unstable"
@@ -253,7 +253,7 @@ pub async fn get_consensus_info(
         .header("Content-Type", "application/json")
         .send()
         .await?
-        .json::<JsonRpcReply2<ConsensusInfoOutput>>()
+        .json::<JsonRpcReply<ConsensusInfoOutput>>()
         .await
 }
 
@@ -274,11 +274,11 @@ pub async fn get_cached_artifacts_info(
             };
 
         let mut cached = match get_consensus_info(rpc_port).await {
-            Ok(JsonRpcReply2::Success {
+            Ok(JsonRpcReply::Success {
                 result: ConsensusInfoOutput { cached, .. },
                 ..
             }) => cached,
-            Ok(JsonRpcReply2::Error { .. }) => {
+            Ok(JsonRpcReply::Error { .. }) => {
                 anyhow::bail!(
                     "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} consensus info \
                      unavailable yet"
@@ -302,7 +302,7 @@ pub async fn get_cached_artifacts_info(
 
 #[derive(Deserialize)]
 #[serde(untagged)]
-pub enum JsonRpcReply2<T> {
+pub enum JsonRpcReply<T> {
     Success {
         #[serde(rename = "id")]
         _id: u64,
@@ -369,7 +369,7 @@ enum ExecutionStatus {
 
 async fn get_latest_block_with_receipts(
     rpc_port: u16,
-) -> Result<JsonRpcReply2<Block>, reqwest::Error> {
+) -> Result<JsonRpcReply<Block>, reqwest::Error> {
     reqwest::Client::new()
         .post(format!("http://127.0.0.1:{rpc_port}"))
         .body(
@@ -385,6 +385,6 @@ async fn get_latest_block_with_receipts(
         .header("Content-Type", "application/json")
         .send()
         .await?
-        .json::<JsonRpcReply2<Block>>()
+        .json::<JsonRpcReply<Block>>()
         .await
 }
