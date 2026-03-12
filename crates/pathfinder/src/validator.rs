@@ -585,7 +585,7 @@ impl ValidatorTransactionBatchStage {
         // hence updates the state.
         receipts
             .iter()
-            .zip(declared_classes.into_iter())
+            .zip(declared_classes)
             .for_each(|(receipt, class_def)| {
                 if let Some(class_def) = class_def {
                     if !receipt.is_reverted() {

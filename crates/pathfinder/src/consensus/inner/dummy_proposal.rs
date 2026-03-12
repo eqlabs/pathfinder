@@ -127,6 +127,7 @@ pub(crate) fn create(
 /// - Invokes the "increase_balance" and "get_balance" functions of random
 ///   deployed instances
 /// - Deploys more instances of the "Hello Starknet" contract randomly
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn create_from_bootstrapped_devnet_db(
     db_txn: &pathfinder_storage::Transaction<'_>,
     height: u64,

@@ -297,7 +297,7 @@ pub async fn get_cached_artifacts_info(
     tokio::time::timeout(Duration::from_secs(10), fut)
         .await
         .context("Getting cached artifacts info timed out")
-        .flatten()
+        .and_then(|x| x)
 }
 
 #[derive(Deserialize)]
