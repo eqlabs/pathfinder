@@ -249,7 +249,7 @@ Examples:
 
     #[arg(
         long = "log-output-json",
-        long_help = "This flag controls when to use colors in the output logs.",
+        long_help = "Enable JSON structured logging output.",
         default_value = "false",
         env = "PATHFINDER_LOG_OUTPUT_JSON",
         value_name = "BOOL"
