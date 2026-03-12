@@ -561,9 +561,15 @@ mod test {
         let bob_peer_scores = get_peer_scores(&bob).await.unwrap();
         let charlie_peer_scores = get_peer_scores(&charlie).await.unwrap();
 
-        let peer_score_penalty_applied = alice_peer_scores.iter().any(|score| score.score < 0.0)
-            || bob_peer_scores.iter().any(|score| score.score < 0.0)
-            || charlie_peer_scores.iter().any(|score| score.score < 0.0);
+        let peer_score_penalty_applied = alice_peer_scores
+            .iter()
+            .any(|score| score.score.as_f64().unwrap() < 0.0)
+            || bob_peer_scores
+                .iter()
+                .any(|score| score.score.as_f64().unwrap() < 0.0)
+            || charlie_peer_scores
+                .iter()
+                .any(|score| score.score.as_f64().unwrap() < 0.0);
 
         assert!(
             peer_score_penalty_applied,

@@ -131,8 +131,6 @@ async fn wait_for_block_exists_fut(
     error_tx: mpsc::Sender<anyhow::Error>,
 ) {
     loop {
-        // Sleeping first actually makes sense here, because the node will likely not
-        // have any decided heights immediately after the RPC server is ready.
         sleep(poll_interval).await;
 
         // We're waiting for the rpc port to change from 0 on each iteriation, because
@@ -227,7 +225,7 @@ async fn handle_reply<T>(
             error_tx
                 .send(anyhow::Error::new(error).context(format!(
                     "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} malformed RPC \
-                     response"
+                     {artifact_name} response"
                 )))
                 .await
                 .unwrap();
@@ -286,8 +284,7 @@ pub async fn get_cached_artifacts_info(
             }
             Err(error) => {
                 return Err(anyhow::Error::new(error).context(format!(
-                    "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} malformed RPC \
-                     response"
+                    "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} RPC client error"
                 )));
             }
         };
@@ -331,7 +328,9 @@ pub struct ConsensusInfoOutput {
 pub struct ApplicationPeerScore {
     #[serde(alias = "peer_id")]
     pub _peer_id: String,
-    pub score: f64,
+    // `serde_json` does not correctly support deserializing f64 with the `arbitrary_precision`
+    // feature enabled directly, so we need to work around this limitation
+    pub score: serde_json::Value,
 }
 
 #[derive(Debug, Deserialize)]
