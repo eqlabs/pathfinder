@@ -132,7 +132,7 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
     db_txn: &pathfinder_storage::Transaction<'_>,
     height: u64,
     round: Round,
-    latest_in_boot: BlockNumber,
+    latest_block: BlockNumber,
     account: &Account,
     proposer: ContractAddress,
     main_storage: Storage,
@@ -179,7 +179,7 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
     // transactions in the integration tests because this just simplifies
     // correctness checks (either all successful or all reverted in case of a
     // non-bootstrapped DB).
-    if latest_in_boot.get() + 1 == height {
+    if latest_block.get() + 1 == height {
         let first_batch = vec![account.hello_starknet_declare()?];
         next_txn_idx_start += first_batch.len();
         batches.push(first_batch);
