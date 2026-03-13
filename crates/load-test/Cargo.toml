@@ -5,14 +5,14 @@ description = "Load test for pathfinder JSON-RPC endpoints"
 authors = ["Equilibrium Labs <info@equilibrium.co>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
-rust-version = "1.73"
+rust-version = "1.91"
 
 [dependencies]
-goose = { version = "0.18.0", default-features = false, features = [
+goose = { version = "0.18.1", default-features = false, features = [
     "rustls-tls",
 ] }
 pathfinder-crypto = { path = "../crypto" }
-rand = "0.9.0"
-serde = { version = "1.0.218", features = ["derive"] }
-serde_json = { version = "1.0.140", features = ["arbitrary_precision"] }
-tokio = "1.45.0"
+rand = "0.9.2"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = { version = "1.0.149", features = ["arbitrary_precision"] }
+tokio = "1.50.0"
