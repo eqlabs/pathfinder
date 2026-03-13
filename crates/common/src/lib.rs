@@ -35,7 +35,13 @@ pub mod trie;
 
 pub use header::{BlockHeader, BlockHeaderBuilder, L1DataAvailabilityMode, SignedBlockHeader};
 pub use l1::{L1BlockHash, L1BlockNumber, L1TransactionHash};
-pub use l2::{ConsensusFinalizedBlockHeader, ConsensusFinalizedL2Block, L2Block, L2BlockToCommit};
+pub use l2::{
+    ConsensusFinalizedBlockHeader,
+    ConsensusFinalizedL2Block,
+    DeclaredClass,
+    L2Block,
+    L2BlockToCommit,
+};
 pub use signature::BlockCommitmentSignature;
 pub use state_update::{FoundStorageValue, StateUpdate};
 

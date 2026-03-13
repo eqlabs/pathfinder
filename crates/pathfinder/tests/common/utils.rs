@@ -11,15 +11,13 @@ use p2p_proto::common::Address;
 use pathfinder_crypto::Felt;
 use pathfinder_lib::devnet::{init_db, BootDb};
 use tempfile::TempDir;
+use tokio::sync::mpsc;
 use tokio::task::{JoinError, JoinHandle};
 use tokio::time::sleep;
 
 use crate::common::pathfinder_instance::Config;
 
 /// This function does a few things at the beginning of an integration test:
-/// - sets up dumping stdout and stderr logs of Pathfinder instances to the
-///   test's stdout if the environment variable
-///   `PATHFINDER_CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL` is set,
 /// - creates temporary directory for test artifacts,
 /// - verifies that the Pathfinder binary and fixtures directory exist,
 /// - starts an [`std::time::Instant`] to measure test setup duration,
@@ -79,11 +77,13 @@ pub fn log_elapsed(stopwatch: Instant) {
     );
 }
 
-/// Waits for either all RPC client tasks to complete, the timeout to elapse, or
-/// for the user to interrupt with Ctrl-C.
+/// Waits for either all RPC client tasks to complete, the timeout to elapse,
+/// for the user to interrupt with Ctrl-C, or the rpc client to encounter an
+/// error.
 pub async fn join_all(
     rpc_client_handles: Vec<JoinHandle<()>>,
     test_timeout: Duration,
+    mut err_rx: mpsc::Receiver<anyhow::Error>,
 ) -> anyhow::Result<()> {
     tokio::select! {
         _ = sleep(test_timeout) => {
@@ -91,14 +91,20 @@ pub async fn join_all(
             Err(anyhow::anyhow!("Test timed out after {test_timeout:?}"))
         }
 
-        test_result = futures::future::join_all(rpc_client_handles) => {
-            test_result.into_iter().collect::<Result<Vec<_>, JoinError>>().context("Joining all RPC client tasks")?;
+        join_result = futures::future::join_all(rpc_client_handles) => {
+            join_result.into_iter().collect::<Result<Vec<()>, JoinError>>().context("Joining all RPC client tasks")?;
             Ok(())
         }
 
         _ = tokio::signal::ctrl_c() => {
             eprintln!("Received Ctrl-C, terminating test early");
             Err(anyhow::anyhow!("Test interrupted by user"))
+        }
+
+        err = err_rx.recv() => {
+            let err = err.expect("Error channel should not be closed");
+            eprintln!("RPC client encountered an error: {err:#?}");
+            Err(anyhow::anyhow!("RPC client encountered an error: {err:#?}"))
         }
     }
 }

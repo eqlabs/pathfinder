@@ -11,7 +11,14 @@ use std::time::Duration;
 use anyhow::Context;
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::StateUpdateData;
-use pathfinder_common::{BlockId, Chain, ConsensusFinalizedL2Block, L2Block, L2BlockToCommit};
+use pathfinder_common::{
+    BlockId,
+    Chain,
+    ConsensusFinalizedL2Block,
+    DeclaredClass,
+    L2Block,
+    L2BlockToCommit,
+};
 use pathfinder_crypto::Felt;
 use pathfinder_ethereum::{EthereumClient, EthereumStateUpdate};
 use pathfinder_merkle_tree::starknet_state::update_starknet_state;
@@ -1360,7 +1367,30 @@ fn l2_update(
                 state_update,
                 transactions_and_receipts,
                 events,
+                declared_classes,
             } = block;
+
+            declared_classes.into_iter().try_for_each(
+                |DeclaredClass {
+                     sierra_hash,
+                     casm_hash_v2,
+                     sierra_def,
+                     casm_def,
+                 }| {
+                    // Insert classes before state update because the latter will trigger
+                    // `upsert_declared_at` and insert a NULL definition
+                    //
+                    // TODO so far `L2Block` does not contain the class definitions, due to the flow
+                    // of the FGw sync.
+                    transaction.insert_sierra_class_definition(
+                        &sierra_hash,
+                        &sierra_def,
+                        &casm_def,
+                        &casm_hash_v2,
+                    )
+                },
+            )?;
+
             L2Block {
                 header: header.compute_hash(
                     parent_hash,

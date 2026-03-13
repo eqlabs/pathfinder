@@ -5,10 +5,12 @@ use anyhow::Context as _;
 use num_bigint::BigUint;
 use p2p::sync::client::conv::ToDto as _;
 use p2p_proto::common::Hash;
+use p2p_proto::sync::transaction::DeclareV3WithoutClass;
 use p2p_proto::transaction::InvokeV3WithProof;
 use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::transaction::{
     DataAvailabilityMode,
+    DeclareTransactionV3,
     InvokeTransactionV3,
     TransactionVariant,
 };
@@ -18,6 +20,7 @@ use pathfinder_common::{
     BlockNumber,
     CallParam,
     ChainId,
+    ClassHash,
     ContractAddress,
     EntryPoint,
     PublicKey,
@@ -31,6 +34,7 @@ use pathfinder_crypto::Felt;
 use pathfinder_executor::IntoStarkFelt as _;
 use starknet_api::abi::abi_utils::get_storage_var_address;
 
+use crate::devnet::class::{preprocess_sierra, PrepocessedSierra};
 use crate::devnet::contract::predeploy;
 use crate::devnet::fixtures;
 use crate::devnet::fixtures::RESOURCE_BOUNDS;
@@ -214,6 +218,57 @@ impl Account {
     /// far.
     pub fn deployed(&self) -> Vec<ContractAddress> {
         self.deployed.read().unwrap().clone()
+    }
+
+    /// Create a transaction declaring the only instance of hello starknet
+    /// contract class
+    pub fn hello_starknet_declare(&self) -> anyhow::Result<p2p_proto::consensus::Transaction> {
+        let PrepocessedSierra {
+            sierra_class_hash,
+            cairo1_class_p2p,
+            casm_hash_v2,
+            ..
+        } = preprocess_sierra(fixtures::HELLO_CLASS, None)?;
+
+        let declare = DeclareTransactionV3 {
+            class_hash: ClassHash(sierra_class_hash.0),
+            nonce: self.fetch_add_nonce(),
+            nonce_data_availability_mode: DataAvailabilityMode::L1,
+            fee_data_availability_mode: DataAvailabilityMode::L1,
+            resource_bounds: RESOURCE_BOUNDS,
+            tip: Tip(0),
+            paymaster_data: vec![],
+            signature: vec![/* Will be filled after signing */],
+            account_deployment_data: vec![],
+            sender_address: self.address(),
+            compiled_class_hash: casm_hash_v2,
+        };
+        let mut variant = TransactionVariant::DeclareV3(declare);
+        let txn_hash = variant.calculate_hash(ChainId::SEPOLIA_TESTNET, false);
+        let (r, s) = ecdsa_sign(self.private_key(), txn_hash.0)?;
+        let TransactionVariant::DeclareV3(declare) = &mut variant else {
+            unreachable!();
+        };
+        declare.signature = vec![TransactionSignatureElem(r), TransactionSignatureElem(s)];
+
+        let variant = variant.to_dto();
+
+        let p2p_proto::sync::transaction::TransactionVariant::DeclareV3(DeclareV3WithoutClass {
+            common,
+            ..
+        }) = variant
+        else {
+            unreachable!();
+        };
+
+        let declare = p2p_proto::transaction::DeclareV3WithClass {
+            common,
+            class: cairo1_class_p2p,
+        };
+        Ok(p2p_proto::consensus::Transaction {
+            txn: p2p_proto::consensus::TransactionVariant::DeclareV3(declare),
+            transaction_hash: Hash(txn_hash.0),
+        })
     }
 
     /// Create an invoke transaction deploying another instance of hello

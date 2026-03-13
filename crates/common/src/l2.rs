@@ -9,11 +9,13 @@ use crate::{
     BlockHeader,
     BlockNumber,
     BlockTimestamp,
+    CasmHash,
     EventCommitment,
     GasPrice,
     L1DataAvailabilityMode,
     ReceiptCommitment,
     SequencerAddress,
+    SierraHash,
     StarknetVersion,
     StateCommitment,
     StateDiffCommitment,
@@ -43,6 +45,7 @@ pub struct ConsensusFinalizedL2Block {
     pub state_update: StateUpdateData,
     pub transactions_and_receipts: Vec<(Transaction, Receipt)>,
     pub events: Vec<Vec<Event>>,
+    pub declared_classes: Vec<DeclaredClass>,
 }
 
 /// An L2 [BlockHeader] that is the result of executing a consensus proposal
@@ -73,6 +76,14 @@ pub struct ConsensusFinalizedBlockHeader {
     pub receipt_commitment: ReceiptCommitment,
     pub state_diff_commitment: StateDiffCommitment,
     pub state_diff_length: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct DeclaredClass {
+    pub sierra_hash: SierraHash,
+    pub casm_hash_v2: CasmHash,
+    pub sierra_def: Vec<u8>,
+    pub casm_def: Vec<u8>,
 }
 
 impl From<L2Block> for L2BlockToCommit {

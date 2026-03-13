@@ -97,7 +97,7 @@ pub(crate) fn create(
     let mut db_conn = main_storage.connection()?;
     let db_txn = db_conn.transaction()?;
 
-    if devnet::is_db_bootstrapped(&db_txn)? {
+    if devnet::devnet_genesis_exists(&db_txn)? {
         create_from_bootstrapped_devnet_db(
             &db_txn,
             height,
@@ -126,6 +126,7 @@ pub(crate) fn create(
 /// - Invokes the "increase_balance" and "get_balance" functions of random
 ///   deployed instances
 /// - Deploys more instances of the "Hello Starknet" contract randomly
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn create_from_bootstrapped_devnet_db(
     db_txn: &pathfinder_storage::Transaction<'_>,
     height: u64,
@@ -168,43 +169,69 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
     let mut batches = Vec::new();
     let mut next_txn_idx_start = 0;
 
-    // If there are no deployments in the DB yet, create one batch with a
-    // deployment
-    if deployed_in_db.is_empty() {
-        let first_batch = vec![account.hello_starknet_deploy()?];
+    // IMPORTANT
+    // Until ConcurrentStorageAdapter supports decided blocks we have to split
+    // declaring and deploying HelloStarknet into consecutive blocks. Otherwise the
+    // deployment will not succeed because the declaration may not be committed to
+    // storage yet, and we strictly do not want to mix successful and reverted
+    // transactions in the integration tests because this just simplifies
+    // correctness checks (either all successful or all reverted in case of a
+    // non-bootstrapped DB).
+    //
+    // Bootstrapped devnet DB already contains the genesis block, so the declaration
+    // of HelloStarknet falls into block number 1.
+    if height == 1 {
+        let first_batch = vec![account.hello_starknet_declare()?];
         next_txn_idx_start += first_batch.len();
         batches.push(first_batch);
-    }
+    } else {
+        // HelloStarknet need to be deployed at least once before we can invoke it, so
+        // if there are no deployments in the DB we just create a batch with the deploy
+        // transaction.
+        //
+        // IMPORTANT
+        // Until ConcurrentStorageAdapter supports decided blocks we have to split
+        // deploying HelloStarknet fir the first time and invoking it into consecutive
+        // blocks. Otherwise the first invokes will not succeed because the deployment
+        // may not be committed to storage yet, and we strictly do not want to mix
+        // successful and reverted transactions in the integration tests because
+        // this just simplifies correctness checks  (either all successful or all
+        // reverted in case of a non-bootstrapped DB).
+        if deployed_in_db.is_empty() {
+            // Declare goes into the first proposal, that's it
+            let first_batch = vec![account.hello_starknet_deploy()?];
+            next_txn_idx_start += first_batch.len();
+            batches.push(first_batch);
+        } else {
+            let num_batches = rng.gen_range(1..=MAX_NUM_BATCHES);
 
-    let num_batches = rng.gen_range(1..=MAX_NUM_BATCHES);
+            for _ in 0..num_batches {
+                let batch_tries = rng.gen_range(1..=MAX_BATCH_TRIES);
+                let mut batch = Vec::new();
 
-    for _ in 0..num_batches {
-        let batch_tries = rng.gen_range(1..=MAX_BATCH_TRIES);
-        let mut batch = Vec::new();
+                for _ in 0..batch_tries {
+                    // Maybe deploy another instance
+                    if rng.gen() {
+                        batch.push(account.hello_starknet_deploy()?);
+                    }
 
-        for _ in 0..batch_tries {
-            // Maybe deploy a new instance
-            if rng.gen() {
-                batch.push(account.hello_starknet_deploy()?);
+                    // Invoke a random contract instance if there are any deployments in the DB
+                    if let Some(contract_address) = deployed_in_db.choose(&mut rng) {
+                        batch.push(account.hello_starknet_increase_balance(
+                            *contract_address,
+                            rng.gen_range(1..=1000),
+                        ));
+                        // This is a view function, but it still gives us a realistic transaction
+                        batch.push(account.hello_starknet_get_balance(*contract_address));
+                    }
+
+                    next_txn_idx_start += batch.len();
+                }
+
+                if !batch.is_empty() {
+                    batches.push(batch);
+                }
             }
-
-            // Invoke a random contract instance if there are any deployments in the DB
-            if let Some(contract_address) = deployed_in_db.choose(&mut rng) {
-                batch.push(
-                    account.hello_starknet_increase_balance(
-                        *contract_address,
-                        rng.gen_range(1..=1000),
-                    ),
-                );
-                // This is a view function, but it still gives us a realistic transaction
-                batch.push(account.hello_starknet_get_balance(*contract_address));
-            }
-
-            next_txn_idx_start += batch.len();
-        }
-
-        if !batch.is_empty() {
-            batches.push(batch);
         }
     }
 
