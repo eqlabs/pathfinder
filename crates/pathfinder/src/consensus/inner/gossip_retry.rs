@@ -137,7 +137,7 @@ where
             }
             // This error variant means "no peers subscribed to the topic" (renamed to
             // NoPeersSubscribedToTopic in newer libp2p versions).
-            Err(PublishError::InsufficientPeers) => {
+            Err(PublishError::NoPeersSubscribedToTopic) => {
                 no_peers_subscribed_retry_count += 1;
                 if no_peers_subscribed_retry_count >= config.max_no_peers_subscribed_retries {
                     tracing::error!(
@@ -223,7 +223,9 @@ pub(crate) fn is_gossip_error_recoverable(error: &p2p::libp2p::gossipsub::Publis
 
     match error {
         // These are handled separately in gossip_with_retry and should never reach here.
-        PublishError::InsufficientPeers => unreachable!("InsufficientPeers handled separately"),
+        PublishError::NoPeersSubscribedToTopic => {
+            unreachable!("NoPeersSubscribedToTopic handled separately")
+        }
         PublishError::Duplicate => unreachable!("Duplicate handled separately"),
 
         // The network queues are temporarily full but should clear up.

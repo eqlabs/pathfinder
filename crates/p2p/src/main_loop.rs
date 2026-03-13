@@ -243,6 +243,7 @@ where
                 local_addr,
                 send_back_addr,
                 error,
+                peer_id: _,
             } => {
                 tracing::debug!(%connection_id, %local_addr, %send_back_addr, %error, "Failed to establish incoming connection");
             }
