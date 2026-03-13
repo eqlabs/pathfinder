@@ -1,6 +1,7 @@
-//! Build pathfinder in debug:
+//! Build pathfinder and simulated feeder gateway in debug:
 //! ```
 //! cargo build -p pathfinder --bin pathfinder -F p2p -F consensus-integration-tests
+//! cargo build -p feeder-gateway -F small_aggregate_filters --bin feeder-gateway
 //! ```
 //!
 //! Run the test:
