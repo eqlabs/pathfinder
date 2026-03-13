@@ -82,10 +82,10 @@ hyper = "1.0.0"
 ipnet = "2.9.0"
 jemallocator = "0.5.4"
 libc = "0.2.182"
-libp2p = { version = "0.55.0", default-features = false }
-libp2p-identity = "0.2.2"
+libp2p = { version = "0.56.0", default-features = false }
+libp2p-identity = "0.2.13"
 libp2p-plaintext = "0.43.0"
-libp2p-swarm-test = "0.5.0"
+libp2p-swarm-test = "0.6.0"
 metrics = "0.24.3"
 metrics-exporter-prometheus = { version = "0.18.1", default-features = false }
 mime = "0.3"
