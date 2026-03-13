@@ -7,6 +7,12 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Changed
+
+- The v10 JSON-RPC endpoint now supports final JSON-RPC v0.10.1 spec.
+
 ## [0.22.0-beta.3] - 2026-03-11
 
 ### Fixed
