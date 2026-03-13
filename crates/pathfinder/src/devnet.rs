@@ -156,20 +156,17 @@ pub fn init_db(db_dir: &Path, proposer: Address) -> anyhow::Result<BootDb> {
     })
 }
 
-/// Returns `Some(latest_bootstrapped_DB_block_number)` if the DB is
-/// bootstrapped and `None` if it is not.
-pub fn is_db_bootstrapped(
-    db_txn: &pathfinder_storage::Transaction<'_>,
-) -> anyhow::Result<Option<BlockNumber>> {
+/// Returns `Ok(true)` if the DB is bootstrapped and `Ok(false)` if it is not.
+pub fn devnet_genesis_exists(db_txn: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<bool> {
     let Some(block_0_commitment) = db_txn.state_diff_commitment(BlockNumber::GENESIS)? else {
-        return Ok(None);
+        return Ok(false);
     };
 
     if block_0_commitment != fixtures::GENESIS_COMMITMENT {
-        return Ok(None);
+        return Ok(false);
     }
 
-    Ok(Some(BlockNumber::GENESIS))
+    Ok(true)
 }
 
 #[derive(Debug)]

@@ -97,12 +97,11 @@ pub(crate) fn create(
     let mut db_conn = main_storage.connection()?;
     let db_txn = db_conn.transaction()?;
 
-    if let Some(latest_in_boot) = devnet::is_db_bootstrapped(&db_txn)? {
+    if devnet::devnet_genesis_exists(&db_txn)? {
         create_from_bootstrapped_devnet_db(
             &db_txn,
             height,
             round,
-            latest_in_boot,
             account,
             proposer,
             main_storage,
@@ -132,7 +131,6 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
     db_txn: &pathfinder_storage::Transaction<'_>,
     height: u64,
     round: Round,
-    latest_block: BlockNumber,
     account: &Account,
     proposer: ContractAddress,
     main_storage: Storage,
@@ -179,7 +177,10 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
     // transactions in the integration tests because this just simplifies
     // correctness checks (either all successful or all reverted in case of a
     // non-bootstrapped DB).
-    if latest_block.get() + 1 == height {
+    //
+    // Bootstrapped devnet DB already contains the genesis block, so the declaration
+    // of HelloStarknet falls into block number 1.
+    if height == 1 {
         let first_batch = vec![account.hello_starknet_declare()?];
         next_txn_idx_start += first_batch.len();
         batches.push(first_batch);
