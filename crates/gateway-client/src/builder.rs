@@ -730,7 +730,7 @@ mod tests {
                 .get()
                 .await?;
 
-            mock.assert_hits(2);
+            mock.assert_calls(2);
 
             Ok(())
         }
@@ -756,7 +756,7 @@ mod tests {
                 .get_as_bytes()
                 .await?;
 
-            mock.assert_hits(2);
+            mock.assert_calls(2);
 
             Ok(())
         }
@@ -782,7 +782,7 @@ mod tests {
                 .post_with_json(&json!({}), None)
                 .await?;
 
-            mock.assert_hits(2);
+            mock.assert_calls(2);
 
             Ok(())
         }
