@@ -791,6 +791,11 @@ impl ValidatorTransactionBatchStage {
         let state_diff_commitment = state_update.compute_state_diff_commitment();
         let event_count = events.iter().map(|e| e.len()).sum();
 
+        let l2_gas_consumed: u128 = receipts
+            .iter()
+            .map(|r| r.execution_resources.l2_gas.0)
+            .sum();
+
         let header = ConsensusFinalizedBlockHeader {
             number: block_info.number,
             timestamp: block_info.timestamp,
@@ -810,6 +815,7 @@ impl ValidatorTransactionBatchStage {
             receipt_commitment,
             state_diff_commitment,
             state_diff_length: state_update.state_diff_length(),
+            l2_gas_consumed,
         };
 
         debug!(
