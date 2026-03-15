@@ -158,7 +158,7 @@ impl L2GasPriceProvider {
 mod tests {
     use super::*;
 
-    const INIT_PRICE: u128 = 30_000_000_000;
+    const TEST_PRICE: u128 = 30_000_000_000;
 
     // v0.14.1 constants used by the Apollo test vectors
     const V0_14_1: L2GasPriceConstants = L2GasPriceConstants {
@@ -177,7 +177,7 @@ mod tests {
         let gas_target = c.max_block_size / 2;
         let constants = L2GasPriceConstants { gas_target, ..c };
         let result =
-            calculate_next_base_gas_price(INIT_PRICE, gas_used, c.min_gas_price, &constants);
+            calculate_next_base_gas_price(TEST_PRICE, gas_used, c.min_gas_price, &constants);
         assert_eq!(result, 30_312_500_000);
     }
 
@@ -188,15 +188,15 @@ mod tests {
         let gas_target = c.max_block_size / 2;
         let constants = L2GasPriceConstants { gas_target, ..c };
         let result =
-            calculate_next_base_gas_price(INIT_PRICE, gas_used, c.min_gas_price, &constants);
+            calculate_next_base_gas_price(TEST_PRICE, gas_used, c.min_gas_price, &constants);
         assert_eq!(result, 29_687_500_000);
     }
 
     #[test]
     fn gas_used_zero_max_decrease() {
         let c = V0_14_1;
-        let result = calculate_next_base_gas_price(INIT_PRICE, 0, c.min_gas_price, &c);
-        let expected = INIT_PRICE - INIT_PRICE / 48;
+        let result = calculate_next_base_gas_price(TEST_PRICE, 0, c.min_gas_price, &c);
+        let expected = TEST_PRICE - TEST_PRICE / 48;
         assert_eq!(result, expected);
     }
 
@@ -244,5 +244,54 @@ mod tests {
         };
         let result = calculate_next_base_gas_price(price, 1000, min_gas_price, &constants);
         assert_eq!(result, min_gas_price);
+    }
+
+    // After a block is finalized, the provider uses its price and gas
+    // consumption to compute the expected price for the next block.
+    // Validating a proposal with that exact price succeeds.
+    #[test]
+    fn provider_accepts_correct_price() {
+        let provider = L2GasPriceProvider::new();
+
+        let block_gas_price = TEST_PRICE;
+        let block_gas_consumed = V0_14_1.gas_target; // at target → no change
+        provider.update_after_block(block_gas_price, block_gas_consumed, &V0_14_1);
+
+        let next_block_proposed_price = TEST_PRICE;
+        assert_eq!(
+            provider.validate(next_block_proposed_price),
+            L2GasPriceValidationResult::Valid
+        );
+    }
+
+    // A proposal whose price doesn't match the expected value is rejected.
+    #[test]
+    fn provider_rejects_wrong_price() {
+        let provider = L2GasPriceProvider::new();
+
+        let block_price = TEST_PRICE;
+        let block_gas_consumed = V0_14_1.gas_target;
+        provider.update_after_block(block_price, block_gas_consumed, &V0_14_1);
+
+        let wrong_price = 999;
+        assert_eq!(
+            provider.validate(wrong_price),
+            L2GasPriceValidationResult::Invalid {
+                proposed: wrong_price,
+                expected: TEST_PRICE,
+            }
+        );
+    }
+
+    // Before any block is processed the provider has no expected price, so
+    // validation returns InsufficientData (allows proposals through during
+    // cold start).
+    #[test]
+    fn provider_without_data_does_not_reject() {
+        let provider = L2GasPriceProvider::new();
+        assert_eq!(
+            provider.validate(100),
+            L2GasPriceValidationResult::InsufficientData
+        );
     }
 }
