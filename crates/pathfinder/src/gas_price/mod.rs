@@ -4,6 +4,7 @@
 
 mod l1;
 mod l1_to_fri;
+mod l2;
 mod oracle;
 
 pub use l1::{
@@ -14,6 +15,7 @@ pub use l1::{
     L1GasPriceValidationResult,
 };
 pub use l1_to_fri::{L1ToFriValidationConfig, L1ToFriValidationResult, L1ToFriValidator};
+pub use l2::L2GasPriceConstants;
 pub use oracle::{EthToFriOracle, EthToFriOracleError};
 
 /// Calculates the percentage deviation between two values.
