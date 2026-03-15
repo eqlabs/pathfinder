@@ -64,6 +64,8 @@ use crate::gas_price::{
     L1GasPriceValidationResult,
     L1ToFriValidationResult,
     L1ToFriValidator,
+    L2GasPriceProvider,
+    L2GasPriceValidationResult,
 };
 use crate::state::block_hash::{
     calculate_event_commitment,
@@ -157,6 +159,7 @@ impl ValidatorBlockInfoStage {
 
     /// Validate the block info against the parent block and L1 gas price data,
     /// then transition to the [ValidatorTransactionBatchStage].
+    #[allow(clippy::too_many_arguments)]
     pub fn validate_block_info(
         self,
         block_info: BlockInfo,
@@ -164,6 +167,7 @@ impl ValidatorBlockInfoStage {
         decided_blocks: &HashMap<u64, DecidedBlock>,
         gas_price_provider: Option<L1GasPriceProvider>,
         l1_to_fri_validator: Option<&L1ToFriValidator>,
+        l2_gas_price_provider: Option<&L2GasPriceProvider>,
         worker_pool: ValidatorWorkerPool,
     ) -> Result<ValidatorTransactionBatchStage, ProposalHandlingError> {
         let _span = tracing::debug_span!(
@@ -213,7 +217,9 @@ impl ValidatorBlockInfoStage {
             )?;
         }
 
-        // TODO: Validate L2 gas price (pending Starknet spec finalization)
+        if let Some(provider) = l2_gas_price_provider {
+            validate_l2_gas_price(block_info.l2_gas_price_fri, provider)?;
+        }
 
         let BlockInfo {
             height,
@@ -447,6 +453,28 @@ fn validate_l1_to_fri_prices(
         }
         L1ToFriValidationResult::InsufficientData => {
             tracing::debug!("L1-to-FRI validation skipped: insufficient data (cold start)");
+            Ok(())
+        }
+    }
+}
+
+fn validate_l2_gas_price(
+    proposed_l2_gas_price_fri: u128,
+    provider: &L2GasPriceProvider,
+) -> Result<(), ProposalHandlingError> {
+    match provider.validate(proposed_l2_gas_price_fri) {
+        L2GasPriceValidationResult::Valid => Ok(()),
+        L2GasPriceValidationResult::Invalid { proposed, expected } => {
+            tracing::warn!(proposed, expected, "L2 gas price validation failed");
+            Err(ProposalHandlingError::recoverable_msg(format!(
+                "L2 gas price mismatch: proposed {proposed}, expected {expected}"
+            )))
+        }
+        L2GasPriceValidationResult::InsufficientData => {
+            tracing::debug!(
+                proposed_l2_gas_price_fri,
+                "L2 gas price validation skipped: insufficient data"
+            );
             Ok(())
         }
     }
@@ -1451,6 +1479,7 @@ mod tests {
                 &decided_blocks,
                 None,
                 None,
+                None,
                 worker_pool,
             )
             .expect("Failed to validate block info");
@@ -1575,6 +1604,7 @@ mod tests {
             &decided_blocks,
             None,
             None,
+            None,
             worker_pool,
         );
 
@@ -1638,6 +1668,7 @@ mod tests {
                         &decided_blocks,
                         None,
                         None,
+                        None,
                         worker_pool
                     )
                     .is_ok(),
@@ -1649,6 +1680,7 @@ mod tests {
                     block_info,
                     storage,
                     &decided_blocks,
+                    None,
                     None,
                     None,
                     worker_pool,

@@ -52,7 +52,7 @@ use crate::consensus::inner::batch_execution::{
 };
 use crate::consensus::inner::create_empty_block;
 use crate::consensus::{ProposalError, ProposalHandlingError};
-use crate::gas_price::L1GasPriceProvider;
+use crate::gas_price::{L1GasPriceProvider, L2GasPriceConstants, L2GasPriceProvider};
 use crate::validator::{
     should_defer_validation,
     DecidedBlock,
@@ -121,9 +121,14 @@ pub fn spawn(
     // threads don't panic when the `p2p_task` is cancelled.
     let worker_pool_for_cleanup = worker_pool.clone();
 
+    let l2_gas_price_provider = gas_price_provider
+        .as_ref()
+        .map(|_| L2GasPriceProvider::new());
+
     // Manages batch execution with concurrent execution support
     let mut batch_execution_manager = BatchExecutionManager::new(
         gas_price_provider.clone(),
+        l2_gas_price_provider.clone(),
         worker_pool.clone(),
         compiler_resource_limits,
     );
@@ -245,6 +250,7 @@ pub fn spawn(
                                     &mut batch_execution_manager,
                                     &data_directory,
                                     gas_price_provider.clone(),
+                                    l2_gas_price_provider.clone(),
                                     inject_failure,
                                     worker_pool.clone(),
                                 );
@@ -369,6 +375,7 @@ pub fn spawn(
                                     &mut finalized_blocks,
                                     number,
                                     gas_price_provider.clone(),
+                                    &l2_gas_price_provider,
                                     worker_pool.clone(),
                                 )?;
                                 Ok(success)
@@ -542,6 +549,20 @@ pub fn spawn(
                             height_and_round.height()
                         );
 
+                        // Update L2 gas price provider with the decided block's data
+                        if let Some(ref l2_provider) = l2_gas_price_provider {
+                            if let Some(decided) = decided_blocks.get(&height_and_round.height()) {
+                                let header = &decided.block.header;
+                                let constants =
+                                    L2GasPriceConstants::for_version(header.starknet_version);
+                                l2_provider.update_after_block(
+                                    header.strk_l2_gas_price.0,
+                                    header.l2_gas_consumed,
+                                    &constants,
+                                );
+                            }
+                        }
+
                         // Clean up batch execution state for this height
                         batch_execution_manager.cleanup(&height_and_round);
                         tracing::debug!(
@@ -593,6 +614,7 @@ pub fn spawn(
                                 &mut finalized_blocks,
                                 block_number,
                                 gas_price_provider.clone(),
+                                &l2_gas_price_provider,
                                 worker_pool.clone(),
                             )
                         } else {
@@ -608,6 +630,7 @@ pub fn spawn(
                                 &mut finalized_blocks,
                                 &mut decided_blocks,
                                 gas_price_provider.clone(),
+                                &l2_gas_price_provider,
                                 worker_pool.clone(),
                             )
                             */
@@ -708,6 +731,7 @@ fn _on_finalized_block_decided(
     finalized_blocks: &mut HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
     decided_blocks: &mut HashMap<u64, DecidedBlock>,
     gas_price_provider: Option<L1GasPriceProvider>,
+    l2_gas_price_provider: &Option<L2GasPriceProvider>,
     worker_pool: ValidatorWorkerPool,
 ) -> Result<ComputationSuccess, anyhow::Error> {
     let exec_success = execute_deferred_for_next_height::<ProdTransactionMapper>(
@@ -719,6 +743,7 @@ fn _on_finalized_block_decided(
         finalized_blocks,
         decided_blocks,
         gas_price_provider,
+        l2_gas_price_provider.clone(),
         worker_pool,
     )?;
 
@@ -743,6 +768,7 @@ fn on_finalized_block_committed(
     finalized_blocks: &mut HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
     number: BlockNumber,
     gas_price_provider: Option<L1GasPriceProvider>,
+    l2_gas_price_provider: &Option<L2GasPriceProvider>,
     worker_pool: ValidatorWorkerPool,
 ) -> Result<ComputationSuccess, anyhow::Error> {
     if decided_blocks.remove(&number.get()).is_some() {
@@ -762,6 +788,7 @@ fn on_finalized_block_committed(
         finalized_blocks,
         decided_blocks,
         gas_price_provider,
+        l2_gas_price_provider.clone(),
         worker_pool,
     )?;
 
@@ -812,6 +839,7 @@ fn execute_deferred_for_next_height<T: TransactionExt>(
     finalized_blocks: &mut HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
     decided_blocks: &HashMap<u64, DecidedBlock>,
     gas_price_provider: Option<L1GasPriceProvider>,
+    l2_gas_price_provider: Option<L2GasPriceProvider>,
     worker_pool: ValidatorWorkerPool,
 ) -> anyhow::Result<Option<(HeightAndRound, ProposalCommitmentWithOrigin)>> {
     // Retrieve and execute any deferred transactions or proposal finalizations
@@ -843,6 +871,7 @@ fn execute_deferred_for_next_height<T: TransactionExt>(
                 decided_blocks,
                 gas_price_provider,
                 None, // TODO: Add L1ToFriValidator when oracle is available
+                l2_gas_price_provider.as_ref(),
                 worker_pool,
             )
             .map(Box::new)?;
@@ -1030,6 +1059,7 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
     batch_execution_manager: &mut BatchExecutionManager,
     data_directory: &Path,
     gas_price_provider: Option<L1GasPriceProvider>,
+    l2_gas_price_provider: Option<L2GasPriceProvider>,
     inject_failure_config: Option<InjectFailureConfig>,
     worker_pool: ValidatorWorkerPool,
 ) -> Result<Option<ProposalCommitmentWithOrigin>, ProposalHandlingError> {
@@ -1087,6 +1117,7 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
                 decided_blocks,
                 gas_price_provider,
                 None, // TODO: Add L1ToFriValidator when oracle is available
+                l2_gas_price_provider.as_ref(),
                 worker_pool,
             )?;
             validator_cache.insert(
@@ -1237,6 +1268,7 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
                 finalized_blocks,
                 &mut validator_cache,
                 gas_price_provider.clone(),
+                l2_gas_price_provider.clone(),
                 worker_pool,
             )
             // Note: We classify as recoverable by default. If there's a storage error in the
@@ -1265,6 +1297,7 @@ fn defer_or_execute_proposal_fin<T: TransactionExt>(
     finalized_blocks: &mut HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
     validator_cache: &mut ValidatorCache,
     gas_price_provider: Option<L1GasPriceProvider>,
+    l2_gas_price_provider: Option<L2GasPriceProvider>,
     worker_pool: ValidatorWorkerPool,
 ) -> anyhow::Result<Option<ProposalCommitmentWithOrigin>> {
     let commitment = ProposalCommitmentWithOrigin {
@@ -1311,6 +1344,7 @@ fn defer_or_execute_proposal_fin<T: TransactionExt>(
                         decided_blocks,
                         gas_price_provider,
                         None, // TODO: Add L1ToFriValidator when oracle is available
+                        l2_gas_price_provider.as_ref(),
                         worker_pool,
                     )
                     .map(Box::new)?
@@ -1566,8 +1600,12 @@ mod tests {
         let worker_pool = {
             let main_storage = StorageBuilder::in_tempdir().unwrap();
             let worker_pool = create_test_worker_pool();
-            let mut batch_execution_manager =
-                BatchExecutionManager::new(None, worker_pool.clone(), ResourceLimits::for_test());
+            let mut batch_execution_manager = BatchExecutionManager::new(
+                None,
+                None,
+                worker_pool.clone(),
+                ResourceLimits::for_test(),
+            );
             let dummy_data_dir = PathBuf::new();
 
             let mut incoming_proposals = HashMap::new();
@@ -1613,6 +1651,7 @@ mod tests {
                             main_storage.clone(),
                             &mut batch_execution_manager,
                             &dummy_data_dir,
+                            None,
                             None,
                             None,
                             worker_pool.clone(),
