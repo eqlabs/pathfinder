@@ -96,3 +96,96 @@ pub fn calculate_next_base_gas_price(
 
     max(adjusted, min_gas_price)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const INIT_PRICE: u128 = 30_000_000_000;
+
+    // v0.14.1 constants used by the Apollo test vectors
+    const V0_14_1: L2GasPriceConstants = L2GasPriceConstants {
+        gas_price_max_change_denominator: 48,
+        gas_target: 4_000_000_000,
+        max_block_size: 5_000_000_000,
+        min_gas_price: 8_000_000_000,
+    };
+
+    // Apollo test vectors (from fee_market/test.rs)
+
+    #[test]
+    fn high_congestion() {
+        let c = V0_14_1;
+        let gas_used = c.max_block_size * 3 / 4;
+        let gas_target = c.max_block_size / 2;
+        let constants = L2GasPriceConstants { gas_target, ..c };
+        let result =
+            calculate_next_base_gas_price(INIT_PRICE, gas_used, c.min_gas_price, &constants);
+        assert_eq!(result, 30_312_500_000);
+    }
+
+    #[test]
+    fn low_congestion() {
+        let c = V0_14_1;
+        let gas_used = c.max_block_size / 4;
+        let gas_target = c.max_block_size / 2;
+        let constants = L2GasPriceConstants { gas_target, ..c };
+        let result =
+            calculate_next_base_gas_price(INIT_PRICE, gas_used, c.min_gas_price, &constants);
+        assert_eq!(result, 29_687_500_000);
+    }
+
+    #[test]
+    fn gas_used_zero_max_decrease() {
+        let c = V0_14_1;
+        let result = calculate_next_base_gas_price(INIT_PRICE, 0, c.min_gas_price, &c);
+        let expected = INIT_PRICE - INIT_PRICE / 48;
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn floor_clamping() {
+        let c = V0_14_1;
+        let price = c.min_gas_price + 1;
+        let result = calculate_next_base_gas_price(price, 0, c.min_gas_price, &c);
+        assert_eq!(result, c.min_gas_price);
+    }
+
+    #[test]
+    fn overflow_does_not_panic() {
+        let c = V0_14_1;
+        let gas_target = c.max_block_size / 2;
+        let constants = L2GasPriceConstants { gas_target, ..c };
+        let price = u64::MAX as u128;
+        let _ = calculate_next_base_gas_price(price, 0, c.min_gas_price, &constants);
+    }
+
+    #[test]
+    fn below_minimum_gradual_increase() {
+        let min_gas_price = 20_000_000_000u128;
+        let price = 10_000_000_000u128;
+        let constants = L2GasPriceConstants {
+            min_gas_price,
+            ..V0_14_1
+        };
+        let result = calculate_next_base_gas_price(price, 1000, min_gas_price, &constants);
+
+        let max_increase = price / MIN_GAS_PRICE_INCREASE_DENOMINATOR;
+        let expected = price + max_increase;
+        assert_eq!(result, expected);
+        assert!(result > price);
+        assert!(result < min_gas_price);
+    }
+
+    #[test]
+    fn below_minimum_caps_near_threshold() {
+        let min_gas_price = 10_000_000_000u128;
+        let price = 9_971_000_000u128;
+        let constants = L2GasPriceConstants {
+            min_gas_price,
+            ..V0_14_1
+        };
+        let result = calculate_next_base_gas_price(price, 1000, min_gas_price, &constants);
+        assert_eq!(result, min_gas_price);
+    }
+}
