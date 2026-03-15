@@ -5,6 +5,7 @@
 //! from Apollo's `fee_market` module.
 
 use std::cmp::{max, min};
+use std::sync::{Arc, RwLock};
 
 use pathfinder_common::StarknetVersion;
 
@@ -95,6 +96,62 @@ pub fn calculate_next_base_gas_price(
     };
 
     max(adjusted, min_gas_price)
+}
+
+/// Result of validating an L2 gas price proposal.
+#[derive(Debug, PartialEq, Eq)]
+pub enum L2GasPriceValidationResult {
+    Valid,
+    Invalid { proposed: u128, expected: u128 },
+    InsufficientData,
+}
+
+/// Tracks the expected L2 gas price for the next block.
+#[derive(Clone, Debug)]
+pub struct L2GasPriceProvider {
+    inner: Arc<RwLock<Option<u128>>>,
+}
+
+impl Default for L2GasPriceProvider {
+    fn default() -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(None)),
+        }
+    }
+}
+
+impl L2GasPriceProvider {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Compute and store the expected L2 gas price for the next block, given
+    /// the current block's price and gas consumption.
+    pub fn update_after_block(
+        &self,
+        l2_gas_price_fri: u128,
+        l2_gas_consumed: u128,
+        constants: &L2GasPriceConstants,
+    ) {
+        let next_price = calculate_next_base_gas_price(
+            l2_gas_price_fri,
+            l2_gas_consumed,
+            constants.min_gas_price,
+            constants,
+        );
+        let mut state = self.inner.write().unwrap();
+        *state = Some(next_price);
+    }
+
+    /// Validate a proposed L2 gas price against the expected value.
+    pub fn validate(&self, proposed: u128) -> L2GasPriceValidationResult {
+        let state = self.inner.read().unwrap();
+        match *state {
+            None => L2GasPriceValidationResult::InsufficientData,
+            Some(expected) if proposed == expected => L2GasPriceValidationResult::Valid,
+            Some(expected) => L2GasPriceValidationResult::Invalid { proposed, expected },
+        }
+    }
 }
 
 #[cfg(test)]
