@@ -356,7 +356,7 @@ impl RpcSubscriptionFlow for SubscribeNewTransactions {
                         let pre_latest_txs = pre_latest_block
                             .transactions
                             .iter()
-                            .zip(std::iter::repeat(TxnFinalityStatusWithoutL1Accepted::AcceptedOnL2));
+                            .zip(std::iter::repeat(TxnFinalityStatusWithoutL1Accepted::PreConfirmed));
 
                         if send_tx_updates(
                             pre_latest_txs,

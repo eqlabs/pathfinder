@@ -317,7 +317,7 @@ impl RpcSubscriptionFlow for SubscribeNewTransactionReceipts {
                             sent_pre_latest_updates,
                             None,
                             pre_latest_block_number,
-                            TxnFinalityStatus::AcceptedOnL2,
+                            TxnFinalityStatus::PreConfirmed,
                             &params,
                             &msg_tx,
                         )
