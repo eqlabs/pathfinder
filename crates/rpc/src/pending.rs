@@ -144,6 +144,14 @@ impl PendingBlockVariant {
 
     pub fn finality_status(&self) -> crate::dto::TxnFinalityStatus {
         match self {
+            // FIXME: The `PendingBlockVariant::Pending` case is dead code now that all networks
+            // are on Starknet 0.14.0+ and should be removed. Otherwise, returning `AcceptedOnL2`
+            // would be wrong.
+            //
+            // For more info:
+            //  - on why `AcceptedOnL2` is wrong: https://github.com/eqlabs/pathfinder/issues/3259
+            //  - on why `PendingBlockVariant::Pending` case is dead code:
+            //  https://github.com/eqlabs/pathfinder/issues/3272
             PendingBlockVariant::Pending(_) => crate::dto::TxnFinalityStatus::AcceptedOnL2,
             PendingBlockVariant::PreConfirmed { .. } => crate::dto::TxnFinalityStatus::PreConfirmed,
         }
@@ -682,7 +690,7 @@ impl PendingData {
                     transaction: pre_latest_tx.clone(),
                     receipt,
                     events,
-                    finality_status: crate::dto::TxnFinalityStatus::AcceptedOnL2,
+                    finality_status: crate::dto::TxnFinalityStatus::PreConfirmed,
                 });
             }
         }

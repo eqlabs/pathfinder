@@ -404,7 +404,7 @@ fn pending_data_tx_status(
         if status_in_pre_latest.is_some() {
             return Some((
                 pre_latest_block.number,
-                FinalityStatus::AcceptedOnL2,
+                FinalityStatus::PreConfirmed,
                 status_in_pre_latest,
             ));
         }
@@ -1127,7 +1127,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn transaction_found_in_pre_latest_and_and_l2_block_sends_update_once() {
+    async fn pre_confirmed_promoted_to_pre_latest_does_not_send_duplicate_notification() {
         test_transaction_status_streaming(|subscription_id| {
             vec![
                 TestEvent::Pending(
@@ -1211,7 +1211,9 @@ mod tests {
                         .into(),
                         BlockNumber::GENESIS + 3,
                         Some(Box::new((
-                            // Previous block promoted to pre-latest.
+                            // Previous block promoted to pre-latest. This should not result in
+                            // a notification because it would have a duplicate `PRE_CONFIRMED`
+                            // status.
                             BlockNumber::GENESIS + 2,
                             PreLatestBlock {
                                 parent_hash: BlockHash(Felt::from_u64(2)),
@@ -1250,20 +1252,8 @@ mod tests {
                     )
                     .unwrap(),
                 ),
-                TestEvent::Message(serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "method": "starknet_subscriptionTransactionStatus",
-                    "params": {
-                        "result": {
-                            "transaction_hash": "0x1",
-                            "status": {
-                                "finality_status": "ACCEPTED_ON_L2",
-                                "execution_status": "SUCCEEDED"
-                            }
-                        },
-                        "subscription_id": subscription_id
-                    }
-                })),
+                // No message expected for the pre-latest update since it would be a duplicate
+                // of the pre-confirmed update.
                 TestEvent::L2Block(
                     L2Block {
                         header: BlockHeader {
@@ -1286,7 +1276,20 @@ mod tests {
                     }
                     .into(),
                 ),
-                // No message received with a duplicate ACCEPTED_ON_L2 status.
+                TestEvent::Message(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": "starknet_subscriptionTransactionStatus",
+                    "params": {
+                        "result": {
+                            "transaction_hash": "0x1",
+                            "status": {
+                                "finality_status": "ACCEPTED_ON_L2",
+                                "execution_status": "SUCCEEDED"
+                            }
+                        },
+                        "subscription_id": subscription_id
+                    }
+                })),
             ]
         })
         .await;

@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- The pre-latest block (introduced in Starknet 0.14.0) is now reported with `PRE_CONFIRMED` finality
+  status instead of `ACCEPTED_ON_L2`. This aligns with the changes to block hash and commitment
+  calculation in Starknet 0.14.2, where the pre-latest block can no longer be treated as fully
+  accepted on L2. Affected RPC methods:
+  - `starknet_getTransactionReceipt`
+  - `starknet_getTransactionStatus`
+  - `starknet_subscribeEvents`
+  - `starknet_subscribeNewTransactionReceipts`
+  - `starknet_subscribeNewTransactions`
+  - `starknet_subscribeTransactionStatus`
+
 ### Changed
 
 - The v10 JSON-RPC endpoint now supports final JSON-RPC v0.10.1 spec.
