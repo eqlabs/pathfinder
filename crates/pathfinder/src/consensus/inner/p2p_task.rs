@@ -88,6 +88,34 @@ enum ComputationSuccess {
 
 const EVENT_CHANNEL_SIZE_LIMIT: usize = 1024;
 
+/// Seed the L2 gas price provider from the latest committed block in the DB.
+fn seed_l2_provider_from_db(
+    provider: &L2GasPriceProvider,
+    storage: &Storage,
+) -> anyhow::Result<()> {
+    let mut conn = storage.connection()?;
+    let db_tx = conn.transaction()?;
+    let Some(header) = db_tx.block_header(BlockId::Latest)? else {
+        return Ok(());
+    };
+    let Some(tx_data) = db_tx.transaction_data_for_block(BlockId::Latest)? else {
+        return Ok(());
+    };
+    let l2_gas_consumed: u128 = tx_data
+        .iter()
+        .map(|(_, receipt, _)| receipt.execution_resources.l2_gas.0)
+        .sum();
+    let constants = L2GasPriceConstants::for_version(header.starknet_version);
+    provider.update_after_block(header.strk_l2_gas_price.0, l2_gas_consumed, &constants);
+    tracing::info!(
+        block_number = %header.number,
+        l2_gas_price = header.strk_l2_gas_price.0,
+        l2_gas_consumed,
+        "L2 gas price provider seeded from DB"
+    );
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn spawn(
     chain_id: ChainId,
@@ -121,9 +149,13 @@ pub fn spawn(
     // threads don't panic when the `p2p_task` is cancelled.
     let worker_pool_for_cleanup = worker_pool.clone();
 
-    let l2_gas_price_provider = gas_price_provider
-        .as_ref()
-        .map(|_| L2GasPriceProvider::new());
+    let l2_gas_price_provider = gas_price_provider.as_ref().map(|_| {
+        let provider = L2GasPriceProvider::new();
+        if let Err(e) = seed_l2_provider_from_db(&provider, &main_storage) {
+            tracing::warn!("Failed to seed L2 gas price provider from DB: {e}");
+        }
+        provider
+    });
 
     // Manages batch execution with concurrent execution support
     let mut batch_execution_manager = BatchExecutionManager::new(
