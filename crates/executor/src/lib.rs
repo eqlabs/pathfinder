@@ -1,4 +1,3 @@
-pub(crate) mod block;
 pub(crate) mod call;
 pub(crate) mod class;
 pub(crate) mod concurrent_block;
@@ -15,7 +14,6 @@ pub(crate) mod transaction;
 pub mod types;
 pub mod worker_pool;
 
-pub use block::{BlockExecutor, BlockExecutorExt};
 // re-export blockifier transaction type since it's exposed on our API
 pub use blockifier::blockifier_versioned_constants::{VersionedConstants, VersionedConstantsError};
 pub use blockifier::transaction::account_transaction::{
