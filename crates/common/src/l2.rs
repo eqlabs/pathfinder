@@ -1,3 +1,6 @@
+use std::collections::BTreeMap;
+use std::sync::{Arc, RwLock};
+
 use fake::Dummy;
 
 use crate::event::Event;
@@ -34,6 +37,17 @@ pub struct L2Block {
     pub transactions_and_receipts: Vec<(Transaction, Receipt)>,
     pub events: Vec<Vec<Event>>,
 }
+
+/// [`ConsensusFinalizedL2Block`] which also includes the round in which it was
+/// decided upon.
+#[derive(Clone, Debug)]
+pub struct DecidedBlock {
+    pub round: u32,
+    pub block: ConsensusFinalizedL2Block,
+}
+
+/// A type alias for a `Sync` collection of [`DecidedBlock`]-s
+pub type DecidedBlocks = Arc<RwLock<BTreeMap<BlockNumber, DecidedBlock>>>;
 
 /// An [L2Block] that is the result of executing a consensus proposal. The only
 /// differences from an [L2Block] are:

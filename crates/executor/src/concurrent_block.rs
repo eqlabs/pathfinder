@@ -7,7 +7,7 @@ use blockifier::bouncer::BouncerConfig;
 use blockifier::concurrency::worker_pool::WorkerPool;
 use blockifier::context::BlockContext;
 use blockifier::state::cached_state::CachedState;
-use pathfinder_common::{ChainId, ClassHash, ContractAddress, TransactionIndex};
+use pathfinder_common::{ChainId, ClassHash, ContractAddress, DecidedBlocks, TransactionIndex};
 use starknet_api::block::BlockHashAndNumber;
 
 use crate::execution_state::{ExecutionState, VersionedConstantsMap};
@@ -47,12 +47,14 @@ impl ConcurrentBlockExecutor {
     ///
     /// This calls `pre_process_block` exactly once during initialization.
     /// The worker pool should be shared across multiple blocks for efficiency.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         chain_id: ChainId,
         block_info: BlockInfo,
         eth_fee_address: ContractAddress,
         strk_fee_address: ContractAddress,
         db_conn: pathfinder_storage::Connection,
+        decided_blocks: DecidedBlocks,
         worker_pool: Arc<WorkerPool<CachedState<ConcurrentStateReader>>>,
         block_deadline: Option<Instant>,
     ) -> anyhow::Result<Self> {
@@ -62,6 +64,7 @@ impl ConcurrentBlockExecutor {
             eth_fee_address,
             strk_fee_address,
             db_conn,
+            decided_blocks,
             worker_pool,
             block_deadline,
             VersionedConstantsMap::default(),
@@ -76,11 +79,12 @@ impl ConcurrentBlockExecutor {
         eth_fee_address: ContractAddress,
         strk_fee_address: ContractAddress,
         db_conn: pathfinder_storage::Connection,
+        decided_blocks: DecidedBlocks,
         worker_pool: Arc<WorkerPool<CachedState<ConcurrentStateReader>>>,
         block_deadline: Option<Instant>,
         versioned_constants_map: VersionedConstantsMap,
     ) -> anyhow::Result<Self> {
-        let storage_adapter = ConcurrentStorageAdapter::new(db_conn);
+        let storage_adapter = ConcurrentStorageAdapter::new(db_conn, decided_blocks);
 
         let execution_state = ExecutionState::validation(
             chain_id,

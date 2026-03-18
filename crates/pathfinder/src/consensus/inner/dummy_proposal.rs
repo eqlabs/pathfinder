@@ -16,6 +16,7 @@ use pathfinder_common::{
     ChainId,
     ConsensusFinalizedL2Block,
     ContractAddress,
+    DecidedBlocks,
 };
 use pathfinder_consensus::Round;
 use pathfinder_crypto::Felt;
@@ -27,6 +28,7 @@ use rand::{thread_rng, Rng, SeedableRng};
 use crate::devnet::{self, strictly_increasing_timestamp, Account};
 use crate::validator::{ProdTransactionMapper, ValidatorBlockInfoStage};
 
+// TODO consider waiting for the parent block to land in the decided blocks
 /// Blocks consensus tasks's processing loop until the parent block of height is
 /// committed in main storage without blocking the async runtime.
 pub(crate) async fn wait_for_parent_committed(
@@ -363,8 +365,12 @@ pub(crate) fn create_with_invalid_l1_handler_transactions(
 
     let validator = ValidatorBlockInfoStage::new(ChainId::SEPOLIA_TESTNET, proposal_init)?;
     let worker_pool = ExecutorWorkerPool::<ConcurrentStateReader>::new(1).get();
-    let mut validator =
-        validator.skip_validation(block_info.clone(), main_storage, worker_pool.clone())?;
+    let mut validator = validator.skip_validation(
+        block_info.clone(),
+        main_storage,
+        worker_pool.clone(),
+        DecidedBlocks::default(),
+    )?;
 
     let num_executed_txns = config
         .as_ref()
