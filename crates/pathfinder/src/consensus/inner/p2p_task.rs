@@ -26,6 +26,8 @@ use pathfinder_common::{
     ChainId,
     ConsensusFinalizedL2Block,
     ContractAddress,
+    DecidedBlock,
+    DecidedBlocks,
     ProposalCommitment,
 };
 use pathfinder_consensus::{
@@ -55,7 +57,6 @@ use crate::consensus::{ProposalError, ProposalHandlingError};
 use crate::gas_price::{L1GasPriceProvider, L2GasPriceConstants, L2GasPriceProvider};
 use crate::validator::{
     should_defer_validation,
-    DecidedBlock,
     ProdTransactionMapper,
     TransactionExt,
     ValidatorBlockInfoStage,
@@ -187,7 +188,7 @@ pub fn spawn(
         let validator_cache = ValidatorCache::new();
         let mut incoming_proposals = HashMap::new();
         let mut own_proposal_parts = HashMap::new();
-        let mut decided_blocks = HashMap::new();
+        let decided_blocks = DecidedBlocks::default();
 
         loop {
             let p2p_task_event = tokio::select! {
@@ -277,7 +278,7 @@ pub fn spawn(
                                     proposal_part,
                                     &mut incoming_proposals,
                                     &mut finalized_blocks,
-                                    &decided_blocks,
+                                    decided_blocks.clone(),
                                     vcache,
                                     dex,
                                     main_readonly_storage.clone(),
@@ -359,9 +360,12 @@ pub fn spawn(
                                 // If we're the proposer we could have a false positive here, which
                                 // we avoid by having the decided block marked, so we only return
                                 // a block that is both finalized and decided upon or nothing.
-                                let resp = decided_blocks
-                                    .get(&number.get())
-                                    .map(|decided| Box::new(decided.block.clone()));
+                                let resp = {
+                                    let decided_blocks = decided_blocks.read().unwrap();
+                                    decided_blocks
+                                        .get(&number)
+                                        .map(|decided| Box::new(decided.block.clone()))
+                                };
 
                                 if resp.is_none() {
                                     tracing::trace!(
@@ -399,15 +403,20 @@ pub fn spawn(
                                 //    such case the sync algo will choose to download the block from
                                 //    the FGw because supposedly the proposal has not been decided
                                 //    upon.
-                                let success = on_finalized_block_committed(
+                                remove_decided_block(
+                                    decided_blocks.clone(),
+                                    number,
                                     validator_address,
+                                );
+                                // Note: a committed block is always a decided block too
+                                let success = on_finalized_block_decided(
+                                    number,
                                     &validator_cache,
                                     deferred_executions.clone(),
                                     &mut batch_execution_manager,
                                     main_readonly_storage.clone(),
-                                    &mut decided_blocks,
+                                    decided_blocks.clone(),
                                     &mut finalized_blocks,
-                                    number,
                                     gas_price_provider.clone(),
                                     &l2_gas_price_provider,
                                     worker_pool.clone(),
@@ -557,14 +566,19 @@ pub fn spawn(
                         // block for the height, but the consensus engine should still be able to
                         // decide on the block (thanks to WAL) and move on to the next height. The
                         // actual missing block will be fetched by the sync task from the FGw.
+                        let mut decided_block_present = false;
+
                         if let Some(block) = finalized_blocks.remove(&height_and_round) {
+                            let mut decided_blocks = decided_blocks.write().unwrap();
                             decided_blocks.insert(
-                                height_and_round.height(),
+                                BlockNumber::new(height_and_round.height())
+                                    .context("Block number exceeds i64::MAX")?,
                                 DecidedBlock {
                                     round: height_and_round.round(),
                                     block,
                                 },
                             );
+                            decided_block_present = true;
                         }
 
                         tracing::info!(
@@ -585,7 +599,11 @@ pub fn spawn(
 
                         // Update L2 gas price provider with the decided block's data
                         if let Some(ref l2_provider) = l2_gas_price_provider {
-                            if let Some(decided) = decided_blocks.get(&height_and_round.height()) {
+                            let decided_blocks = decided_blocks.read().unwrap();
+                            if let Some(decided) = decided_blocks.get(
+                                &BlockNumber::new(height_and_round.height())
+                                    .context("height exceeds i64::MAX")?,
+                            ) {
                                 let header = &decided.block.header;
                                 let constants =
                                     L2GasPriceConstants::for_version(header.starknet_version);
@@ -630,47 +648,36 @@ pub fn spawn(
                         // in the past.
                         let block_number = BlockNumber::new(height_and_round.height())
                             .context("height exceeds i64::MAX")?;
+
                         let is_already_committed =
                             main_db_tx.block_exists(BlockId::Number(block_number))?;
 
-                        let success = if is_already_committed {
-                            tracing::trace!(
-                                number=%block_number, "🖧  📥 {validator_address} finalized block is already committed"
-                            );
-
-                            on_finalized_block_committed(
-                                validator_address,
+                        let success = if decided_block_present || is_already_committed {
+                            // A committed block is always a decided block too
+                            on_finalized_block_decided(
+                                block_number,
                                 &validator_cache,
                                 deferred_executions.clone(),
                                 &mut batch_execution_manager,
                                 main_readonly_storage.clone(),
-                                &mut decided_blocks,
+                                decided_blocks.clone(),
                                 &mut finalized_blocks,
-                                block_number,
                                 gas_price_provider.clone(),
                                 &l2_gas_price_provider,
                                 worker_pool.clone(),
                             )
                         } else {
-                            // TODO integrate decided blocks into storage adapter
-                            // See issue: https://github.com/eqlabs/pathfinder/issues/3248
-                            /*
-                            _on_finalized_block_decided(
-                                &height_and_round,
-                                &validator_cache,
-                                deferred_executions.clone(),
-                                &mut batch_execution_manager,
-                                main_readonly_storage.clone(),
-                                &mut finalized_blocks,
-                                &mut decided_blocks,
-                                gas_price_provider.clone(),
-                                &l2_gas_price_provider,
-                                worker_pool.clone(),
-                            )
-                            */
-
                             Ok(ComputationSuccess::Continue)
                         };
+
+                        if is_already_committed {
+                            // We can only remove this block if it has been committed
+                            remove_decided_block(
+                                decided_blocks.clone(),
+                                block_number,
+                                validator_address,
+                            );
+                        }
 
                         tracing::info!(
                             "🖧  💾 {validator_address} Finalized and prepared block for \
@@ -684,7 +691,7 @@ pub fn spawn(
                             &incoming_proposals,
                             &own_proposal_parts,
                             &finalized_blocks,
-                            &decided_blocks,
+                            decided_blocks.clone(),
                             &info_watch_tx,
                         )?;
 
@@ -752,24 +759,41 @@ pub fn spawn(
     (jh, worker_pool_for_cleanup)
 }
 
-// TODO integrate decided blocks into storage adapter
-// See issue: https://github.com/eqlabs/pathfinder/issues/3248
-/// Handle decide confirmation for a finalized block at given height and round.
+fn remove_decided_block(
+    decided_blocks: DecidedBlocks,
+    number: BlockNumber,
+    validator_address: ContractAddress,
+) {
+    let mut decided_blocks = decided_blocks.write().unwrap();
+    // Removal can fail if the node has been respawned after the decision was
+    // written into consensus WAL, because the consensus engine state will be
+    // restored but the decided blocks cache will be empty as it is not persisted
+    if decided_blocks.remove(&number).is_some() {
+        tracing::debug!(
+            "🖧  🗑️ {validator_address} removed finalized block for last round at height {} after \
+             commit confirmation",
+            number.get()
+        );
+    }
+}
+
+/// Handle decide confirmation for a finalized block at given height. Note: a
+/// committed block is always a decided block too.
 #[allow(clippy::too_many_arguments)]
-fn _on_finalized_block_decided(
-    height_and_round: &HeightAndRound,
+fn on_finalized_block_decided(
+    height: BlockNumber,
     validator_cache: &ValidatorCache,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
     main_db: Storage,
+    decided_blocks: DecidedBlocks,
     finalized_blocks: &mut HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
-    decided_blocks: &mut HashMap<u64, DecidedBlock>,
     gas_price_provider: Option<L1GasPriceProvider>,
     l2_gas_price_provider: &Option<L2GasPriceProvider>,
     worker_pool: ValidatorWorkerPool,
 ) -> Result<ComputationSuccess, anyhow::Error> {
     let exec_success = execute_deferred_for_next_height::<ProdTransactionMapper>(
-        height_and_round.height(),
+        height.get(),
         validator_cache.clone(),
         deferred_executions.clone(),
         batch_execution_manager,
@@ -780,7 +804,6 @@ fn _on_finalized_block_decided(
         l2_gas_price_provider.clone(),
         worker_pool,
     )?;
-
     let success = match exec_success {
         Some((hnr, commitment)) => {
             ComputationSuccess::PreviouslyDeferredProposalIsFinalized(hnr, commitment)
@@ -792,25 +815,28 @@ fn _on_finalized_block_decided(
 
 /// Handle commit confirmation for a finalized block at given height.
 #[allow(clippy::too_many_arguments)]
-fn on_finalized_block_committed(
+fn _on_finalized_block_committed(
     validator_address: ContractAddress,
     validator_cache: &ValidatorCache,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
     main_db: Storage,
-    decided_blocks: &mut HashMap<u64, DecidedBlock>,
+    decided_blocks: DecidedBlocks,
     finalized_blocks: &mut HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
     number: BlockNumber,
     gas_price_provider: Option<L1GasPriceProvider>,
     l2_gas_price_provider: &Option<L2GasPriceProvider>,
     worker_pool: ValidatorWorkerPool,
 ) -> Result<ComputationSuccess, anyhow::Error> {
-    if decided_blocks.remove(&number.get()).is_some() {
-        tracing::debug!(
-            "🖧  🗑️ {validator_address} removed finalized block for last round at height {} after \
-             commit confirmation",
-            number.get()
-        );
+    {
+        let mut decided_blocks = decided_blocks.write().unwrap();
+        if decided_blocks.remove(&number).is_some() {
+            tracing::debug!(
+                "🖧  🗑️ {validator_address} removed finalized block for last round at height {} \
+                 after commit confirmation",
+                number.get()
+            );
+        }
     }
 
     let exec_success = execute_deferred_for_next_height::<ProdTransactionMapper>(
@@ -835,13 +861,8 @@ fn on_finalized_block_committed(
     Ok(success)
 }
 
+#[derive(Clone)]
 struct ValidatorCache(Arc<Mutex<HashMap<HeightAndRound, ValidatorStage>>>);
-
-impl Clone for ValidatorCache {
-    fn clone(&self) -> Self {
-        Self(Arc::clone(&self.0))
-    }
-}
 
 impl ValidatorCache {
     fn new() -> Self {
@@ -871,7 +892,7 @@ fn execute_deferred_for_next_height<T: TransactionExt>(
     batch_execution_manager: &mut BatchExecutionManager,
     main_db: Storage,
     finalized_blocks: &mut HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
-    decided_blocks: &HashMap<u64, DecidedBlock>,
+    decided_blocks: DecidedBlocks,
     gas_price_provider: Option<L1GasPriceProvider>,
     l2_gas_price_provider: Option<L2GasPriceProvider>,
     worker_pool: ValidatorWorkerPool,
@@ -1086,7 +1107,7 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
     proposal_part: ProposalPart,
     incoming_proposals: &mut HashMap<HeightAndRound, ProposalPartsValidator>,
     finalized_blocks: &mut HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
-    decided_blocks: &HashMap<u64, DecidedBlock>,
+    decided_blocks: DecidedBlocks,
     mut validator_cache: ValidatorCache,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     main_readonly_storage: Storage,
@@ -1131,7 +1152,7 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
                 let db_tx = db_conn.transaction().context(
                     "Creating DB transaction for deferral check in block info validation",
                 )?;
-                should_defer_validation(block_info.height, decided_blocks, &db_tx)?
+                should_defer_validation(block_info.height, decided_blocks.clone(), &db_tx)?
             };
             if defer {
                 tracing::debug!(
@@ -1172,7 +1193,7 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
                 tx_batch,
                 validator_stage,
                 main_readonly_storage.clone(),
-                decided_blocks,
+                decided_blocks.clone(),
                 &mut deferred_executions.lock().unwrap(),
             )?;
             validator_cache.insert(height_and_round, next_stage);
@@ -1327,7 +1348,7 @@ fn defer_or_execute_proposal_fin<T: TransactionExt>(
     main_db: Storage,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
-    decided_blocks: &HashMap<u64, DecidedBlock>,
+    decided_blocks: DecidedBlocks,
     finalized_blocks: &mut HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
     validator_cache: &mut ValidatorCache,
     gas_price_provider: Option<L1GasPriceProvider>,
@@ -1343,7 +1364,11 @@ fn defer_or_execute_proposal_fin<T: TransactionExt>(
     let mut main_db_conn = main_db.connection()?;
     let main_db_tx = main_db_conn.transaction()?;
 
-    if should_defer_validation(height_and_round.height(), decided_blocks, &main_db_tx)? {
+    if should_defer_validation(
+        height_and_round.height(),
+        decided_blocks.clone(),
+        &main_db_tx,
+    )? {
         // The proposal cannot be finalized yet, because the previous
         // block is not committed yet. Defer its finalization.
         tracing::debug!(
@@ -1541,7 +1566,7 @@ fn update_info_watch(
     incoming_proposals: &HashMap<HeightAndRound, ProposalPartsValidator>,
     own_proposal_parts: &HashMap<HeightAndRound, Vec<ProposalPart>>,
     finalized_blocks: &HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
-    decided_blocks: &HashMap<u64, DecidedBlock>,
+    decided_blocks: DecidedBlocks,
     info_watch_tx: &watch::Sender<consensus_info::ConsensusInfo>,
 ) -> Result<(), ProposalHandlingError> {
     let mut cached = BTreeMap::<u64, consensus_info::CachedAtHeight>::new();
@@ -1580,16 +1605,19 @@ fn update_info_watch(
                 is_decided: false,
             })
     });
-    decided_blocks.iter().for_each(|(h, decided)| {
-        cached
-            .entry(*h)
-            .or_default()
-            .blocks
-            .push(consensus_info::FinalizedBlock {
-                round: decided.round,
-                is_decided: true,
-            })
-    });
+    {
+        let decided_blocks = decided_blocks.read().unwrap();
+        decided_blocks.iter().for_each(|(h, decided)| {
+            cached
+                .entry(h.get())
+                .or_default()
+                .blocks
+                .push(consensus_info::FinalizedBlock {
+                    round: decided.round,
+                    is_decided: true,
+                })
+        });
+    }
 
     info_watch_tx.send_modify(move |info| {
         info.highest_decision = Some(consensus_info::Decision {
@@ -1645,7 +1673,6 @@ mod tests {
 
             let mut incoming_proposals = HashMap::new();
             let mut finalized_blocks = HashMap::new();
-            let decided_blocks = HashMap::new();
             let validator_cache = ValidatorCache::new();
             let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
 
@@ -1681,7 +1708,7 @@ mod tests {
                             proposal_part,
                             &mut incoming_proposals,
                             &mut finalized_blocks,
-                            &decided_blocks,
+                            DecidedBlocks::default(),
                             validator_cache.clone(),
                             deferred_executions.clone(),
                             main_storage.clone(),

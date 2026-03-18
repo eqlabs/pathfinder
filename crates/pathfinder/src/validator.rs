@@ -24,6 +24,7 @@ use pathfinder_common::{
     ChainId,
     ConsensusFinalizedBlockHeader,
     ConsensusFinalizedL2Block,
+    DecidedBlocks,
     DeclaredClass,
     EntryPoint,
     L1DataAvailabilityMode,
@@ -80,16 +81,11 @@ pub enum ValidationResult {
     Error(anyhow::Error),
 }
 
-pub struct DecidedBlock {
-    pub round: u32,
-    pub block: ConsensusFinalizedL2Block,
-}
-
 /// Determines whether validation of the proposal should be deferred based on
 /// the presence of the parent block in the decided blocks or DB.
 pub fn should_defer_validation(
     height: u64,
-    decided_blocks: &HashMap<u64, DecidedBlock>,
+    decided_blocks: DecidedBlocks,
     db_tx: &DbTransaction<'_>,
 ) -> Result<bool, ProposalHandlingError> {
     let Some(parent_height) = height.checked_sub(1) else {
@@ -97,24 +93,29 @@ pub fn should_defer_validation(
         return Ok(false);
     };
 
-    let decided_parent = decided_blocks.get(&parent_height);
+    let is_parent_decided = {
+        let decided_blocks = decided_blocks.read().unwrap();
+        decided_blocks.contains_key(
+            &BlockNumber::new(parent_height).context("Block number exceeds i64::MAX")?,
+        )
+    };
 
-    let defer = match decided_parent {
+    let defer = if is_parent_decided {
         // The node observed parent block get decided - no deferral needed.
-        Some(_) => false,
+        false
+    } else {
         // The node did not observe parent block get decided - either it has not been
         // decided on yet, or the node joined the network too late to observe it. Fall
         // back to checking the committed blocks in DB.
-        None => {
-            let parent_block = BlockNumber::new(parent_height)
-                .context("Block number is larger than i64::MAX")
-                .map_err(ProposalHandlingError::Fatal)?;
-            let parent_block = BlockId::Number(parent_block);
-            let parent_committed = db_tx
-                .block_exists(parent_block)
-                .map_err(ProposalHandlingError::Fatal)?;
-            !parent_committed
-        }
+
+        let parent_block = BlockNumber::new(parent_height)
+            .context("Block number is larger than i64::MAX")
+            .map_err(ProposalHandlingError::Fatal)?;
+        let parent_block = BlockId::Number(parent_block);
+        let parent_committed = db_tx
+            .block_exists(parent_block)
+            .map_err(ProposalHandlingError::Fatal)?;
+        !parent_committed
     };
 
     Ok(defer)
@@ -164,7 +165,7 @@ impl ValidatorBlockInfoStage {
         self,
         block_info: BlockInfo,
         main_storage: Storage,
-        decided_blocks: &HashMap<u64, DecidedBlock>,
+        decided_blocks: DecidedBlocks,
         gas_price_provider: Option<L1GasPriceProvider>,
         l1_to_fri_validator: Option<&L1ToFriValidator>,
         l2_gas_price_provider: Option<&L2GasPriceProvider>,
@@ -194,7 +195,7 @@ impl ValidatorBlockInfoStage {
             block_info.height,
             block_info.timestamp,
             &main_storage,
-            decided_blocks,
+            decided_blocks.clone(),
         )?;
 
         // Validate L1 gas prices if a provider is available
@@ -265,6 +266,7 @@ impl ValidatorBlockInfoStage {
             worker_pool,
             main_storage,
             declared_classes: Vec::new(),
+            decided_blocks,
         })
     }
 
@@ -278,6 +280,7 @@ impl ValidatorBlockInfoStage {
         block_info: BlockInfo,
         main_storage: Storage,
         worker_pool: ValidatorWorkerPool,
+        decided_blocks: DecidedBlocks,
     ) -> Result<ValidatorTransactionBatchStage, ProposalHandlingError> {
         let _span = tracing::debug_span!(
             "Validator::skip_block_info_validation",
@@ -331,6 +334,7 @@ impl ValidatorBlockInfoStage {
             worker_pool,
             main_storage,
             declared_classes: Vec::new(),
+            decided_blocks,
         })
     }
 }
@@ -339,16 +343,19 @@ fn validate_block_info_timestamp(
     height: u64,
     proposal_timestamp: u64,
     main_storage: &Storage,
-    decided_blocks: &HashMap<u64, DecidedBlock>,
+    decided_blocks: DecidedBlocks,
 ) -> Result<(), ProposalHandlingError> {
     let Some(parent_height) = height.checked_sub(1) else {
         // Genesis block, no parent to validate against.
         return Ok(());
     };
 
-    let decided_parent_timestamp = decided_blocks
-        .get(&parent_height)
-        .map(|decided_parent| decided_parent.block.header.timestamp);
+    let decided_parent_timestamp = {
+        let decided_blocks = decided_blocks.read().unwrap();
+        decided_blocks
+            .get(&BlockNumber::new(parent_height).context("Block number exceeds i64::MAX")?)
+            .map(|decided_parent| decided_parent.block.header.timestamp)
+    };
 
     let parent_timestamp = match decided_parent_timestamp {
         Some(ts) => ts,
@@ -487,14 +494,22 @@ fn validate_l2_gas_price(
 pub struct ValidatorTransactionBatchStage {
     chain_id: ChainId,
     block_info: pathfinder_executor::types::BlockInfo,
+    /// Accumulated executed transactions across batches
     transactions: Vec<Transaction>,
+    /// Accumulated receipts corresponding to executed transactions
     receipts: Vec<Receipt>,
+    /// Accumulated events corresponding to executed transactions
     events: Vec<Vec<Event>>,
     executor: Option<ConcurrentBlockExecutor>,
     worker_pool: ValidatorWorkerPool,
     /// Storage for creating new connections
     main_storage: Storage,
+    /// Accumulated declared classes across batches. Only non-reverted
+    /// declarations are included.
     declared_classes: Vec<DeclaredClass>,
+    /// A view into the current decided blocks, used for initializing the
+    /// executor's state reader.
+    decided_blocks: DecidedBlocks,
 }
 
 impl ValidatorTransactionBatchStage {
@@ -572,6 +587,7 @@ impl ValidatorTransactionBatchStage {
                             anyhow::Error::from(e).context("Creating database connection"),
                         )
                     })?,
+                    self.decided_blocks.clone(),
                     self.worker_pool.clone(),
                     None, // No deadline
                 )
@@ -745,19 +761,19 @@ impl ValidatorTransactionBatchStage {
         expected_proposal_commitment: ProposalCommitment,
     ) -> Result<ConsensusFinalizedL2Block, ProposalHandlingError> {
         let height = self.block_info.number;
-        let next_stage = self.consensus_finalize0()?;
-        let actual_proposal_commitment = next_stage.header.state_diff_commitment;
+        let block = self.consensus_finalize0()?;
+        let actual_proposal_commitment = block.header.state_diff_commitment;
 
         // Skip commitment validation in tests when using dummy commitment (ZERO)
         // This allows e2e tests to focus on batch execution logic without commitment
         // complexity
         #[cfg(test)]
         if expected_proposal_commitment.0.is_zero() {
-            return Ok(next_stage);
+            return Ok(block);
         }
 
         if actual_proposal_commitment.0 == expected_proposal_commitment.0 {
-            Ok(next_stage)
+            Ok(block)
         } else {
             Err(ProposalHandlingError::recoverable_msg(format!(
                 "proposal commitment mismatch at height {height}, expected \
@@ -874,6 +890,7 @@ impl std::fmt::Debug for ValidatorTransactionBatchStage {
             .field("receipts_len", &self.receipts.len())
             .field("events_len", &self.events.len())
             .field("executor_initialized", &self.executor.is_some())
+            // Intentionally skipping decided blocks
             .finish()
     }
 }
@@ -1257,7 +1274,14 @@ mod tests {
         let (proposal_init, block_info) = create_test_proposal(1);
 
         let mut validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
-            .and_then(|validator| validator.skip_validation(block_info, storage, worker_pool))
+            .and_then(|validator| {
+                validator.skip_validation(
+                    block_info,
+                    storage,
+                    worker_pool,
+                    DecidedBlocks::default(),
+                )
+            })
             .expect("Failed to create validator stage");
 
         // Create batches: 3 batches with 2 transactions each
@@ -1347,7 +1371,14 @@ mod tests {
         let (proposal_init, block_info) = create_test_proposal(1);
 
         let mut validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
-            .and_then(|validator| validator.skip_validation(block_info, storage, worker_pool))
+            .and_then(|validator| {
+                validator.skip_validation(
+                    block_info,
+                    storage,
+                    worker_pool,
+                    DecidedBlocks::default(),
+                )
+            })
             .expect("Failed to create validator stage");
 
         // Create batches with different sizes to test boundary conditions
@@ -1458,7 +1489,6 @@ mod tests {
     #[test]
     fn test_empty_proposal_finalization() {
         let main_storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
-        let decided_blocks = HashMap::new();
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
 
@@ -1493,7 +1523,7 @@ mod tests {
             .validate_block_info(
                 block_info,
                 main_storage.clone(),
-                &decided_blocks,
+                DecidedBlocks::default(),
                 None,
                 None,
                 None,
@@ -1573,7 +1603,6 @@ mod tests {
         #[case] expected_error_message: Option<String>,
     ) {
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
-        let decided_blocks = HashMap::new();
         let worker_pool = create_test_worker_pool();
         let mut db_conn = storage.connection().expect("Failed to get DB connection");
         let db_tx = db_conn
@@ -1618,7 +1647,7 @@ mod tests {
         let result = validator_block_info1.validate_block_info(
             block_info1,
             storage,
-            &decided_blocks,
+            DecidedBlocks::default(),
             None,
             None,
             None,
@@ -1648,7 +1677,6 @@ mod tests {
     #[case::non_genesis_parent(BlockNumber::new_or_panic(42))]
     fn timestamp_validation_parent_block_not_found(#[case] proposal_height: BlockNumber) {
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
-        let decided_blocks = HashMap::new();
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
 
@@ -1682,7 +1710,7 @@ mod tests {
                     .validate_block_info(
                         block_info,
                         storage,
-                        &decided_blocks,
+                        DecidedBlocks::default(),
                         None,
                         None,
                         None,
@@ -1696,7 +1724,7 @@ mod tests {
                 .validate_block_info(
                     block_info,
                     storage,
-                    &decided_blocks,
+                    DecidedBlocks::default(),
                     None,
                     None,
                     None,

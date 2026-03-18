@@ -38,6 +38,8 @@ pub use l1::{L1BlockHash, L1BlockNumber, L1TransactionHash};
 pub use l2::{
     ConsensusFinalizedBlockHeader,
     ConsensusFinalizedL2Block,
+    DecidedBlock,
+    DecidedBlocks,
     DeclaredClass,
     L2Block,
     L2BlockToCommit,

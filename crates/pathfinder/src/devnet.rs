@@ -3,7 +3,6 @@
 //! Unfortunately we cannot use `starknet-devnet` directly because it is not
 //! state/storage API agnostic.
 
-use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -30,6 +29,7 @@ use pathfinder_common::{
     ChainId,
     ClassHash,
     ConsensusFinalizedL2Block,
+    DecidedBlocks,
     EventCommitment,
     L1DataAvailabilityMode,
     ReceiptCommitment,
@@ -382,7 +382,7 @@ pub fn init_proposal_and_validator(
     let validator = validator.validate_block_info(
         block_info.clone(),
         storage.clone(),
-        &HashMap::new(),
+        DecidedBlocks::default(),
         None,
         None,
         None,

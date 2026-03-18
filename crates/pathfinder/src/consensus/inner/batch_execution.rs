@@ -10,13 +10,13 @@ use std::collections::{HashMap, HashSet};
 use anyhow::Context;
 use p2p::consensus::HeightAndRound;
 use p2p_proto::consensus as proto_consensus;
+use pathfinder_common::DecidedBlocks;
 use pathfinder_storage::Storage;
 
 use crate::consensus::ProposalHandlingError;
 use crate::gas_price::{L1GasPriceProvider, L2GasPriceProvider};
 use crate::validator::{
     should_defer_validation,
-    DecidedBlock,
     TransactionExt,
     ValidatorStage,
     ValidatorTransactionBatchStage,
@@ -105,7 +105,7 @@ impl BatchExecutionManager {
         transactions: Vec<proto_consensus::Transaction>,
         validator_stage: ValidatorStage,
         main_db: Storage,
-        decided_blocks: &HashMap<u64, DecidedBlock>,
+        decided_blocks: DecidedBlocks,
         deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
     ) -> Result<ValidatorStage, ProposalHandlingError> {
         let mut main_db_conn = main_db
@@ -117,7 +117,11 @@ impl BatchExecutionManager {
             .context("Creating database transaction for batch execution with deferral")
             .map_err(ProposalHandlingError::Fatal)?;
         // Check if execution should be deferred
-        if should_defer_validation(height_and_round.height(), decided_blocks, &main_db_tx)? {
+        if should_defer_validation(
+            height_and_round.height(),
+            decided_blocks.clone(),
+            &main_db_tx,
+        )? {
             tracing::debug!(
                 "🖧  ⚙️ transaction batch execution for height and round {height_and_round} is \
                  deferred"
@@ -453,7 +457,14 @@ mod tests {
         let (proposal_init, block_info) = create_test_proposal(1);
 
         let mut validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
-            .and_then(|v| v.skip_validation(block_info, storage, Arc::clone(&worker_pool)))
+            .and_then(|v| {
+                v.skip_validation(
+                    block_info,
+                    storage,
+                    Arc::clone(&worker_pool),
+                    DecidedBlocks::default(),
+                )
+            })
             .expect("Failed to create validator stage");
         let mut batch_execution_manager = BatchExecutionManager::new(
             None,
@@ -580,7 +591,6 @@ mod tests {
             pathfinder_compiler::BlockifierLibfuncs::default(),
         );
 
-        let decided_blocks = std::collections::HashMap::new();
         let mut deferred_executions: std::collections::HashMap<HeightAndRound, DeferredExecution> =
             std::collections::HashMap::new();
 
@@ -637,7 +647,7 @@ mod tests {
                 transactions,
                 validator_stage,
                 storage.clone(),
-                &decided_blocks,
+                DecidedBlocks::default(),
                 &mut deferred_executions,
             )
             .expect("Failed to process batch");
@@ -696,7 +706,6 @@ mod tests {
             pathfinder_compiler::BlockifierLibfuncs::default(),
         );
 
-        let decided_blocks = std::collections::HashMap::new();
         let mut deferred_executions: std::collections::HashMap<HeightAndRound, DeferredExecution> =
             std::collections::HashMap::new();
         deferred_executions
@@ -714,7 +723,7 @@ mod tests {
                     transactions,
                     validator_stage,
                     storage.clone(),
-                    &decided_blocks,
+                    DecidedBlocks::default(),
                     &mut deferred_executions,
                 )
                 .expect("Failed to process batch");
@@ -756,7 +765,7 @@ mod tests {
                     transactions,
                     next_stage,
                     storage.clone(),
-                    &decided_blocks,
+                    DecidedBlocks::default(),
                     &mut deferred_executions,
                 )
                 .expect("Failed to process batch");
@@ -785,7 +794,12 @@ mod tests {
         let (proposal_init, block_info) = create_test_proposal(height_and_round_2.height());
         let validator_stage_2 = ValidatorBlockInfoStage::new(chain_id, proposal_init)
             .and_then(|validator| {
-                validator.skip_validation(block_info, storage.clone(), worker_pool_2.clone())
+                validator.skip_validation(
+                    block_info,
+                    storage.clone(),
+                    worker_pool_2.clone(),
+                    DecidedBlocks::default(),
+                )
             })
             .map(Box::new)
             .map(ValidatorStage::TransactionBatch)
@@ -804,7 +818,7 @@ mod tests {
                         transactions,
                         next_stage,
                         storage.clone(),
-                        &decided_blocks,
+                        DecidedBlocks::default(),
                         &mut deferred_executions,
                     )
                     .expect("Failed to process batch");
@@ -830,7 +844,14 @@ mod tests {
         let (proposal_init, block_info) = create_test_proposal(1);
 
         let mut validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
-            .and_then(|v| v.skip_validation(block_info, storage, Arc::clone(&worker_pool)))
+            .and_then(|v| {
+                v.skip_validation(
+                    block_info,
+                    storage,
+                    Arc::clone(&worker_pool),
+                    DecidedBlocks::default(),
+                )
+            })
             .expect("Failed to create validator stage");
 
         let mut batch_execution_manager = BatchExecutionManager::new(
@@ -896,7 +917,14 @@ mod tests {
         let storage_2 = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let (proposal_init, block_info) = create_test_proposal(1);
         let mut validator_stage_2 = ValidatorBlockInfoStage::new(chain_id, proposal_init)
-            .and_then(|validator| validator.skip_validation(block_info, storage_2, worker_pool_2))
+            .and_then(|validator| {
+                validator.skip_validation(
+                    block_info,
+                    storage_2,
+                    worker_pool_2,
+                    DecidedBlocks::default(),
+                )
+            })
             .expect("Failed to create validator stage");
 
         let batch1_2 = create_transaction_batch(0, 0, 3, chain_id);
@@ -956,7 +984,14 @@ mod tests {
         let (proposal_init, block_info) = create_test_proposal(1);
 
         let mut validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
-            .and_then(|v| v.skip_validation(block_info, storage, Arc::clone(&worker_pool)))
+            .and_then(|v| {
+                v.skip_validation(
+                    block_info,
+                    storage,
+                    Arc::clone(&worker_pool),
+                    DecidedBlocks::default(),
+                )
+            })
             .expect("Failed to create validator stage");
 
         let mut batch_execution_manager = BatchExecutionManager::new(
@@ -1011,7 +1046,14 @@ mod tests {
         let (proposal_init, block_info) = create_test_proposal(1);
 
         let mut validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
-            .and_then(|v| v.skip_validation(block_info, storage, Arc::clone(&worker_pool)))
+            .and_then(|v| {
+                v.skip_validation(
+                    block_info,
+                    storage,
+                    Arc::clone(&worker_pool),
+                    DecidedBlocks::default(),
+                )
+            })
             .expect("Failed to create validator stage");
 
         let mut batch_execution_manager = BatchExecutionManager::new(
@@ -1070,7 +1112,14 @@ mod tests {
         let (proposal_init, block_info) = create_test_proposal(1);
 
         let mut validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
-            .and_then(|v| v.skip_validation(block_info, storage, Arc::clone(&worker_pool)))
+            .and_then(|v| {
+                v.skip_validation(
+                    block_info,
+                    storage,
+                    Arc::clone(&worker_pool),
+                    DecidedBlocks::default(),
+                )
+            })
             .expect("Failed to create validator stage");
 
         let mut batch_execution_manager = BatchExecutionManager::new(

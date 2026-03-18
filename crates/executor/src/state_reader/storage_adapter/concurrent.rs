@@ -10,6 +10,8 @@ use pathfinder_common::{
     ClassHash,
     ContractAddress,
     ContractNonce,
+    DecidedBlocks,
+    SierraHash,
     StorageAddress,
     StorageValue,
 };
@@ -26,6 +28,7 @@ use crate::state_reader::storage_adapter::{
 #[derive(Clone)]
 pub struct ConcurrentStorageAdapter {
     tx: Sender<Command>,
+    decided_blocks: DecidedBlocks,
 }
 
 enum Command {
@@ -71,12 +74,12 @@ enum Command {
 }
 
 impl ConcurrentStorageAdapter {
-    pub fn new(db_conn: Connection) -> Self {
+    pub fn new(db_conn: Connection, decided_blocks: DecidedBlocks) -> Self {
         let (tx, rx) = mpsc::channel();
 
         util::task::spawn_std(move |cancellation_token| db_thread(db_conn, rx, cancellation_token));
 
-        Self { tx }
+        Self { tx, decided_blocks }
     }
 }
 
@@ -125,6 +128,18 @@ impl StorageAdapter for ConcurrentStorageAdapter {
     }
 
     fn casm_definition(&self, class_hash: ClassHash) -> Result<Option<Vec<u8>>, StateError> {
+        {
+            let decided_blocks = self.decided_blocks.read().unwrap();
+            if let Some(casm_def) = decided_blocks.iter().find_map(|(_, b)| {
+                b.block.declared_classes.iter().find_map(|c| {
+                    (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_def.clone())
+                })
+            }) {
+                return Ok(Some(casm_def));
+            }
+            // Otherwise fetch from the database
+        }
+
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
             .send(Command::CasmDefinition(class_hash, tx))
@@ -136,6 +151,19 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         &self,
         class_hash: ClassHash,
     ) -> Result<Option<(Option<BlockNumber>, Vec<u8>)>, StateError> {
+        {
+            let decided_blocks = self.decided_blocks.read().unwrap();
+            if let Some(block_number_and_class_def) = decided_blocks.iter().find_map(|(n, b)| {
+                b.block.declared_classes.iter().find_map(|c| {
+                    (c.sierra_hash == SierraHash(class_hash.0))
+                        .then_some((Some(*n), c.sierra_def.clone()))
+                })
+            }) {
+                return Ok(Some(block_number_and_class_def));
+            }
+            // Otherwise fetch from the database
+        }
+
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
             .send(Command::ClassDefinitionWithBlockNumber(class_hash, tx))
@@ -148,6 +176,39 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         block_id: BlockId,
         class_hash: ClassHash,
     ) -> Result<Option<Vec<u8>>, StateError> {
+        match block_id {
+            BlockId::Number(block_number) => {
+                let decided_blocks = self.decided_blocks.read().unwrap();
+                let class_def = decided_blocks.iter().rev().find_map(|(n, b)| {
+                    (*n <= block_number)
+                        .then_some(b.block.declared_classes.iter().find_map(|c| {
+                            (c.sierra_hash == SierraHash(class_hash.0))
+                                .then_some(c.casm_def.clone())
+                        }))
+                        .and_then(|x| x)
+                });
+
+                if let Some(class_def) = class_def {
+                    return Ok(Some(class_def));
+                }
+                // Otherwise fetch from the database
+            }
+            BlockId::Hash(_) => { /* Decided blocks don't have a hash yet */ }
+            BlockId::Latest => {
+                let decided_blocks = self.decided_blocks.read().unwrap();
+                let class_def = decided_blocks.iter().rev().find_map(|(_, b)| {
+                    b.block.declared_classes.iter().find_map(|c| {
+                        (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_def.clone())
+                    })
+                });
+
+                if let Some(class_def) = class_def {
+                    return Ok(Some(class_def));
+                }
+                // Otherwise fetch from the database
+            }
+        }
+
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
             .send(Command::CasmDefinitionAt(block_id, class_hash, tx))
@@ -160,6 +221,45 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         block_id: BlockId,
         class_hash: ClassHash,
     ) -> Result<Option<(BlockNumber, Vec<u8>)>, StateError> {
+        match block_id {
+            BlockId::Number(block_number) => {
+                let decided_blocks = self.decided_blocks.read().unwrap();
+                let block_number_and_class_def = decided_blocks.iter().rev().find_map(|(n, b)| {
+                    (*n <= block_number)
+                        .then_some(b.block.declared_classes.iter().find_map(|c| {
+                            (c.sierra_hash == SierraHash(class_hash.0))
+                                .then_some(c.sierra_def.clone())
+                        }))
+                        .and_then(|x| x)
+                        .map(|def| (*n, def))
+                });
+
+                if let Some(block_number_and_class_def) = block_number_and_class_def {
+                    return Ok(Some(block_number_and_class_def));
+                }
+                // Otherwise fetch from the database
+            }
+            BlockId::Hash(_) => { /* Decided blocks don't have a hash yet */ }
+            BlockId::Latest => {
+                let decided_blocks = self.decided_blocks.read().unwrap();
+                let block_number_and_class_def = decided_blocks.iter().rev().find_map(|(n, b)| {
+                    b.block
+                        .declared_classes
+                        .iter()
+                        .find_map(|c| {
+                            (c.sierra_hash == SierraHash(class_hash.0))
+                                .then_some(c.sierra_def.clone())
+                        })
+                        .map(|def| (*n, def))
+                });
+
+                if let Some(block_number_and_class_def) = block_number_and_class_def {
+                    return Ok(Some(block_number_and_class_def));
+                }
+                // Otherwise fetch from the database
+            }
+        }
+
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
             .send(Command::ClassDefinitionAtWithBlockNumber(
@@ -175,6 +275,72 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         contract_address: ContractAddress,
         storage_address: StorageAddress,
     ) -> Result<Option<StorageValue>, StateError> {
+        match block_id {
+            BlockId::Number(block_number) => {
+                let decided_blocks = self.decided_blocks.read().unwrap();
+                let storage_value = decided_blocks.iter().rev().find_map(|(n, b)| {
+                    (*n <= block_number)
+                        .then_some(
+                            b.block
+                                .state_update
+                                .contract_updates
+                                .iter()
+                                .map(|(address, update)| (address, &update.storage))
+                                .chain(
+                                    b.block
+                                        .state_update
+                                        .system_contract_updates
+                                        .iter()
+                                        .map(|(address, update)| (address, &update.storage)),
+                                )
+                                .find_map(|(address, storage)| {
+                                    (*address == contract_address).then_some(
+                                        storage.iter().find_map(|(address, value)| {
+                                            (*address == storage_address).then_some(*value)
+                                        }),
+                                    )
+                                }),
+                        )
+                        .and_then(|x| x)
+                        .and_then(|x| x)
+                });
+
+                if let Some(storage_value) = storage_value {
+                    return Ok(Some(storage_value));
+                }
+                // Otherwise fetch from the database
+            }
+            BlockId::Hash(_) => { /* Decided blocks don't have a hash yet */ }
+            BlockId::Latest => {
+                let decided_blocks = self.decided_blocks.read().unwrap();
+                let storage_value = decided_blocks.iter().rev().find_map(|(_, b)| {
+                    b.block
+                        .state_update
+                        .contract_updates
+                        .iter()
+                        .map(|(address, update)| (address, &update.storage))
+                        .chain(
+                            b.block
+                                .state_update
+                                .system_contract_updates
+                                .iter()
+                                .map(|(address, update)| (address, &update.storage)),
+                        )
+                        .find_map(|(address, storage)| {
+                            (*address == contract_address).then_some(storage.iter().find_map(
+                                |(address, value)| (*address == storage_address).then_some(*value),
+                            ))
+                        })
+                        .and_then(|x| x)
+                });
+
+                if let Some(storage_value) = storage_value {
+                    return Ok(Some(storage_value));
+                }
+                // Otherwise fetch from the database
+            }
+        }
+
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
             .send(Command::StorageValue(
@@ -192,6 +358,46 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         contract_address: ContractAddress,
         block_id: BlockId,
     ) -> Result<Option<ContractNonce>, StateError> {
+        match block_id {
+            BlockId::Number(block_number) => {
+                let decided_blocks = self.decided_blocks.read().unwrap();
+                let nonce = decided_blocks.iter().rev().find_map(|(n, b)| {
+                    (*n <= block_number)
+                        .then_some(b.block.state_update.contract_updates.iter().find_map(
+                            |(address, update)| {
+                                (*address == contract_address).then_some(update.nonce)
+                            },
+                        ))
+                        .and_then(|x| x)
+                        .and_then(|x| x)
+                });
+
+                if let Some(nonce) = nonce {
+                    return Ok(Some(nonce));
+                }
+                // Otherwise fetch from the database
+            }
+            BlockId::Hash(_) => { /* Decided blocks don't have a hash yet */ }
+            BlockId::Latest => {
+                let decided_blocks = self.decided_blocks.read().unwrap();
+                let nonce = decided_blocks.iter().rev().find_map(|(_, b)| {
+                    b.block
+                        .state_update
+                        .contract_updates
+                        .iter()
+                        .find_map(|(address, update)| {
+                            (*address == contract_address).then_some(update.nonce)
+                        })
+                        .and_then(|x| x)
+                });
+
+                if let Some(nonce) = nonce {
+                    return Ok(Some(nonce));
+                }
+                // Otherwise fetch from the database
+            }
+        }
+
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
             .send(Command::ContractNonce(contract_address, block_id, tx))
@@ -204,6 +410,48 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         block_id: BlockId,
         contract_address: ContractAddress,
     ) -> Result<Option<ClassHash>, StateError> {
+        match block_id {
+            BlockId::Number(block_number) => {
+                let decided_blocks = self.decided_blocks.read().unwrap();
+                let class_hash = decided_blocks.iter().rev().find_map(|(n, b)| {
+                    (*n <= block_number)
+                        .then_some(b.block.state_update.contract_updates.iter().find_map(
+                            |(address, update)| {
+                                (*address == contract_address)
+                                    .then_some(update.class.map(|c| c.class_hash()))
+                            },
+                        ))
+                        .and_then(|x| x)
+                        .and_then(|x| x)
+                });
+
+                if let Some(class_hash) = class_hash {
+                    return Ok(Some(class_hash));
+                }
+                // Otherwise fetch from the database
+            }
+            BlockId::Hash(_) => { /* Decided blocks don't have a hash yet */ }
+            BlockId::Latest => {
+                let decided_blocks = self.decided_blocks.read().unwrap();
+                let class_hash = decided_blocks.iter().rev().find_map(|(_, b)| {
+                    b.block
+                        .state_update
+                        .contract_updates
+                        .iter()
+                        .find_map(|(address, update)| {
+                            (*address == contract_address)
+                                .then_some(update.class.map(|c| c.class_hash()))
+                        })
+                        .and_then(|x| x)
+                });
+
+                if let Some(class_hash) = class_hash {
+                    return Ok(Some(class_hash));
+                }
+                // Otherwise fetch from the database
+            }
+        }
+
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
             .send(Command::ContractClassHash(block_id, contract_address, tx))
@@ -212,6 +460,7 @@ impl StorageAdapter for ConcurrentStorageAdapter {
     }
 
     fn casm_hash(&self, class_hash: ClassHash) -> Result<Option<CasmHash>, StateError> {
+        // Note: Decided blocks don't store legacy casm hash
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
             .send(Command::CasmHash(class_hash, tx))
@@ -220,6 +469,18 @@ impl StorageAdapter for ConcurrentStorageAdapter {
     }
 
     fn casm_hash_v2(&self, class_hash: ClassHash) -> Result<Option<CasmHash>, StateError> {
+        {
+            let decided_blocks = self.decided_blocks.read().unwrap();
+            if let Some(casm_def) = decided_blocks.iter().find_map(|(_, b)| {
+                b.block.declared_classes.iter().find_map(|c| {
+                    (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_hash_v2)
+                })
+            }) {
+                return Ok(Some(casm_def));
+            }
+            // Otherwise fetch from the database
+        }
+
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
             .send(Command::CasmHashV2(class_hash, tx))
@@ -232,6 +493,38 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         block_id: BlockId,
         class_hash: ClassHash,
     ) -> Result<Option<CasmHash>, StateError> {
+        match block_id {
+            BlockId::Number(block_number) => {
+                let decided_blocks = self.decided_blocks.read().unwrap();
+                let casm_hash = decided_blocks.iter().rev().find_map(|(n, b)| {
+                    (*n <= block_number)
+                        .then_some(b.block.declared_classes.iter().find_map(|c| {
+                            (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_hash_v2)
+                        }))
+                        .and_then(|x| x)
+                });
+
+                if let Some(casm_hash) = casm_hash {
+                    return Ok(Some(casm_hash));
+                }
+                // Otherwise fetch from the database
+            }
+            BlockId::Hash(_) => { /* Decided blocks don't have a hash yet */ }
+            BlockId::Latest => {
+                let decided_blocks = self.decided_blocks.read().unwrap();
+                let casm_hash = decided_blocks.iter().rev().find_map(|(_, b)| {
+                    b.block.declared_classes.iter().find_map(|c| {
+                        (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_hash_v2)
+                    })
+                });
+
+                if let Some(casm_hash) = casm_hash {
+                    return Ok(Some(casm_hash));
+                }
+                // Otherwise fetch from the database
+            }
+        }
+
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
             .send(Command::CasmHashAt(block_id, class_hash, tx))
