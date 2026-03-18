@@ -1,6 +1,6 @@
 use anyhow::Context;
 use pathfinder_common::{CasmHash, ClassHash, SierraHash};
-use starknet_gateway_client::GatewayApi;
+use starknet_gateway_client::{BlockId, GatewayApi};
 
 pub enum DownloadedClass {
     Cairo {
@@ -23,7 +23,7 @@ pub async fn download_class<SequencerClient: GatewayApi>(
     use pathfinder_class_hash::compute_class_hash;
 
     let definition = sequencer
-        .pending_class_by_hash(class_hash)
+        .class_by_hash(class_hash, BlockId::Latest)
         .await
         .with_context(|| format!("Downloading class {}", class_hash.0))?
         .to_vec();
@@ -66,7 +66,7 @@ pub async fn download_class<SequencerClient: GatewayApi>(
                 (
                     definition,
                     sequencer
-                        .pending_casm_by_hash(class_hash)
+                        .casm_by_hash(class_hash, BlockId::Latest)
                         .await
                         .with_context(|| format!("Downloading CASM {}", class_hash.0))?
                         .to_vec(),
@@ -88,7 +88,7 @@ pub async fn download_class<SequencerClient: GatewayApi>(
                     Err(error) => {
                         tracing::info!(class_hash=%hash, ?error, "CASM compilation failed, falling back to fetching from gateway");
                         sequencer
-                            .pending_casm_by_hash(class_hash)
+                            .casm_by_hash(class_hash, BlockId::Latest)
                             .await
                             .with_context(|| format!("Downloading CASM {}", class_hash.0))?
                             .to_vec()

@@ -2103,11 +2103,11 @@ mod tests {
             class_hash: ClassHash,
             returned_result: Result<bytes::Bytes, SequencerError>,
         ) {
-            mock.expect_pending_class_by_hash()
-                .withf(move |x| x == &class_hash)
+            mock.expect_class_by_hash()
+                .withf(move |x, _| x == &class_hash)
                 .times(1)
                 .in_sequence(seq)
-                .return_once(|_| returned_result);
+                .return_once(|_, _| returned_result);
         }
 
         /// Convenience wrapper
@@ -2116,10 +2116,10 @@ mod tests {
             class_hash: ClassHash,
             returned_result: Result<bytes::Bytes, SequencerError>,
         ) {
-            mock.expect_pending_class_by_hash()
-                .withf(move |x| x == &class_hash)
+            mock.expect_class_by_hash()
+                .withf(move |x, _| x == &class_hash)
                 .times(1)
-                .return_once(|_| returned_result);
+                .return_once(|_, _| returned_result);
         }
 
         fn expect_class_by_hash_no_sequence_at_most_once(
@@ -2127,10 +2127,10 @@ mod tests {
             class_hash: ClassHash,
             returned_result: Result<bytes::Bytes, SequencerError>,
         ) {
-            mock.expect_pending_class_by_hash()
-                .withf(move |x| x == &class_hash)
+            mock.expect_class_by_hash()
+                .withf(move |x, _| x == &class_hash)
                 .times(..=1)
-                .return_once(|_| returned_result);
+                .return_once(|_, _| returned_result);
         }
 
         /// Convenience wrapper

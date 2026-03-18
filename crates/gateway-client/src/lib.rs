@@ -66,16 +66,18 @@ pub trait GatewayApi: Sync {
         unimplemented!()
     }
 
-    async fn pending_class_by_hash(
+    async fn class_by_hash(
         &self,
         class_hash: ClassHash,
+        block: BlockId,
     ) -> Result<bytes::Bytes, SequencerError> {
         unimplemented!();
     }
 
-    async fn pending_casm_by_hash(
+    async fn casm_by_hash(
         &self,
         class_hash: ClassHash,
+        block: BlockId,
     ) -> Result<bytes::Bytes, SequencerError> {
         unimplemented!();
     }
@@ -167,18 +169,20 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
         self.as_ref().block_header(block).await
     }
 
-    async fn pending_class_by_hash(
+    async fn class_by_hash(
         &self,
         class_hash: ClassHash,
+        block: BlockId,
     ) -> Result<bytes::Bytes, SequencerError> {
-        self.as_ref().pending_class_by_hash(class_hash).await
+        self.as_ref().class_by_hash(class_hash, block).await
     }
 
-    async fn pending_casm_by_hash(
+    async fn casm_by_hash(
         &self,
         class_hash: ClassHash,
+        block: BlockId,
     ) -> Result<bytes::Bytes, SequencerError> {
-        self.as_ref().pending_casm_by_hash(class_hash).await
+        self.as_ref().casm_by_hash(class_hash, block).await
     }
 
     async fn transaction_status(
@@ -421,14 +425,15 @@ impl GatewayApi for Client {
 
     /// Gets class for a particular class hash.
     #[tracing::instrument(skip(self))]
-    async fn pending_class_by_hash(
+    async fn class_by_hash(
         &self,
         class_hash: ClassHash,
+        block: BlockId,
     ) -> Result<bytes::Bytes, SequencerError> {
         self.feeder_gateway_request()
             .get_class_by_hash()
             .class_hash(class_hash)
-            .block(BlockId::Pending)
+            .block(block)
             .retry(self.retry)
             .get_as_bytes()
             .await
@@ -436,14 +441,15 @@ impl GatewayApi for Client {
 
     /// Gets CASM for a particular class hash.
     #[tracing::instrument(skip(self))]
-    async fn pending_casm_by_hash(
+    async fn casm_by_hash(
         &self,
         class_hash: ClassHash,
+        block: BlockId,
     ) -> Result<bytes::Bytes, SequencerError> {
         self.feeder_gateway_request()
             .get_compiled_class_by_class_hash()
             .class_hash(class_hash)
-            .block(BlockId::Pending)
+            .block(block)
             .retry(self.retry)
             .get_as_bytes()
             .await
