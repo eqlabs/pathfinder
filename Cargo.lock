@@ -5106,7 +5106,7 @@ dependencies = [
 
 [[package]]
 name = "feeder-gateway"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -5406,7 +5406,7 @@ checksum = "42012b0f064e01aa58b545fe3727f90f7dd4020f4a3ea735b50344965f5a57e9"
 
 [[package]]
 name = "gateway-test-utils"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "reqwest",
  "serde_json",
@@ -8154,7 +8154,7 @@ dependencies = [
 
 [[package]]
 name = "p2p"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8193,7 +8193,7 @@ dependencies = [
 
 [[package]]
 name = "p2p_proto"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "fake",
  "libp2p-identity",
@@ -8212,7 +8212,7 @@ dependencies = [
 
 [[package]]
 name = "p2p_proto_derive"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8221,7 +8221,7 @@ dependencies = [
 
 [[package]]
 name = "p2p_stream"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8350,7 +8350,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -8428,7 +8428,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-block-hashes"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "pathfinder-common",
  "pathfinder-crypto",
@@ -8436,7 +8436,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-casm-hashes"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "pathfinder-common",
  "pathfinder-crypto",
@@ -8444,7 +8444,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-class-hash"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "anyhow",
  "fake",
@@ -8463,7 +8463,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-common"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -8489,7 +8489,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-compiler"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "anyhow",
  "cairo-lang-starknet 1.0.0-alpha.6",
@@ -8511,7 +8511,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-consensus"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -8533,7 +8533,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-consensus-fetcher"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "anyhow",
  "pathfinder-common",
@@ -8548,7 +8548,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-crypto"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "ark-ff 0.5.0",
  "assert_matches",
@@ -8565,7 +8565,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-ethereum"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "alloy",
  "anyhow",
@@ -8585,7 +8585,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-executor"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "anyhow",
  "blockifier",
@@ -8610,7 +8610,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-merkle-tree"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "anyhow",
  "bitvec",
@@ -8626,7 +8626,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-retry"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "tokio",
  "tokio-retry",
@@ -8634,7 +8634,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-rpc"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -8695,7 +8695,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-serde"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "anyhow",
  "num-bigint 0.4.6",
@@ -8710,7 +8710,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-storage"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -8774,7 +8774,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-version"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "vergen",
 ]
@@ -10742,7 +10742,7 @@ dependencies = [
 
 [[package]]
 name = "starknet-gateway-client"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -10776,7 +10776,7 @@ dependencies = [
 
 [[package]]
 name = "starknet-gateway-test-fixtures"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "pathfinder-common",
  "pathfinder-crypto",
@@ -10784,7 +10784,7 @@ dependencies = [
 
 [[package]]
 name = "starknet-gateway-types"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "anyhow",
  "fake",
@@ -11956,7 +11956,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "util"
-version = "0.22.0-beta.3"
+version = "0.22.0"
 dependencies = [
  "anyhow",
  "num-traits",
