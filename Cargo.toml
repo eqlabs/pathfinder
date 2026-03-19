@@ -49,19 +49,22 @@ axum = "0.8.4"
 base64 = "0.22.1"
 bincode = "2.0.1"
 bitvec = "1.0.1"
-blockifier = { version = "0.18.0-dev.0", features = ["node_api", "reexecution"] }
+blockifier = { version = "0.18.0-dev.1", features = [
+    "node_api",
+    "reexecution",
+] }
 bytes = "1.4.0"
 cached = "0.44.0"
 # This one needs to match the version used by blockifier
-cairo-lang-starknet-classes = "=2.14.1-dev.3"
+cairo-lang-starknet-classes = "=2.16.0"
 # This one needs to match the version used by blockifier
-cairo-native = "0.9.0-rc.0"
+cairo-native = "0.9.0-rc.2"
 # This one needs to match the version used by blockifier
-cairo-vm = "=3.0.1"
+cairo-vm = "=3.2.0"
 casm-compiler-v1_0_0-alpha6 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-alpha.6" }
 casm-compiler-v1_0_0-rc0 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-rc0" }
 casm-compiler-v1_1_1 = { package = "cairo-lang-starknet", version = "=1.1.1" }
-casm-compiler-v2 = { package = "cairo-lang-starknet", version = "=2.14.1-dev.3" }
+casm-compiler-v2 = { package = "cairo-lang-starknet", version = "=2.16.0" }
 clap = "4.5.45"
 console-subscriber = "0.5"
 const-decoder = "0.4.0"
@@ -106,7 +109,13 @@ r2d2_sqlite = "0.31.0"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
 rayon = "1.11.0"
-reqwest = { version = "0.12.23", default-features = false, features = ["http2", "rustls-tls-native-roots", "charset", "gzip", "deflate"] }
+reqwest = { version = "0.12.23", default-features = false, features = [
+    "http2",
+    "rustls-tls-native-roots",
+    "charset",
+    "gzip",
+    "deflate",
+] }
 rstest = "0.18.2"
 rusqlite = "0.37.0"
 rustls = "0.23.35"
@@ -121,7 +130,7 @@ smallvec = "1.15.1"
 # This one needs to match the version used by blockifier
 starknet-types-core = "=0.2.4"
 # This one needs to match the version used by blockifier
-starknet_api = { version = "0.18.0-dev.0" }
+starknet_api = { version = "0.18.0-dev.1" }
 syn = "1.0"
 tempfile = "3.8"
 test-log = { version = "0.2.12", features = ["trace"] }
