@@ -515,18 +515,25 @@ mod v2 {
         let sierra_class: ContractClass = pathfinder_to_starknet_contract_class(definition)
             .context("Converting to Sierra class")?;
 
-        sierra_class
-            .validate_version_compatible(
-                cairo_lang_starknet_classes::allowed_libfuncs::ListSelector::ListName(
-                    cairo_lang_starknet_classes::allowed_libfuncs::BUILTIN_ALL_LIBFUNCS_LIST
-                        .to_string(),
-                ),
-            )
-            .context("Validating Sierra class")?;
+        let extracted_sierra_program = sierra_class
+            .extract_sierra_program(false)
+            .context("Extracting Sierra program")?;
+
+        extracted_sierra_program.validate_version_compatible(
+            cairo_lang_starknet_classes::allowed_libfuncs::ListSelector::ListName(
+                cairo_lang_starknet_classes::allowed_libfuncs::BUILTIN_EXPERIMENTAL_LIBFUNCS_LIST
+                    .to_string(),
+            ),
+        ).context("Validating Sierra class")?;
 
         // TODO: determine `max_bytecode_size`
-        let casm_class = CasmContractClass::from_contract_class(sierra_class, true, usize::MAX)
-            .context("Compiling to CASM")?;
+        let casm_class = CasmContractClass::from_contract_class(
+            sierra_class,
+            extracted_sierra_program,
+            true,
+            usize::MAX,
+        )
+        .context("Compiling to CASM")?;
         let casm_definition = serde_json::to_vec(&casm_class)?;
 
         Ok(casm_definition)

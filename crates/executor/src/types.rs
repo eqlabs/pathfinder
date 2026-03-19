@@ -821,7 +821,7 @@ impl FunctionInvocation {
             events,
             messages,
             result,
-            computation_resources: call_info.resources.into(),
+            computation_resources: call_info.resources.vm_resources.into(),
             execution_resources: InnerCallExecutionResources {
                 l1_gas: gas_consumed.l1_gas.0.into(),
                 l2_gas: gas_consumed.l2_gas.0.into(),

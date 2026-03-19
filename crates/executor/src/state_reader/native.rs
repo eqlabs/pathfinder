@@ -151,7 +151,7 @@ fn sierra_class_as_native(
         serde_json::from_value(sierra_definition)
             .map_err(|e| StateError::ProgramError(ProgramError::Parse(e)))?;
 
-    let sierra_program = sierra_class.extract_sierra_program().map_err(|e| {
+    let sierra_program = sierra_class.extract_sierra_program(false).map_err(|e| {
         StateError::StateReadError(format!(
             "Error parsing Sierra
                 program: {e}"
@@ -169,7 +169,7 @@ fn sierra_class_as_native(
     let contract_executor = std::panic::catch_unwind(|| {
         let mut stats = cairo_native::statistics::Statistics::default();
         let executor = AotContractExecutor::new(
-            &sierra_program,
+            &sierra_program.program,
             &sierra_class.entry_points_by_type,
             version_id,
             optimization_level,

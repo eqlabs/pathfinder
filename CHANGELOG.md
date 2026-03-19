@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The v10 JSON-RPC endpoint now supports final JSON-RPC v0.10.1 spec.
+- `blockifier` has been upgraded to 0.18.0-dev.1, ensuring correctness of execution results on Starknet 0.14.2.
 
 ## [0.22.0-beta.3] - 2026-03-11
 
