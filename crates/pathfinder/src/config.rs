@@ -54,21 +54,15 @@ pub struct Cli {
 /// as long as it has fields with `#[clap(skip)]`.
 pub fn parse_cli() -> Cli {
     let mut os_args: Vec<_> = std::env::args_os().collect();
-    let Some(arg1) = os_args.get(1) else {
-        // No subcommand provided, let clap handle showing the help message.
-        return Cli::parse_from(os_args);
-    };
+    let arg1 = os_args.get(1).and_then(|arg1| arg1.to_str());
 
     // If a valid subcommand was provided, run it. Otherwise, default to the
     // `node` subcommand and let clap handle any errors.
-    let is_valid_command = if let Some(arg1) = arg1.as_os_str().to_str() {
-        CommandKind::from_str(arg1).is_ok()
-    } else {
-        false
-    };
-
-    if !is_valid_command {
-        os_args.insert(1, "node".into());
+    match arg1 {
+        Some(arg1) if CommandKind::from_str(arg1).is_ok() => {}
+        _ => {
+            os_args.insert(1, "node".into());
+        }
     }
 
     Cli::parse_from(os_args)
