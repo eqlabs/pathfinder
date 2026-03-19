@@ -32,7 +32,7 @@ use pathfinder_ethereum::EthereumStateUpdate;
 use pathfinder_storage::Storage;
 use primitive_types::H160;
 use serde_json::de;
-use starknet_gateway_client::{Client, GatewayApi};
+use starknet_gateway_client::{BlockId, Client, GatewayApi};
 use tokio::sync::Mutex;
 use tracing::Instrument;
 
@@ -1392,9 +1392,10 @@ mod tests {
 
         #[async_trait::async_trait]
         impl GatewayApi for FakeFgw {
-            async fn pending_casm_by_hash(
+            async fn casm_by_hash(
                 &self,
                 _: ClassHash,
+                _: BlockId,
             ) -> Result<bytes::Bytes, SequencerError> {
                 Ok(bytes::Bytes::from_static(CASM2))
             }

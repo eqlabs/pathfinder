@@ -1065,7 +1065,11 @@ mod tests {
 
     #[async_trait::async_trait]
     impl GatewayApi for FakeFgw {
-        async fn pending_casm_by_hash(&self, _: ClassHash) -> Result<bytes::Bytes, SequencerError> {
+        async fn casm_by_hash(
+            &self,
+            _: ClassHash,
+            _: BlockId,
+        ) -> Result<bytes::Bytes, SequencerError> {
             Ok(bytes::Bytes::from_static(
                 starknet_gateway_test_fixtures::class_definitions::CAIRO_1_1_0_BALANCE_CASM_JSON,
             ))

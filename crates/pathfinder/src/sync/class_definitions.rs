@@ -16,7 +16,7 @@ use pathfinder_common::{BlockNumber, CasmHash, ClassHash, SierraHash};
 use pathfinder_storage::{Storage, Transaction};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde_json::de;
-use starknet_gateway_client::GatewayApi;
+use starknet_gateway_client::{BlockId, GatewayApi};
 use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::reply::call;
 use tokio::sync::mpsc::{self, Receiver};
@@ -507,7 +507,7 @@ fn compile_or_fetch_impl<SequencerClient: GatewayApi + Clone + Send + 'static>(
                 // that the class is declared and exists so if the gateway responds with an
                 // error we should restart the sync and retry later.
                 Err(_) => tokio_handle
-                    .block_on(fgw.pending_casm_by_hash(hash))
+                    .block_on(fgw.casm_by_hash(hash, BlockId::Latest))
                     .map_err(|error| {
                         tracing::debug!(%block_number, class_hash=%hash, %error, "Fetching casm from feeder gateway failed");
                         SyncError::FetchingCasmFailed
