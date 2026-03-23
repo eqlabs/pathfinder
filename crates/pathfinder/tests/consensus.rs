@@ -73,7 +73,6 @@ mod test {
     #[case::fail_on_prevote_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::PrevoteRx }))]
     #[case::fail_on_precommit_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::PrecommitRx }))]
     #[case::fail_on_proposal_decided(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalDecided }))]
-    #[case::fail_on_proposal_committed(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalCommitted }))]
     #[tokio::test]
     async fn consensus_3_nodes_with_failures(#[case] inject_failure: Option<InjectFailureConfig>) {
         const NUM_NODES: usize = 3;
@@ -230,6 +229,170 @@ mod test {
         assert!(
             charlie_artifacts.is_empty(),
             "Charlie should not have leftover cached consensus data: {charlie_artifacts:#?}"
+        );
+    }
+
+    #[rstest]
+    // Cannot be tested with just 3 nodes b/c Bob might break the
+    // Gossip communication property when restarting - see
+    // https://github.com/eqlabs/pathfinder/issues/3286
+    #[case::fail_on_proposal_committed(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalCommitted })]
+    #[tokio::test]
+    async fn consensus_4_nodes_with_failures(#[case] inject_failure: InjectFailureConfig) {
+        const NUM_NODES: usize = 4;
+        const READY_TIMEOUT: Duration = Duration::from_secs(20);
+        const TEST_TIMEOUT: Duration = Duration::from_secs(120);
+        const POLL_READY: Duration = Duration::from_millis(500);
+        const POLL_HEIGHT: Duration = Duration::from_secs(1);
+
+        let disallow_reverted_txns = true;
+
+        let (configs, boot_height, stopwatch) =
+            utils::setup(NUM_NODES, disallow_reverted_txns).unwrap();
+
+        let target_height: u64 = boot_height + 5;
+
+        let alice_cfg = configs.first().unwrap();
+        let mut fgw = FeederGateway::spawn(alice_cfg).unwrap();
+        fgw.wait_for_ready(POLL_READY, READY_TIMEOUT).await.unwrap();
+
+        let mut configs = configs.into_iter().map(|cfg| {
+            cfg.with_local_feeder_gateway(fgw.port())
+                .with_sync_enabled()
+        });
+
+        let alice = PathfinderInstance::spawn(configs.next().unwrap()).unwrap();
+        alice
+            .wait_for_ready(POLL_READY, READY_TIMEOUT)
+            .await
+            .unwrap();
+
+        let boot_port = alice.consensus_p2p_port();
+        let mut configs = configs.map(|cfg| cfg.with_boot_port(boot_port));
+
+        let bob_cfg = configs
+            .next()
+            .unwrap()
+            .with_inject_failure(Some(inject_failure));
+
+        let bob = PathfinderInstance::spawn(bob_cfg.clone()).unwrap();
+        let charlie = PathfinderInstance::spawn(configs.next().unwrap()).unwrap();
+        let dan = PathfinderInstance::spawn(configs.next().unwrap()).unwrap();
+
+        let (bob_rdy, charlie_rdy, dan_rdy) = tokio::join!(
+            bob.wait_for_ready(POLL_READY, READY_TIMEOUT),
+            charlie.wait_for_ready(POLL_READY, READY_TIMEOUT),
+            dan.wait_for_ready(POLL_READY, READY_TIMEOUT),
+        );
+        bob_rdy.unwrap();
+        charlie_rdy.unwrap();
+        dan_rdy.unwrap();
+
+        utils::log_elapsed(stopwatch);
+
+        let (hnr_tx, hnr_rx) = mpsc::channel(target_height as usize * 3);
+        let hnr_rx = tokio_stream::wrappers::ReceiverStream::new(hnr_rx);
+        let (err_tx, err_rx) = mpsc::channel(6);
+
+        let alice_decided = wait_for_height(
+            &alice,
+            target_height,
+            POLL_HEIGHT,
+            Some(hnr_tx),
+            err_tx.clone(),
+        );
+        let bob_decided = wait_for_height(&bob, target_height, POLL_HEIGHT, None, err_tx.clone());
+        let charlie_decided =
+            wait_for_height(&charlie, target_height, POLL_HEIGHT, None, err_tx.clone());
+        let dan_decided = wait_for_height(&dan, target_height, POLL_HEIGHT, None, err_tx.clone());
+        let alice_committed = wait_for_block_exists(
+            &alice,
+            target_height,
+            POLL_HEIGHT,
+            disallow_reverted_txns,
+            err_tx.clone(),
+        );
+        let bob_committed = wait_for_block_exists(
+            &bob,
+            target_height,
+            POLL_HEIGHT,
+            disallow_reverted_txns,
+            err_tx.clone(),
+        );
+        let charlie_committed = wait_for_block_exists(
+            &charlie,
+            target_height,
+            POLL_HEIGHT,
+            disallow_reverted_txns,
+            err_tx.clone(),
+        );
+        let dan_committed = wait_for_block_exists(
+            &charlie,
+            target_height,
+            POLL_HEIGHT,
+            disallow_reverted_txns,
+            err_tx.clone(),
+        );
+
+        let maybe_bob = respawn_on_fail(true, bob, bob_cfg, POLL_READY, READY_TIMEOUT);
+
+        // Wait for: the test to pass, timeout, user interruption, or bail out early if
+        // the RPC client encounters an error
+        utils::join_all(
+            vec![
+                alice_decided,
+                bob_decided,
+                charlie_decided,
+                dan_decided,
+                alice_committed,
+                bob_committed,
+                charlie_committed,
+                dan_committed,
+            ],
+            TEST_TIMEOUT,
+            err_rx,
+        )
+        .await
+        .unwrap();
+
+        let decided_hnrs = hnr_rx.collect::<Vec<_>>().await;
+        if let Some(x) = decided_hnrs.iter().find(|hnr| hnr.round() > 0) {
+            println!("Network failed to recover in round 0 at (h:r): {x}");
+        }
+
+        let alice_artifacts = get_cached_artifacts_info(&alice, target_height)
+            .await
+            .unwrap();
+        assert!(
+            alice_artifacts.is_empty(),
+            "Alice should not have leftover cached consensus data: {alice_artifacts:#?}"
+        );
+
+        if let Some(bob) = maybe_bob.instance() {
+            let bob_artifacts = get_cached_artifacts_info(&bob, target_height)
+                .await
+                .unwrap();
+            assert!(
+                bob_artifacts.is_empty(),
+                "Bob should not have leftover cached consensus data after respawn: \
+                 {bob_artifacts:#?}"
+            );
+        }
+
+        let charlie_artifacts = get_cached_artifacts_info(&charlie, target_height)
+            .await
+            .unwrap();
+        assert!(
+            charlie_artifacts.is_empty(),
+            "Charlie should not have leftover cached consensus data: {charlie_artifacts:#?}"
+        );
+
+        let dan_artifacts = get_cached_artifacts_info(&dan, target_height)
+            .await
+            .unwrap();
+        assert!(
+            dan_artifacts.is_empty(),
+            "Dan should not have leftover cached consensus data: {dan_artifacts:#?}"
         );
     }
 
