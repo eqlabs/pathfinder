@@ -68,7 +68,7 @@ message InvokeV3 {
 // Used in consensus and mempool contexts where proof is included.
 message InvokeV3WithProof {
     InvokeV3 invoke = 1;
-    repeated uint32 proof = 2;
+    bytes proof = 2;
 }
 
 // see https://external.integration.starknet.io/feeder_gateway/get_transaction?transactionHash=0x29fd7881f14380842414cdfdd8d6c0b1f2174f8916edcfeb1ede1eb26ac3ef0

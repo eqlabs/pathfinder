@@ -87,7 +87,7 @@ pub struct InvokeV3 {
 #[protobuf(name = "crate::proto::transaction::InvokeV3WithProof")]
 pub struct InvokeV3WithProof {
     pub invoke: InvokeV3,
-    pub proof: Vec<u32>,
+    pub proof: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]

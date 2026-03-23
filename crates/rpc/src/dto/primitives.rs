@@ -831,8 +831,7 @@ mod pathfinder_common_types {
         fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
             use base64::Engine;
 
-            let bytes: Vec<u8> = self.0.iter().flat_map(|v| v.to_be_bytes()).collect();
-            let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            let encoded = base64::engine::general_purpose::STANDARD.encode(&self.0);
             serializer.serialize_str(&encoded)
         }
     }
