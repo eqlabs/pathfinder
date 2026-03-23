@@ -949,14 +949,16 @@ mod pathfinder_context {
                     gateway,
                     feeder_gateway,
                     chain_id,
+                    compress_gateway_requests,
                 } => Self::configure_custom(
-                    gateway,
-                    feeder_gateway,
+                    *gateway,
+                    *feeder_gateway,
                     chain_id,
                     data_directory,
                     api_key,
                     gateway_timeout,
                     gateway_dns_refresh_interval,
+                    compress_gateway_requests,
                 )
                 .await
                 .context("Configuring custom network")?,
@@ -977,13 +979,15 @@ mod pathfinder_context {
             api_key: Option<String>,
             gateway_timeout: Duration,
             gateway_dns_refresh_interval: Duration,
+            compress_gateway_requests: bool,
         ) -> anyhow::Result<Self> {
             use pathfinder_crypto::Felt;
             use starknet_gateway_client::GatewayApi;
 
             let gateway = GatewayClient::with_urls(gateway, feeder, gateway_timeout)
                 .context("Creating gateway client")?
-                .with_api_key(api_key);
+                .with_api_key(api_key)
+                .with_compress_gateway_requests(compress_gateway_requests);
 
             let network_id =
                 ChainId(Felt::from_be_slice(chain_id.as_bytes()).context("Parsing chain ID")?);

@@ -10,6 +10,7 @@ rust-version = { workspace = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
+flate2 = { workspace = true }
 futures = { workspace = true }
 metrics = { workspace = true }
 mockall = { workspace = true }
@@ -19,15 +20,18 @@ pathfinder-serde = { path = "../serde" }
 pathfinder-version = { path = "../version" }
 reqwest = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
+serde_json = { workspace = true, features = [
+    "arbitrary_precision",
+    "raw_value",
+] }
 starknet-gateway-types = { path = "../gateway-types" }
 tokio = { workspace = true, features = ["macros", "test-util"] }
 tracing = { workspace = true }
+
 [dev-dependencies]
 assert_matches = { workspace = true }
 base64 = { workspace = true }
 fake = { workspace = true }
-flate2 = { workspace = true }
 gateway-test-utils = { path = "../gateway-test-utils" }
 httpmock = { workspace = true }
 pathfinder-crypto = { path = "../crypto" }

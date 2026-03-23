@@ -191,6 +191,7 @@ pub async fn with_metrics<T>(
                 increment_failed(meta, REASON_TIMEOUT);
             }
             SequencerError::ReqwestError(_) => {}
+            SequencerError::GatewayRequestCreationError(_) => {}
         }
     })
 }

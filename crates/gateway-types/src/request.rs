@@ -106,6 +106,15 @@ pub mod add_transaction {
         V3(InvokeFunctionV3),
     }
 
+    impl InvokeFunction {
+        pub fn is_proof_empty(&self) -> bool {
+            match self {
+                InvokeFunction::V0(_) | InvokeFunction::V1(_) => true,
+                InvokeFunction::V3(v3) => v3.proof.is_empty(),
+            }
+        }
+    }
+
     #[serde_as]
     #[derive(Debug, serde::Serialize)]
     pub struct InvokeFunctionV0V1 {
