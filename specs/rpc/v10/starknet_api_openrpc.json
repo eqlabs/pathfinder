@@ -1,7 +1,7 @@
 {
   "openrpc": "1.0.0-rc1",
   "info": {
-    "version": "0.10.1",
+    "version": "0.10.2",
     "title": "StarkNet Node API",
     "license": {}
   },
@@ -2391,7 +2391,7 @@
             "properties": {
               "proof": {
                 "title": "Proof",
-                "description": "Optional proof for the transaction, encoded as a base64 string of big-endian packed u32 values",
+                "description": "Optional proof for the transaction, as a base64 string-encoded byte array",
                 "type": "string",
                 "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)?$"
               }
