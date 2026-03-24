@@ -574,6 +574,80 @@ mod tests {
 
     use super::*;
 
+    fn insert_placeholder(transaction: &Transaction<'_>, hash: ClassHash) {
+        transaction
+            .inner()
+            .execute(
+                "INSERT INTO class_definitions (hash, block_number) VALUES (?, 0)",
+                rusqlite::params![&hash.0.to_be_bytes()[..]],
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn class_definitions_exist_ignores_placeholder() {
+        let mut connection = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
+        let tx = connection.transaction().unwrap();
+
+        let hash = class_hash!("0xabc");
+        insert_placeholder(&tx, hash);
+
+        let result = tx.class_definitions_exist(&[hash]).unwrap();
+        assert_eq!(result, vec![false]);
+    }
+
+    #[test]
+    fn insert_cairo_fills_placeholder() {
+        let mut connection = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
+        let tx = connection.transaction().unwrap();
+
+        let hash = class_hash!("0xabc");
+        insert_placeholder(&tx, hash);
+
+        let definition = b"example cairo program";
+        tx.insert_cairo_class_definition(hash, definition).unwrap();
+
+        let result = tx.class_definition(hash).unwrap();
+        assert_eq!(result, Some(definition.to_vec()));
+    }
+
+    #[test]
+    fn insert_sierra_fills_placeholder() {
+        let mut connection = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
+        let tx = connection.transaction().unwrap();
+
+        let sierra_hash = sierra_hash_bytes!(b"sierra hash abc");
+        let class_hash = ClassHash(sierra_hash.0);
+        insert_placeholder(&tx, class_hash);
+
+        let sierra_definition = b"example sierra program";
+        let casm_definition = b"compiled sierra program";
+        let casm_hash_v2 = casm_hash_bytes!(b"casm hash blake abc");
+
+        tx.insert_sierra_class_definition(
+            &sierra_hash,
+            sierra_definition,
+            casm_definition,
+            &casm_hash_v2,
+        )
+        .unwrap();
+
+        let result = tx.class_definition(class_hash).unwrap();
+        assert_eq!(result, Some(sierra_definition.to_vec()));
+
+        let result = tx.casm_definition(class_hash).unwrap();
+        assert_eq!(result, Some(casm_definition.to_vec()));
+    }
+
     fn setup_class(transaction: &Transaction<'_>) -> (ClassHash, &'static [u8], serde_json::Value) {
         let hash = class_hash!("0x123");
 
