@@ -29,7 +29,9 @@ impl Transaction<'_> {
 
         self.inner()
             .execute(
-                "INSERT OR IGNORE INTO class_definitions (hash, definition) VALUES (?, ?)",
+                "INSERT INTO class_definitions (hash, definition) VALUES (?, ?)
+                ON CONFLICT(hash) DO UPDATE SET definition = excluded.definition
+                WHERE class_definitions.definition IS NULL",
                 params![sierra_hash, &sierra_definition],
             )
             .context("Inserting sierra definition")?;
