@@ -332,6 +332,19 @@ pub fn spawn(
                         // consensus engine is already started for this new height carried in those
                         // messages.
                         ConsensusCommand::Proposal(_) | ConsensusCommand::Vote(_) => {
+                            if let ConsensusCommand::Vote(ref signed_vote) = cmd {
+                                let vote = &signed_vote.vote;
+                                // The condition is always false in production builds.
+                                if integration_testing::debug_ignore_received_vote(
+                                    vote.r#type.clone(),
+                                    vote.height,
+                                    vote.round.as_u32(),
+                                    inject_failure,
+                                ) {
+                                    continue;
+                                }
+                            }
+
                             // Make sure we don't start older heights that have already been decided
                             // upon, or are still in progress due to race conditions, or are too old
                             // to fit in history depth anyway.

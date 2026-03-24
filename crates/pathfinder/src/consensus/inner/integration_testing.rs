@@ -3,8 +3,10 @@
 //! features are enabled.
 
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use p2p_proto::consensus::ProposalPart;
+use pathfinder_consensus::VoteType;
 
 use crate::config::integration_testing::{InjectFailureConfig, InjectFailureTrigger};
 
@@ -211,6 +213,55 @@ pub fn send_outdated_vote(vote_height: u64, inject_failure: Option<InjectFailure
 )))]
 pub fn send_outdated_vote(
     _proposal_height: u64,
+    _inject_failure: Option<InjectFailureConfig>,
+) -> bool {
+    false
+}
+
+#[cfg(all(
+    feature = "p2p",
+    feature = "consensus-integration-tests",
+    debug_assertions
+))]
+pub fn debug_ignore_received_vote(
+    vote_type: VoteType,
+    vote_height: u64,
+    vote_round: Option<u32>,
+    inject_failure: Option<InjectFailureConfig>,
+) -> bool {
+    static IGNORE_RECEIVED_VOTE: AtomicBool = AtomicBool::new(true);
+
+    let ret = if matches!(vote_type, VoteType::Precommit)
+        && matches!(vote_round, Some(0))
+        && matches!(inject_failure,
+                    Some(InjectFailureConfig {
+                        height,
+                        trigger: InjectFailureTrigger::CommittedVoteLost,
+                    }) if vote_height == height
+        ) {
+        // Drop the message just once, not on re-send.
+        IGNORE_RECEIVED_VOTE.swap(false, Ordering::Relaxed)
+    } else {
+        false
+    };
+    if ret {
+        tracing::info!(
+            "💥 Integration testing: ignoring PRECOMMIT vote at height {vote_height}, as \
+             configured"
+        );
+    }
+    ret
+}
+
+#[cfg(not(all(
+    feature = "p2p",
+    feature = "consensus-integration-tests",
+    debug_assertions
+)))]
+pub fn debug_ignore_received_vote(
+    _vote_type: VoteType,
+    _proposal_height: u64,
+    _vote_round: Option<u32>,
     _inject_failure: Option<InjectFailureConfig>,
 ) -> bool {
     false

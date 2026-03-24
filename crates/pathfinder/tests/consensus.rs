@@ -73,6 +73,7 @@ mod test {
     #[case::fail_on_prevote_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::PrevoteRx }))]
     #[case::fail_on_precommit_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::PrecommitRx }))]
     #[case::fail_on_proposal_decided(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalDecided }))]
+    #[case::fail_on_proposal_committed(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalCommitted }))]
     #[tokio::test]
     async fn consensus_3_nodes_with_failures(#[case] inject_failure: Option<InjectFailureConfig>) {
         const NUM_NODES: usize = 3;
@@ -232,23 +233,40 @@ mod test {
         );
     }
 
-    #[rstest]
-    // Cannot be tested with just 3 nodes b/c Bob might break the
-    // Gossip communication property when restarting - see
-    // https://github.com/eqlabs/pathfinder/issues/3286
-    #[case::fail_on_proposal_committed(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalCommitted })]
+    // This is not a rstest, because a) we want to keep the naming
+    // convention (because the CI pipeline uses `consensus_[34]_nodes`
+    // to group tests), and b) we don't normally want to run the test
+    // with just 3 nodes (because that often - although not always -
+    // fails).
     #[tokio::test]
-    async fn consensus_4_nodes_with_failures(#[case] inject_failure: InjectFailureConfig) {
-        const NUM_NODES: usize = 4;
+    #[ignore]
+    async fn consensus_3_nodes_with_lost_vote() {
+        consensus_with_lost_vote(3).await;
+    }
+
+    #[tokio::test]
+    async fn consensus_4_nodes_with_lost_vote() {
+        consensus_with_lost_vote(4).await;
+    }
+
+    async fn consensus_with_lost_vote(num_nodes: usize) {
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
         const TEST_TIMEOUT: Duration = Duration::from_secs(120);
         const POLL_READY: Duration = Duration::from_millis(500);
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
         let disallow_reverted_txns = true;
+        let vote_lost = Some(InjectFailureConfig {
+            height: 4,
+            trigger: InjectFailureTrigger::CommittedVoteLost,
+        });
+        let proposal_committed = Some(InjectFailureConfig {
+            height: 4,
+            trigger: InjectFailureTrigger::ProposalCommitted,
+        });
 
         let (configs, boot_height, stopwatch) =
-            utils::setup(NUM_NODES, disallow_reverted_txns).unwrap();
+            utils::setup(num_nodes, disallow_reverted_txns).unwrap();
 
         let target_height: u64 = boot_height + 5;
 
@@ -261,7 +279,8 @@ mod test {
                 .with_sync_enabled()
         });
 
-        let alice = PathfinderInstance::spawn(configs.next().unwrap()).unwrap();
+        let alice_cfg = configs.next().unwrap().with_inject_failure(vote_lost);
+        let alice = PathfinderInstance::spawn(alice_cfg).unwrap();
         alice
             .wait_for_ready(POLL_READY, READY_TIMEOUT)
             .await
@@ -273,20 +292,33 @@ mod test {
         let bob_cfg = configs
             .next()
             .unwrap()
-            .with_inject_failure(Some(inject_failure));
-
+            .with_inject_failure(proposal_committed);
         let bob = PathfinderInstance::spawn(bob_cfg.clone()).unwrap();
-        let charlie = PathfinderInstance::spawn(configs.next().unwrap()).unwrap();
-        let dan = PathfinderInstance::spawn(configs.next().unwrap()).unwrap();
 
-        let (bob_rdy, charlie_rdy, dan_rdy) = tokio::join!(
-            bob.wait_for_ready(POLL_READY, READY_TIMEOUT),
-            charlie.wait_for_ready(POLL_READY, READY_TIMEOUT),
-            dan.wait_for_ready(POLL_READY, READY_TIMEOUT),
-        );
-        bob_rdy.unwrap();
-        charlie_rdy.unwrap();
-        dan_rdy.unwrap();
+        let charlie_cfg = configs.next().unwrap().with_inject_failure(vote_lost);
+        let charlie = PathfinderInstance::spawn(charlie_cfg).unwrap();
+
+        let maybe_dan = if num_nodes > 3 {
+            // Dan might as well process the vote - it's not enough...
+            let dan = PathfinderInstance::spawn(configs.next().unwrap()).unwrap();
+            let (bob_rdy, charlie_rdy, dan_rdy) = tokio::join!(
+                bob.wait_for_ready(POLL_READY, READY_TIMEOUT),
+                charlie.wait_for_ready(POLL_READY, READY_TIMEOUT),
+                dan.wait_for_ready(POLL_READY, READY_TIMEOUT),
+            );
+            bob_rdy.unwrap();
+            charlie_rdy.unwrap();
+            dan_rdy.unwrap();
+            Some(dan)
+        } else {
+            let (bob_rdy, charlie_rdy) = tokio::join!(
+                bob.wait_for_ready(POLL_READY, READY_TIMEOUT),
+                charlie.wait_for_ready(POLL_READY, READY_TIMEOUT),
+            );
+            bob_rdy.unwrap();
+            charlie_rdy.unwrap();
+            None
+        };
 
         utils::log_elapsed(stopwatch);
 
@@ -304,7 +336,15 @@ mod test {
         let bob_decided = wait_for_height(&bob, target_height, POLL_HEIGHT, None, err_tx.clone());
         let charlie_decided =
             wait_for_height(&charlie, target_height, POLL_HEIGHT, None, err_tx.clone());
-        let dan_decided = wait_for_height(&dan, target_height, POLL_HEIGHT, None, err_tx.clone());
+
+        let maybe_dan_decided = if let Some(ref dan) = maybe_dan {
+            let dan_decided =
+                wait_for_height(dan, target_height, POLL_HEIGHT, None, err_tx.clone());
+            Some(dan_decided)
+        } else {
+            None
+        };
+
         let alice_committed = wait_for_block_exists(
             &alice,
             target_height,
@@ -326,34 +366,36 @@ mod test {
             disallow_reverted_txns,
             err_tx.clone(),
         );
-        let dan_committed = wait_for_block_exists(
-            &charlie,
-            target_height,
-            POLL_HEIGHT,
-            disallow_reverted_txns,
-            err_tx.clone(),
-        );
+
+        let maybe_dan_committed = if let Some(ref dan) = maybe_dan {
+            let dan_committed = wait_for_block_exists(
+                dan,
+                target_height,
+                POLL_HEIGHT,
+                disallow_reverted_txns,
+                err_tx.clone(),
+            );
+            Some(dan_committed)
+        } else {
+            None
+        };
 
         let maybe_bob = respawn_on_fail(true, bob, bob_cfg, POLL_READY, READY_TIMEOUT);
 
         // Wait for: the test to pass, timeout, user interruption, or bail out early if
         // the RPC client encounters an error
-        utils::join_all(
-            vec![
-                alice_decided,
-                bob_decided,
-                charlie_decided,
-                dan_decided,
-                alice_committed,
-                bob_committed,
-                charlie_committed,
-                dan_committed,
-            ],
-            TEST_TIMEOUT,
-            err_rx,
-        )
-        .await
-        .unwrap();
+        let mut all_decided = vec![alice_decided, bob_decided, charlie_decided];
+        if let Some(dan_decided) = maybe_dan_decided {
+            all_decided.push(dan_decided);
+        }
+        let mut all_committed = vec![alice_committed, bob_committed, charlie_committed];
+        if let Some(dan_committed) = maybe_dan_committed {
+            all_committed.push(dan_committed);
+        }
+        all_decided.append(&mut all_committed);
+        utils::join_all(all_decided, TEST_TIMEOUT, err_rx)
+            .await
+            .unwrap();
 
         let decided_hnrs = hnr_rx.collect::<Vec<_>>().await;
         if let Some(x) = decided_hnrs.iter().find(|hnr| hnr.round() > 0) {
@@ -387,13 +429,15 @@ mod test {
             "Charlie should not have leftover cached consensus data: {charlie_artifacts:#?}"
         );
 
-        let dan_artifacts = get_cached_artifacts_info(&dan, target_height)
-            .await
-            .unwrap();
-        assert!(
-            dan_artifacts.is_empty(),
-            "Dan should not have leftover cached consensus data: {dan_artifacts:#?}"
-        );
+        if let Some(dan) = maybe_dan {
+            let dan_artifacts = get_cached_artifacts_info(&dan, target_height)
+                .await
+                .unwrap();
+            assert!(
+                dan_artifacts.is_empty(),
+                "Dan should not have leftover cached consensus data: {dan_artifacts:#?}"
+            );
+        }
     }
 
     #[tokio::test]
