@@ -163,9 +163,9 @@ impl Transaction<'_> {
     /// Note that this does not indicate that the class is actually declared --
     /// only that we stored it.
     pub fn class_definitions_exist(&self, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
-        let mut stmt = self
-            .inner()
-            .prepare_cached("SELECT 1 FROM class_definitions WHERE hash = ? AND definition IS NOT NULL")?;
+        let mut stmt = self.inner().prepare_cached(
+            "SELECT 1 FROM class_definitions WHERE hash = ? AND definition IS NOT NULL",
+        )?;
 
         Ok(classes
             .iter()
@@ -466,7 +466,7 @@ impl Transaction<'_> {
             BlockId::Latest => {
                 let mut stmt = self.inner().prepare_cached(
                     r"SELECT
-                        compiled_class_hash 
+                        compiled_class_hash
                     FROM
                         casm_class_hashes
                     WHERE
@@ -482,7 +482,7 @@ impl Transaction<'_> {
             BlockId::Number(number) => {
                 let mut stmt = self.inner().prepare_cached(
                     r"SELECT
-                        compiled_class_hash 
+                        compiled_class_hash
                     FROM
                         casm_class_hashes
                     WHERE
@@ -497,7 +497,7 @@ impl Transaction<'_> {
             BlockId::Hash(hash) => {
                 let mut stmt = self.inner().prepare_cached(
                     r"SELECT
-                        compiled_class_hash 
+                        compiled_class_hash
                     FROM
                         casm_class_hashes
                     WHERE
@@ -650,6 +650,27 @@ mod tests {
 
         let result = tx.casm_definition(class_hash).unwrap();
         assert_eq!(result, Some(casm_definition.to_vec()));
+    }
+
+    #[test]
+    fn insert_cairo_does_not_overwrite_existing() {
+        let mut connection = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
+        let tx = connection.transaction().unwrap();
+
+        let hash = class_hash!("0xabc");
+        let definition_a = b"definition A";
+        let definition_b = b"definition B";
+
+        tx.insert_cairo_class_definition(hash, definition_a)
+            .unwrap();
+        tx.insert_cairo_class_definition(hash, definition_b)
+            .unwrap();
+
+        let result = tx.class_definition(hash).unwrap();
+        assert_eq!(result, Some(definition_a.to_vec()));
     }
 
     fn setup_class(transaction: &Transaction<'_>) -> (ClassHash, &'static [u8], serde_json::Value) {
