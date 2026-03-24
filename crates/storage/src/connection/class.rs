@@ -163,7 +163,7 @@ impl Transaction<'_> {
     pub fn class_definitions_exist(&self, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
         let mut stmt = self
             .inner()
-            .prepare_cached("SELECT 1 FROM class_definitions WHERE hash = ?")?;
+            .prepare_cached("SELECT 1 FROM class_definitions WHERE hash = ? AND definition IS NOT NULL")?;
 
         Ok(classes
             .iter()
