@@ -3,18 +3,11 @@ pub mod add_transaction {
     use std::collections::HashMap;
 
     use pathfinder_common::class_definition::{
-        EntryPointType,
-        SelectorAndFunctionIndex,
-        SelectorAndOffset,
+        EntryPointType, SelectorAndFunctionIndex, SelectorAndOffset,
     };
     use pathfinder_common::prelude::*;
     use pathfinder_common::{
-        CallParam,
-        ContractAddress,
-        Fee,
-        Proof,
-        ProofFactElem,
-        TransactionSignatureElem,
+        CallParam, ContractAddress, Fee, Proof, ProofFactElem, TransactionSignatureElem,
     };
     use pathfinder_serde::{CallParamAsDecimalStr, TransactionSignatureElemAsDecimalStr};
     use serde_with::serde_as;
@@ -106,6 +99,16 @@ pub mod add_transaction {
         V3(InvokeFunctionV3),
     }
 
+    impl InvokeFunction {
+        pub fn has_proof(&self) -> bool {
+            match self {
+                InvokeFunction::V0(_) => false,
+                InvokeFunction::V1(_) => false,
+                InvokeFunction::V3(invoke_function_v3) => invoke_function_v3.has_proof(),
+            }
+        }
+    }
+
     #[serde_as]
     #[derive(Debug, serde::Serialize)]
     pub struct InvokeFunctionV0V1 {
@@ -142,6 +145,12 @@ pub mod add_transaction {
         pub proof_facts: Vec<ProofFactElem>,
         #[serde(default, skip_serializing_if = "Proof::is_empty")]
         pub proof: Proof,
+    }
+
+    impl InvokeFunctionV3 {
+        pub fn has_proof(&self) -> bool {
+            !self.proof.0.is_empty()
+        }
     }
 
     /// Declare transaction details.

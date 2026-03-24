@@ -633,14 +633,30 @@ impl GatewayApi for Client {
         // This method is used to proxy an add transaction operation from the JSON-RPC
         // API to the sequencer. Retries should be implemented in the JSON-RPC
         // client instead.
-        self.gateway_request()
-            .add_transaction()
-            .retry(false)
-            .post_with_json(
-                &request::add_transaction::AddTransaction::Invoke(invoke),
-                Some(Duration::MAX),
-            )
-            .await
+        //
+        // We conditionally do _request_ compression if the transaction has a proof attached.
+        // This is a workaround for Starknet pre-0.14.2 not supporting compressed requests
+        // and we should _always_ use compression once all networks do have support.
+        // FIXME: remove after all networks are upgraded to Starknet 0.14.2
+        if invoke.has_proof() {
+            self.gateway_request()
+                .add_transaction()
+                .retry(false)
+                .post_with_compressed_json(
+                    &request::add_transaction::AddTransaction::Invoke(invoke),
+                    Some(Duration::MAX),
+                )
+                .await
+        } else {
+            self.gateway_request()
+                .add_transaction()
+                .retry(false)
+                .post_with_json(
+                    &request::add_transaction::AddTransaction::Invoke(invoke),
+                    Some(Duration::MAX),
+                )
+                .await
+        }
     }
 
     /// Adds a transaction declaring a class.
@@ -839,6 +855,8 @@ mod tests {
         use super::*;
 
         mod invoke {
+            use pathfinder_common::Proof;
+
             use super::*;
 
             fn inputs() -> (
@@ -928,6 +946,37 @@ mod tests {
                     sender_address: addr,
                     entry_point_selector: None,
                     calldata: call,
+                });
+                client.add_invoke_transaction(invoke).await.unwrap();
+            }
+
+            #[tokio::test]
+            async fn invoke_with_a_proof() {
+                use request::add_transaction::{InvokeFunction, InvokeFunctionV3};
+
+                let (_jh, url) = setup([(
+                    "/gateway/add_transaction",
+                    (
+                        r#"{"code":"TRANSACTION_RECEIVED","transaction_hash":"0x0389DD0629F42176CC8B6C43ACEFC0713D0064ECDFC0470E0FC179F53421A38B"}"#,
+                        200,
+                    ),
+                )]);
+                let client = Client::for_test(url).unwrap();
+                // test with values dumped from `starknet invoke` for a test contract
+                let (_, _, sig, nonce, addr, call) = inputs();
+                let invoke = InvokeFunction::V3(InvokeFunctionV3 {
+                    signature: sig,
+                    nonce,
+                    sender_address: addr,
+                    calldata: call,
+                    nonce_data_availability_mode: reply::DataAvailabilityMode::L1,
+                    fee_data_availability_mode: reply::DataAvailabilityMode::L1,
+                    resource_bounds: Default::default(),
+                    tip: Default::default(),
+                    paymaster_data: Default::default(),
+                    account_deployment_data: Default::default(),
+                    proof_facts: Default::default(),
+                    proof: Proof(vec![1, 2, 3, 4]),
                 });
                 client.add_invoke_transaction(invoke).await.unwrap();
             }

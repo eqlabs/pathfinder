@@ -391,6 +391,92 @@ impl Request<stage::Final> {
             }
         }
     }
+
+    /// Sends the Sequencer request as a REST `POST` operation, in addition to
+    /// the specified gzip-compressed JSON body. The response is parsed as type `T`.
+    ///
+    /// Can specify an optional timeout which will override the client's
+    /// timeout.
+    pub async fn post_with_compressed_json<T, J>(
+        self,
+        json: &J,
+        timeout: Option<std::time::Duration>,
+    ) -> Result<T, SequencerError>
+    where
+        T: serde::de::DeserializeOwned,
+        J: serde::Serialize + ?Sized,
+    {
+        async fn post_with_compressed_json_inner<'a, T>(
+            url: reqwest::Url,
+            api_key: Option<String>,
+            client: reqwest::Client,
+            meta: RequestMetadata,
+            compressed_body: Vec<u8>,
+            timeout: Option<std::time::Duration>,
+        ) -> Result<T, SequencerError>
+        where
+            T: serde::de::DeserializeOwned,
+        {
+            with_metrics(meta, async {
+                let request = client
+                    .post(url)
+                    .header(reqwest::header::CONTENT_ENCODING, "gzip")
+                    .header(reqwest::header::CONTENT_TYPE, "application/json");
+                let request = match api_key {
+                    Some(api_key) => request.header(X_THROTTLING_BYPASS, api_key),
+                    None => request,
+                };
+                let request = match timeout {
+                    Some(timeout) => request.timeout(timeout),
+                    None => request,
+                };
+                let response = request.body(compressed_body).send().await?;
+                parse::<T>(response).await
+            })
+            .await
+        }
+
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        serde_json::to_writer(&mut encoder, json)
+            .map_err(|e| SequencerError::GatewayRequestCreationError(e.into()))?;
+        let compressed_json = encoder
+            .finish()
+            .map_err(|e| SequencerError::GatewayRequestCreationError(e.into()))?;
+
+        match self.state.retry {
+            false => {
+                post_with_compressed_json_inner(
+                    self.url,
+                    self.api_key,
+                    self.client,
+                    self.state.meta,
+                    compressed_json,
+                    timeout,
+                )
+                .await
+            }
+            true => {
+                retry0(
+                    || async {
+                        tracing::trace!(url=%self.url, "Posting data to gateway");
+                        let url = self.url.clone();
+                        let api_key = self.api_key.clone();
+                        post_with_compressed_json_inner(
+                            url,
+                            api_key,
+                            self.client.clone(),
+                            self.state.meta,
+                            compressed_json.clone(),
+                            timeout,
+                        )
+                        .await
+                    },
+                    retry_condition,
+                )
+                .await
+            }
+        }
+    }
 }
 
 async fn parse<T>(response: reqwest::Response) -> Result<T, SequencerError>
@@ -485,6 +571,9 @@ fn retry_condition(e: &SequencerError) -> bool {
 
             true
         }
+        // Failing to serialize or compress the request body is not retryable, because it most
+        // probably indicates insufficient resources
+        SequencerError::GatewayRequestCreationError(_) => false,
         SequencerError::StarknetError(_) => false,
         SequencerError::InvalidStarknetErrorVariant => {
             error!(reason=?e, "Request failed, retrying");

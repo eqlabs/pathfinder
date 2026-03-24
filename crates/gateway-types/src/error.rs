@@ -7,6 +7,9 @@ pub enum SequencerError {
     /// Starknet specific errors.
     #[error(transparent)]
     StarknetError(#[from] StarknetError),
+    /// Gateway request construction related errors
+    #[error("error constructing gateway request: {0}")]
+    GatewayRequestCreationError(#[from] GatewayRequestCreationError),
     /// Errors directly coming from reqwest
     #[error(transparent)]
     ReqwestError(#[from] reqwest::Error),
@@ -119,6 +122,17 @@ pub enum KnownStarknetErrorCode {
     InvalidContractClassVersion,
     #[serde(rename = "StarknetErrorCode.INVALID_PROOF")]
     InvalidProof,
+}
+
+/// Errors related to constructing a request to the gateway.
+#[derive(Debug, thiserror::Error)]
+pub enum GatewayRequestCreationError {
+    /// Error when serializing the request body.
+    #[error(transparent)]
+    SerializationError(#[from] serde_json::Error),
+    /// Error when compressing the request body.
+    #[error(transparent)]
+    CompressionError(#[from] std::io::Error),
 }
 
 #[cfg(test)]

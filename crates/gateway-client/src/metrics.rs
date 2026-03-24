@@ -174,6 +174,7 @@ pub async fn with_metrics<T>(
             SequencerError::StarknetError(_) => {
                 increment_failed(meta, REASON_STARKNET);
             }
+            SequencerError::GatewayRequestCreationError(_) => {}
             SequencerError::InvalidStarknetErrorVariant => {
                 increment_failed(meta, REASON_DECODE);
             }
