@@ -547,7 +547,12 @@ impl<
                 let mut internal_consensus = consensus.create_consensus(height, &validator_set);
 
                 // Recover from WAL first to restore the engine state.
-                internal_consensus.recover_from_wal(entries);
+                let vote_round = internal_consensus.recover_from_wal(entries);
+                if let Some(round) = vote_round {
+                    // Schedule rebroadcast timeout.
+                    // See https://github.com/eqlabs/pathfinder/issues/3286 for motivation.
+                    internal_consensus.schedule_rebroadcast(round);
+                }
 
                 // Only call StartHeight if the height is not already finalized.
                 if !internal_consensus.is_finalized() {
@@ -578,7 +583,11 @@ impl<
             let validator_set = validator_sets.get_validator_set(height)?;
             let mut internal_consensus = consensus.create_consensus(height, &validator_set);
             internal_consensus.handle_command(ConsensusCommand::StartHeight(height, validator_set));
-            internal_consensus.recover_from_wal(entries);
+            let vote_round = internal_consensus.recover_from_wal(entries);
+            if let Some(round) = vote_round {
+                // Schedule rebroadcast timeout.
+                internal_consensus.schedule_rebroadcast(round);
+            }
             consensus.internal.insert(height, internal_consensus);
         }
 
