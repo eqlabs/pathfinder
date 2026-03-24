@@ -127,7 +127,9 @@ impl Transaction<'_> {
 
         self.inner()
             .execute(
-                r"INSERT OR IGNORE INTO class_definitions (hash,  definition) VALUES (?, ?)",
+                r"INSERT INTO class_definitions (hash, definition) VALUES (?, ?)
+                ON CONFLICT(hash) DO UPDATE SET definition = excluded.definition
+                WHERE class_definitions.definition IS NULL",
                 params![&cairo_hash, &definition],
             )
             .context("Inserting cairo definition")?;
