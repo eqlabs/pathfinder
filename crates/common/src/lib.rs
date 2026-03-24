@@ -697,10 +697,9 @@ pub fn calculate_class_commitment_leaf_hash(
     )
 }
 
-/// A SNOS stwo proof, serialized as a base64-encoded string of big-endian
-/// packed `u32` values.
+/// A SNOS stwo proof, serialized as a base64-encoded byte string.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub struct Proof(pub Vec<u32>);
+pub struct Proof(pub Vec<u8>);
 
 impl Proof {
     pub fn is_empty(&self) -> bool {
@@ -712,8 +711,7 @@ impl serde::Serialize for Proof {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use base64::Engine;
 
-        let bytes: Vec<u8> = self.0.iter().flat_map(|v| v.to_be_bytes()).collect();
-        let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&self.0);
         serializer.serialize_str(&encoded)
     }
 }
@@ -729,17 +727,7 @@ impl<'de> serde::Deserialize<'de> for Proof {
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(&s)
             .map_err(serde::de::Error::custom)?;
-        if bytes.len() % 4 != 0 {
-            return Err(serde::de::Error::custom(format!(
-                "proof base64 decoded length {} is not a multiple of 4",
-                bytes.len()
-            )));
-        }
-        let values = bytes
-            .chunks_exact(4)
-            .map(|chunk| u32::from_be_bytes(chunk.try_into().unwrap()))
-            .collect();
-        Ok(Proof(values))
+        Ok(Proof(bytes))
     }
 }
 
@@ -811,7 +799,7 @@ mod tests {
 
         #[test]
         fn round_trip() {
-            let proof = Proof(vec![0, 123, 456]);
+            let proof = Proof(vec![0, 0, 0, 0, 0, 0, 0, 123, 0, 0, 1, 200]);
             let json = serde_json::to_string(&proof).unwrap();
             assert_eq!(json, r#""AAAAAAAAAHsAAAHI""#);
             let deserialized: Proof = serde_json::from_str(&json).unwrap();
@@ -827,13 +815,6 @@ mod tests {
         #[test]
         fn invalid_base64_returns_error() {
             let result = serde_json::from_str::<Proof>(r#""not-valid-base64!@#""#);
-            assert!(result.is_err());
-        }
-
-        #[test]
-        fn non_multiple_of_4_length_returns_error() {
-            // 3 bytes is not a multiple of 4
-            let result = serde_json::from_str::<Proof>(r#""AAAA""#); // decodes to 3 bytes
             assert!(result.is_err());
         }
 
