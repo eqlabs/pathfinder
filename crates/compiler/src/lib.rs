@@ -22,16 +22,10 @@ impl ResourceLimits {
         Self::RECOMMENDED_MEMORY_USAGE_LIMIT_MIB * 1024 * 1024;
 
     /// Recommended virtual memory limit for the compiler child process, in MiB.
-    ///
-    /// A limit of 512 MiB should be sufficient, even for large Sierra
-    /// contracts. Setting it any lower could risk failures.
-    pub const RECOMMENDED_MEMORY_USAGE_LIMIT_MIB: u64 = 512;
+    pub const RECOMMENDED_MEMORY_USAGE_LIMIT_MIB: u64 = 4 * 1024;
 
     /// Recommended CPU time limit for the compiler child process, in seconds.
-    ///
-    /// This should be more than enough for most contracts to be compiled but
-    /// `RLIMIT_CPU` has whole-second granularity so 1 is the minimum.
-    pub const RECOMMENDED_CPU_TIME_LIMIT: u64 = 1;
+    pub const RECOMMENDED_CPU_TIME_LIMIT: u64 = 10;
 
     /// Create a new [`ResourceLimits`] with the recommended limits.
     pub const fn recommended() -> Self {
