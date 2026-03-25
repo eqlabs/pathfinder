@@ -238,12 +238,11 @@ pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
                 tracing::error!(error=%e, "Event channel closed unexpectedly. Ending pre-confirmed stream.");
                 break;
             }
-
-            tokio::time::sleep_until(t_fetch + poll_interval).await;
         } else {
             tracing::trace!("No change in pre-confirmed block data");
-            tokio::time::sleep_until(t_fetch + poll_interval).await;
         }
+
+        tokio::time::sleep_until(t_fetch + poll_interval).await;
     }
 }
 
