@@ -827,4 +827,117 @@ mod tests {
             Ok(())
         }
     }
+
+    mod body_is_compressed_when_compress_flag_is_set {
+        use std::io::Write as _;
+
+        use pathfinder_common::{ContractAddress, Proof, ProofFactElem, Tip, TransactionNonce};
+        use serde_json::json;
+        use starknet_gateway_types::reply::DataAvailabilityMode;
+        use starknet_gateway_types::request::add_transaction::{
+            AddTransaction,
+            InvokeFunction,
+            InvokeFunctionV3,
+        };
+        use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
+
+        use crate::{Client, GatewayApi};
+
+        fn v3_empty_proof() -> InvokeFunctionV3 {
+            InvokeFunctionV3 {
+                signature: vec![],
+                nonce: TransactionNonce::ZERO,
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+                resource_bounds: Default::default(),
+                tip: Tip(0),
+                paymaster_data: vec![],
+                sender_address: ContractAddress::ZERO,
+                calldata: vec![],
+                account_deployment_data: vec![],
+                proof_facts: vec![],
+                proof: Proof(vec![]),
+            }
+        }
+
+        fn v3_non_empty_proof() -> InvokeFunctionV3 {
+            InvokeFunctionV3 {
+                proof: Proof(vec![0; 100]),
+                proof_facts: vec![ProofFactElem::ZERO],
+                ..v3_empty_proof()
+            }
+        }
+
+        fn uncompressed_body() -> String {
+            serde_json::to_string(&AddTransaction::Invoke(
+                InvokeFunction::V3(v3_empty_proof()),
+            ))
+            .unwrap()
+        }
+
+        fn compressed_body() -> Vec<u8> {
+            let body = serde_json::to_vec(&AddTransaction::Invoke(InvokeFunction::V3(
+                v3_non_empty_proof(),
+            )))
+            .unwrap();
+            let mut encoder =
+                flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+            encoder.write_all(&body).unwrap();
+            encoder.finish().unwrap()
+        }
+
+        fn valid_response() -> serde_json::Value {
+            json!({
+                "code": "TRANSACTION_RECEIVED",
+                "transaction_hash": "0x0",
+            })
+        }
+
+        async fn expect_compressed(server: &MockServer) -> Client {
+            Mock::given(matchers::method("POST"))
+                .and(matchers::path("/gateway/add_transaction"))
+                .and(matchers::header("Content-Encoding", "gzip"))
+                .and(matchers::body_bytes(compressed_body()))
+                .respond_with(ResponseTemplate::new(200).set_body_json(valid_response()))
+                .mount(server)
+                .await;
+
+            Client::for_test(server.uri().parse().unwrap())
+                .unwrap()
+                .with_compress_gateway_requests(true)
+        }
+
+        async fn expect_uncompressed(server: &MockServer) -> Client {
+            Mock::given(matchers::method("POST"))
+                .and(matchers::path("/gateway/add_transaction"))
+                .and(matchers::body_string(uncompressed_body()))
+                .respond_with(ResponseTemplate::new(200).set_body_json(valid_response()))
+                .mount(server)
+                .await;
+
+            Client::for_test(server.uri().parse().unwrap())
+                .unwrap()
+                .with_compress_gateway_requests(true)
+        }
+
+        #[tokio::test]
+        async fn add_invoke_transaction_compresses_body_if_proof_not_empty() {
+            let server = MockServer::start().await;
+            let client = expect_compressed(&server).await;
+            client
+                .add_invoke_transaction(InvokeFunction::V3(v3_non_empty_proof()))
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn add_invoke_transaction_plaintext_json_if_proof_empty() {
+            let server = MockServer::start().await;
+            let client = expect_uncompressed(&server).await;
+            client
+                .add_invoke_transaction(InvokeFunction::V3(v3_empty_proof()))
+                .await
+                .unwrap();
+        }
+    }
 }

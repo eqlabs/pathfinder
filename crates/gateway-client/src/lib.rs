@@ -472,10 +472,6 @@ impl Client {
             .clone();
         builder::Request::builder(client, self.feeder_gateway.clone(), self.api_key.clone())
     }
-
-    pub fn compress_gateway_requests(&self) -> bool {
-        self.compress_gateway_requests
-    }
 }
 
 /// Resolve the URL to addresses.
@@ -652,6 +648,8 @@ impl GatewayApi for Client {
         self.gateway_request()
             .add_transaction()
             .retry(false)
+            // We only check the proof and ignore the proof_facts field because these proof_facts
+            // are a summary derived from the proof itself anyway.
             .compress(self.compress_gateway_requests && !invoke.is_proof_empty())
             .post_with_json(
                 &request::add_transaction::AddTransaction::Invoke(invoke),

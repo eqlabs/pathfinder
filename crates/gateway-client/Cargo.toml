@@ -41,6 +41,8 @@ starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 test-log = { workspace = true, features = ["trace"] }
 tracing-subscriber = { workspace = true }
 warp = { workspace = true, features = ["compression-gzip"] }
+# Because httpmock doesn't support byte-matching on response body 
+wiremock = "0.6.5"
 
 [[test]]
 name = "integration-metrics"
