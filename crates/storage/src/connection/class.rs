@@ -29,7 +29,9 @@ impl Transaction<'_> {
 
         self.inner()
             .execute(
-                "INSERT OR IGNORE INTO class_definitions (hash, definition) VALUES (?, ?)",
+                "INSERT INTO class_definitions (hash, definition) VALUES (?, ?)
+                ON CONFLICT(hash) DO UPDATE SET definition = excluded.definition
+                WHERE class_definitions.definition IS NULL",
                 params![sierra_hash, &sierra_definition],
             )
             .context("Inserting sierra definition")?;
@@ -125,7 +127,9 @@ impl Transaction<'_> {
 
         self.inner()
             .execute(
-                r"INSERT OR IGNORE INTO class_definitions (hash,  definition) VALUES (?, ?)",
+                r"INSERT INTO class_definitions (hash, definition) VALUES (?, ?)
+                ON CONFLICT(hash) DO UPDATE SET definition = excluded.definition
+                WHERE class_definitions.definition IS NULL",
                 params![&cairo_hash, &definition],
             )
             .context("Inserting cairo definition")?;
@@ -159,9 +163,9 @@ impl Transaction<'_> {
     /// Note that this does not indicate that the class is actually declared --
     /// only that we stored it.
     pub fn class_definitions_exist(&self, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
-        let mut stmt = self
-            .inner()
-            .prepare_cached("SELECT 1 FROM class_definitions WHERE hash = ?")?;
+        let mut stmt = self.inner().prepare_cached(
+            "SELECT 1 FROM class_definitions WHERE hash = ? AND definition IS NOT NULL",
+        )?;
 
         Ok(classes
             .iter()
@@ -462,7 +466,7 @@ impl Transaction<'_> {
             BlockId::Latest => {
                 let mut stmt = self.inner().prepare_cached(
                     r"SELECT
-                        compiled_class_hash 
+                        compiled_class_hash
                     FROM
                         casm_class_hashes
                     WHERE
@@ -478,7 +482,7 @@ impl Transaction<'_> {
             BlockId::Number(number) => {
                 let mut stmt = self.inner().prepare_cached(
                     r"SELECT
-                        compiled_class_hash 
+                        compiled_class_hash
                     FROM
                         casm_class_hashes
                     WHERE
@@ -493,7 +497,7 @@ impl Transaction<'_> {
             BlockId::Hash(hash) => {
                 let mut stmt = self.inner().prepare_cached(
                     r"SELECT
-                        compiled_class_hash 
+                        compiled_class_hash
                     FROM
                         casm_class_hashes
                     WHERE
@@ -573,6 +577,101 @@ mod tests {
     use pathfinder_common::macro_prelude::*;
 
     use super::*;
+
+    fn insert_placeholder(transaction: &Transaction<'_>, hash: ClassHash) {
+        transaction
+            .inner()
+            .execute(
+                "INSERT INTO class_definitions (hash, block_number) VALUES (?, 0)",
+                rusqlite::params![&hash.0.to_be_bytes()[..]],
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn class_definitions_exist_ignores_placeholder() {
+        let mut connection = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
+        let tx = connection.transaction().unwrap();
+
+        let hash = class_hash!("0xabc");
+        insert_placeholder(&tx, hash);
+
+        let result = tx.class_definitions_exist(&[hash]).unwrap();
+        assert_eq!(result, vec![false]);
+    }
+
+    #[test]
+    fn insert_cairo_fills_placeholder() {
+        let mut connection = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
+        let tx = connection.transaction().unwrap();
+
+        let hash = class_hash!("0xabc");
+        insert_placeholder(&tx, hash);
+
+        let definition = b"example cairo program";
+        tx.insert_cairo_class_definition(hash, definition).unwrap();
+
+        let result = tx.class_definition(hash).unwrap();
+        assert_eq!(result, Some(definition.to_vec()));
+    }
+
+    #[test]
+    fn insert_sierra_fills_placeholder() {
+        let mut connection = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
+        let tx = connection.transaction().unwrap();
+
+        let sierra_hash = sierra_hash_bytes!(b"sierra hash abc");
+        let class_hash = ClassHash(sierra_hash.0);
+        insert_placeholder(&tx, class_hash);
+
+        let sierra_definition = b"example sierra program";
+        let casm_definition = b"compiled sierra program";
+        let casm_hash_v2 = casm_hash_bytes!(b"casm hash blake abc");
+
+        tx.insert_sierra_class_definition(
+            &sierra_hash,
+            sierra_definition,
+            casm_definition,
+            &casm_hash_v2,
+        )
+        .unwrap();
+
+        let result = tx.class_definition(class_hash).unwrap();
+        assert_eq!(result, Some(sierra_definition.to_vec()));
+
+        let result = tx.casm_definition(class_hash).unwrap();
+        assert_eq!(result, Some(casm_definition.to_vec()));
+    }
+
+    #[test]
+    fn insert_cairo_does_not_overwrite_existing() {
+        let mut connection = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
+        let tx = connection.transaction().unwrap();
+
+        let hash = class_hash!("0xabc");
+        let definition_a = b"definition A";
+        let definition_b = b"definition B";
+
+        tx.insert_cairo_class_definition(hash, definition_a)
+            .unwrap();
+        tx.insert_cairo_class_definition(hash, definition_b)
+            .unwrap();
+
+        let result = tx.class_definition(hash).unwrap();
+        assert_eq!(result, Some(definition_a.to_vec()));
+    }
 
     fn setup_class(transaction: &Transaction<'_>) -> (ClassHash, &'static [u8], serde_json::Value) {
         let hash = class_hash!("0x123");
