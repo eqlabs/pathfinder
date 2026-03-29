@@ -971,6 +971,7 @@ mod pathfinder_context {
         /// additional verification by checking for a proxy gateway by
         /// comparing against L1 starknet address against of
         /// the known networks.
+        #[allow(clippy::too_many_arguments)]
         async fn configure_custom(
             gateway: Url,
             feeder: Url,
