@@ -32,17 +32,7 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
     )
     .await;
 
-    poll_starknet_0_14_0(
-        &tx_event,
-        &sequencer,
-        poll_interval,
-        &storage,
-        &latest,
-        &current,
-        compiler_resource_limits,
-        fetch_casm_from_fgw,
-    )
-    .await;
+    poll_starknet_0_14_0(&tx_event, &sequencer, poll_interval, &latest, &current).await;
 }
 
 const STARKNET_VERSION_0_14_0: StarknetVersion = StarknetVersion::new(0, 14, 0, 0);
@@ -142,16 +132,12 @@ pub async fn poll_pre_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
     tx_event: &tokio::sync::mpsc::Sender<SyncEvent>,
     sequencer: &S,
     poll_interval: std::time::Duration,
-    storage: &Storage,
     latest: &watch::Receiver<(BlockNumber, BlockHash)>,
     current: &watch::Receiver<(BlockNumber, BlockHash)>,
-    compiler_resource_limits: pathfinder_compiler::ResourceLimits,
-    fetch_casm_from_fgw: bool,
 ) {
     const IN_SYNC_THRESHOLD: u64 = 6;
 
@@ -215,49 +201,13 @@ pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
             }
         };
 
-        let pre_confirmed_block_number = if let Some(pre_latest) = pre_latest_data.as_ref() {
-            let (_, _, state_update) = pre_latest.as_ref();
-
-            // Download, process and emit all missing classes. This can occasionally
-            // fail when querying an out of sync feeder gateway which isn't aware of
-            // the new pending classes. In this case, ignore the new pending data as
-            // it is incomplete.
-            match super::l2::download_new_classes(
-                state_update,
-                sequencer,
-                storage.clone(),
-                compiler_resource_limits,
-                fetch_casm_from_fgw,
-            )
-            .await
-            {
-                Err(e) => {
-                    tracing::debug!(reason=?e, "Failed to download pending classes");
-                    // Ignore incomplete pending data.
-                    tokio::time::sleep_until(t_fetch + poll_interval).await;
-                    continue;
-                }
-                Ok(downloaded_classes) => {
-                    if let Err(e) = super::l2::emit_events_for_downloaded_classes(
-                        tx_event,
-                        downloaded_classes,
-                        &state_update.declared_sierra_classes,
-                    )
-                    .await
-                    {
-                        tracing::error!(error=%e, "Event channel closed unexpectedly. Ending pre-confirmed stream.");
-                        break;
-                    }
-                }
-            }
-
-            // Pre-latest block exists which means that the sequencer has already started
-            // building the next pre-confirmed block.
+        // If the pre-latest block (latest + 1) exists then the sequencer has already
+        // started building the next pre-confirmed block (latest + 2).
+        let pre_confirmed_block_number = if pre_latest_data.is_some() {
             latest_number + 2
         } else {
             latest_number + 1
         };
-
         let pre_confirmed_block = match sequencer
             .preconfirmed_block(pre_confirmed_block_number.into())
             .await
@@ -288,12 +238,11 @@ pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
                 tracing::error!(error=%e, "Event channel closed unexpectedly. Ending pre-confirmed stream.");
                 break;
             }
-
-            tokio::time::sleep_until(t_fetch + poll_interval).await;
         } else {
             tracing::trace!("No change in pre-confirmed block data");
-            tokio::time::sleep_until(t_fetch + poll_interval).await;
         }
+
+        tokio::time::sleep_until(t_fetch + poll_interval).await;
     }
 }
 
@@ -862,11 +811,8 @@ mod tests {
                 &tx,
                 &sequencer,
                 std::time::Duration::ZERO,
-                &StorageBuilder::in_memory().unwrap(),
                 &rx_latest,
                 &rx_current,
-                pathfinder_compiler::ResourceLimits::for_test(),
-                false,
             )
             .await
         });
@@ -952,11 +898,8 @@ mod tests {
                 &tx,
                 &sequencer,
                 std::time::Duration::ZERO,
-                &StorageBuilder::in_memory().unwrap(),
                 &rx_latest,
                 &rx_current,
-                pathfinder_compiler::ResourceLimits::for_test(),
-                false,
             )
             .await
         });
