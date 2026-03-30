@@ -284,6 +284,10 @@ pub struct Client {
     /// header.
     api_key: Option<String>,
 
+    /// Compress requests to the gateway if they contain a non empty proof.
+    /// Otherwise do not compress.
+    compress_gateway_requests: bool,
+
     /// Resolved addresses for gateway URL.
     /// Used to detect DNS changes and refresh the HTTP client accordingly.
     resolved_gateway_addresses: Arc<RwLock<Vec<std::net::IpAddr>>>,
@@ -354,6 +358,7 @@ impl Client {
             feeder_gateway,
             retry: true,
             api_key: None,
+            compress_gateway_requests: true,
             resolved_gateway_addresses: Arc::new(RwLock::new(resolved_gateway_addresses)),
             resolved_feeder_gateway_addresses: Arc::new(RwLock::new(
                 resolved_feeder_gateway_addresses,
@@ -431,6 +436,13 @@ impl Client {
     /// 'X-Throttling-Bypass' header.
     pub fn with_api_key(mut self, api_key: Option<String>) -> Self {
         self.api_key = api_key;
+        self
+    }
+
+    /// Sets whether to compress requests to the gateway if they contain a
+    /// non-empty proof.
+    pub fn with_compress_gateway_requests(mut self, compress: bool) -> Self {
+        self.compress_gateway_requests = compress;
         self
     }
 
@@ -636,6 +648,9 @@ impl GatewayApi for Client {
         self.gateway_request()
             .add_transaction()
             .retry(false)
+            // We only check the proof and ignore the proof_facts field because these proof_facts
+            // are a summary derived from the proof itself anyway.
+            .compress(self.compress_gateway_requests && !invoke.is_proof_empty())
             .post_with_json(
                 &request::add_transaction::AddTransaction::Invoke(invoke),
                 Some(Duration::MAX),

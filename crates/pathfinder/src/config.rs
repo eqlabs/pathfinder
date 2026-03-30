@@ -703,6 +703,14 @@ Note that 'custom' requires also setting the --gateway-url and --feeder-gateway-
         required_if_eq("network", Network::Custom),
     )]
     gateway: Option<Url>,
+
+    #[arg(
+        long = "gateway.compress-requests",
+        long_help = "Compress requests sent to the Starknet gateway, if they contain nonempty proofs. Requests that do not contain a proof are not compressed. Requires '--network custom'.",
+        action = clap::ArgAction::Set,
+        default_value = "true",
+    )]
+    compress_gateway_requests: bool,
 }
 
 #[cfg(feature = "p2p")]
@@ -1054,9 +1062,10 @@ pub enum NetworkConfig {
     SepoliaTestnet,
     SepoliaIntegration,
     Custom {
-        gateway: Url,
-        feeder_gateway: Url,
+        gateway: Box<Url>,
+        feeder_gateway: Box<Url>,
         chain_id: String,
+        compress_gateway_requests: bool,
     },
 }
 
@@ -1115,9 +1124,10 @@ impl NetworkConfig {
             (None, None, None, None) => return None,
             (Some(Custom), Some(gateway), Some(feeder_gateway), Some(chain_id)) => {
                 NetworkConfig::Custom {
-                    gateway,
-                    feeder_gateway,
+                    gateway: Box::new(gateway),
+                    feeder_gateway: Box::new(feeder_gateway),
                     chain_id,
+                    compress_gateway_requests: args.compress_gateway_requests,
                 }
             }
             (Some(Custom), _, _, _) => {

@@ -10,10 +10,24 @@ pub enum SequencerError {
     /// Errors directly coming from reqwest
     #[error(transparent)]
     ReqwestError(#[from] reqwest::Error),
+    /// Gateway request construction related errors
+    #[error("error constructing gateway request: {0}")]
+    GatewayRequestCreationError(#[from] GatewayRequestCreationError),
     /// Custom errors that we fiddled with because the original error was either
     /// not informative enough or bloated
     #[error("error decoding response body: invalid error variant")]
     InvalidStarknetErrorVariant,
+}
+
+/// Errors related to constructing a request to the gateway.
+#[derive(Debug, thiserror::Error)]
+pub enum GatewayRequestCreationError {
+    /// Error when serializing the request body.
+    #[error(transparent)]
+    SerializationError(#[from] serde_json::Error),
+    /// Error when compressing the request body.
+    #[error(transparent)]
+    CompressionError(#[from] std::io::Error),
 }
 
 /// Used for deserializing specific Starknet sequencer error data.

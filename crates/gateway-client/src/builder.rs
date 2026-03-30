@@ -12,7 +12,10 @@
 //!   3. [Params](stage::Params) where you select the retry behavior.
 //!   4. [Final](stage::Final) where you select the REST operation type, which
 //!      is then executed.
+use std::io::Write as _;
+
 use pathfinder_common::{ClassHash, TransactionHash};
+use reqwest::header::CONTENT_ENCODING;
 use starknet_gateway_types::error::SequencerError;
 
 use crate::metrics::{with_metrics, BlockTag, RequestMetadata};
@@ -66,6 +69,7 @@ pub mod stage {
     pub struct Final {
         pub meta: RequestMetadata,
         pub retry: bool,
+        pub compress: bool,
     }
 
     impl super::RequestState for Init {}
@@ -221,19 +225,32 @@ impl Request<stage::Params> {
 
     /// Sets the request retry behavior.
     pub fn retry(self, retry: bool) -> Request<stage::Final> {
+        let Self {
+            state,
+            url,
+            api_key,
+            client,
+        } = self;
+
         Request {
-            url: self.url,
-            client: self.client,
-            api_key: self.api_key,
+            url,
+            client,
+            api_key,
             state: stage::Final {
-                meta: self.state.meta,
+                meta: state.meta,
                 retry,
+                compress: false,
             },
         }
     }
 }
 
 impl Request<stage::Final> {
+    pub fn compress(mut self, compress: bool) -> Self {
+        self.state.compress = compress;
+        self
+    }
+
     /// Sends the Sequencer request as a REST `GET` operation and parses the
     /// response into `T`.
     pub async fn get<T>(self) -> Result<T, SequencerError>
@@ -315,11 +332,12 @@ impl Request<stage::Final> {
         }
     }
 
-    /// Sends the Sequencer request as a REST `POST` operation, in addition to
-    /// the specified JSON body. The response is parsed as type `T`.
+    /// Sends a POST request to a Starknet gateway with a given JSON body.
+    /// Compresses body with gzip if the `compress` flag was set.
+    /// Finally, the response is parsed as type `T`.
     ///
-    /// Can specify an optional timeout which will override the client's
-    /// timeout.
+    /// The caller can specify an optional timeout which will override the
+    /// client's timeout.
     pub async fn post_with_json<T, J>(
         self,
         json: &J,
@@ -335,6 +353,7 @@ impl Request<stage::Final> {
             client: reqwest::Client,
             meta: RequestMetadata,
             json: &J,
+            compress: bool,
             timeout: Option<std::time::Duration>,
         ) -> Result<T, SequencerError>
         where
@@ -351,8 +370,28 @@ impl Request<stage::Final> {
                     Some(timeout) => request.timeout(timeout),
                     None => request,
                 };
-                let response = request.json(json).send().await?;
-                parse::<T>(response).await
+                if compress {
+                    let body = serde_json::to_vec(json)
+                        .map_err(|e| SequencerError::GatewayRequestCreationError(e.into()))?;
+                    let mut encoder = flate2::write::GzEncoder::new(
+                        Vec::with_capacity(body.len() / 2),
+                        flate2::Compression::default(),
+                    );
+                    encoder
+                        .write_all(&body)
+                        .map_err(|e| SequencerError::GatewayRequestCreationError(e.into()))?;
+                    let compressed_body = encoder
+                        .finish()
+                        .map_err(|e| SequencerError::GatewayRequestCreationError(e.into()))?;
+                    let request = request
+                        .header(CONTENT_ENCODING, "gzip")
+                        .body(compressed_body);
+                    let response = request.send().await?;
+                    parse::<T>(response).await
+                } else {
+                    let response = request.json(json).send().await?;
+                    parse::<T>(response).await
+                }
             })
             .await
         }
@@ -365,6 +404,7 @@ impl Request<stage::Final> {
                     self.client,
                     self.state.meta,
                     json,
+                    self.state.compress,
                     timeout,
                 )
                 .await
@@ -381,6 +421,7 @@ impl Request<stage::Final> {
                             self.client.clone(),
                             self.state.meta,
                             json,
+                            self.state.compress,
                             timeout,
                         )
                         .await
@@ -486,6 +527,9 @@ fn retry_condition(e: &SequencerError) -> bool {
             true
         }
         SequencerError::StarknetError(_) => false,
+        // Failing to serialize or compress the request body is not retryable,
+        // because it is fully deterministic based on the input or allocated resources
+        SequencerError::GatewayRequestCreationError(_) => false,
         SequencerError::InvalidStarknetErrorVariant => {
             error!(reason=?e, "Request failed, retrying");
             true
@@ -785,6 +829,119 @@ mod tests {
             mock.assert_calls(2);
 
             Ok(())
+        }
+    }
+
+    mod body_is_compressed_if_and_only_if_compress_flag_is_set {
+        use std::io::Write as _;
+
+        use pathfinder_common::{ContractAddress, Proof, ProofFactElem, Tip, TransactionNonce};
+        use serde_json::json;
+        use starknet_gateway_types::reply::DataAvailabilityMode;
+        use starknet_gateway_types::request::add_transaction::{
+            AddTransaction,
+            InvokeFunction,
+            InvokeFunctionV3,
+        };
+        use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
+
+        use crate::{Client, GatewayApi};
+
+        fn v3_empty_proof() -> InvokeFunctionV3 {
+            InvokeFunctionV3 {
+                signature: vec![],
+                nonce: TransactionNonce::ZERO,
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+                resource_bounds: Default::default(),
+                tip: Tip(0),
+                paymaster_data: vec![],
+                sender_address: ContractAddress::ZERO,
+                calldata: vec![],
+                account_deployment_data: vec![],
+                proof_facts: vec![],
+                proof: Proof(vec![]),
+            }
+        }
+
+        fn v3_non_empty_proof() -> InvokeFunctionV3 {
+            InvokeFunctionV3 {
+                proof: Proof(vec![0; 100]),
+                proof_facts: vec![ProofFactElem::ZERO],
+                ..v3_empty_proof()
+            }
+        }
+
+        fn uncompressed_body() -> String {
+            serde_json::to_string(&AddTransaction::Invoke(
+                InvokeFunction::V3(v3_empty_proof()),
+            ))
+            .unwrap()
+        }
+
+        fn compressed_body() -> Vec<u8> {
+            let body = serde_json::to_vec(&AddTransaction::Invoke(InvokeFunction::V3(
+                v3_non_empty_proof(),
+            )))
+            .unwrap();
+            let mut encoder =
+                flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+            encoder.write_all(&body).unwrap();
+            encoder.finish().unwrap()
+        }
+
+        fn valid_response() -> serde_json::Value {
+            json!({
+                "code": "TRANSACTION_RECEIVED",
+                "transaction_hash": "0x0",
+            })
+        }
+
+        async fn expect_compressed(server: &MockServer) -> Client {
+            Mock::given(matchers::method("POST"))
+                .and(matchers::path("/gateway/add_transaction"))
+                .and(matchers::header("Content-Encoding", "gzip"))
+                .and(matchers::body_bytes(compressed_body()))
+                .respond_with(ResponseTemplate::new(200).set_body_json(valid_response()))
+                .mount(server)
+                .await;
+
+            Client::for_test(server.uri().parse().unwrap())
+                .unwrap()
+                .with_compress_gateway_requests(true)
+        }
+
+        async fn expect_uncompressed(server: &MockServer) -> Client {
+            Mock::given(matchers::method("POST"))
+                .and(matchers::path("/gateway/add_transaction"))
+                .and(matchers::body_string(uncompressed_body()))
+                .respond_with(ResponseTemplate::new(200).set_body_json(valid_response()))
+                .mount(server)
+                .await;
+
+            Client::for_test(server.uri().parse().unwrap())
+                .unwrap()
+                .with_compress_gateway_requests(true)
+        }
+
+        #[tokio::test]
+        async fn add_invoke_transaction_compresses_body_if_proof_not_empty() {
+            let server = MockServer::start().await;
+            let client = expect_compressed(&server).await;
+            client
+                .add_invoke_transaction(InvokeFunction::V3(v3_non_empty_proof()))
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn add_invoke_transaction_plaintext_json_if_proof_empty() {
+            let server = MockServer::start().await;
+            let client = expect_uncompressed(&server).await;
+            client
+                .add_invoke_transaction(InvokeFunction::V3(v3_empty_proof()))
+                .await
+                .unwrap();
         }
     }
 }
