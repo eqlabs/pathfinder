@@ -831,7 +831,7 @@ mod tests {
         }
     }
 
-    mod body_is_compressed_when_compress_flag_is_set {
+    mod body_is_compressed_if_and_only_if_compress_flag_is_set {
         use std::io::Write as _;
 
         use pathfinder_common::{ContractAddress, Proof, ProofFactElem, Tip, TransactionNonce};
