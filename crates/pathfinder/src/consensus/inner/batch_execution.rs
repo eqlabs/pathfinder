@@ -13,7 +13,7 @@ use p2p_proto::consensus as proto_consensus;
 use pathfinder_storage::Storage;
 
 use crate::consensus::ProposalHandlingError;
-use crate::gas_price::L1GasPriceProvider;
+use crate::gas_price::{L1GasPriceProvider, L2GasPriceProvider};
 use crate::validator::{
     should_defer_validation,
     DecidedBlock,
@@ -36,6 +36,7 @@ pub struct BatchExecutionManager {
     executed_transaction_count_processed: HashSet<HeightAndRound>,
     /// Gas price provider for block info validation.
     gas_price_provider: Option<L1GasPriceProvider>,
+    l2_gas_price_provider: Option<L2GasPriceProvider>,
     /// Worker pool for concurrent execution.
     worker_pool: ValidatorWorkerPool,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
@@ -45,6 +46,7 @@ impl BatchExecutionManager {
     /// Create a new batch execution manager
     pub fn new(
         gas_price_provider: Option<L1GasPriceProvider>,
+        l2_gas_price_provider: Option<L2GasPriceProvider>,
         worker_pool: ValidatorWorkerPool,
         compiler_resource_limits: pathfinder_compiler::ResourceLimits,
     ) -> Self {
@@ -52,6 +54,7 @@ impl BatchExecutionManager {
             executing: HashSet::new(),
             executed_transaction_count_processed: HashSet::new(),
             gas_price_provider,
+            l2_gas_price_provider,
             worker_pool,
             compiler_resource_limits,
         }
@@ -161,6 +164,7 @@ impl BatchExecutionManager {
                         decided_blocks,
                         self.gas_price_provider.clone(),
                         None, // TODO: Add L1ToFriValidator when oracle is available
+                        self.l2_gas_price_provider.as_ref(),
                         self.worker_pool.clone(),
                     )
                     .map(Box::new)?
@@ -442,6 +446,7 @@ mod tests {
             .expect("Failed to create validator stage");
         let mut batch_execution_manager = BatchExecutionManager::new(
             None,
+            None,
             worker_pool,
             pathfinder_compiler::ResourceLimits::for_test(),
         );
@@ -557,6 +562,7 @@ mod tests {
         let worker_pool = create_test_worker_pool();
         let mut batch_execution_manager = BatchExecutionManager::new(
             None,
+            None,
             worker_pool,
             pathfinder_compiler::ResourceLimits::for_test(),
         );
@@ -670,6 +676,7 @@ mod tests {
             .expect("Failed to create validator stage");
 
         let mut batch_execution_manager = BatchExecutionManager::new(
+            None,
             None,
             worker_pool.clone(),
             pathfinder_compiler::ResourceLimits::for_test(),
@@ -814,6 +821,7 @@ mod tests {
 
         let mut batch_execution_manager = BatchExecutionManager::new(
             None,
+            None,
             worker_pool,
             pathfinder_compiler::ResourceLimits::for_test(),
         );
@@ -938,6 +946,7 @@ mod tests {
 
         let mut batch_execution_manager = BatchExecutionManager::new(
             None,
+            None,
             worker_pool,
             pathfinder_compiler::ResourceLimits::for_test(),
         );
@@ -990,6 +999,7 @@ mod tests {
             .expect("Failed to create validator stage");
 
         let mut batch_execution_manager = BatchExecutionManager::new(
+            None,
             None,
             worker_pool,
             pathfinder_compiler::ResourceLimits::for_test(),
@@ -1047,6 +1057,7 @@ mod tests {
             .expect("Failed to create validator stage");
 
         let mut batch_execution_manager = BatchExecutionManager::new(
+            None,
             None,
             worker_pool,
             pathfinder_compiler::ResourceLimits::for_test(),

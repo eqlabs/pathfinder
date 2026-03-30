@@ -384,6 +384,7 @@ pub fn init_proposal_and_validator(
         &HashMap::new(),
         None,
         None,
+        None,
         worker_pool.clone(),
     )?;
     Ok((
