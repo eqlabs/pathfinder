@@ -3173,22 +3173,29 @@ Blockchain history must include the reorg tail and its parent block to perform a
         async fn event_filter_pruning() {
             use pathfinder_storage::AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
 
-            let storage = StorageBuilder::in_memory_with_blockchain_pruning_and_pool_size(
-                pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept: 0 },
-                std::num::NonZeroU32::new(10).unwrap(),
-            )
-            .unwrap();
-            let mut conn = storage.connection().unwrap();
-
-            let tx = conn.transaction().unwrap();
-            let first_filter_exists = tx
-                .event_filter_exists(
-                    BlockNumber::GENESIS,
-                    BlockNumber::GENESIS + AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1,
+            let tempdir = tempfile::TempDir::new().unwrap();
+            let storage_pruning_mode =
+                pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept: 0 };
+            let storage_pool_size = std::num::NonZeroU32::new(10).unwrap();
+            let storage =
+                StorageBuilder::in_persisted_tempdir_with_blockchain_pruning_and_pool_size(
+                    &tempdir,
+                    storage_pruning_mode,
+                    storage_pool_size,
                 )
                 .unwrap();
+            let mut conn = storage.connection().unwrap();
+
+            let first_filter_exists = {
+                let db_tx = conn.transaction().unwrap();
+                db_tx
+                    .event_filter_exists(
+                        BlockNumber::GENESIS,
+                        BlockNumber::GENESIS + AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1,
+                    )
+                    .unwrap()
+            };
             assert!(!first_filter_exists);
-            drop(tx);
 
             let mut blocks = block_data_with_state_updates(vec![
                     StateUpdate::default();
@@ -3218,31 +3225,32 @@ Blockchain history must include the reorg tail and its parent block to perform a
             // Close the event channel which allows the consumer task to exit.
             drop(event_tx);
 
-            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let (pending_tx, _) = tokio::sync::watch::channel(Default::default());
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
                 submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker::new(
                     10, 10,
                 ),
-                pending_data: tx,
+                pending_data: pending_tx,
                 verify_tree_hashes: false,
                 notifications: Default::default(),
                 sync_to_consensus_tx: None,
             };
 
-            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-            consumer(event_rx, context, tx).await.unwrap();
+            let (current_tx, _) = tokio::sync::watch::channel(Default::default());
+            consumer(event_rx, context, current_tx).await.unwrap();
 
-            let tx = conn.transaction().unwrap();
-            let first_filter_exists = tx
-                .event_filter_exists(
-                    BlockNumber::GENESIS,
-                    BlockNumber::GENESIS + AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1,
-                )
-                .unwrap();
+            let first_filter_exists = {
+                let db_tx = conn.transaction().unwrap();
+                db_tx
+                    .event_filter_exists(
+                        BlockNumber::GENESIS,
+                        BlockNumber::GENESIS + AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1,
+                    )
+                    .unwrap()
+            };
             assert!(first_filter_exists);
-            drop(tx);
 
             let (event_tx, event_rx) =
                 tokio::sync::mpsc::channel(AGGREGATE_BLOOM_BLOCK_RANGE_LEN as usize);
@@ -3255,30 +3263,53 @@ Blockchain history must include the reorg tail and its parent block to perform a
             // Close the event channel which allows the consumer task to exit.
             drop(event_tx);
 
-            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let (pending_tx, _) = tokio::sync::watch::channel(Default::default());
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
                 submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker::new(
                     10, 10,
                 ),
-                pending_data: tx,
+                pending_data: pending_tx,
                 verify_tree_hashes: false,
                 notifications: Default::default(),
                 sync_to_consensus_tx: None,
             };
 
-            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-            consumer(event_rx, context, tx).await.unwrap();
+            let (current_tx, _) = tokio::sync::watch::channel(Default::default());
+            consumer(event_rx, context, current_tx).await.unwrap();
 
-            let tx = conn.transaction().unwrap();
-            let first_filter_exists = tx
-                .event_filter_exists(
-                    BlockNumber::GENESIS,
-                    BlockNumber::GENESIS + AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1,
+            let first_filter_exists = {
+                let db_tx = conn.transaction().unwrap();
+                db_tx
+                    .event_filter_exists(
+                        BlockNumber::GENESIS,
+                        BlockNumber::GENESIS + AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1,
+                    )
+                    .unwrap()
+            };
+            assert!(!first_filter_exists);
+
+            // Pretend like we shut down unexpectedly by dropping these.
+            drop(conn);
+            drop(storage);
+
+            // Create a new storage object to make sure the running event filter is rebuilt
+            // correctly even when filters are pruned.
+            let storage =
+                StorageBuilder::in_persisted_tempdir_with_blockchain_pruning_and_pool_size(
+                    &tempdir,
+                    storage_pruning_mode,
+                    storage_pool_size,
                 )
                 .unwrap();
-            assert!(!first_filter_exists);
+            let mut conn = storage.connection().unwrap();
+            let db_tx = conn.transaction().unwrap();
+            // Running event filter got rebuilt so its next expected block is latest + 1.
+            assert_eq!(
+                db_tx.next_block_without_events().get(),
+                AGGREGATE_BLOOM_BLOCK_RANGE_LEN + 1
+            );
         }
 
         /// A regression test related to block purging behavior during reorg

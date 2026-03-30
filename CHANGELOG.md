@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- The running Bloom filter for block events is now correctly rebuilt after unexpected shutdowns when blockchain pruning is enabled.
+
 ### Changed
 
 - The `proof` field in broadcasted invoke v3 transactions is now a base64-encoded byte blob (`Vec<u8>`) instead of base64-encoded packed `u32` values (`Vec<u32>`). This reflects the upstream change to use compressed proofs.

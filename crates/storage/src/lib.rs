@@ -307,6 +307,20 @@ impl StorageBuilder {
             .create_pool(pool_size)
     }
 
+    /// Convenience function for tests to create a persisted in-tempdir database
+    /// with a specific blockchain pruning mode.
+    pub fn in_persisted_tempdir_with_blockchain_pruning_and_pool_size(
+        tempdir: &tempfile::TempDir,
+        blockchain_history_mode: BlockchainHistoryMode,
+        pool_size: NonZeroU32,
+    ) -> anyhow::Result<Storage> {
+        tracing::trace!("Creating storage in: {}", tempdir.path().display());
+        crate::StorageBuilder::file(tempdir.path().join("db.sqlite"))
+            .blockchain_history_mode(Some(blockchain_history_mode))
+            .migrate()?
+            .create_pool(pool_size)
+    }
+
     /// Performs the database schema migration and returns a [storage
     /// manager](StorageManager).
     ///

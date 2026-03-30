@@ -11,6 +11,7 @@ use rusqlite::types::Value;
 
 use crate::bloom::{AggregateBloom, BlockRange, BloomFilter};
 use crate::prelude::*;
+use crate::AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
 
 // We're using the upper 4 bits of the 32 byte representation of a felt
 // to store the index of the key in the values set in the Bloom filter.
@@ -505,6 +506,7 @@ impl Transaction<'_> {
         Ok(event_filters)
     }
 
+    /// Returns the next block number whose events are missing from storage.
     pub fn next_block_without_events(&self) -> BlockNumber {
         self.running_event_filter.lock().unwrap().next_block
     }
@@ -708,8 +710,14 @@ impl RunningEventFilter {
                 });
             }
             Some(last_to_block) => BlockNumber::new_or_panic(last_to_block + 1),
-            // Event filter table is empty, rebuild running filter from the genesis block.
-            None => BlockNumber::GENESIS,
+            // Event filter table is empty, either because we haven't covered an entire range
+            // yet or the old filters have been pruned. Either way, rebuild the running event
+            // filter in the range that includes the latest block.
+            None => latest
+                .get()
+                .checked_sub(latest.get() % AGGREGATE_BLOOM_BLOCK_RANGE_LEN)
+                .map(BlockNumber::new_or_panic)
+                .unwrap_or(BlockNumber::GENESIS),
         };
 
         let total_blocks_to_cover = latest.get() - first_running_event_filter_block.get();
