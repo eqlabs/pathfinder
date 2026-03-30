@@ -375,7 +375,10 @@ impl Request<stage::Final> {
                     let body = serde_json::to_vec(json)
                         .map_err(|e| SequencerError::GatewayRequestCreationError(e.into()))?;
                     let mut encoder =
-                        flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+                        flate2::write::GzEncoder::new(
+                            Vec::with_capacity(body.len() / 2),
+                            flate2::Compression::default()
+                        );
                     encoder
                         .write_all(&body)
                         .map_err(|e| SequencerError::GatewayRequestCreationError(e.into()))?;
