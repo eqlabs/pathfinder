@@ -332,10 +332,9 @@ impl Request<stage::Final> {
         }
     }
 
-    /// Sends the a request to a Starknet gateway as a REST `POST` operation,
-    /// with the the specified JSON body. If the `compress` flag in the internal
-    /// state is `true`, the request body is compressed using gzip. Finally, the
-    /// response is parsed as type `T`.
+    /// Sends a POST request to a Starknet gateway with a given JSON body.
+    /// Compresses body with gzip if the `compress` flag was set.
+    /// Finally, the response is parsed as type `T`.
     ///
     /// The caller can specify an optional timeout which will override the
     /// client's timeout.
@@ -374,11 +373,10 @@ impl Request<stage::Final> {
                 if compress {
                     let body = serde_json::to_vec(json)
                         .map_err(|e| SequencerError::GatewayRequestCreationError(e.into()))?;
-                    let mut encoder =
-                        flate2::write::GzEncoder::new(
-                            Vec::with_capacity(body.len() / 2),
-                            flate2::Compression::default()
-                        );
+                    let mut encoder = flate2::write::GzEncoder::new(
+                        Vec::with_capacity(body.len() / 2),
+                        flate2::Compression::default(),
+                    );
                     encoder
                         .write_all(&body)
                         .map_err(|e| SequencerError::GatewayRequestCreationError(e.into()))?;
