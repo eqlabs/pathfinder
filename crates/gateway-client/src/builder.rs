@@ -529,8 +529,8 @@ fn retry_condition(e: &SequencerError) -> bool {
             true
         }
         SequencerError::StarknetError(_) => false,
-        // Failing to serialize or compress the request body is not retryable, because it most
-        // probably indicates insufficient resources
+        // Failing to serialize or compress the request body is not retryable,
+        // because it is fully deterministic based on the input or allocated resources
         SequencerError::GatewayRequestCreationError(_) => false,
         SequencerError::InvalidStarknetErrorVariant => {
             error!(reason=?e, "Request failed, retrying");
