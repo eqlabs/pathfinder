@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - The running Bloom filter for block events is now correctly rebuilt after unexpected shutdowns when blockchain pruning is enabled.
+- Preconfirmed classes are not downloaded because `get_class_by_hash` for `pending` is now mapped to `latest`.
 
 ### Changed
 
