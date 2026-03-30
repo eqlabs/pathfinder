@@ -506,6 +506,7 @@ impl Transaction<'_> {
         Ok(event_filters)
     }
 
+    /// Returns the next block number whose events are missing from storage.
     pub fn next_block_without_events(&self) -> BlockNumber {
         self.running_event_filter.lock().unwrap().next_block
     }
