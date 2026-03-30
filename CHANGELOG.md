@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The `proof` field in broadcasted invoke v3 transactions is now a base64-encoded byte blob (`Vec<u8>`) instead of base64-encoded packed `u32` values (`Vec<u32>`). This reflects the upstream change to use compressed proofs.
+- Bumped `cairo-lang` dependencies from 2.16.0 to 2.17.0-rc.4.
+- Bumped `blockifier` from 0.18.0-dev.1 to 0.18.0-rc.0.
+- Bumped `starknet_api` from 0.18.0-dev.1 to 0.18.0-rc.0.
+- Bumped `cairo-native` from 0.9.0-rc.2 to 0.9.0-rc.4.
 
 ## [0.22.0] - 2026-03-19
 
