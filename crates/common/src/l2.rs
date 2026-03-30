@@ -76,6 +76,7 @@ pub struct ConsensusFinalizedBlockHeader {
     pub receipt_commitment: ReceiptCommitment,
     pub state_diff_commitment: StateDiffCommitment,
     pub state_diff_length: u64,
+    pub l2_gas_consumed: u128,
 }
 
 #[derive(Clone, Debug)]
