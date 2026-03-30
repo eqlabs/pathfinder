@@ -41,50 +41,50 @@ rust-version = "1.91"
 authors = ["Equilibrium Labs <info@equilibrium.co>"]
 
 [workspace.dependencies]
-anyhow = "1.0.99"
+anyhow = "1.0.102"
 ark-ff = "0.5.0"
 assert_matches = "1.5.0"
-async-trait = "0.1.73"
-axum = "0.8.4"
+async-trait = "0.1.89"
+axum = "0.8.8"
 base64 = "0.22.1"
 bincode = "2.0.1"
 bitvec = "1.0.1"
-blockifier = { version = "0.18.0-dev.1", features = [
+blockifier = { version = "0.18.0-rc.0", features = [
     "node_api",
     "reexecution",
 ] }
-bytes = "1.4.0"
+bytes = "1.11.1"
 cached = "0.44.0"
 # This one needs to match the version used by blockifier
-cairo-lang-starknet-classes = "=2.16.0"
+cairo-lang-starknet-classes = "=2.17.0-rc.4"
 # This one needs to match the version used by blockifier
-cairo-native = "0.9.0-rc.2"
+cairo-native = "0.9.0-rc.4"
 # This one needs to match the version used by blockifier
 cairo-vm = "=3.2.0"
 casm-compiler-v1_0_0-alpha6 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-alpha.6" }
 casm-compiler-v1_0_0-rc0 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-rc0" }
 casm-compiler-v1_1_1 = { package = "cairo-lang-starknet", version = "=1.1.1" }
-casm-compiler-v2 = { package = "cairo-lang-starknet", version = "=2.16.0" }
-clap = "4.5.45"
+casm-compiler-v2 = { package = "cairo-lang-starknet", version = "=2.17.0-rc.4" }
+clap = "4.6.0"
 console-subscriber = "0.5"
 const-decoder = "0.4.0"
-const_format = "0.2.31"
+const_format = "0.2.35"
 criterion = "0.5.1"
 dashmap = "6.1"
-fake = "2.8.0"
+fake = "2.10.0"
 ff = "0.13"
-flate2 = "1.0.27"
+flate2 = "1.1.9"
 futures = { version = "0.3", default-features = false }
 futures-bounded = "0.3.0"
-governor = "0.10.1"
+governor = "0.10.4"
 hex = "0.4.3"
-http = "1.0.0"
-http-body = "1.0.0"
+http = "1.4.0"
+http-body = "1.0.1"
 httpmock = "0.8.3"
-hyper = "1.0.0"
-ipnet = "2.9.0"
+hyper = "1.8.1"
+ipnet = "2.12.0"
 jemallocator = "0.5.4"
-libc = "0.2.182"
+libc = "0.2.183"
 libp2p = { version = "0.56.0", default-features = false }
 libp2p-identity = "0.2.13"
 libp2p-plaintext = "0.43.0"
@@ -93,23 +93,23 @@ metrics = "0.24.3"
 metrics-exporter-prometheus = { version = "0.18.1", default-features = false }
 mime = "0.3"
 mockall = "0.11.4"
-num-bigint = "0.4.4"
+num-bigint = "0.4.6"
 num-traits = "0.2.19"
-paste = "1.0.14"
+paste = "1.0.15"
 pretty_assertions_sorted = "1.2.3"
-primitive-types = "0.12.1"
-proc-macro2 = "1.0.97"
-proptest = "1.2.0"
-prost = "0.13.0"
-prost-build = "0.13.0"
-prost-types = "0.13.0"
+primitive-types = "0.12.2"
+proc-macro2 = "1.0.106"
+proptest = "1.11.0"
+prost = "0.13.5"
+prost-build = "0.13.5"
+prost-types = "0.13.5"
 quote = "1.0"
 r2d2 = "0.8.10"
 r2d2_sqlite = "0.31.0"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
 rayon = "1.11.0"
-reqwest = { version = "0.12.23", default-features = false, features = [
+reqwest = { version = "0.12.28", default-features = false, features = [
     "http2",
     "rustls-tls-native-roots",
     "charset",
@@ -118,40 +118,40 @@ reqwest = { version = "0.12.23", default-features = false, features = [
 ] }
 rstest = "0.18.2"
 rusqlite = "0.37.0"
-rustls = "0.23.35"
-semver = "1.0.18"
-serde = "1.0.192"
-serde_json = "1.0.142"
-serde_with = "3.7.0"
-sha2 = "0.10.7"
+rustls = "0.23.37"
+semver = "1.0.27"
+serde = "1.0.228"
+serde_json = "1.0.149"
+serde_with = "3.18.0"
+sha2 = "0.10.9"
 sha3 = "0.10"
-siphasher = "1.0.1"
+siphasher = "1.0.2"
 smallvec = "1.15.1"
 # This one needs to match the version used by blockifier
 starknet-types-core = "=0.2.4"
 # This one needs to match the version used by blockifier
-starknet_api = { version = "0.18.0-dev.1" }
+starknet_api = { version = "0.18.0-rc.0" }
 syn = "1.0"
-tempfile = "3.8"
-test-log = { version = "0.2.12", features = ["trace"] }
-thiserror = "2.0.14"
-time = "0.3.36"
-tokio = "1.47"
+tempfile = "3.27"
+test-log = { version = "0.2.19", features = ["trace"] }
+thiserror = "2.0.18"
+time = "0.3.47"
+tokio = "1.50"
 tokio-retry = "0.3.0"
-tokio-stream = "0.1.14"
+tokio-stream = "0.1.18"
 tokio-tungstenite = "0.27"
-tokio-util = { version = "0.7.16", features = ["rt"] }
+tokio-util = { version = "0.7.18", features = ["rt"] }
 tower = { version = "0.4.13", default-features = false }
 tower-http = { version = "0.5.2", default-features = false }
-tracing = "0.1.37"
-tracing-subscriber = { version = "0.3.18", features = ["json"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["json"] }
 unsigned-varint = "0.8.0"
-url = "2.4.1"
+url = "2.5.8"
 vergen = { version = "8", default-features = false }
 void = "1.0.2"
 warp = "0.3.7"
-zeroize = "1.6.0"
-zstd = "0.13.2"
+zeroize = "1.8.2"
+zstd = "0.13.3"
 
 [profile.release]
 overflow-checks = true
