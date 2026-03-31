@@ -383,6 +383,7 @@ mod v1_0_0_alpha6 {
         validate_compatible_sierra_version(
             &sierra_class,
             ListSelector::ListName(
+                // Note: The audited list is empty in this compiler version
                 casm_compiler_v1_0_0_alpha6::allowed_libfuncs::DEFAULT_EXPERIMENTAL_LIBFUNCS_LIST
                     .to_string(),
             ),
@@ -426,6 +427,7 @@ mod v1_0_0_rc0 {
         validate_compatible_sierra_version(
             &sierra_class,
             ListSelector::ListName(
+                // Note: The audited list is empty in this compiler version
                 casm_compiler_v1_0_0_rc0::allowed_libfuncs::DEFAULT_EXPERIMENTAL_LIBFUNCS_LIST
                     .to_string(),
             ),
@@ -469,6 +471,7 @@ mod v1_1_1 {
         validate_compatible_sierra_version(
             &sierra_class,
             ListSelector::ListName(
+                // Note: The audited list is empty in this compiler version
                 casm_compiler_v1_0_0_rc0::allowed_libfuncs::DEFAULT_EXPERIMENTAL_LIBFUNCS_LIST
                     .to_string(),
             ),
@@ -513,12 +516,14 @@ mod v2 {
             .extract_sierra_program(false)
             .context("Extracting Sierra program")?;
 
-        extracted_sierra_program.validate_version_compatible(
-            cairo_lang_starknet_classes::allowed_libfuncs::ListSelector::ListName(
-                cairo_lang_starknet_classes::allowed_libfuncs::BUILTIN_EXPERIMENTAL_LIBFUNCS_LIST
-                    .to_string(),
-            ),
-        ).context("Validating Sierra class")?;
+        extracted_sierra_program
+            .validate_version_compatible(
+                cairo_lang_starknet_classes::allowed_libfuncs::ListSelector::ListName(
+                    cairo_lang_starknet_classes::allowed_libfuncs::BUILTIN_AUDITED_LIBFUNCS_LIST
+                        .to_string(),
+                ),
+            )
+            .context("Validating Sierra class")?;
 
         // TODO: determine `max_bytecode_size`
         let casm_class = CasmContractClass::from_contract_class(
