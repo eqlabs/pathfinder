@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- Compilation now correctly uses the `audited` libfuncs list. Previously the `experimental` was used, which prevented some class definitions from successful compilation.
+
 ### Changed
 
 - The `blockifier` and `starknet_api` crates have been upgraded to 0.18.0-rc.1.
