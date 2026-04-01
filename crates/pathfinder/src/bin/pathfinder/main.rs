@@ -411,6 +411,13 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             pathfinder_context.gateway_dns_refresh_interval,
         ));
 
+    util::task::spawn(state::repair::repair_missing_class_definitions(
+        sync_storage.clone(),
+        pathfinder_context.gateway.clone(),
+        config.compiler_resource_limits,
+        config.fetch_casm_from_fgw,
+    ));
+
     let sync_handle = if config.is_sync_enabled {
         start_sync(
             sync_storage,
