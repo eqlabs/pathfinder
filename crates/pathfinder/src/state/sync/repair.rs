@@ -209,6 +209,53 @@ mod tests {
         assert_eq!(tx.class_definition(declared).unwrap(), Some(definition));
         assert_eq!(tx.class_definition(computed).unwrap(), None);
     }
+
+    /// A download failure for one class must not abort the repair of others.
+    #[tokio::test]
+    async fn partial_failure() {
+        let storage = storage();
+        let good = ClassHash(pathfinder_crypto::Felt::from_hex_str("0x1111").unwrap());
+        let bad = ClassHash(pathfinder_crypto::Felt::from_hex_str("0x2222").unwrap());
+        let definition = b"good class definition".to_vec();
+
+        // Insert both in one state update to avoid block number conflicts.
+        {
+            let mut db = storage.connection().unwrap();
+            let tx = db.transaction().unwrap();
+            tx.insert_state_update_data(
+                BlockNumber::GENESIS,
+                &StateUpdateData {
+                    declared_cairo_classes: HashSet::from([good, bad]),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            tx.commit().unwrap();
+        }
+
+        repair_missing_class_definitions_with(storage.clone(), {
+            let definition = definition.clone();
+            move |hash| {
+                let definition = definition.clone();
+                async move {
+                    if hash == bad {
+                        anyhow::bail!("gateway returned 404");
+                    }
+                    Ok(DownloadedClass::Cairo { hash, definition })
+                }
+            }
+        })
+        .await
+        .unwrap();
+
+        let mut db = storage.connection().unwrap();
+        let tx = db.transaction().unwrap();
+        assert_eq!(tx.class_definition(good).unwrap(), Some(definition));
+        // bad was not repaired — definition IS NULL, so it still appears in
+        // the missing list.
+        let still_missing = tx.class_hashes_with_missing_definitions().unwrap();
+        assert_eq!(still_missing, vec![bad]);
+    }
 }
 
 fn store_repaired_class(
