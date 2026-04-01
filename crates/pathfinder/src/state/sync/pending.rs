@@ -18,6 +18,7 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
     latest: watch::Receiver<(BlockNumber, BlockHash)>,
     current: watch::Receiver<(BlockNumber, BlockHash)>,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     fetch_casm_from_fgw: bool,
 ) {
     poll_pre_starknet_0_14_0(
@@ -28,6 +29,7 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
         &latest,
         &current,
         compiler_resource_limits,
+        blockifier_libfuncs,
         fetch_casm_from_fgw,
     )
     .await;
@@ -46,6 +48,7 @@ pub async fn poll_pre_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
     latest: &watch::Receiver<(BlockNumber, BlockHash)>,
     current: &watch::Receiver<(BlockNumber, BlockHash)>,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     fetch_casm_from_fgw: bool,
 ) {
     let mut prev_tx_count = 0;
@@ -98,6 +101,7 @@ pub async fn poll_pre_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
             sequencer,
             storage.clone(),
             compiler_resource_limits,
+            blockifier_libfuncs,
             fetch_casm_from_fgw,
         )
         .await
@@ -500,6 +504,7 @@ mod tests {
                 latest,
                 current,
                 pathfinder_compiler::ResourceLimits::for_test(),
+                pathfinder_compiler::BlockifierLibfuncs::default(),
                 false,
             )
             .await
@@ -574,6 +579,7 @@ mod tests {
                 rx_latest,
                 rx_current,
                 pathfinder_compiler::ResourceLimits::for_test(),
+                pathfinder_compiler::BlockifierLibfuncs::default(),
                 false,
             )
             .await
@@ -629,6 +635,7 @@ mod tests {
                 rx_latest,
                 rx_current,
                 pathfinder_compiler::ResourceLimits::for_test(),
+                pathfinder_compiler::BlockifierLibfuncs::default(),
                 false,
             )
             .await
@@ -729,6 +736,7 @@ mod tests {
                 rx_latest,
                 rx_current,
                 pathfinder_compiler::ResourceLimits::for_test(),
+                pathfinder_compiler::BlockifierLibfuncs::default(),
                 false,
             )
             .await

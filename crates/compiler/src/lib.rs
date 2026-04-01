@@ -57,6 +57,25 @@ impl ResourceLimits {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum BlockifierLibfuncs {
+    #[default]
+    Audited,
+    All,
+    Experimental,
+}
+
+impl std::fmt::Display for BlockifierLibfuncs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            BlockifierLibfuncs::Audited => "audited",
+            BlockifierLibfuncs::All => "all",
+            BlockifierLibfuncs::Experimental => "experimental",
+        };
+        write!(f, "{}", s)
+    }
+}
+
 /// Compile a Sierra class definition into CASM using an isolated child process.
 ///
 /// Runs the `pathfinder compile` command in a child process, passes
@@ -85,6 +104,7 @@ impl ResourceLimits {
 pub fn compile_sierra_to_casm(
     sierra_definition: &[u8],
     resource_limits: ResourceLimits,
+    blockifier_libfuncs: BlockifierLibfuncs,
 ) -> anyhow::Result<Vec<u8>> {
     let mut pathfinder_cmd = pathfinder_exe()
         .context("reading pathfinder executable path")
@@ -92,6 +112,8 @@ pub fn compile_sierra_to_casm(
 
     pathfinder_cmd
         .arg("compile")
+        .arg("--blockifier.libfunc-list")
+        .arg(blockifier_libfuncs.to_string())
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
@@ -136,10 +158,13 @@ pub fn compile_sierra_to_casm(
 pub fn compile_sierra_to_casm_deser(
     sierra_definition: class_definition::Sierra<'_>,
     resource_limits: ResourceLimits,
+    blockifier_libfuncs: BlockifierLibfuncs,
 ) -> anyhow::Result<Vec<u8>> {
     serde_json::to_vec(&sierra_definition)
         .context("serializing Sierra definition")
-        .map(|sierra_definition| compile_sierra_to_casm(&sierra_definition, resource_limits))?
+        .map(|sierra_definition| {
+            compile_sierra_to_casm(&sierra_definition, resource_limits, blockifier_libfuncs)
+        })?
 }
 
 /// Get the path to the `pathfinder` executable.
@@ -279,14 +304,17 @@ mod spawn {
 /// Calling this function directly will compile the Sierra class in-process,
 /// which is not recommended. Use [`compile_sierra_to_casm`] to compile in an
 /// isolated child process with resource limits.
-pub fn compile_sierra_to_casm_impl(sierra_definition: &[u8]) -> anyhow::Result<Vec<u8>> {
+pub fn compile_sierra_to_casm_impl(
+    sierra_definition: &[u8],
+    blockifier_libfuncs: BlockifierLibfuncs,
+) -> anyhow::Result<Vec<u8>> {
     // The class representation expected by the compiler doesn't match the
     // representation used by the feeder gateway for Sierra classes, so we have to
     // convert the JSON to something that can be parsed into the expected input
     // format for the compiler.
     serde_json::from_slice::<class_definition::Sierra<'_>>(sierra_definition)
         .context("Parsing Sierra class")
-        .map(compile_sierra_to_casm_deser_impl)?
+        .map(|sierra_class| compile_sierra_to_casm_deser_impl(sierra_class, blockifier_libfuncs))?
         .context("Compiling Sierra to CASM")
 }
 
@@ -297,6 +325,7 @@ pub fn compile_sierra_to_casm_impl(sierra_definition: &[u8]) -> anyhow::Result<V
 /// in an isolated child process with resource limits.
 pub fn compile_sierra_to_casm_deser_impl(
     sierra_definition: class_definition::Sierra<'_>,
+    blockifier_libfuncs: BlockifierLibfuncs,
 ) -> anyhow::Result<Vec<u8>> {
     let version = parse_sierra_version(&sierra_definition.sierra_program)
         .context("Parsing Sierra version")?;
@@ -306,7 +335,7 @@ pub fn compile_sierra_to_casm_deser_impl(
         SierraVersion(0, 1, 0) => v1_0_0_alpha6::compile(sierra_definition),
         SierraVersion(1, 0, 0) => v1_0_0_rc0::compile(sierra_definition),
         SierraVersion(1, 1, 0) => v1_1_1::compile(sierra_definition),
-        _ => v2::compile(sierra_definition),
+        _ => v2::compile(sierra_definition, blockifier_libfuncs),
     });
     tracing::trace!(elapsed=?started_at.elapsed(), "Sierra class compilation finished");
 
@@ -489,7 +518,7 @@ mod v2 {
     use cairo_lang_starknet_classes::casm_contract_class::CasmContractClass;
     use cairo_lang_starknet_classes::contract_class::ContractClass;
 
-    use super::CasmHash;
+    use super::{BlockifierLibfuncs, CasmHash};
 
     pub(super) fn pathfinder_to_starknet_contract_class(
         definition: crate::class_definition::Sierra<'_>,
@@ -505,6 +534,7 @@ mod v2 {
 
     pub(super) fn compile(
         definition: crate::class_definition::Sierra<'_>,
+        blockifier_libfuncs: BlockifierLibfuncs,
     ) -> anyhow::Result<Vec<u8>> {
         let sierra_class: ContractClass = pathfinder_to_starknet_contract_class(definition)
             .context("Converting to Sierra class")?;
@@ -513,12 +543,13 @@ mod v2 {
             .extract_sierra_program(false)
             .context("Extracting Sierra program")?;
 
-        extracted_sierra_program.validate_version_compatible(
-            cairo_lang_starknet_classes::allowed_libfuncs::ListSelector::ListName(
-                cairo_lang_starknet_classes::allowed_libfuncs::BUILTIN_EXPERIMENTAL_LIBFUNCS_LIST
-                    .to_string(),
-            ),
-        ).context("Validating Sierra class")?;
+        extracted_sierra_program
+            .validate_version_compatible(
+                cairo_lang_starknet_classes::allowed_libfuncs::ListSelector::ListName(
+                    blockifier_libfuncs.to_string(),
+                ),
+            )
+            .context("Validating Sierra class")?;
 
         // TODO: determine `max_bytecode_size`
         let casm_class = CasmContractClass::from_contract_class(
@@ -587,6 +618,7 @@ mod tests {
 
         use super::*;
         use crate::v1_0_0_rc0::pathfinder_to_starknet_contract_class;
+        use crate::BlockifierLibfuncs;
 
         #[test]
         fn test_feeder_gateway_contract_conversion() {
@@ -600,7 +632,8 @@ mod tests {
 
         #[test]
         fn test_compile_ser() {
-            compile_sierra_to_casm_impl(CAIRO_1_0_0_ALPHA5_SIERRA).unwrap();
+            compile_sierra_to_casm_impl(CAIRO_1_0_0_ALPHA5_SIERRA, BlockifierLibfuncs::default())
+                .unwrap();
         }
     }
 
@@ -610,6 +643,7 @@ mod tests {
 
         use super::*;
         use crate::v1_0_0_rc0::pathfinder_to_starknet_contract_class;
+        use crate::BlockifierLibfuncs;
 
         #[test]
         fn test_feeder_gateway_contract_conversion() {
@@ -623,7 +657,8 @@ mod tests {
 
         #[test]
         fn test_compile_ser() {
-            compile_sierra_to_casm_impl(CAIRO_1_0_0_RC0_SIERRA).unwrap();
+            compile_sierra_to_casm_impl(CAIRO_1_0_0_RC0_SIERRA, BlockifierLibfuncs::default())
+                .unwrap();
         }
     }
 
@@ -636,6 +671,7 @@ mod tests {
 
         use super::*;
         use crate::v2::pathfinder_to_starknet_contract_class;
+        use crate::BlockifierLibfuncs;
 
         #[test]
         fn test_feeder_gateway_contract_conversion() {
@@ -649,13 +685,15 @@ mod tests {
 
         #[test]
         fn test_compile_ser() {
-            compile_sierra_to_casm_impl(CAIRO_1_1_0_RC0_SIERRA).unwrap();
+            compile_sierra_to_casm_impl(CAIRO_1_1_0_RC0_SIERRA, BlockifierLibfuncs::default())
+                .unwrap();
         }
 
         #[test]
         fn regression_stack_overflow() {
             // This class caused a stack-overflow in v2 compilers <= v2.0.1
-            compile_sierra_to_casm_impl(CAIRO_2_0_0_STACK_OVERFLOW).unwrap();
+            compile_sierra_to_casm_impl(CAIRO_2_0_0_STACK_OVERFLOW, BlockifierLibfuncs::default())
+                .unwrap();
         }
     }
 }

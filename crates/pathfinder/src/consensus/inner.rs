@@ -49,6 +49,7 @@ pub fn start(
     gas_price_provider: Option<L1GasPriceProvider>,
     verify_tree_hashes: bool,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     inject_failure_config: Option<InjectFailureConfig>,
 ) -> ConsensusTaskHandles {
     // Events that are produced by the P2P task and consumed by the consensus task.
@@ -77,6 +78,7 @@ pub fn start(
         finalized_blocks,
         data_directory,
         compiler_resource_limits,
+        blockifier_libfuncs,
         verify_tree_hashes,
         gas_price_provider,
         inject_failure_config,
@@ -91,6 +93,7 @@ pub fn start(
         main_storage,
         data_directory,
         compiler_resource_limits,
+        blockifier_libfuncs,
         inject_failure_config,
     );
 

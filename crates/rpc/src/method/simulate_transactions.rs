@@ -130,6 +130,7 @@ pub async fn simulate_transactions(
                     &tx,
                     context.chain_id,
                     context.config.compiler_resource_limits,
+                    context.config.blockifier_libfuncs,
                     skip_validate,
                     skip_fee_charge,
                 )

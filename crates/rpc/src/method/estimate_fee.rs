@@ -132,6 +132,7 @@ pub async fn estimate_fee(
                     &tx,
                     context.chain_id,
                     context.config.compiler_resource_limits,
+                    context.config.blockifier_libfuncs,
                     skip_validate,
                     true,
                 )

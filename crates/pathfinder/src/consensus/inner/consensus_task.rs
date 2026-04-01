@@ -48,6 +48,7 @@ pub fn spawn(
     main_storage: Storage,
     data_directory: &Path,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     // Does nothing in production builds. Used for integration testing only.
     inject_failure: Option<InjectFailureConfig>,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
@@ -158,6 +159,7 @@ pub fn spawn(
                                 validator_address,
                                 main_storage.clone(),
                                 compiler_resource_limits,
+                                blockifier_libfuncs,
                                 None,
                             ) {
                                 Ok((wire_proposal, finalized_block)) => {

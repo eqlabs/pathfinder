@@ -54,6 +54,7 @@ pub struct Sync<P, G> {
     pub public_key: PublicKey,
     pub verify_tree_hashes: bool,
     pub compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    pub blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     pub block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
 }
 
@@ -80,6 +81,7 @@ where
         l1_anchor_override: Option<EthereumStateUpdate>,
         verify_tree_hashes: bool,
         compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+        blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
         block_hash_db: Option<BlockHashDb>,
     ) -> Self {
         Self {
@@ -92,6 +94,7 @@ where
             public_key,
             verify_tree_hashes,
             compiler_resource_limits,
+            blockifier_libfuncs,
             block_hash_db,
         }
     }
@@ -266,6 +269,7 @@ where
             self.storage.clone(),
             self.fgw_client.clone(),
             self.compiler_resource_limits,
+            self.blockifier_libfuncs,
             expected_declarations,
         )
         .await?;
@@ -376,6 +380,7 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'stati
     storage: Storage,
     fgw: SequencerClient,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     expected_declarations: impl Stream<Item = anyhow::Result<(BlockNumber, HashSet<ClassHash>)>>
         + Send
         + 'static,
@@ -403,6 +408,7 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'stati
                 fgw.clone(),
                 tokio::runtime::Handle::current(),
                 compiler_resource_limits,
+                blockifier_libfuncs,
             )
         })
         .and_then(|x| class_definitions::persist(storage.clone(), x))
@@ -1556,6 +1562,7 @@ mod tests {
                 storage.clone(),
                 FakeFgw,
                 pathfinder_compiler::ResourceLimits::for_test(),
+                pathfinder_compiler::BlockifierLibfuncs::default(),
                 declared_classes.to_stream(),
             )
             .await
@@ -1614,7 +1621,8 @@ mod tests {
                         stream::once(std::future::ready(Ok(data))),
                         storage,
                         FakeFgw,
-                    pathfinder_compiler::ResourceLimits::for_test(),
+                        pathfinder_compiler::ResourceLimits::for_test(),
+                        pathfinder_compiler::BlockifierLibfuncs::default(),
                         Faker.fake::<DeclaredClasses>().to_stream(),
                     )
                     .await,
@@ -1646,7 +1654,8 @@ mod tests {
                         stream::iter(streamed_classes),
                         storage,
                         FakeFgw,
-                    pathfinder_compiler::ResourceLimits::for_test(),
+                        pathfinder_compiler::ResourceLimits::for_test(),
+                        pathfinder_compiler::BlockifierLibfuncs::default(),
                         declared_classes.to_stream(),
                     )
                     .await,
@@ -1661,6 +1670,7 @@ mod tests {
                     StorageBuilder::in_memory().unwrap(),
                     FakeFgw,
                     pathfinder_compiler::ResourceLimits::for_test(),
+                    pathfinder_compiler::BlockifierLibfuncs::default(),
                     Faker.fake::<DeclaredClasses>().to_stream(),
                 )
                 .await,

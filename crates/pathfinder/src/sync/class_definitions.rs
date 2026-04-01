@@ -417,6 +417,7 @@ pub struct CompileSierraToCasm<T> {
     fgw: T,
     tokio_handle: tokio::runtime::Handle,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
 }
 
 impl<T> CompileSierraToCasm<T> {
@@ -424,11 +425,13 @@ impl<T> CompileSierraToCasm<T> {
         fgw: T,
         tokio_handle: tokio::runtime::Handle,
         compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+        blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     ) -> Self {
         Self {
             fgw,
             tokio_handle,
             compiler_resource_limits,
+            blockifier_libfuncs,
         }
     }
 }
@@ -448,6 +451,7 @@ impl<T: GatewayApi + Clone + Send + 'static> ProcessStage for CompileSierraToCas
                     &self.fgw,
                     &self.tokio_handle,
                     self.compiler_resource_limits,
+                    self.blockifier_libfuncs,
                 )?;
                 Ok(compiled)
             })
@@ -462,6 +466,7 @@ pub(super) async fn compile_sierra_to_casm_or_fetch<
     fgw: SequencerClient,
     tokio_handle: tokio::runtime::Handle,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
 ) -> Result<Vec<PeerData<CompiledClass>>, SyncError> {
     use rayon::prelude::*;
     let (tx, rx) = oneshot::channel();
@@ -470,8 +475,13 @@ pub(super) async fn compile_sierra_to_casm_or_fetch<
             .into_par_iter()
             .map(|x| {
                 let PeerData { peer, data } = x;
-                let compiled =
-                    compile_or_fetch_impl(data, &fgw, &tokio_handle, compiler_resource_limits)?;
+                let compiled = compile_or_fetch_impl(
+                    data,
+                    &fgw,
+                    &tokio_handle,
+                    compiler_resource_limits,
+                    blockifier_libfuncs,
+                )?;
                 Ok(PeerData::new(peer, compiled))
             })
             .collect::<Result<Vec<PeerData<CompiledClass>>, SyncError>>();
@@ -485,6 +495,7 @@ fn compile_or_fetch_impl<SequencerClient: GatewayApi + Clone + Send + 'static>(
     fgw: &SequencerClient,
     tokio_handle: &tokio::runtime::Handle,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
 ) -> Result<CompiledClass, SyncError> {
     let Class {
         block_number,
@@ -498,6 +509,7 @@ fn compile_or_fetch_impl<SequencerClient: GatewayApi + Clone + Send + 'static>(
             let casm_definition = pathfinder_compiler::compile_sierra_to_casm(
                 &sierra_definition,
                 compiler_resource_limits,
+                blockifier_libfuncs,
             )
             .context("Compiling Sierra class");
 

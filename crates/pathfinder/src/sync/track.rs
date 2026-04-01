@@ -41,6 +41,7 @@ pub struct Sync<L, P> {
     pub block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
     pub verify_tree_hashes: bool,
     pub compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    pub blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
 }
 
 impl<L, P> Sync<L, P> {
@@ -130,6 +131,7 @@ impl<L, P> Sync<L, P> {
                 fgw,
                 tokio::runtime::Handle::current(),
                 self.compiler_resource_limits,
+                self.blockifier_libfuncs,
             ),
             10,
         )

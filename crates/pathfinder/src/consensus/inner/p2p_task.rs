@@ -130,6 +130,7 @@ pub fn spawn(
     mut finalized_blocks: HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
     data_directory: &Path,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     verify_tree_hashes: bool,
     gas_price_provider: Option<L1GasPriceProvider>,
     // Does nothing in production builds. Used for integration testing only.
@@ -163,6 +164,7 @@ pub fn spawn(
         l2_gas_price_provider.clone(),
         worker_pool.clone(),
         compiler_resource_limits,
+        blockifier_libfuncs,
     );
     // Keep track of whether we've already emitted a warning about the
     // event channel size exceeding the limit, to avoid spamming the logs.
@@ -1607,7 +1609,7 @@ mod tests {
     use std::path::PathBuf;
 
     use pathfinder_common::{BlockHash, ConsensusFinalizedL2Block, StateCommitment};
-    use pathfinder_compiler::ResourceLimits;
+    use pathfinder_compiler::{BlockifierLibfuncs, ResourceLimits};
     use pathfinder_crypto::Felt;
     use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
     use pathfinder_storage::StorageBuilder;
@@ -1637,6 +1639,7 @@ mod tests {
                 None,
                 worker_pool.clone(),
                 ResourceLimits::for_test(),
+                BlockifierLibfuncs::default(),
             );
             let dummy_data_dir = PathBuf::new();
 
@@ -1657,6 +1660,7 @@ mod tests {
                     ContractAddress::ZERO,
                     main_storage.clone(),
                     ResourceLimits::for_test(),
+                    BlockifierLibfuncs::default(),
                     // The smallest config that reproduced the issue until it was fixed
                     Some(ProposalCreationConfig {
                         num_batches: NonZeroUsize::new(3).unwrap(),

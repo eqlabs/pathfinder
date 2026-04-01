@@ -85,6 +85,7 @@ pub(crate) async fn wait_for_parent_committed(
 /// Creates a dummy proposal for the given height and round, filling it with
 /// realistic transactions based on the state of the main storage DB, if it is
 /// bootstrapped, or with invalid L1 handler transactions otherwise.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn create(
     height: u64,
     round: Round,
@@ -92,6 +93,7 @@ pub(crate) fn create(
     proposer: ContractAddress,
     main_storage: Storage,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     config: Option<ProposalCreationConfig>,
 ) -> anyhow::Result<(Vec<ProposalPart>, ConsensusFinalizedL2Block)> {
     let mut db_conn = main_storage.connection()?;
@@ -106,6 +108,7 @@ pub(crate) fn create(
             proposer,
             main_storage,
             compiler_resource_limits,
+            blockifier_libfuncs,
         )
     } else {
         create_with_invalid_l1_handler_transactions(
@@ -115,6 +118,7 @@ pub(crate) fn create(
             proposer,
             main_storage,
             compiler_resource_limits,
+            blockifier_libfuncs,
             config,
         )
     }
@@ -135,6 +139,7 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
     proposer: ContractAddress,
     main_storage: Storage,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
 ) -> anyhow::Result<(Vec<ProposalPart>, ConsensusFinalizedL2Block)> {
     // TODO setting these constant to higher values can lead to weird panics in
     // other validator (Pathfinder) nodes, which we need to investigate
@@ -255,7 +260,11 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
         main_storage.clone(),
         worker_pool.clone(),
     )?;
-    validator.execute_batch::<ProdTransactionMapper>(txns_to_execute, compiler_resource_limits)?;
+    validator.execute_batch::<ProdTransactionMapper>(
+        txns_to_execute,
+        compiler_resource_limits,
+        blockifier_libfuncs,
+    )?;
     let block = validator.consensus_finalize0()?;
     let worker_pool = Arc::into_inner(worker_pool).context("Failed join worker pool")?;
     worker_pool.join();
@@ -283,6 +292,7 @@ pub(crate) struct ProposalCreationConfig {
 ///
 /// TODO: Until empty proposals reintroduce timestamps, we cannot create
 /// empty proposals here.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn create_with_invalid_l1_handler_transactions(
     db_txn: &pathfinder_storage::Transaction<'_>,
     height: u64,
@@ -290,6 +300,7 @@ pub(crate) fn create_with_invalid_l1_handler_transactions(
     proposer: ContractAddress,
     main_storage: Storage,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     config: Option<ProposalCreationConfig>,
 ) -> anyhow::Result<(Vec<ProposalPart>, ConsensusFinalizedL2Block)> {
     let round = round.as_u32().context(format!(
@@ -373,7 +384,11 @@ pub(crate) fn create_with_invalid_l1_handler_transactions(
     ));
 
     validator
-        .execute_batch::<ProdTransactionMapper>(txns_to_execute, compiler_resource_limits)
+        .execute_batch::<ProdTransactionMapper>(
+            txns_to_execute,
+            compiler_resource_limits,
+            blockifier_libfuncs,
+        )
         .unwrap();
 
     let block = validator.consensus_finalize0()?;

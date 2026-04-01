@@ -94,6 +94,7 @@ pub struct L2SyncContext<GatewayClient> {
     pub storage: Storage,
     pub sequencer_public_key: PublicKey,
     pub compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    pub blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     pub fetch_concurrency: std::num::NonZeroUsize,
     pub fetch_casm_from_fgw: bool,
 }
@@ -127,6 +128,7 @@ where
         storage,
         sequencer_public_key,
         compiler_resource_limits,
+        blockifier_libfuncs,
         fetch_concurrency: _,
         fetch_casm_from_fgw,
     } = context;
@@ -239,6 +241,7 @@ where
             &sequencer,
             storage.clone(),
             compiler_resource_limits,
+            blockifier_libfuncs,
             fetch_casm_from_fgw,
         )
         .await
@@ -370,6 +373,7 @@ where
         storage,
         sequencer_public_key,
         compiler_resource_limits,
+        blockifier_libfuncs,
         fetch_concurrency: _,
         fetch_casm_from_fgw,
     } = context;
@@ -578,6 +582,7 @@ where
             &sequencer,
             storage.clone(),
             compiler_resource_limits,
+            blockifier_libfuncs,
             fetch_casm_from_fgw,
         )
         .await
@@ -735,6 +740,7 @@ pub async fn download_new_classes(
     sequencer: &impl GatewayApi,
     storage: Storage,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     fetch_casm_from_fgw: bool,
 ) -> Result<Vec<DownloadedClass>, anyhow::Error> {
     let deployed_classes = state_update
@@ -793,6 +799,7 @@ pub async fn download_new_classes(
                 sequencer,
                 class_hash,
                 compiler_resource_limits,
+                blockifier_libfuncs,
                 fetch_casm_from_fgw,
             )
             .await
@@ -1009,6 +1016,7 @@ where
         storage,
         sequencer_public_key,
         compiler_resource_limits,
+        blockifier_libfuncs,
         fetch_concurrency,
         fetch_casm_from_fgw,
     } = context;
@@ -1113,6 +1121,7 @@ where
                     &sequencer,
                     storage,
                     compiler_resource_limits,
+                    blockifier_libfuncs,
                     fetch_casm_from_fgw,
                 )
                 .await
@@ -1748,6 +1757,7 @@ mod tests {
                 storage,
                 sequencer_public_key: PublicKey::ZERO,
                 compiler_resource_limits: pathfinder_compiler::ResourceLimits::for_test(),
+                blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs::default(),
                 fetch_concurrency: std::num::NonZeroUsize::new(1).unwrap(),
                 fetch_casm_from_fgw: false,
             };
@@ -1791,6 +1801,7 @@ mod tests {
                 storage,
                 sequencer_public_key: PublicKey::ZERO,
                 compiler_resource_limits: pathfinder_compiler::ResourceLimits::for_test(),
+                blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs::default(),
                 fetch_concurrency: std::num::NonZeroUsize::new(1).unwrap(),
                 fetch_casm_from_fgw: false,
             };
@@ -1823,6 +1834,7 @@ mod tests {
                 sequencer_public_key: PublicKey::ZERO,
                 fetch_concurrency: std::num::NonZeroUsize::new(2).unwrap(),
                 compiler_resource_limits: pathfinder_compiler::ResourceLimits::for_test(),
+                blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs::default(),
                 fetch_casm_from_fgw: false,
             };
 
@@ -2332,6 +2344,7 @@ mod tests {
                     .unwrap(),
                     sequencer_public_key: PublicKey::ZERO,
                     compiler_resource_limits: pathfinder_compiler::ResourceLimits::for_test(),
+                    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs::default(),
                     fetch_concurrency: std::num::NonZeroUsize::new(1).unwrap(),
                     fetch_casm_from_fgw: false,
                 };

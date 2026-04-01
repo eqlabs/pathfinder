@@ -508,6 +508,7 @@ impl ValidatorTransactionBatchStage {
         &mut self,
         transactions: Vec<p2p_proto::consensus::Transaction>,
         compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+        blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     ) -> Result<(), ProposalHandlingError> {
         if transactions.is_empty() {
             return Ok(());
@@ -526,7 +527,9 @@ impl ValidatorTransactionBatchStage {
         // are blocking.
         let txns = transactions
             .par_iter()
-            .map(|t| T::try_map_transaction(t.clone(), compiler_resource_limits))
+            .map(|t| {
+                T::try_map_transaction(t.clone(), compiler_resource_limits, blockifier_libfuncs)
+            })
             .collect::<anyhow::Result<Vec<_>>>()
             .map_err(ProposalHandlingError::recoverable)?;
         let mut common_txns = Vec::with_capacity(txns.len());
@@ -928,10 +931,12 @@ pub trait TransactionExt {
     /// - executor transaction, which is used for executing the transaction
     ///
     /// For certain transactions, there is a compilation step which can be
-    /// resource-limited via `compiler_resource_limits`.
+    /// resource-limited via `compiler_resource_limits` and verified using
+    /// `blockifier_libfuncs`.
     fn try_map_transaction(
         transaction: p2p_proto::consensus::Transaction,
         compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+        blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     ) -> anyhow::Result<MappedTransaction>;
 
     fn verify_hash(transaction: &Transaction, chain_id: ChainId) -> bool;
@@ -949,6 +954,7 @@ impl TransactionExt for ProdTransactionMapper {
     fn try_map_transaction(
         transaction: p2p_proto::consensus::Transaction,
         compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+        blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     ) -> anyhow::Result<MappedTransaction> {
         let p2p_proto::consensus::Transaction {
             txn,
@@ -1002,6 +1008,7 @@ impl TransactionExt for ProdTransactionMapper {
                         SierraHash(class_hash.0),
                         class,
                         compiler_resource_limits,
+                        blockifier_libfuncs,
                     )?),
                 )
             }
@@ -1055,6 +1062,7 @@ fn class_info(
     sierra_hash: SierraHash,
     class: Cairo1Class,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
 ) -> anyhow::Result<(ClassInfo, DeclaredClass)> {
     let Cairo1Class {
         abi,
@@ -1101,8 +1109,11 @@ fn class_info(
         },
     };
     let sierra_def = serde_json::to_vec(&definition)?;
-    let casm_def =
-        pathfinder_compiler::compile_sierra_to_casm(&sierra_def, compiler_resource_limits)?;
+    let casm_def = pathfinder_compiler::compile_sierra_to_casm(
+        &sierra_def,
+        compiler_resource_limits,
+        blockifier_libfuncs,
+    )?;
     let casm_hash_v2 = pathfinder_compiler::casm_class_hash_v2(&casm_def)?;
 
     let for_storage = DeclaredClass {
@@ -1261,6 +1272,7 @@ mod tests {
             .execute_batch::<ProdTransactionMapper>(
                 batches[0].clone(),
                 pathfinder_compiler::ResourceLimits::for_test(),
+                pathfinder_compiler::BlockifierLibfuncs::default(),
             )
             .expect("Failed to execute batch 1");
         assert_eq!(
@@ -1274,6 +1286,7 @@ mod tests {
             .execute_batch::<ProdTransactionMapper>(
                 batches[1].clone(),
                 pathfinder_compiler::ResourceLimits::for_test(),
+                pathfinder_compiler::BlockifierLibfuncs::default(),
             )
             .expect("Failed to execute batch 2");
         assert_eq!(
@@ -1287,6 +1300,7 @@ mod tests {
             .execute_batch::<ProdTransactionMapper>(
                 batches[2].clone(),
                 pathfinder_compiler::ResourceLimits::for_test(),
+                pathfinder_compiler::BlockifierLibfuncs::default(),
             )
             .expect("Failed to execute batch 3");
         assert_eq!(
@@ -1355,18 +1369,21 @@ mod tests {
             .execute_batch::<ProdTransactionMapper>(
                 batches[0].clone(),
                 pathfinder_compiler::ResourceLimits::for_test(),
+                pathfinder_compiler::BlockifierLibfuncs::default(),
             )
             .expect("Failed to execute batch 0");
         validator_stage
             .execute_batch::<ProdTransactionMapper>(
                 batches[1].clone(),
                 pathfinder_compiler::ResourceLimits::for_test(),
+                pathfinder_compiler::BlockifierLibfuncs::default(),
             )
             .expect("Failed to execute batch 1");
         validator_stage
             .execute_batch::<ProdTransactionMapper>(
                 batches[2].clone(),
                 pathfinder_compiler::ResourceLimits::for_test(),
+                pathfinder_compiler::BlockifierLibfuncs::default(),
             )
             .expect("Failed to execute batch 2");
 
