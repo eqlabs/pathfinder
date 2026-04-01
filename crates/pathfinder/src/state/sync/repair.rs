@@ -107,6 +107,75 @@ where
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use pathfinder_common::state_update::StateUpdateData;
+    use pathfinder_common::BlockNumber;
+    use pathfinder_storage::StorageBuilder;
+
+    use super::*;
+
+    fn storage() -> Storage {
+        StorageBuilder::in_memory().unwrap()
+    }
+
+    fn insert_placeholder(storage: &Storage, hash: ClassHash) {
+        let mut db = storage.connection().unwrap();
+        let tx = db.transaction().unwrap();
+        tx.insert_state_update_data(
+            BlockNumber::GENESIS,
+            &StateUpdateData {
+                declared_cairo_classes: HashSet::from([hash]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        tx.commit().unwrap();
+    }
+
+    #[tokio::test]
+    async fn nothing_to_repair() {
+        let storage = storage();
+
+        repair_missing_class_definitions_with(storage, |_hash| async {
+            panic!("download should not be called when there are no missing definitions")
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn cairo_repair() {
+        let storage = storage();
+        let hash = ClassHash(pathfinder_crypto::Felt::from_hex_str("0xdeadbeef").unwrap());
+        let definition = b"cairo class definition bytes".to_vec();
+
+        insert_placeholder(&storage, hash);
+
+        repair_missing_class_definitions_with(storage.clone(), {
+            let definition = definition.clone();
+            move |_hash| {
+                let definition = definition.clone();
+                async move {
+                    Ok(DownloadedClass::Cairo {
+                        hash: _hash,
+                        definition,
+                    })
+                }
+            }
+        })
+        .await
+        .unwrap();
+
+        let mut db = storage.connection().unwrap();
+        let tx = db.transaction().unwrap();
+        let stored = tx.class_definition(hash).unwrap();
+        assert_eq!(stored, Some(definition));
+    }
+}
+
 fn store_repaired_class(
     storage: &Storage,
     declared_hash: ClassHash,
