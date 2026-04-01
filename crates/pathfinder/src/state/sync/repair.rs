@@ -12,6 +12,32 @@ pub async fn repair_missing_class_definitions<S: GatewayApi + Clone + Send + 'st
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
     fetch_casm_from_fgw: bool,
 ) -> anyhow::Result<()> {
+    repair_missing_class_definitions_with(storage, move |hash| {
+        let sequencer = sequencer.clone();
+        async move {
+            download_class(
+                &sequencer,
+                hash,
+                compiler_resource_limits,
+                fetch_casm_from_fgw,
+            )
+            .await
+        }
+    })
+    .await
+}
+
+/// Inner implementation that accepts an injectable download function for
+/// tests, allowing us to pass a fake that returns known [`DownloadedClass`]
+/// values without using the sequencer or running hash computation.
+async fn repair_missing_class_definitions_with<F, Fut>(
+    storage: Storage,
+    download: F,
+) -> anyhow::Result<()>
+where
+    F: Fn(ClassHash) -> Fut + Clone,
+    Fut: std::future::Future<Output = anyhow::Result<DownloadedClass>>,
+{
     let missing = tokio::task::spawn_blocking({
         let storage = storage.clone();
         move || {
@@ -38,17 +64,8 @@ pub async fn repair_missing_class_definitions<S: GatewayApi + Clone + Send + 'st
 
     let results = futures::stream::iter(missing)
         .map(|hash| {
-            let sequencer = sequencer.clone();
-            async move {
-                let result = download_class(
-                    &sequencer,
-                    hash,
-                    compiler_resource_limits,
-                    fetch_casm_from_fgw,
-                )
-                .await;
-                (hash, result)
-            }
+            let download = download.clone();
+            async move { (hash, download(hash).await) }
         })
         .buffer_unordered(4);
 
