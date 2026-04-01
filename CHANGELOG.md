@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The `blockifier` and `starknet_api` crates have been upgraded to 0.18.0-rc.1.
 
+### Added
+
+- Blockifier libfunc list used for compilation verification is now defaulting to `audited` and configurable with the new `--blockifier.libfunc-list` CLI option.
+
 ## [0.22.1] - 2026-03-31
 
 ### Fixed
