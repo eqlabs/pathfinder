@@ -82,15 +82,18 @@ where
                     let storage = storage.clone();
                     move || store_repaired_class(&storage, declared_hash, downloaded)
                 })
-                .await
-                .context("Joining database task")?;
+                .await;
 
                 match store_result {
                     Err(e) => {
                         tracing::warn!(hash=%declared_hash, error=%e, "Failed to store repaired class definition");
                         failed += 1;
                     }
-                    Ok(()) => {
+                    Ok(Err(e)) => {
+                        tracing::warn!(hash=%declared_hash, error=%e, "Failed to store repaired class definition");
+                        failed += 1;
+                    }
+                    Ok(Ok(())) => {
                         repaired += 1;
                     }
                 }
