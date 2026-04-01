@@ -82,18 +82,15 @@ where
                     let storage = storage.clone();
                     move || store_repaired_class(&storage, declared_hash, downloaded)
                 })
-                .await;
+                .await
+                .unwrap_or_else(|e| Err(anyhow::anyhow!(e)));
 
                 match store_result {
                     Err(e) => {
                         tracing::warn!(hash=%declared_hash, error=%e, "Failed to store repaired class definition");
                         failed += 1;
                     }
-                    Ok(Err(e)) => {
-                        tracing::warn!(hash=%declared_hash, error=%e, "Failed to store repaired class definition");
-                        failed += 1;
-                    }
-                    Ok(Ok(())) => {
+                    Ok(()) => {
                         repaired += 1;
                     }
                 }
@@ -102,9 +99,14 @@ where
     }
 
     if failed == 0 {
-        tracing::info!(repaired, "Finished repairing class definitions");
+        tracing::info!(total, repaired, "Finished repairing class definitions");
     } else {
-        tracing::warn!(repaired, failed, "Finished repairing class definitions");
+        tracing::warn!(
+            total,
+            repaired,
+            failed,
+            "Finished repairing class definitions"
+        );
     }
 
     Ok(())
@@ -159,11 +161,11 @@ mod tests {
 
         repair_missing_class_definitions_with(storage.clone(), {
             let definition = definition.clone();
-            move |_hash| {
+            move |requested| {
                 let definition = definition.clone();
                 async move {
                     Ok(DownloadedClass::Cairo {
-                        hash: _hash,
+                        hash: requested,
                         definition,
                     })
                 }
@@ -192,7 +194,7 @@ mod tests {
 
         repair_missing_class_definitions_with(storage.clone(), {
             let definition = definition.clone();
-            move |_hash| {
+            move |_| {
                 let definition = definition.clone();
                 async move {
                     Ok(DownloadedClass::Cairo {
