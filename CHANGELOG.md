@@ -7,6 +7,12 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Changed
+
+- The `blockifier` and `starknet_api` crates have been upgraded to 0.18.0-rc.1.
+
 ## [0.22.1] - 2026-03-31
 
 ### Fixed
