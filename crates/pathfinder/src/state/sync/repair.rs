@@ -174,6 +174,41 @@ mod tests {
         let stored = tx.class_definition(hash).unwrap();
         assert_eq!(stored, Some(definition));
     }
+
+    /// Cairo 0 classes can have a mismatch between the declared hash and the
+    /// hash computed from the downloaded bytes. The repair must store the
+    /// definition under the declared hash regardless.
+    #[tokio::test]
+    async fn cairo_repair_hash_mismatch() {
+        let storage = storage();
+        let declared = ClassHash(pathfinder_crypto::Felt::from_hex_str("0xaaaa").unwrap());
+        let computed = ClassHash(pathfinder_crypto::Felt::from_hex_str("0xbbbb").unwrap());
+        let definition = b"cairo class definition bytes".to_vec();
+
+        insert_placeholder(&storage, declared);
+
+        repair_missing_class_definitions_with(storage.clone(), {
+            let definition = definition.clone();
+            move |_hash| {
+                let definition = definition.clone();
+                async move {
+                    Ok(DownloadedClass::Cairo {
+                        // Return the computed hash, which differs from the declared one.
+                        hash: computed,
+                        definition,
+                    })
+                }
+            }
+        })
+        .await
+        .unwrap();
+
+        let mut db = storage.connection().unwrap();
+        let tx = db.transaction().unwrap();
+        // Stored under the declared hash, not the computed one.
+        assert_eq!(tx.class_definition(declared).unwrap(), Some(definition));
+        assert_eq!(tx.class_definition(computed).unwrap(), None);
+    }
 }
 
 fn store_repaired_class(
