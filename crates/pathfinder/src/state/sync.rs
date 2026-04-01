@@ -2,6 +2,7 @@ mod class;
 pub mod l1;
 pub mod l2;
 mod pending;
+pub mod repair;
 pub mod revert;
 
 use std::future::Future;
