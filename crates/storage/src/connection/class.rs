@@ -529,6 +529,19 @@ impl Transaction<'_> {
         Ok(compiled_class_hash)
     }
 
+    pub fn class_hashes_with_missing_definitions(&self) -> anyhow::Result<Vec<ClassHash>> {
+        let mut stmt = self
+            .inner()
+            .prepare_cached("SELECT hash FROM class_definitions WHERE definition IS NULL")?;
+
+        let hashes = stmt
+            .query_map([], |row| row.get_class_hash(0))
+            .context("Querying class hashes with missing definitions")?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(hashes)
+    }
+
     pub fn is_sierra(&self, class_hash: ClassHash) -> anyhow::Result<Option<bool>> {
         let mut stmt = self.inner().prepare_cached(
             "SELECT EXISTS(SELECT 1 FROM casm_definitions WHERE casm_definitions.hash = ?)",
