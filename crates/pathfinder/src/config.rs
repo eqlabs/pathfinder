@@ -78,7 +78,7 @@ pub enum Command {
     ///
     /// This command is intended to be used as a subprocess by the main
     /// `pathfinder` executable and is not generally useful to run directly.
-    Compile,
+    Compile(CompileConfig),
 }
 
 enum CommandKind {
@@ -108,7 +108,7 @@ impl From<Command> for CommandKind {
     fn from(command: Command) -> Self {
         match command {
             Command::Node(_) => CommandKind::Node,
-            Command::Compile => CommandKind::Compile,
+            Command::Compile(_) => CommandKind::Compile,
         }
     }
 }
@@ -488,6 +488,9 @@ Setting this value too low may cause compilation of large classes to fail.",
     )]
     compiler_max_cpu_time_secs: u64,
 
+    #[clap(flatten)]
+    compile_config: CompileConfig,
+
     #[arg(
         long = "sync.fetch-casm-from-fgw",
         long_help = "Do not compile classes locally, instead fetch them from the feeder gateway",
@@ -564,6 +567,50 @@ impl Color {
             Color::Always => true,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum BlockifierLibfuncs {
+    #[default]
+    Audited,
+    All,
+    Experimental,
+}
+
+fn parse_blockifier_libfuncs(s: &str) -> Result<BlockifierLibfuncs, String> {
+    match s {
+        "audited" => Ok(BlockifierLibfuncs::Audited),
+        "all" => Ok(BlockifierLibfuncs::All),
+        "experimental" => Ok(BlockifierLibfuncs::Experimental),
+        _ => Err("Unknown blockifier libfunc list".to_string()),
+    }
+}
+
+impl From<BlockifierLibfuncs> for pathfinder_compiler::BlockifierLibfuncs {
+    fn from(val: BlockifierLibfuncs) -> Self {
+        match val {
+            BlockifierLibfuncs::Audited => pathfinder_compiler::BlockifierLibfuncs::Audited,
+            BlockifierLibfuncs::All => pathfinder_compiler::BlockifierLibfuncs::All,
+            BlockifierLibfuncs::Experimental => {
+                pathfinder_compiler::BlockifierLibfuncs::Experimental
+            }
+        }
+    }
+}
+
+#[derive(clap::Args, Clone)]
+pub struct CompileConfig {
+    #[arg(
+        long = "blockifier.libfunc-list",
+        long_help = "This names the libfunc list to be used in Starknet program validation.
+
+The default is suitable for all uses except testing.",
+        default_value = "audited",
+        value_name = "audited | all | experimental",
+        value_parser = parse_blockifier_libfuncs,
+        env = "PATHFINDER_BLOCKIFIER_LIBFUNC_LIST"
+    )]
+    pub blockifier_libfuncs: BlockifierLibfuncs,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -1037,6 +1084,7 @@ pub struct Config {
     pub state_tries: Option<StateTries>,
     pub versioned_constants_map: VersionedConstantsMap,
     pub compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    pub blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     pub feeder_gateway_fetch_concurrency: NonZeroUsize,
     pub fetch_casm_from_fgw: bool,
     pub shutdown_grace_period: Duration,
@@ -1342,6 +1390,7 @@ impl Config {
                 args.compiler_max_memory_usage_mib * 1024 * 1024,
                 args.compiler_max_cpu_time_secs,
             ),
+            blockifier_libfuncs: args.compile_config.blockifier_libfuncs.into(),
             fetch_casm_from_fgw: args.fetch_casm_from_fgw,
             shutdown_grace_period: Duration::from_secs(args.shutdown_grace_period.get()),
             fee_estimation_epsilon: args.fee_estimation_epsilon,

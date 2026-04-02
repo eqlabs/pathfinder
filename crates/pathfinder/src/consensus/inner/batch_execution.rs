@@ -40,6 +40,7 @@ pub struct BatchExecutionManager {
     /// Worker pool for concurrent execution.
     worker_pool: ValidatorWorkerPool,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
 }
 
 impl BatchExecutionManager {
@@ -49,6 +50,7 @@ impl BatchExecutionManager {
         l2_gas_price_provider: Option<L2GasPriceProvider>,
         worker_pool: ValidatorWorkerPool,
         compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+        blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     ) -> Self {
         Self {
             executing: HashSet::new(),
@@ -57,6 +59,7 @@ impl BatchExecutionManager {
             l2_gas_price_provider,
             worker_pool,
             compiler_resource_limits,
+            blockifier_libfuncs,
         }
     }
 
@@ -180,7 +183,11 @@ impl BatchExecutionManager {
         };
 
         // Execute the batch
-        validator.execute_batch::<T>(all_transactions, self.compiler_resource_limits)?;
+        validator.execute_batch::<T>(
+            all_transactions,
+            self.compiler_resource_limits,
+            self.blockifier_libfuncs,
+        )?;
 
         // Mark that execution has started for this height/round
         self.executing.insert(height_and_round);
@@ -239,7 +246,11 @@ impl BatchExecutionManager {
         }
 
         // Execute the batch
-        validator.execute_batch::<T>(transactions, self.compiler_resource_limits)?;
+        validator.execute_batch::<T>(
+            transactions,
+            self.compiler_resource_limits,
+            self.blockifier_libfuncs,
+        )?;
 
         tracing::debug!(
             "Transaction batch execution for height and round {height_and_round} is complete"
@@ -449,6 +460,7 @@ mod tests {
             None,
             worker_pool,
             pathfinder_compiler::ResourceLimits::for_test(),
+            pathfinder_compiler::BlockifierLibfuncs::default(),
         );
         let height_and_round = HeightAndRound::new(2, 1);
 
@@ -565,6 +577,7 @@ mod tests {
             None,
             worker_pool,
             pathfinder_compiler::ResourceLimits::for_test(),
+            pathfinder_compiler::BlockifierLibfuncs::default(),
         );
 
         let decided_blocks = std::collections::HashMap::new();
@@ -680,6 +693,7 @@ mod tests {
             None,
             worker_pool.clone(),
             pathfinder_compiler::ResourceLimits::for_test(),
+            pathfinder_compiler::BlockifierLibfuncs::default(),
         );
 
         let decided_blocks = std::collections::HashMap::new();
@@ -824,6 +838,7 @@ mod tests {
             None,
             worker_pool,
             pathfinder_compiler::ResourceLimits::for_test(),
+            pathfinder_compiler::BlockifierLibfuncs::default(),
         );
         let height_and_round = HeightAndRound::new(2, 1);
 
@@ -949,6 +964,7 @@ mod tests {
             None,
             worker_pool,
             pathfinder_compiler::ResourceLimits::for_test(),
+            pathfinder_compiler::BlockifierLibfuncs::default(),
         );
         let height_and_round = HeightAndRound::new(2, 1);
 
@@ -1003,6 +1019,7 @@ mod tests {
             None,
             worker_pool,
             pathfinder_compiler::ResourceLimits::for_test(),
+            pathfinder_compiler::BlockifierLibfuncs::default(),
         );
         let height_and_round = HeightAndRound::new(2, 1);
 
@@ -1061,6 +1078,7 @@ mod tests {
             None,
             worker_pool,
             pathfinder_compiler::ResourceLimits::for_test(),
+            pathfinder_compiler::BlockifierLibfuncs::default(),
         );
         let height_and_round = HeightAndRound::new(2, 1);
 

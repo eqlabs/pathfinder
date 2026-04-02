@@ -78,6 +78,7 @@ pub(crate) fn map_broadcasted_transaction(
     transaction: &BroadcastedTransaction,
     chain_id: ChainId,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     skip_validate: bool,
     skip_fee_charge: bool,
 ) -> anyhow::Result<pathfinder_executor::Transaction> {
@@ -124,6 +125,7 @@ pub(crate) fn map_broadcasted_transaction(
             let casm_contract_definition = pathfinder_compiler::compile_sierra_to_casm(
                 &sierra_definition,
                 compiler_resource_limits,
+                blockifier_libfuncs,
             )
             .context("Compiling Sierra class definition to CASM")?;
 
@@ -147,6 +149,7 @@ pub(crate) fn map_broadcasted_transaction(
             let casm_contract_definition = pathfinder_compiler::compile_sierra_to_casm(
                 &sierra_definition,
                 compiler_resource_limits,
+                blockifier_libfuncs,
             )
             .context("Compiling Sierra class definition to CASM")?;
 

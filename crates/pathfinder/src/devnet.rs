@@ -253,6 +253,7 @@ pub fn declare(
     validator.execute_batch::<ProdTransactionMapper>(
         vec![declare],
         pathfinder_compiler::ResourceLimits::for_test(),
+        pathfinder_compiler::BlockifierLibfuncs::default(),
     )?;
 
     let next_block = validator.consensus_finalize0()?;
@@ -492,6 +493,7 @@ pub mod tests {
             .execute_batch::<ProdTransactionMapper>(
                 vec![declare],
                 pathfinder_compiler::ResourceLimits::for_test(),
+                pathfinder_compiler::BlockifierLibfuncs::default(),
             )
             .unwrap();
         let block_1 = validator.consensus_finalize0().unwrap();
@@ -516,6 +518,7 @@ pub mod tests {
             .execute_batch::<ProdTransactionMapper>(
                 vec![deploy],
                 pathfinder_compiler::ResourceLimits::for_test(),
+                pathfinder_compiler::BlockifierLibfuncs::default(),
             )
             .unwrap();
         let block_2 = validator.consensus_finalize0().unwrap();
@@ -544,6 +547,7 @@ pub mod tests {
             .execute_batch::<ProdTransactionMapper>(
                 vec![increase_balance, get_balance],
                 pathfinder_compiler::ResourceLimits::for_test(),
+                pathfinder_compiler::BlockifierLibfuncs::default(),
             )
             .unwrap();
         let block_3 = validator.consensus_finalize0().unwrap();

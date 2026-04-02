@@ -61,6 +61,7 @@ pub fn start(
     gas_price_provider: Option<L1GasPriceProvider>,
     verify_tree_hashes: bool,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     // Does nothing in production builds. Used for integration testing only.
     inject_failure_config: Option<InjectFailureConfig>,
 ) -> ConsensusTaskHandles {
@@ -75,6 +76,7 @@ pub fn start(
         gas_price_provider,
         verify_tree_hashes,
         compiler_resource_limits,
+        blockifier_libfuncs,
         inject_failure_config,
     )
 }
@@ -95,6 +97,7 @@ mod inner {
         _: Option<L1GasPriceProvider>,
         _: bool,
         _: pathfinder_compiler::ResourceLimits,
+        _: pathfinder_compiler::BlockifierLibfuncs,
         _: Option<InjectFailureConfig>,
     ) -> ConsensusTaskHandles {
         ConsensusTaskHandles::pending()

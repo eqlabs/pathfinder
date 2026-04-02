@@ -109,6 +109,7 @@ impl TestEnvironment {
             // Only used for failure injection, which does not happen in these tests
             &PathBuf::default(),
             pathfinder_compiler::ResourceLimits::for_test(),
+            pathfinder_compiler::BlockifierLibfuncs::default(),
             true,
             None,
             None,

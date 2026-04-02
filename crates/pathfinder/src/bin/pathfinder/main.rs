@@ -25,7 +25,7 @@ use tokio::signal::unix::{signal, SignalKind};
 use tokio::task::JoinError;
 use tracing::info;
 
-use crate::config::{NetworkConfig, StateTries};
+use crate::config::{CompileConfig, NetworkConfig, StateTries};
 
 mod http_client_refresh;
 mod update;
@@ -48,7 +48,7 @@ fn main() -> anyhow::Result<()> {
                 node_main(args).await?;
                 Ok(())
             }),
-        config::Command::Compile => compile_main(),
+        config::Command::Compile(config) => compile_main(config),
     }
 }
 
@@ -257,6 +257,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         submission_tracker_size_limit: config.submission_tracker_size_limit,
         block_trace_cache_size: config.rpc_block_trace_cache_size,
         compiler_resource_limits: config.compiler_resource_limits,
+        blockifier_libfuncs: config.blockifier_libfuncs,
     };
 
     let notifications = Notifications::default();
@@ -370,6 +371,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
                 gas_price_provider.clone(),
                 config.verify_tree_hashes,
                 config.compiler_resource_limits,
+                config.blockifier_libfuncs,
                 // Does nothing in production builds. Used for integration testing only.
                 integration_testing_config.inject_failure_config(),
             )
@@ -521,7 +523,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     main_result.map(|_| shutdown_storage)
 }
 
-fn compile_main() -> anyhow::Result<()> {
+fn compile_main(config: CompileConfig) -> anyhow::Result<()> {
     use std::io::{Read, Write};
 
     const SIERRA_DEFINITION_SIZE_ESTIMATE: usize = 400 * 1024; // 400 KiB
@@ -530,8 +532,11 @@ fn compile_main() -> anyhow::Result<()> {
         .read_to_end(&mut sierra_definition)
         .context("reading Sierra from stdin")?;
 
-    let casm = pathfinder_compiler::compile_sierra_to_casm_impl(&sierra_definition)
-        .context("compiling Sierra to CASM")?;
+    let casm = pathfinder_compiler::compile_sierra_to_casm_impl(
+        &sierra_definition,
+        config.blockifier_libfuncs.into(),
+    )
+    .context("compiling Sierra to CASM")?;
 
     std::io::stdout()
         .write_all(&casm)
@@ -656,6 +661,7 @@ fn start_sync(
             config.sync_p2p.l1_checkpoint_override,
             config.verify_tree_hashes,
             config.compiler_resource_limits,
+            config.blockifier_libfuncs,
         )
     }
 }
@@ -721,6 +727,7 @@ fn start_feeder_gateway_sync(
         fetch_concurrency: config.feeder_gateway_fetch_concurrency,
         fetch_casm_from_fgw: config.fetch_casm_from_fgw,
         compiler_resource_limits: config.compiler_resource_limits,
+        blockifier_libfuncs: config.blockifier_libfuncs,
     };
 
     util::task::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync))
@@ -759,6 +766,7 @@ fn start_consensus_aware_fgw_sync(
         verify_tree_hashes: config.verify_tree_hashes,
         sequencer_public_key: gateway_public_key,
         compiler_resource_limits: config.compiler_resource_limits,
+        blockifier_libfuncs: config.blockifier_libfuncs,
         fetch_concurrency: config.feeder_gateway_fetch_concurrency,
         fetch_casm_from_fgw: config.fetch_casm_from_fgw,
     };
@@ -782,6 +790,7 @@ fn start_p2p_sync(
     l1_checkpoint_override: Option<pathfinder_ethereum::EthereumStateUpdate>,
     verify_tree_hashes: bool,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     use pathfinder_block_hashes::BlockHashDb;
 
@@ -796,6 +805,7 @@ fn start_p2p_sync(
         l1_checkpoint_override,
         verify_tree_hashes,
         compiler_resource_limits,
+        blockifier_libfuncs,
         block_hash_db: Some(BlockHashDb::new(pathfinder_context.network)),
     };
     util::task::spawn(sync.run())

@@ -19,6 +19,7 @@ pub async fn download_class<SequencerClient: GatewayApi>(
     sequencer: &SequencerClient,
     class_hash: ClassHash,
     compiler_resource_limit: pathfinder_compiler::ResourceLimits,
+    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     fetch_casm_from_fgw: bool,
 ) -> Result<DownloadedClass, anyhow::Error> {
     use pathfinder_class_hash::compute_class_hash;
@@ -79,6 +80,7 @@ pub async fn download_class<SequencerClient: GatewayApi>(
                     let compile_result = pathfinder_compiler::compile_sierra_to_casm(
                         &definition,
                         compiler_resource_limit,
+                        blockifier_libfuncs,
                     )
                     .context("Compiling Sierra class");
                     let _ = send.send((compile_result, definition));
