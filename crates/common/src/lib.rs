@@ -511,6 +511,7 @@ impl StarknetVersion {
     // A version at which the state commitment formula changed to always use the
     // Poseidon hash, even when `class_commitment` is zero.
     pub const V_0_14_0: Self = Self::new(0, 14, 0, 0);
+    pub const V_0_14_1: Self = Self::new(0, 14, 1, 0);
 }
 
 impl FromStr for StarknetVersion {

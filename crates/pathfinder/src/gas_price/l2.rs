@@ -19,24 +19,28 @@ pub struct L2GasPriceConstants {
 }
 
 impl L2GasPriceConstants {
+    /// L2 gas price constants for Starknet versions before v0.14.1.
+    const PRE_0_14_1: Self = Self {
+        gas_price_max_change_denominator: 48,
+        gas_target: 3_200_000_000,
+        max_block_size: 4_000_000_000,
+        min_gas_price: 3_000_000_000,
+    };
+
+    /// L2 gas price constants for Starknet v0.14.1 and later.
+    const POST_0_14_1: Self = Self {
+        gas_price_max_change_denominator: 48,
+        gas_target: 4_000_000_000,
+        max_block_size: 5_000_000_000,
+        min_gas_price: 8_000_000_000,
+    };
+
     /// Returns the L2 gas price constants for the given Starknet version.
     pub fn for_version(version: StarknetVersion) -> Self {
-        // v0.14.1+ uses updated constants
-        if version >= StarknetVersion::new(0, 14, 1, 0) {
-            Self {
-                gas_price_max_change_denominator: 48,
-                gas_target: 4_000_000_000,
-                max_block_size: 5_000_000_000,
-                min_gas_price: 8_000_000_000,
-            }
+        if version >= StarknetVersion::V_0_14_1 {
+            Self::POST_0_14_1
         } else {
-            // v0.14.0
-            Self {
-                gas_price_max_change_denominator: 48,
-                gas_target: 3_200_000_000,
-                max_block_size: 4_000_000_000,
-                min_gas_price: 3_000_000_000,
-            }
+            Self::PRE_0_14_1
         }
     }
 }
@@ -172,7 +176,7 @@ mod tests {
 
     #[test]
     fn high_congestion() {
-        let c = V0_14_1;
+        let c = L2GasPriceConstants::POST_0_14_1;
         let gas_used = c.max_block_size * 3 / 4;
         let gas_target = c.max_block_size / 2;
         let constants = L2GasPriceConstants { gas_target, ..c };
@@ -183,7 +187,7 @@ mod tests {
 
     #[test]
     fn low_congestion() {
-        let c = V0_14_1;
+        let c = L2GasPriceConstants::POST_0_14_1;
         let gas_used = c.max_block_size / 4;
         let gas_target = c.max_block_size / 2;
         let constants = L2GasPriceConstants { gas_target, ..c };
@@ -194,7 +198,7 @@ mod tests {
 
     #[test]
     fn gas_used_zero_max_decrease() {
-        let c = V0_14_1;
+        let c = L2GasPriceConstants::POST_0_14_1;
         let result = calculate_next_base_gas_price(TEST_PRICE, 0, c.min_gas_price, &c);
         let expected = TEST_PRICE - TEST_PRICE / 48;
         assert_eq!(result, expected);
@@ -202,7 +206,7 @@ mod tests {
 
     #[test]
     fn floor_clamping() {
-        let c = V0_14_1;
+        let c = L2GasPriceConstants::POST_0_14_1;
         let price = c.min_gas_price + 1;
         let result = calculate_next_base_gas_price(price, 0, c.min_gas_price, &c);
         assert_eq!(result, c.min_gas_price);
@@ -210,7 +214,7 @@ mod tests {
 
     #[test]
     fn overflow_does_not_panic() {
-        let c = V0_14_1;
+        let c = L2GasPriceConstants::POST_0_14_1;
         let gas_target = c.max_block_size / 2;
         let constants = L2GasPriceConstants { gas_target, ..c };
         let price = u64::MAX as u128;
@@ -223,7 +227,7 @@ mod tests {
         let price = 10_000_000_000u128;
         let constants = L2GasPriceConstants {
             min_gas_price,
-            ..V0_14_1
+            ..L2GasPriceConstants::POST_0_14_1
         };
         let result = calculate_next_base_gas_price(price, 1000, min_gas_price, &constants);
 
@@ -240,7 +244,7 @@ mod tests {
         let price = 9_971_000_000u128;
         let constants = L2GasPriceConstants {
             min_gas_price,
-            ..V0_14_1
+            ..L2GasPriceConstants::POST_0_14_1
         };
         let result = calculate_next_base_gas_price(price, 1000, min_gas_price, &constants);
         assert_eq!(result, min_gas_price);
@@ -252,10 +256,11 @@ mod tests {
     #[test]
     fn provider_accepts_correct_price() {
         let provider = L2GasPriceProvider::new();
+        let c = L2GasPriceConstants::POST_0_14_1;
 
         let block_gas_price = TEST_PRICE;
-        let block_gas_consumed = V0_14_1.gas_target; // at target → no change
-        provider.update_after_block(block_gas_price, block_gas_consumed, &V0_14_1);
+        let block_gas_consumed = c.gas_target; // at target → no change
+        provider.update_after_block(block_gas_price, block_gas_consumed, &c);
 
         let next_block_proposed_price = TEST_PRICE;
         assert_eq!(
@@ -268,10 +273,11 @@ mod tests {
     #[test]
     fn provider_rejects_wrong_price() {
         let provider = L2GasPriceProvider::new();
+        let c = L2GasPriceConstants::POST_0_14_1;
 
         let block_price = TEST_PRICE;
-        let block_gas_consumed = V0_14_1.gas_target;
-        provider.update_after_block(block_price, block_gas_consumed, &V0_14_1);
+        let block_gas_consumed = c.gas_target;
+        provider.update_after_block(block_price, block_gas_consumed, &c);
 
         let wrong_price = 999;
         assert_eq!(
