@@ -412,6 +412,10 @@ mod v1_0_0_alpha6 {
         validate_compatible_sierra_version(
             &sierra_class,
             ListSelector::ListName(
+                // Keeping the "experimental" list for backwards
+                // compatibility. Also, the names in
+                // BlockifierLibfuncs would have to be mapped to
+                // (audited|testnet|experimental)_v0.1.0 .
                 casm_compiler_v1_0_0_alpha6::allowed_libfuncs::DEFAULT_EXPERIMENTAL_LIBFUNCS_LIST
                     .to_string(),
             ),
@@ -455,6 +459,10 @@ mod v1_0_0_rc0 {
         validate_compatible_sierra_version(
             &sierra_class,
             ListSelector::ListName(
+                // Keeping the "experimental" list for backwards
+                // compatibility. Also, the names in
+                // BlockifierLibfuncs would have to be mapped to
+                // (audited|testnet|experimental)_v0.1.0 .
                 casm_compiler_v1_0_0_rc0::allowed_libfuncs::DEFAULT_EXPERIMENTAL_LIBFUNCS_LIST
                     .to_string(),
             ),
@@ -498,6 +506,10 @@ mod v1_1_1 {
         validate_compatible_sierra_version(
             &sierra_class,
             ListSelector::ListName(
+                // Keeping the "experimental" list for backwards
+                // compatibility. Also, the names in
+                // BlockifierLibfuncs would have to be mapped to
+                // (audited|testnet|experimental)_v0.1.0 .
                 casm_compiler_v1_0_0_rc0::allowed_libfuncs::DEFAULT_EXPERIMENTAL_LIBFUNCS_LIST
                     .to_string(),
             ),
