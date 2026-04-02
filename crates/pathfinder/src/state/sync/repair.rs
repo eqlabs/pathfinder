@@ -112,6 +112,40 @@ where
     Ok(())
 }
 
+fn store_repaired_class(
+    storage: &Storage,
+    declared_hash: ClassHash,
+    downloaded: DownloadedClass,
+) -> anyhow::Result<()> {
+    let mut db = storage
+        .connection()
+        .context("Creating database connection")?;
+    let tx = db.transaction().context("Creating transaction")?;
+
+    match downloaded {
+        DownloadedClass::Cairo { definition, .. } => {
+            tx.update_cairo_class_definition(declared_hash, &definition)
+                .context("Storing repaired Cairo class definition")?;
+        }
+        DownloadedClass::Sierra {
+            sierra_definition,
+            casm_definition,
+            casm_hash_v2,
+            ..
+        } => {
+            tx.update_sierra_class_definition(
+                &pathfinder_common::SierraHash(declared_hash.0),
+                &sierra_definition,
+                &casm_definition,
+                &casm_hash_v2,
+            )
+            .context("Storing repaired Sierra class definition")?;
+        }
+    }
+
+    tx.commit().context("Committing repaired class definition")
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
@@ -261,38 +295,4 @@ mod tests {
         let still_missing = tx.class_hashes_with_missing_definitions().unwrap();
         assert_eq!(still_missing, vec![bad]);
     }
-}
-
-fn store_repaired_class(
-    storage: &Storage,
-    declared_hash: ClassHash,
-    downloaded: DownloadedClass,
-) -> anyhow::Result<()> {
-    let mut db = storage
-        .connection()
-        .context("Creating database connection")?;
-    let tx = db.transaction().context("Creating transaction")?;
-
-    match downloaded {
-        DownloadedClass::Cairo { definition, .. } => {
-            tx.update_cairo_class_definition(declared_hash, &definition)
-                .context("Storing repaired Cairo class definition")?;
-        }
-        DownloadedClass::Sierra {
-            sierra_definition,
-            casm_definition,
-            casm_hash_v2,
-            ..
-        } => {
-            tx.update_sierra_class_definition(
-                &pathfinder_common::SierraHash(declared_hash.0),
-                &sierra_definition,
-                &casm_definition,
-                &casm_hash_v2,
-            )
-            .context("Storing repaired Sierra class definition")?;
-        }
-    }
-
-    tx.commit().context("Committing repaired class definition")
 }
