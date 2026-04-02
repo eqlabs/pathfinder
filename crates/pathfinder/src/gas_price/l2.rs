@@ -160,17 +160,43 @@ impl L2GasPriceProvider {
 
 #[cfg(test)]
 mod tests {
+    use apollo_consensus_orchestrator::orchestrator_versioned_constants;
+    use rstest::rstest;
+
     use super::*;
 
     const TEST_PRICE: u128 = 30_000_000_000;
 
-    // v0.14.1 constants used by the Apollo test vectors
-    const V0_14_1: L2GasPriceConstants = L2GasPriceConstants {
-        gas_price_max_change_denominator: 48,
-        gas_target: 4_000_000_000,
-        max_block_size: 5_000_000_000,
-        min_gas_price: 8_000_000_000,
-    };
+    #[rstest]
+    #[case::v0_13_2(StarknetVersion::V_0_13_2)]
+    #[case::v0_13_4(StarknetVersion::V_0_13_4)]
+    #[case::v0_14_0(StarknetVersion::V_0_14_0)]
+    #[case::v0_14_1(StarknetVersion::V_0_14_1)]
+    fn l2_gas_constants_match_with_apollo(#[case] version: StarknetVersion) {
+        let pathfinder_c = L2GasPriceConstants::for_version(version);
+        let apollo_c = match version {
+            // Pre v0.14.1
+            StarknetVersion::V_0_13_2 | StarknetVersion::V_0_13_4 | StarknetVersion::V_0_14_0 => {
+                &*orchestrator_versioned_constants::VERSIONED_CONSTANTS_V0_14_0
+            }
+            // Post v0.14.1
+            StarknetVersion::V_0_14_1 => {
+                &*orchestrator_versioned_constants::VERSIONED_CONSTANTS_V0_14_1
+            }
+            _ => unreachable!("not covered by this test"),
+        };
+
+        assert_eq!(
+            pathfinder_c.gas_price_max_change_denominator,
+            apollo_c.gas_price_max_change_denominator
+        );
+        assert_eq!(pathfinder_c.gas_target, apollo_c.gas_target.0 as u128);
+        assert_eq!(
+            pathfinder_c.max_block_size,
+            apollo_c.max_block_size.0 as u128
+        );
+        assert_eq!(pathfinder_c.min_gas_price, apollo_c.min_gas_price.0);
+    }
 
     // Apollo test vectors (from fee_market/test.rs)
 
