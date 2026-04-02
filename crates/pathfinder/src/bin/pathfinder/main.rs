@@ -415,6 +415,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         sync_storage.clone(),
         pathfinder_context.gateway.clone(),
         config.compiler_resource_limits,
+        config.blockifier_libfuncs,
         config.fetch_casm_from_fgw,
     ));
 

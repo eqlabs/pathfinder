@@ -10,6 +10,7 @@ pub async fn repair_missing_class_definitions<S: GatewayApi + Clone + Send + 'st
     storage: Storage,
     sequencer: S,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
+    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     fetch_casm_from_fgw: bool,
 ) -> anyhow::Result<()> {
     repair_missing_class_definitions_with(storage, move |hash| {
@@ -19,6 +20,7 @@ pub async fn repair_missing_class_definitions<S: GatewayApi + Clone + Send + 'st
                 &sequencer,
                 hash,
                 compiler_resource_limits,
+                blockifier_libfuncs,
                 fetch_casm_from_fgw,
             )
             .await
