@@ -1,0 +1,6 @@
+[env]
+# Required for mdbx-sys (via apollo_consensus_orchestrator) to compile with
+# gcc 15.1.
+#
+# See also: https://github.com/vorot93/libmdbx-rs/issues/38
+CFLAGS = "-std=gnu17"
