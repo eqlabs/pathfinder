@@ -813,54 +813,6 @@ fn on_finalized_block_decided(
     Ok(success)
 }
 
-/// Handle commit confirmation for a finalized block at given height.
-#[allow(clippy::too_many_arguments)]
-fn _on_finalized_block_committed(
-    validator_address: ContractAddress,
-    validator_cache: &ValidatorCache,
-    deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
-    batch_execution_manager: &mut BatchExecutionManager,
-    main_db: Storage,
-    decided_blocks: DecidedBlocks,
-    finalized_blocks: &mut HashMap<HeightAndRound, ConsensusFinalizedL2Block>,
-    number: BlockNumber,
-    gas_price_provider: Option<L1GasPriceProvider>,
-    l2_gas_price_provider: &Option<L2GasPriceProvider>,
-    worker_pool: ValidatorWorkerPool,
-) -> Result<ComputationSuccess, anyhow::Error> {
-    {
-        let mut decided_blocks = decided_blocks.write().unwrap();
-        if decided_blocks.remove(&number).is_some() {
-            tracing::debug!(
-                "🖧  🗑️ {validator_address} removed finalized block for last round at height {} \
-                 after commit confirmation",
-                number.get()
-            );
-        }
-    }
-
-    let exec_success = execute_deferred_for_next_height::<ProdTransactionMapper>(
-        number.get(),
-        validator_cache.clone(),
-        deferred_executions.clone(),
-        batch_execution_manager,
-        main_db,
-        finalized_blocks,
-        decided_blocks,
-        gas_price_provider,
-        l2_gas_price_provider.clone(),
-        worker_pool,
-    )?;
-
-    let success = match exec_success {
-        Some((hnr, commitment)) => {
-            ComputationSuccess::PreviouslyDeferredProposalIsFinalized(hnr, commitment)
-        }
-        None => ComputationSuccess::Continue,
-    };
-    Ok(success)
-}
-
 #[derive(Clone)]
 struct ValidatorCache(Arc<Mutex<HashMap<HeightAndRound, ValidatorStage>>>);
 
