@@ -55,6 +55,7 @@ where
     .context("Joining database task")??;
 
     if missing.is_empty() {
+        tracing::debug!("No missing class definitions to repair");
         return Ok(());
     }
 

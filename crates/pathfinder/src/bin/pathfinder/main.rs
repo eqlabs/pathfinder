@@ -411,7 +411,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             pathfinder_context.gateway_dns_refresh_interval,
         ));
 
-    // Nodes that ran v0.17.0–v0.19.x with blockchain-history pruning may have
+    // Nodes that ran v0.17.0–v0.19.x with pruning enabled may have
     // class_definitions rows where definition IS NULL that were never filled due
     // to a storage bug. This task re-downloads any such definitions on startup.
     util::task::spawn(state::repair::repair_missing_class_definitions(
