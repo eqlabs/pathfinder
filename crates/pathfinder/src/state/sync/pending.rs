@@ -1,6 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::{BlockHash, BlockNumber, StarknetVersion};
-use pathfinder_storage::Storage;
+use pathfinder_common::{BlockHash, BlockNumber};
 use starknet_gateway_client::GatewayApi;
 use tokio::sync::watch;
 use tokio::time::Instant;
@@ -10,138 +9,12 @@ use crate::state::sync::SyncEvent;
 /// Emits new pending data events while the current block is close to the latest
 /// block.
 #[allow(clippy::too_many_arguments)]
-pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
+pub async fn poll_pre_confirmed<S: GatewayApi + Clone + Send + 'static>(
     tx_event: tokio::sync::mpsc::Sender<SyncEvent>,
     sequencer: S,
     poll_interval: std::time::Duration,
-    storage: Storage,
     latest: watch::Receiver<(BlockNumber, BlockHash)>,
     current: watch::Receiver<(BlockNumber, BlockHash)>,
-    compiler_resource_limits: pathfinder_compiler::ResourceLimits,
-    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
-    fetch_casm_from_fgw: bool,
-) {
-    poll_pre_starknet_0_14_0(
-        &tx_event,
-        &sequencer,
-        poll_interval,
-        &storage,
-        &latest,
-        &current,
-        compiler_resource_limits,
-        blockifier_libfuncs,
-        fetch_casm_from_fgw,
-    )
-    .await;
-
-    poll_starknet_0_14_0(&tx_event, &sequencer, poll_interval, &latest, &current).await;
-}
-
-const STARKNET_VERSION_0_14_0: StarknetVersion = StarknetVersion::new(0, 14, 0, 0);
-
-#[allow(clippy::too_many_arguments)]
-pub async fn poll_pre_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
-    tx_event: &tokio::sync::mpsc::Sender<SyncEvent>,
-    sequencer: &S,
-    poll_interval: std::time::Duration,
-    storage: &Storage,
-    latest: &watch::Receiver<(BlockNumber, BlockHash)>,
-    current: &watch::Receiver<(BlockNumber, BlockHash)>,
-    compiler_resource_limits: pathfinder_compiler::ResourceLimits,
-    blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
-    fetch_casm_from_fgw: bool,
-) {
-    let mut prev_tx_count = 0;
-    let mut prev_hash = BlockHash::default();
-
-    loop {
-        let t_fetch = Instant::now();
-
-        let latest = latest.borrow().0.get();
-        let current = current.borrow().0.get();
-
-        if latest.abs_diff(current) > 6 {
-            tracing::debug!(%latest, %current, "Not in sync yet; skipping pending block download");
-            tokio::time::sleep_until(t_fetch + poll_interval).await;
-            continue;
-        }
-
-        let (block, state_update) = match sequencer.pending_block().await {
-            Ok(r) => r,
-            Err(err) => {
-                tracing::debug!(%err, "Failed to fetch pending block");
-                tokio::time::sleep_until(t_fetch + poll_interval).await;
-                continue;
-            }
-        };
-
-        // If we've reached Starknet 0.14.0, stop polling for pending blocks as we need
-        // to transition to polling the pre-confirmed block instead.
-        if block.starknet_version >= STARKNET_VERSION_0_14_0 {
-            tracing::debug!("Reached Starknet 0.14.0, stopping pending block polling");
-            break;
-        }
-
-        // Use the transaction count as a proxy for freshness of the pending data.
-        //
-        // The sequencer has multiple feeder gateways which are not 100% in sync making
-        // it possible for us to receive stale data, older than the previous data.
-        if block.parent_hash == prev_hash && block.transactions.len() <= prev_tx_count {
-            tracing::trace!("No change in pending block data");
-            tokio::time::sleep_until(t_fetch + poll_interval).await;
-            continue;
-        }
-
-        // Download, process and emit all missing classes. This can occasionally
-        // fail when querying a desync'd feeder gateway which isn't aware of the
-        // new pending classes. In this case, ignore the new pending data as it
-        // is incomplete.
-        match super::l2::download_new_classes(
-            &state_update,
-            sequencer,
-            storage.clone(),
-            compiler_resource_limits,
-            blockifier_libfuncs,
-            fetch_casm_from_fgw,
-        )
-        .await
-        {
-            Err(e) => tracing::debug!(reason=?e, "Failed to download pending classes"),
-            Ok(downloaded_classes) => {
-                if let Err(e) = super::l2::emit_events_for_downloaded_classes(
-                    tx_event,
-                    downloaded_classes,
-                    &state_update.declared_sierra_classes,
-                )
-                .await
-                {
-                    tracing::error!(error=%e, "Event channel closed unexpectedly. Ending pending stream.");
-                    break;
-                }
-
-                prev_tx_count = block.transactions.len();
-                prev_hash = block.parent_hash;
-                tracing::trace!("Emitting a pending update");
-                if let Err(e) = tx_event
-                    .send(SyncEvent::Pending((block.into(), state_update.into())))
-                    .await
-                {
-                    tracing::error!(error=%e, "Event channel closed unexpectedly. Ending pending stream.");
-                    break;
-                }
-            }
-        }
-
-        tokio::time::sleep_until(t_fetch + poll_interval).await;
-    }
-}
-
-pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
-    tx_event: &tokio::sync::mpsc::Sender<SyncEvent>,
-    sequencer: &S,
-    poll_interval: std::time::Duration,
-    latest: &watch::Receiver<(BlockNumber, BlockHash)>,
-    current: &watch::Receiver<(BlockNumber, BlockHash)>,
 ) {
     const IN_SYNC_THRESHOLD: u64 = 6;
 
@@ -196,7 +69,7 @@ pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
             continue;
         }
 
-        let pre_latest_data = match fetch_pre_latest(sequencer, latest_number, latest_hash).await {
+        let pre_latest_data = match fetch_pre_latest(&sequencer, latest_number, latest_hash).await {
             Ok(r) => r.map(Box::new),
             Err(e) => {
                 tracing::debug!(%e, "Failed to fetch pre-latest block");
@@ -295,7 +168,6 @@ mod tests {
         Transaction,
         TransactionVariant,
     };
-    use pathfinder_storage::StorageBuilder;
     use starknet_gateway_client::MockGatewayApi;
     use starknet_gateway_types::reply::state_update::{
         DeclaredSierraClass,
@@ -309,14 +181,13 @@ mod tests {
         Block,
         GasPrices,
         L1DataAvailabilityMode,
-        PendingBlock,
         PreConfirmedBlock,
         PreLatestBlock,
         Status,
     };
     use tokio::sync::watch;
 
-    use super::poll_pending;
+    use super::poll_pre_confirmed;
     use crate::state::sync::SyncEvent;
 
     const PARENT_HASH: BlockHash = block_hash!("0x1234");
@@ -347,7 +218,7 @@ mod tests {
     pub static PENDING_UPDATE: LazyLock<StateUpdate> =
         LazyLock::new(|| StateUpdate::default().with_parent_state_commitment(PARENT_ROOT));
 
-    pub static PENDING_BLOCK: LazyLock<PendingBlock> = LazyLock::new(|| PendingBlock {
+    pub static PRE_LATEST_BLOCK: LazyLock<PreLatestBlock> = LazyLock::new(|| PreLatestBlock {
         l1_gas_price: GasPrices {
             price_in_wei: GasPrice(11),
             ..Default::default()
@@ -370,13 +241,8 @@ mod tests {
                 },
             ),
         }],
-        starknet_version: StarknetVersion::default(),
-        l1_da_mode: L1DataAvailabilityMode::Calldata,
-    });
-
-    pub static PRE_LATEST_BLOCK: LazyLock<PreLatestBlock> = LazyLock::new(|| PreLatestBlock {
         starknet_version: StarknetVersion::new(0, 14, 0, 0),
-        ..PENDING_BLOCK.clone()
+        l1_da_mode: L1DataAvailabilityMode::Calldata,
     });
 
     pub static PRE_CONFIRMED_BLOCK: LazyLock<PreConfirmedBlock> =
@@ -489,25 +355,19 @@ mod tests {
 
         sequencer
             .expect_pending_block()
-            .returning(|| Ok((PENDING_BLOCK.clone(), PENDING_UPDATE.clone())));
+            .returning(|| Ok((PRE_LATEST_BLOCK.clone(), PENDING_UPDATE.clone())));
+        sequencer
+            .expect_preconfirmed_block()
+            .returning(move |_| Ok(PRE_CONFIRMED_BLOCK.clone()));
 
-        let (_, latest) = watch::channel(Default::default());
-        let (_, current) = watch::channel(Default::default());
+        let latest_hash = PRE_LATEST_BLOCK.parent_hash;
+        let latest_block_number = BlockNumber::new_or_panic(1);
+        let (_, latest) = watch::channel((latest_block_number, latest_hash));
+        let (_, current) = watch::channel((latest_block_number, latest_hash));
 
         let sequencer = Arc::new(sequencer);
         let _jh = tokio::spawn(async move {
-            poll_pending(
-                tx,
-                sequencer,
-                std::time::Duration::ZERO,
-                StorageBuilder::in_memory().unwrap(),
-                latest,
-                current,
-                pathfinder_compiler::ResourceLimits::for_test(),
-                pathfinder_compiler::BlockifierLibfuncs::default(),
-                false,
-            )
-            .await
+            poll_pre_confirmed(tx, sequencer, std::time::Duration::ZERO, latest, current).await
         });
 
         let result = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
@@ -515,7 +375,22 @@ mod tests {
             .expect("Event should be emitted")
             .unwrap();
 
-        assert_matches!(result, SyncEvent::Pending(x) if *x.0 == *PENDING_BLOCK && *x.1 == *PENDING_UPDATE);
+        let expected_pre_latest_data = Some(Box::new((
+            latest_block_number + 1,
+            PRE_LATEST_BLOCK.clone(),
+            PENDING_UPDATE.clone(),
+        )));
+
+        assert_matches!(
+            result,
+            SyncEvent::PreConfirmed {
+                number,
+                block,
+                pre_latest_data,
+            } if number == latest_block_number + 2
+                && *block == *PRE_CONFIRMED_BLOCK
+                && pre_latest_data == expected_pre_latest_data
+        );
     }
 
     #[tokio::test]
@@ -528,7 +403,7 @@ mod tests {
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
         let mut sequencer = MockGatewayApi::new();
 
-        let mut b0 = PENDING_BLOCK.clone();
+        let mut b0 = PRE_CONFIRMED_BLOCK.clone();
         b0.transactions.push(Transaction {
             hash: transaction_hash!("0x22"),
             variant: TransactionVariant::L1Handler(L1HandlerTransaction {
@@ -554,33 +429,34 @@ mod tests {
 
         static COUNT: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
 
-        sequencer.expect_pending_block().returning(move || {
+        sequencer
+            .expect_pending_block()
+            .returning(move || Ok((PRE_LATEST_BLOCK.clone(), PENDING_UPDATE.clone())));
+        sequencer.expect_preconfirmed_block().returning(move |_| {
             let mut count = COUNT.lock().unwrap();
             *count += 1;
 
             let block = match *count {
                 1 => b0_copy.clone(),
-                2 => PENDING_BLOCK.clone(),
+                2 => PRE_CONFIRMED_BLOCK.clone(),
                 _ => b1_copy.clone(),
             };
 
-            Ok((block, PENDING_UPDATE.clone()))
+            Ok(block)
         });
 
         let sequencer = Arc::new(sequencer);
-        let (_, rx_latest) = watch::channel(Default::default());
-        let (_, rx_current) = watch::channel(Default::default());
+        let latest_hash = PRE_LATEST_BLOCK.parent_hash;
+        let latest_block_number = BlockNumber::new_or_panic(1);
+        let (_, rx_latest) = watch::channel((latest_block_number, latest_hash));
+        let (_, rx_current) = watch::channel((latest_block_number, latest_hash));
         let _jh = tokio::spawn(async move {
-            poll_pending(
+            poll_pre_confirmed(
                 tx,
                 sequencer,
                 std::time::Duration::ZERO,
-                StorageBuilder::in_memory().unwrap(),
                 rx_latest,
                 rx_current,
-                pathfinder_compiler::ResourceLimits::for_test(),
-                pathfinder_compiler::BlockifierLibfuncs::default(),
-                false,
             )
             .await
         });
@@ -590,69 +466,43 @@ mod tests {
             .expect("Event should be emitted")
             .unwrap();
 
-        assert_matches!(result1, SyncEvent::Pending(x) if *x.0 == b0 && *x.1 == *PENDING_UPDATE);
-
-        let result2 = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
-            .await
-            .expect("Event should be emitted")
-            .unwrap();
-
-        assert_matches!(result2, SyncEvent::Pending(x) if *x.0 == b1 && *x.1 == *PENDING_UPDATE);
-    }
-
-    #[tokio::test]
-    async fn transition_to_polling_pre_confirmed() {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-        let mut sequencer = MockGatewayApi::new();
-
-        // A pending block with Starknet version 0.14.0 should trigger the transition
-        // to polling the pre-confirmed block.
-        let pending_block = PendingBlock {
-            starknet_version: StarknetVersion::new(0, 14, 0, 0),
-            ..PENDING_BLOCK.clone()
-        };
-        let pending_block_copy = pending_block.clone();
-
-        sequencer
-            .expect_pending_block()
-            .returning(move || Ok((pending_block.clone(), PENDING_UPDATE.clone())));
-        sequencer
-            .expect_pending_block()
-            .returning(move || Ok((pending_block_copy.clone(), PENDING_UPDATE.clone())));
-        sequencer
-            .expect_preconfirmed_block()
-            .returning(move |_| Ok(PRE_CONFIRMED_BLOCK.clone()));
-
-        let sequencer = Arc::new(sequencer);
-        let (_, rx_latest) = watch::channel(Default::default());
-        let (_, rx_current) = watch::channel(Default::default());
-        let _jh = tokio::spawn(async move {
-            poll_pending(
-                tx,
-                sequencer,
-                std::time::Duration::ZERO,
-                StorageBuilder::in_memory().unwrap(),
-                rx_latest,
-                rx_current,
-                pathfinder_compiler::ResourceLimits::for_test(),
-                pathfinder_compiler::BlockifierLibfuncs::default(),
-                false,
-            )
-            .await
-        });
-
-        let result1 = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
-            .await
-            .expect("Event should be emitted")
-            .unwrap();
+        let expected_pre_latest_data = Some(Box::new((
+            latest_block_number + 1,
+            PRE_LATEST_BLOCK.clone(),
+            PENDING_UPDATE.clone(),
+        )));
 
         assert_matches!(
             result1,
             SyncEvent::PreConfirmed {
                 number,
                 block,
-                ..
-            } if number == BlockNumber::new_or_panic(1) && *block == *PRE_CONFIRMED_BLOCK
+                pre_latest_data,
+            } if number == latest_block_number + 2
+                && *block == b0
+                && pre_latest_data == expected_pre_latest_data
+        );
+
+        let result2 = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
+            .await
+            .expect("Event should be emitted")
+            .unwrap();
+
+        let expected_pre_latest_data = Some(Box::new((
+            latest_block_number + 1,
+            PRE_LATEST_BLOCK.clone(),
+            PENDING_UPDATE.clone(),
+        )));
+
+        assert_matches!(
+            result2,
+            SyncEvent::PreConfirmed {
+                number,
+                block,
+                pre_latest_data,
+            } if number == latest_block_number + 2
+                && *block == b1
+                && pre_latest_data == expected_pre_latest_data
         );
     }
 
@@ -664,7 +514,7 @@ mod tests {
 
         sequencer
             .expect_pending_block()
-            .returning(move || Ok((PENDING_BLOCK.clone(), PENDING_UPDATE.clone())));
+            .returning(move || Ok((PRE_LATEST_BLOCK.clone(), PENDING_UPDATE.clone())));
 
         let (number, block, state_update) =
             super::fetch_pre_latest(&sequencer, our_latest_number, our_latest_hash)
@@ -684,9 +534,9 @@ mod tests {
         let our_latest_hash = NEXT_BLOCK.parent_block_hash;
         let different_hash = block_hash!("0xdeadbeef");
 
-        let pending_block = PendingBlock {
+        let pending_block = PreLatestBlock {
             parent_hash: different_hash,
-            ..PENDING_BLOCK.clone()
+            ..PRE_LATEST_BLOCK.clone()
         };
 
         sequencer
@@ -701,73 +551,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn poll_starknet_0_14_0_with_pre_latest_data() {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(2);
-        let mut sequencer = MockGatewayApi::new();
-
-        let our_latest_hash = PRE_LATEST_BLOCK.parent_hash;
-
-        // Make sure that the pending block triggers a transition to Starknet 0.14.0
-        // polling. Note that this block is ignored as `poll_pre_starknet_0_14_0`
-        // does not handle pre-latest blocks.
-        sequencer
-            .expect_pending_block()
-            .returning(move || Ok((PRE_LATEST_BLOCK.clone(), PENDING_UPDATE.clone())));
-        // This will be polled by `poll_starknet_0_14_0` and will not be ignored.
-        sequencer
-            .expect_pending_block()
-            .returning(move || Ok((PRE_LATEST_BLOCK.clone(), PENDING_UPDATE.clone())));
-        sequencer
-            .expect_preconfirmed_block()
-            .returning(move |_| Ok(PRE_CONFIRMED_BLOCK.clone()));
-
-        let latest_block_number = BlockNumber::new_or_panic(10);
-
-        let (_, rx_latest) = watch::channel((latest_block_number, our_latest_hash));
-        let (_, rx_current) = watch::channel((latest_block_number, our_latest_hash));
-
-        let sequencer = Arc::new(sequencer);
-        let _jh = tokio::spawn(async move {
-            super::poll_pending(
-                tx,
-                sequencer,
-                std::time::Duration::ZERO,
-                StorageBuilder::in_memory().unwrap(),
-                rx_latest,
-                rx_current,
-                pathfinder_compiler::ResourceLimits::for_test(),
-                pathfinder_compiler::BlockifierLibfuncs::default(),
-                false,
-            )
-            .await
-        });
-
-        let event = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
-            .await
-            .expect("Event should be emitted")
-            .unwrap();
-
-        let expected_pre_latest_data = Some(Box::new((
-            latest_block_number + 1,
-            PRE_LATEST_BLOCK.clone(),
-            PENDING_UPDATE.clone(),
-        )));
-
-        assert_matches!(
-            event,
-            SyncEvent::PreConfirmed {
-                number,
-                block,
-                pre_latest_data
-            } if number == latest_block_number + 2
-                && *block == *PRE_CONFIRMED_BLOCK
-                && pre_latest_data == expected_pre_latest_data
-        );
-    }
-
-    #[tokio::test]
-    async fn poll_starknet_0_14_0_stale_transactions_is_ignored() {
-        // This test ensures that when `poll_starknet_0_14_0` receives pre-confirmed
+    async fn stale_transactions_is_ignored() {
+        // This test ensures that when `poll_pre_confirmed` receives pre-confirmed
         // blocks with stale data (same or lower transaction count), no event is
         // emitted.
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
@@ -815,12 +600,12 @@ mod tests {
 
         let sequencer = Arc::new(sequencer);
         let _jh = tokio::spawn(async move {
-            super::poll_starknet_0_14_0(
-                &tx,
-                &sequencer,
+            super::poll_pre_confirmed(
+                tx,
+                sequencer,
                 std::time::Duration::ZERO,
-                &rx_latest,
-                &rx_current,
+                rx_latest,
+                rx_current,
             )
             .await
         });
@@ -854,7 +639,7 @@ mod tests {
     ///
     /// See also <https://github.com/eqlabs/pathfinder/issues/3081>.
     #[tokio::test]
-    async fn poll_starknet_0_14_0_inconsistent_gateway_data_is_ignored() {
+    async fn ignores_inconsistent_pre_latest_from_gateway() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
         let mut sequencer = MockGatewayApi::new();
 
@@ -902,12 +687,12 @@ mod tests {
 
         let sequencer = Arc::new(sequencer);
         let _jh = tokio::spawn(async move {
-            super::poll_starknet_0_14_0(
-                &tx,
-                &sequencer,
+            super::poll_pre_confirmed(
+                tx,
+                sequencer,
                 std::time::Duration::ZERO,
-                &rx_latest,
-                &rx_current,
+                rx_latest,
+                rx_current,
             )
             .await
         });

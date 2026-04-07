@@ -30,13 +30,7 @@ use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::error::{KnownStarknetErrorCode, SequencerError};
-use starknet_gateway_types::reply::{
-    Block,
-    GasPrices,
-    PendingBlock,
-    PreConfirmedBlock,
-    PreLatestBlock,
-};
+use starknet_gateway_types::reply::{Block, GasPrices, PreConfirmedBlock, PreLatestBlock};
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::sync::watch::{self, Sender as WatchSender};
 
@@ -95,8 +89,6 @@ pub enum SyncEvent {
         casm_hash: CasmHash,
         casm_hash_v2: CasmHash,
     },
-    /// A new L2 pending update was polled.
-    Pending((Box<PendingBlock>, Box<StateUpdate>)),
     /// A new L2 pre-confirmed update was polled. Optionally contains
     /// [pre latest](PreLatestBlock) data.
     PreConfirmed {
@@ -205,10 +197,10 @@ where
         restart_delay,
         verify_tree_hashes: _,
         sequencer_public_key: _,
-        compiler_resource_limits,
-        blockifier_libfuncs,
+        compiler_resource_limits: _,
+        blockifier_libfuncs: _,
         fetch_concurrency: _,
-        fetch_casm_from_fgw,
+        fetch_casm_from_fgw: _,
     } = context;
 
     let mut db_conn = storage
@@ -291,33 +283,25 @@ where
     let mut consumer_handle =
         util::task::spawn(consumer(event_receiver, consumer_context, tx_current));
 
-    let mut pending_handle = util::task::spawn(pending::poll_pending(
+    let mut pending_handle = util::task::spawn(pending::poll_pre_confirmed(
         event_sender.clone(),
         sequencer.clone(),
         head_poll_interval,
-        storage.clone(),
         rx_latest.clone(),
         rx_current.clone(),
-        compiler_resource_limits,
-        blockifier_libfuncs,
-        fetch_casm_from_fgw,
     ));
 
     loop {
         tokio::select! {
             _ = &mut pending_handle => {
-                tracing::error!("Pending tracking task ended unexpectedly");
+                tracing::error!("Pre-confirmed tracking task ended unexpectedly");
 
-                pending_handle = util::task::spawn(pending::poll_pending(
+                pending_handle = util::task::spawn(pending::poll_pre_confirmed(
                     event_sender.clone(),
                     sequencer.clone(),
                     Duration::from_secs(2),
-                    storage.clone(),
                     rx_latest.clone(),
                     rx_current.clone(),
-                    compiler_resource_limits,
-                    blockifier_libfuncs,
-                    fetch_casm_from_fgw,
                 ));
             },
             _ = &mut latest_handle => {
@@ -1006,25 +990,6 @@ async fn consumer(
                     .context("Inserting sierra class")?;
 
                     tracing::debug!(sierra=%sierra_hash, casm=%casm_hash, "Inserted new Sierra class");
-
-                    (None, None)
-                }
-                Pending((pending_block, pending_state_update)) => {
-                    tracing::trace!("Updating pending data");
-                    let (number, hash) = tx
-                        .block_id(BlockId::Latest)
-                        .context("Fetching latest block hash")?
-                        .unwrap_or_default();
-
-                    if pending_block.parent_hash == hash {
-                        let data = PendingData::from_pending_block(
-                            *pending_block,
-                            *pending_state_update,
-                            number + 1,
-                        );
-                        pending_data.send_replace(data);
-                        tracing::debug!("Updated pending data");
-                    }
 
                     (None, None)
                 }
