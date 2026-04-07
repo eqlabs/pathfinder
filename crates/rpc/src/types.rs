@@ -26,7 +26,7 @@ pub mod request {
         Hash(BlockHash),
         L1Accepted,
         Latest,
-        Pending,
+        PreConfirmed,
     }
 
     impl From<BlockHash> for BlockId {
@@ -43,7 +43,7 @@ pub mod request {
 
     impl BlockId {
         pub fn is_pending(&self) -> bool {
-            matches!(self, BlockId::Pending)
+            matches!(self, BlockId::PreConfirmed)
         }
 
         /// Converts this [BlockId] to a [pathfinder_common::BlockId].
@@ -54,7 +54,7 @@ pub mod request {
         ///
         /// # Panics
         ///
-        /// If this [BlockId] is [`BlockId::Pending`].
+        /// If this [BlockId] is [`BlockId::PreConfirmed`].
         pub fn to_common_or_panic(
             self,
             tx: &pathfinder_storage::Transaction<'_>,
@@ -69,7 +69,9 @@ pub mod request {
                     Ok(pathfinder_common::BlockId::Number(block_number))
                 }
                 BlockId::Latest => Ok(pathfinder_common::BlockId::Latest),
-                BlockId::Pending => panic!("Cannot convert BlockId::Pending to FinalizedBlockId"),
+                BlockId::PreConfirmed => {
+                    panic!("Cannot convert BlockId::PreConfirmed to FinalizedBlockId")
+                }
             }
         }
 
@@ -79,7 +81,7 @@ pub mod request {
         /// number. Returns an error if there is no L1 accepted block number
         /// or the database lookup fails.
         ///
-        /// Coerces [`BlockId::Pending`] to
+        /// Coerces [`BlockId::PreConfirmed`] to
         /// [`pathfinder_common::BlockId::Latest`].
         pub fn to_common_coerced(
             self,
@@ -94,7 +96,7 @@ pub mod request {
                         .context("L1 accepted block number not found")?;
                     Ok(pathfinder_common::BlockId::Number(block_number))
                 }
-                BlockId::Latest | BlockId::Pending => Ok(pathfinder_common::BlockId::Latest),
+                BlockId::Latest | BlockId::PreConfirmed => Ok(pathfinder_common::BlockId::Latest),
             }
         }
     }
@@ -1669,15 +1671,15 @@ pub mod reply {
     /// L2 Block status as returned by the RPC API.
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub enum BlockStatus {
-        Pending,
+        PreConfirmed,
         AcceptedOnL2,
         AcceptedOnL1,
         Rejected,
     }
 
     impl BlockStatus {
-        pub fn is_pending(&self) -> bool {
-            self == &Self::Pending
+        pub fn is_pre_confirmed(&self) -> bool {
+            self == &Self::PreConfirmed
         }
     }
 
@@ -1687,7 +1689,7 @@ pub mod reply {
             serializer: crate::dto::Serializer,
         ) -> Result<crate::dto::Ok, crate::dto::Error> {
             serializer.serialize_str(match self {
-                Self::Pending => "PENDING",
+                Self::PreConfirmed => "PRE_CONFIRMED",
                 Self::AcceptedOnL2 => "ACCEPTED_ON_L2",
                 Self::AcceptedOnL1 => "ACCEPTED_ON_L1",
                 Self::Rejected => "REJECTED",
@@ -1699,7 +1701,7 @@ pub mod reply {
         fn deserialize(value: crate::dto::Value) -> Result<Self, crate::dto::Error> {
             let status: String = value.deserialize()?;
             match status.as_str() {
-                "PENDING" => Ok(Self::Pending),
+                "PRE_CONFIRMED" => Ok(Self::PreConfirmed),
                 "ACCEPTED_ON_L2" => Ok(Self::AcceptedOnL2),
                 "ACCEPTED_ON_L1" => Ok(Self::AcceptedOnL1),
                 "REJECTED" => Ok(Self::Rejected),
@@ -1717,8 +1719,8 @@ pub mod reply {
                 AcceptedOnL1 => BlockStatus::AcceptedOnL1,
                 AcceptedOnL2 => BlockStatus::AcceptedOnL2,
                 NotReceived => BlockStatus::Rejected,
-                Pending => BlockStatus::Pending,
-                Received => BlockStatus::Pending,
+                Pending => BlockStatus::PreConfirmed,
+                Received => BlockStatus::PreConfirmed,
                 Rejected => BlockStatus::Rejected,
                 Reverted => BlockStatus::Rejected,
                 Aborted => BlockStatus::Rejected,

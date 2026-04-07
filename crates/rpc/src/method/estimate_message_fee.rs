@@ -77,7 +77,7 @@ pub async fn estimate_message_fee(
             .context("Creating database transaction")?;
 
         let (header, pending) = match input.block_id {
-            BlockId::Pending => {
+            BlockId::PreConfirmed => {
                 let pending = context
                     .pending_data
                     .get(&db_tx, rpc_version)

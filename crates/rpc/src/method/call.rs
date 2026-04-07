@@ -135,7 +135,7 @@ pub async fn call(
             .context("Creating database transaction")?;
 
         let (header, pending) = match input.block_id {
-            BlockId::Pending => {
+            BlockId::PreConfirmed => {
                 let pending = context
                     .pending_data
                     .get(&db_tx, rpc_version)
@@ -384,7 +384,7 @@ mod tests {
                     entry_point_selector: EntryPoint::hashed(b"get_value"),
                     calldata: vec![CallParam(*test_key.get())],
                 },
-                block_id: BlockId::Pending,
+                block_id: BlockId::PreConfirmed,
             };
             let result = call(context, input, RPC_VERSION).await.unwrap();
             assert_eq!(result, Output(vec![CallResultValue(new_value.0)]));
@@ -412,7 +412,7 @@ mod tests {
                     entry_point_selector: EntryPoint::hashed(b"get_value"),
                     calldata: vec![CallParam(*test_key.get())],
                 },
-                block_id: BlockId::Pending,
+                block_id: BlockId::PreConfirmed,
             };
             let result = call(context.clone(), input, RPC_VERSION).await.unwrap();
             assert_eq!(result, Output(vec![CallResultValue(new_value.0)]));
@@ -463,7 +463,7 @@ mod tests {
                     entry_point_selector: EntryPoint::hashed(b"get_data"),
                     calldata: vec![],
                 },
-                block_id: BlockId::Pending,
+                block_id: BlockId::PreConfirmed,
             };
             let result = call(context.clone(), input, RPC_VERSION).await.unwrap();
             assert_eq!(result, Output(vec![CallResultValue(storage_value.0)]));
@@ -543,7 +543,7 @@ mod tests {
                     entry_point_selector: EntryPoint::hashed(b"get_data"),
                     calldata: vec![],
                 },
-                block_id: BlockId::Pending,
+                block_id: BlockId::PreConfirmed,
             };
             let result = call(context.clone(), input.clone(), RpcVersion::V09)
                 .await

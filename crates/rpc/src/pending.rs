@@ -406,7 +406,7 @@ impl PendingData {
         }
     }
 
-    pub fn pending_block_number(&self) -> BlockNumber {
+    pub fn pre_confirmed_block_number(&self) -> BlockNumber {
         self.number
     }
 
@@ -422,7 +422,7 @@ impl PendingData {
 
     /// Returns a mutable reference to the block number.
     #[cfg(test)]
-    pub fn pending_block_number_mut(&mut self) -> &mut BlockNumber {
+    pub fn pre_confirmed_block_number_mut(&mut self) -> &mut BlockNumber {
         &mut self.number
     }
 
@@ -661,7 +661,7 @@ impl PendingData {
                 .expect("Should exist if transaction exists");
 
             return Some(FinalizedTxData {
-                block_number: self.pending_block_number(),
+                block_number: self.pre_confirmed_block_number(),
                 transaction: pending_tx.clone(),
                 receipt,
                 events,
@@ -714,10 +714,10 @@ impl PendingData {
         self.aggregated_state_update().class_is_declared(class_hash)
     }
 
-    pub fn is_pre_latest_or_pending(&self, block: BlockNumber) -> bool {
+    pub fn is_pre_latest_or_pre_confirmed(&self, block: BlockNumber) -> bool {
         self.pre_latest_block_number()
             .is_some_and(|pre_latest| pre_latest == block)
-            || self.pending_block_number() == block
+            || self.pre_confirmed_block_number() == block
     }
 }
 
@@ -1437,7 +1437,7 @@ mod tests {
             PendingData::try_from_pre_confirmed_block(pre_confirmed_block.into(), block_number)
                 .unwrap();
 
-        assert_eq!(pending_data.pending_block_number(), block_number);
+        assert_eq!(pending_data.pre_confirmed_block_number(), block_number);
 
         let expected_state_update = StateUpdate::default()
             .with_contract_nonce(

@@ -289,8 +289,8 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
         let tx = db.transaction().context("Creating database transaction")?;
 
         let block_id = match input.block_id {
-            BlockId::Pending => {
-                // Getting proof of a pending block is not supported.
+            BlockId::PreConfirmed => {
+                // Getting proof of a pre-confirmed block is not supported.
                 return Err(Error::ProofMissing);
             }
             other => other
@@ -786,7 +786,7 @@ mod tests {
     async fn pending_block() {
         let context = RpcContext::for_tests();
         let input = Input {
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
             class_hashes: None,
             contract_addresses: None,
             contracts_storage_keys: None,

@@ -95,8 +95,8 @@ impl RpcSubscriptionFlow for SubscribePendingTransactions {
                 continue;
             }
 
-            if pending.pending_block_number() != last_block {
-                last_block = pending.pending_block_number();
+            if pending.pre_confirmed_block_number() != last_block {
+                last_block = pending.pre_confirmed_block_number();
                 sent_txs.clear();
             }
             for transaction in pending.pending_transactions().iter() {
@@ -132,7 +132,7 @@ impl RpcSubscriptionFlow for SubscribePendingTransactions {
                 if tx
                     .send(SubscriptionMessage {
                         notification,
-                        block_number: pending.pending_block_number(),
+                        block_number: pending.pre_confirmed_block_number(),
                         subscription_name: SUBSCRIPTION_NAME,
                     })
                     .await

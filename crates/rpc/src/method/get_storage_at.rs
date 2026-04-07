@@ -85,7 +85,7 @@ pub async fn get_storage_at(
             if let Some(found) = opt_found {
                 let (value, last_update_block) = match found {
                     FoundStorageValue::Zero => (StorageValue::ZERO, BlockNumber::new_or_panic(0)),
-                    FoundStorageValue::Set(v) => (v, pending_data.pending_block_number()),
+                    FoundStorageValue::Set(v) => (v, pending_data.pre_confirmed_block_number()),
                 };
                 return Ok(Output {
                     value,
@@ -248,7 +248,7 @@ mod tests {
         let ctx = RpcContext::for_tests_with_pending().await;
         let contract_address = contract_address_bytes!(b"pending contract 1 address");
         let key = storage_address_bytes!(b"pending storage key 0");
-        let block_id = BlockId::Pending;
+        let block_id = BlockId::PreConfirmed;
         let response_flags = StorageResponseFlags::default();
 
         let result = get_storage_at(
@@ -279,7 +279,7 @@ mod tests {
         let input = Input {
             contract_address: contract_address_bytes!(b"preconfirmed contract 1 address"),
             key: storage_address_bytes!(b"preconfirmed storage key 0"),
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
             response_flags: StorageResponseFlags::default(),
         };
 
@@ -307,7 +307,7 @@ mod tests {
         let input = Input {
             contract_address: contract_address_bytes!(b"prelatest contract 1 address"),
             key: storage_address_bytes!(b"prelatest storage key 0"),
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
             response_flags: StorageResponseFlags::default(),
         };
 
@@ -331,7 +331,7 @@ mod tests {
         let ctx = RpcContext::for_tests_with_pending().await;
         let contract_address = contract_address_bytes!(b"contract 1");
         let key = storage_address_bytes!(b"storage addr 0");
-        let block_id = BlockId::Pending;
+        let block_id = BlockId::PreConfirmed;
 
         let result = get_storage_at(
             ctx,
@@ -355,7 +355,7 @@ mod tests {
         // Contract is deployed in pending block, but has no storage values set.
         let contract_address = contract_address_bytes!(b"pending contract 0 address");
         let key = storage_address_bytes!(b"non-existent");
-        let block_id = BlockId::Pending;
+        let block_id = BlockId::PreConfirmed;
         let response_flags = StorageResponseFlags::default();
 
         let result = get_storage_at(

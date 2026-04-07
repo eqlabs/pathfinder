@@ -219,7 +219,7 @@ mod tests {
         let expected = class_hash_bytes!(b"class 0 hash");
 
         let input = Input {
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
             contract_address: contract_address_bytes!(b"contract 0"),
         };
         let result = get_class_hash_at(context, input, RPC_VERSION)
@@ -235,7 +235,7 @@ mod tests {
         // This should still work even though it was deployed in an actual block.
         let expected = class_hash_bytes!(b"class 0 hash");
         let input = Input {
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
             contract_address: contract_address_bytes!(b"contract 0"),
         };
         let result = get_class_hash_at(context.clone(), input, RPC_VERSION)
@@ -246,7 +246,7 @@ mod tests {
         // This is an actual pending deployed contract.
         let expected = class_hash_bytes!(b"pending class 0 hash");
         let input = Input {
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
             contract_address: contract_address_bytes!(b"pending contract 0 address"),
         };
         let result = get_class_hash_at(context.clone(), input, RPC_VERSION)
@@ -257,7 +257,7 @@ mod tests {
         // Replaced class in pending should also work.
         let expected = class_hash_bytes!(b"pending class 2 hash (replaced)");
         let input = Input {
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
             contract_address: contract_address_bytes!(b"pending contract 2 (replaced)"),
         };
         let result = get_class_hash_at(context.clone(), input, RPC_VERSION)
@@ -306,7 +306,7 @@ mod tests {
     async fn json_rpc_pending(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests_with_pending().await;
         let input = Input {
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
             contract_address: contract_address_bytes!(b"pending contract 0 address"),
         };
 
@@ -329,7 +329,7 @@ mod tests {
         let context = RpcContext::for_tests_with_pre_latest_and_pre_confirmed().await;
 
         let input = Input {
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
             contract_address: contract_address_bytes!(b"prelatest contract 0 address"),
         };
         let r = get_class_hash_at(context.clone(), input, version).await;
@@ -343,7 +343,7 @@ mod tests {
         }
 
         let input = Input {
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
             contract_address: contract_address_bytes!(b"preconfirmed contract 0 address"),
         };
         let r = get_class_hash_at(context, input, version).await;

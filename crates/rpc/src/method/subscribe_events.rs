@@ -381,10 +381,10 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                         continue;
                     }
 
-                    tracing::trace!(block_number=%pending.pending_block_number(), "Received pending block update");
+                    tracing::trace!(block_number=%pending.pre_confirmed_block_number(), "Received pre-confirmed block update");
 
                     let pending_finality = pending.finality_status();
-                    let pending_block_number = pending.pending_block_number();
+                    let pending_block_number = pending.pre_confirmed_block_number();
                     let sent_pending_updates = sent_updates_per_block
                         .entry(pending_block_number)
                         .or_default();

@@ -410,7 +410,7 @@ fn pending_data_tx_status(
         }
     }
 
-    let block_number = pending_data.pending_block_number();
+    let block_number = pending_data.pre_confirmed_block_number();
     match pending_data.pending_block().as_ref() {
         PendingBlockVariant::Pending(block) => {
             find_tx_receipt(&block.transaction_receipts, tx_hash).map(|receipt| {
@@ -565,7 +565,7 @@ mod tests {
 
         // Irrelevant pending update.
         pending_sender.send_modify(|pending| {
-            *pending.pending_block_number_mut() = BlockNumber::GENESIS + 1;
+            *pending.pre_confirmed_block_number_mut() = BlockNumber::GENESIS + 1;
         });
 
         // No message expected.
