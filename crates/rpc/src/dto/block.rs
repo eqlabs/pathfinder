@@ -18,8 +18,8 @@ impl crate::dto::DeserializeForVersion for crate::types::request::BlockId {
             match value.as_str() {
                 "latest" => Ok(Self::Latest),
                 "l1_accepted" => Ok(Self::L1Accepted),
-                "pending" if rpc_version < RpcVersion::V09 => Ok(Self::Pending),
-                "pre_confirmed" if rpc_version >= RpcVersion::V09 => Ok(Self::Pending),
+                "pending" if rpc_version < RpcVersion::V09 => Ok(Self::PreConfirmed),
+                "pre_confirmed" if rpc_version >= RpcVersion::V09 => Ok(Self::PreConfirmed),
                 _ => Err(serde_json::Error::custom("Invalid block id")),
             }
         } else {

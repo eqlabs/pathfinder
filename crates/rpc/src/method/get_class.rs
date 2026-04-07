@@ -161,7 +161,7 @@ mod tests {
         super::get_class(
             context.clone(),
             Input {
-                block_id: BlockId::Pending,
+                block_id: BlockId::PreConfirmed,
                 class_hash: valid_v0,
             },
             RPC_VERSION,
@@ -173,7 +173,7 @@ mod tests {
         super::get_class(
             context.clone(),
             Input {
-                block_id: BlockId::Pending,
+                block_id: BlockId::PreConfirmed,
                 class_hash: valid_v1,
             },
             RPC_VERSION,
@@ -184,7 +184,7 @@ mod tests {
         super::get_class(
             context.clone(),
             Input {
-                block_id: BlockId::Pending,
+                block_id: BlockId::PreConfirmed,
                 class_hash: valid_pending,
             },
             RPC_VERSION,
@@ -196,7 +196,7 @@ mod tests {
         let error = super::get_class(
             context,
             Input {
-                block_id: BlockId::Pending,
+                block_id: BlockId::PreConfirmed,
                 class_hash: invalid,
             },
             RPC_VERSION,
@@ -220,7 +220,7 @@ mod tests {
         let r = super::get_class(
             context.clone(),
             Input {
-                block_id: BlockId::Pending,
+                block_id: BlockId::PreConfirmed,
                 class_hash: valid_pre_latest,
             },
             version,
@@ -238,7 +238,7 @@ mod tests {
         let r = super::get_class(
             context.clone(),
             Input {
-                block_id: BlockId::Pending,
+                block_id: BlockId::PreConfirmed,
                 class_hash: valid_pre_confirmed,
             },
             version,

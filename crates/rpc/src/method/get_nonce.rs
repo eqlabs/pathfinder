@@ -186,7 +186,7 @@ mod tests {
         // This contract is created in `setup_storage` and has a nonce set in the
         // pending block.
         let input = Input {
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
             contract_address: contract_address_bytes!(b"contract 1"),
         };
         let nonce = get_nonce(context, input, RPC_VERSION).await.unwrap();
@@ -201,7 +201,7 @@ mod tests {
         // is not overwritten in pending (since this test does not specify any
         // pending data).
         let input = Input {
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
             contract_address: contract_address_bytes!(b"contract 0"),
         };
         let nonce = get_nonce(context, input, RPC_VERSION).await.unwrap();
@@ -215,7 +215,7 @@ mod tests {
         // This contract is created in `setup_storage` and has a nonce set in the
         // pending block.
         let input = Input {
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
             contract_address: contract_address_bytes!(b"contract 1"),
         };
         let nonce = get_nonce(context.clone(), input.clone(), RpcVersion::V09)
@@ -237,7 +237,7 @@ mod tests {
         // This contract is created during storage setup and has a nonce set in the
         // pre-latest block.
         let input = Input {
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
             contract_address: contract_address_bytes!(b"prelatest contract 1 address"),
         };
         let nonce = get_nonce(context.clone(), input.clone(), RpcVersion::V09)
@@ -250,6 +250,21 @@ mod tests {
             .await
             .unwrap_err();
         assert_matches!(err, Error::ContractNotFound);
+    }
+
+    #[tokio::test]
+    async fn pre_confirmed_defaults_to_latest() {
+        let context = RpcContext::for_tests();
+
+        // This contract is created in `setup_storage` and has a nonce set to 0x1, and
+        // is not overwritten in pre confirmed (since this test does not specify any
+        // pending data).
+        let input = Input {
+            block_id: BlockId::PreConfirmed,
+            contract_address: contract_address_bytes!(b"contract 0"),
+        };
+        let nonce = get_nonce(context, input, RPC_VERSION).await.unwrap();
+        assert_eq!(nonce.0, contract_nonce!("0x1"));
     }
 
     #[tokio::test]
@@ -274,7 +289,7 @@ mod tests {
         // This contract is deployed in the pending block but does not have a nonce
         // update.
         let input = Input {
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
             contract_address: contract_address_bytes!(b"pending contract 0 address"),
         };
         let nonce = get_nonce(context, input, RPC_VERSION).await.unwrap();

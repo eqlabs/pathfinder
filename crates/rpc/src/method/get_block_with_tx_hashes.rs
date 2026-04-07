@@ -57,7 +57,7 @@ pub async fn get_block_with_tx_hashes(
             .context("Creating database transaction")?;
 
         let block_id = match input.block_id {
-            BlockId::Pending => {
+            BlockId::PreConfirmed => {
                 let pending = context
                     .pending_data
                     .get(&transaction, rpc_version)
@@ -71,7 +71,7 @@ pub async fn get_block_with_tx_hashes(
 
                 return Ok(Output::Pending {
                     header: pending.pending_block(),
-                    block_number: pending.pending_block_number(),
+                    block_number: pending.pre_confirmed_block_number(),
                     transactions,
                 });
             }
@@ -165,7 +165,7 @@ mod tests {
         let context = RpcContext::for_tests_with_pending().await;
 
         let input = Input {
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
         };
 
         let output = get_block_with_tx_hashes(context, input, version)
@@ -191,7 +191,7 @@ mod tests {
         let context = RpcContext::for_tests_with_pre_confirmed().await;
 
         let input = Input {
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
         };
 
         let output = get_block_with_tx_hashes(context, input, version)

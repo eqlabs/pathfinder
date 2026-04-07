@@ -105,7 +105,7 @@ pub async fn trace_block_transactions(
         let db_tx = db_conn.transaction()?;
 
         let (block_id, header, transactions, cache) = match input.block_id {
-            BlockId::Pending => {
+            BlockId::PreConfirmed => {
                 let pending = context
                     .pending_data
                     .get(&db_tx, rpc_version)
@@ -145,14 +145,14 @@ pub async fn trace_block_transactions(
             < VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY
         {
             match input.block_id {
-                BlockId::Pending => {
+                BlockId::PreConfirmed => {
                     return Err(TraceBlockTransactionsError::Internal(anyhow::anyhow!(
                         "Traces are not supported for pending blocks by the feeder gateway"
                     )))
                 }
                 _ => {
                     return Ok::<_, TraceBlockTransactionsError>(LocalExecution::Unsupported((
-                        block_id.expect("Pending was handled explicitly above"),
+                        block_id.expect("Pre-confirmed was handled explicitly above"),
                         transactions,
                     )));
                 }
@@ -164,7 +164,7 @@ pub async fn trace_block_transactions(
         // when these blocks were produced). We should fall back to fetching
         // traces from the feeder gateway instead.
         if context.chain_id == ChainId::MAINNET
-            && input.block_id != BlockId::Pending
+            && input.block_id != BlockId::PreConfirmed
             && header.number >= MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START
             && header.number <= MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_END
         {

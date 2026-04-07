@@ -255,7 +255,7 @@ impl RpcSubscriptionFlow for SubscribeNewTransactionReceipts {
                     }
 
                     let pending = pending_data.borrow_and_update().clone();
-                    let pending_block_number = pending.pending_block_number();
+                    let pending_block_number = pending.pre_confirmed_block_number();
                     let pending_finality_status = pending.pending_block().finality_status();
 
                     tracing::trace!(

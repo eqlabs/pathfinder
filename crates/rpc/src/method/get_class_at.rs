@@ -232,7 +232,7 @@ mod tests {
     async fn pending() {
         let context = RpcContext::for_tests_with_pending().await;
         let input = Input {
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
             contract_address: contract_address_bytes!(b"pending contract 0 address"),
         };
 
@@ -250,7 +250,7 @@ mod tests {
         let context = RpcContext::for_tests_with_pre_latest_and_pre_confirmed().await;
 
         let input = Input {
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
             contract_address: contract_address_bytes!(b"prelatest contract 0 address"),
         };
         let r = get_class_at(context.clone(), input, version).await;
@@ -263,7 +263,7 @@ mod tests {
         }
 
         let input = Input {
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
             contract_address: contract_address_bytes!(b"preconfirmed contract 0 address"),
         };
         let r = get_class_at(context, input, version).await;

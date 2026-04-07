@@ -118,26 +118,27 @@ pub async fn get_events(
     input: GetEventsInput,
     rpc_version: RpcVersion,
 ) -> Result<GetEventsResult, GetEventsError> {
-    // The [Block::Pending] in ranges makes things quite complicated. This
+    // The [Block::PreConfirmed] in ranges makes things quite complicated. This
     // implementation splits the ranges into the following buckets:
     //
-    // 1. pending     :     pending -> query pending only
-    // 2. pending     : non-pending -> return empty result
-    // 3. non-pending : non-pending -> query db only
-    // 4. non-pending :     pending -> query db and potentially append pending
-    //    events
+    // 1. pre-confirmed     :     pre-confirmed -> query pre-confirmed only
+    // 2. pre-confirmed     : non-pre-confirmed -> return empty result
+    // 3. non-pre-confirmed : non-pre-confirmed -> query db only
+    // 4. non-pre-confirmed :     pre-confirmed -> query db and potentially append
+    //    pending events
     //
     // The database query for 3 and 4 is combined into one step.
     //
     // 4 requires some additional logic to handle some edge cases:
-    //  a) if from_block_number > pending_block_number -> return empty result
+    //  a) if from_block_number > pre_confirmed_block_number -> return empty result
     //  b) Query database
     //  c) if full page -> return page
-    //      check if there are matching events in the pending block
-    //      and return a continuation token for the pending block
-    //  d) else if empty / partially full -> append events from start of pending
-    //      if there are more pending events return a continuation token
-    //      with the appropriate offset within the pending block
+    //      check if there are matching events in the pre-confirmed block
+    //      and return a continuation token for the pre-confirmed block
+    //  d) else if empty / partially full -> append events from start of
+    //      pre-confirmed
+    //      if there are more pre-confirmed events return a continuation token
+    //      with the appropriate offset within the pre-confirmed block
 
     use BlockId::*;
 
@@ -186,21 +187,21 @@ pub async fn get_events(
             .get(&transaction, rpc_version)
             .context("Querying pending data")?;
 
-        // Replace from/to blocks with `BlockId::Pending` if their numbers match the
-        // pre-latest/pending block number.
+        // Replace from/to blocks with `BlockId::PreConfirmed` if their numbers match
+        // the pre-latest/pre-confirmed block number.
         let from_block_id = request.from_block.map(|from_id| match from_id {
-            Number(from) if pending.is_pre_latest_or_pending(from) => Pending,
+            Number(from) if pending.is_pre_latest_or_pre_confirmed(from) => PreConfirmed,
             _ => from_id,
         });
         let to_block_id = request.to_block.map(|to_id| match to_id {
-            Number(to) if pending.is_pre_latest_or_pending(to) => Pending,
+            Number(to) if pending.is_pre_latest_or_pre_confirmed(to) => PreConfirmed,
             _ => to_id,
         });
 
         // Handle the trivial (1), (2) and (4a) cases.
         match (&from_block_id, &to_block_id) {
-            (Some(Pending), to) => {
-                if matches!(to, Some(Pending) | None) {
+            (Some(PreConfirmed), to) => {
+                if matches!(to, Some(PreConfirmed) | None) {
                     let (pending_events, pending_ct) = get_pending_events(
                         &pending,
                         request.chunk_size,
@@ -219,8 +220,8 @@ pub async fn get_events(
                     });
                 }
             }
-            (Some(BlockId::Number(from_block)), Some(BlockId::Pending))
-                if from_block > &pending.pending_block_number() =>
+            (Some(Number(from_block)), Some(PreConfirmed))
+                if from_block > &pending.pre_confirmed_block_number() =>
             {
                 return Ok(GetEventsResult {
                     events: Vec::new(),
@@ -280,7 +281,7 @@ pub async fn get_events(
         });
 
         // TODO: Verify the added `| None` in review.
-        let append_from_pending = db_ct.is_none() && matches!(to_block_id, Some(Pending) | None);
+        let append_from_pending = db_ct.is_none() && matches!(to_block_id, Some(PreConfirmed) | None);
 
         let continuation_token = if append_from_pending {
             if events.len() < request.chunk_size {
@@ -299,7 +300,7 @@ pub async fn get_events(
                 // events. Return a continuation token for the pending block.
                 let pending_block = pending
                     .pre_latest_block_number()
-                    .unwrap_or_else(|| pending.pending_block_number());
+                    .unwrap_or_else(|| pending.pre_confirmed_block_number());
                 Some(ContinuationToken {
                     block_number: pending_block,
                     offset: 0,
@@ -338,7 +339,7 @@ fn get_pending_events(
         .map(|keys| keys.iter().copied().collect())
         .collect();
 
-    let pending_block = pending.pending_block_number();
+    let pending_block = pending.pre_confirmed_block_number();
 
     // If we have a continuation token and it points to a pre-latest/pending block,
     // we use its values. Otherwise we take whatever events we have from pending
@@ -347,7 +348,7 @@ fn get_pending_events(
         Some(ct) if ct.block_number > pending_block => {
             return Err(GetEventsError::InvalidContinuationToken)
         }
-        Some(ct) if pending.is_pre_latest_or_pending(ct.block_number) => {
+        Some(ct) if pending.is_pre_latest_or_pre_confirmed(ct.block_number) => {
             (ct.block_number, ct.offset)
         }
         _ => (
@@ -473,7 +474,7 @@ fn map_to_block_to_number(
 
             Ok(Some(number))
         }
-        Some(Pending) | Some(Latest) | None => Ok(None),
+        Some(PreConfirmed) | Some(Latest) | None => Ok(None),
     }
 }
 
@@ -507,7 +508,7 @@ fn map_from_block_to_number(
 
             Ok(Some(number))
         }
-        Some(Pending) | Some(Latest) => {
+        Some(PreConfirmed) | Some(Latest) => {
             let number = tx
                 .block_id(pathfinder_common::BlockId::Latest)
                 .context("Querying latest block number")?
@@ -1155,7 +1156,7 @@ mod tests {
 
             let input = GetEventsInput {
                 filter: EventFilter {
-                    from_block: Some(BlockId::Pending),
+                    from_block: Some(BlockId::PreConfirmed),
                     to_block: Some(BlockId::Latest),
                     chunk_size: 100,
                     ..Default::default()
@@ -1182,8 +1183,8 @@ mod tests {
                 .unwrap();
             assert_eq!(events.events.len(), 1);
 
-            input.filter.from_block = Some(BlockId::Pending);
-            input.filter.to_block = Some(BlockId::Pending);
+            input.filter.from_block = Some(BlockId::PreConfirmed);
+            input.filter.to_block = Some(BlockId::PreConfirmed);
             let pending_events = get_events(context.clone(), input.clone(), RPC_VERSION)
                 .await
                 .unwrap();
@@ -1210,13 +1211,13 @@ mod tests {
 
             let mut input = GetEventsInput {
                 filter: EventFilter {
-                    to_block: Some(BlockId::Pending),
+                    to_block: Some(BlockId::PreConfirmed),
                     chunk_size: 1024,
                     ..Default::default()
                 },
             };
 
-            // Block 0 has a single event. Blocks, 1 and 2 have no events. Pending block (3
+            // Block 0 has a single event. Blocks, 1 and 2 have no events. PreConfirmed block (3
             // in this case) has 3 events.
             let all = get_events(context.clone(), input.clone(), RPC_VERSION)
                 .await
@@ -1294,7 +1295,7 @@ mod tests {
 
             let mut input = GetEventsInput {
                 filter: EventFilter {
-                    to_block: Some(BlockId::Pending),
+                    to_block: Some(BlockId::PreConfirmed),
                     chunk_size: 1024,
                     ..Default::default()
                 },
@@ -1404,7 +1405,7 @@ mod tests {
             let mut input = GetEventsInput {
                 filter: EventFilter {
                     from_block: None,
-                    to_block: Some(BlockId::Pending),
+                    to_block: Some(BlockId::PreConfirmed),
                     addresses: HashSet::new(),
                     keys: vec![vec![
                         event_key_bytes!(b"event 0 key"),
@@ -1436,8 +1437,8 @@ mod tests {
 
             let mut input = GetEventsInput {
                 filter: EventFilter {
-                    from_block: Some(BlockId::Pending),
-                    to_block: Some(BlockId::Pending),
+                    from_block: Some(BlockId::PreConfirmed),
+                    to_block: Some(BlockId::PreConfirmed),
                     addresses: HashSet::new(),
                     keys: vec![],
                     chunk_size: 1024,
@@ -1473,7 +1474,7 @@ mod tests {
             let input = GetEventsInput {
                 filter: EventFilter {
                     from_block: Some(BlockId::Number(BlockNumber::new_or_panic(4))),
-                    to_block: Some(BlockId::Pending),
+                    to_block: Some(BlockId::PreConfirmed),
                     chunk_size: 100,
                     ..Default::default()
                 },
@@ -1488,7 +1489,7 @@ mod tests {
 
             let input = GetEventsInput {
                 filter: EventFilter {
-                    from_block: Some(BlockId::Pending),
+                    from_block: Some(BlockId::PreConfirmed),
                     to_block: None,
                     chunk_size: 100,
                     ..Default::default()

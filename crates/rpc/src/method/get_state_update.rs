@@ -159,8 +159,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[case::pending_by_position(json!(["pending"]), BlockId::Pending)]
-    #[case::pending_by_name(json!({"block_id": "pending"}), BlockId::Pending)]
+    #[case::pending_by_position(json!(["pending"]), BlockId::PreConfirmed)]
+    #[case::pending_by_name(json!({"block_id": "pending"}), BlockId::PreConfirmed)]
     #[case::latest_by_position(json!(["latest"]), BlockId::Latest)]
     #[case::latest_by_name(json!({"block_id": "latest"}), BlockId::Latest)]
     #[case::number_by_position(json!([{"block_number":123}]), BlockNumber::new_or_panic(123).into())]
@@ -410,7 +410,7 @@ mod tests {
     async fn pending() {
         let context = RpcContext::for_tests_with_pending().await;
         let input = Input {
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
             contract_addresses: HashSet::default(),
         };
 
@@ -428,7 +428,7 @@ mod tests {
     async fn pre_confirmed() {
         let context = RpcContext::for_tests_with_pre_confirmed().await;
         let input = Input {
-            block_id: BlockId::Pending,
+            block_id: BlockId::PreConfirmed,
             contract_addresses: HashSet::default(),
         };
 

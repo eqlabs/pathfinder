@@ -78,7 +78,7 @@ pub async fn get_transaction_by_block_id_and_index(
         let db_tx = db.transaction().context("Creating database transaction")?;
 
         let block_id = match input.block_id {
-            BlockId::Pending => {
+            BlockId::PreConfirmed => {
                 let result = context
                     .pending_data
                     .get(&db_tx, rpc_version)
