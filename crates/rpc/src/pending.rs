@@ -14,7 +14,7 @@ use pathfinder_common::{
     StateUpdate,
 };
 use pathfinder_storage::Transaction;
-use starknet_gateway_types::reply::{GasPrices, PendingBlock, Status};
+use starknet_gateway_types::reply::{GasPrices, Status};
 use tokio::sync::watch::Receiver as WatchReceiver;
 
 use crate::RpcVersion;
@@ -162,7 +162,7 @@ impl PendingData {
 
     #[cfg(test)]
     pub fn from_pending_block(
-        block: PendingBlock,
+        block: starknet_gateway_types::reply::PreLatestBlock,
         state_update: StateUpdate,
         number: BlockNumber,
     ) -> Self {

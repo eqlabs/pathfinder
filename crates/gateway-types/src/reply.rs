@@ -55,10 +55,16 @@ pub struct Block {
     pub state_diff_length: Option<u64>,
 }
 
+/// Represents the "pre-latest" block in Starknet, which is a block that has
+/// been closed in consensus but is still awaiting commitment calculations
+/// before being finalized.
+///
+/// Obtained by querying the gateway for the pending block on Starknet >
+/// v0.14.0.
 #[serde_as]
 #[derive(Clone, Default, Debug, Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(serde::Serialize))]
-pub struct PendingBlock {
+pub struct PreLatestBlock {
     pub l1_gas_price: GasPrices,
     pub l1_data_gas_price: GasPrices,
     #[serde(default)] // TODO: Needed until the gateway provides the l2 gas price
@@ -83,14 +89,6 @@ pub struct PendingBlock {
     // Introduced in v0.13.1
     pub l1_da_mode: L1DataAvailabilityMode,
 }
-
-/// Represents the "pre-latest" block in Starknet, which is a block that has
-/// been closed in consensus but is still awaiting commitment calculations
-/// before being finalized.
-///
-/// Obtained by querying the gateway for the pending block on Starknet >
-/// v0.14.0.
-pub type PreLatestBlock = PendingBlock;
 
 #[serde_as]
 #[derive(Clone, Default, Debug, Deserialize, PartialEq, Eq)]

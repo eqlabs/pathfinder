@@ -8,7 +8,7 @@ use anyhow::Context;
 use pathfinder_common::prelude::*;
 use reqwest::Url;
 use starknet_gateway_types::error::SequencerError;
-use starknet_gateway_types::reply::{PendingBlock, PreConfirmedBlock};
+use starknet_gateway_types::reply::{PreConfirmedBlock, PreLatestBlock};
 use starknet_gateway_types::trace::{BlockTrace, TransactionTrace};
 use starknet_gateway_types::{reply, request};
 
@@ -50,7 +50,7 @@ impl From<pathfinder_common::BlockId> for BlockId {
 #[mockall::automock]
 #[async_trait::async_trait]
 pub trait GatewayApi: Sync {
-    async fn pending_block(&self) -> Result<(PendingBlock, StateUpdate), SequencerError> {
+    async fn pending_block(&self) -> Result<(PreLatestBlock, StateUpdate), SequencerError> {
         unimplemented!();
     }
 
@@ -153,7 +153,7 @@ pub trait GatewayApi: Sync {
 
 #[async_trait::async_trait]
 impl<T: GatewayApi + Sync + Send> GatewayApi for Arc<T> {
-    async fn pending_block(&self) -> Result<(PendingBlock, StateUpdate), SequencerError> {
+    async fn pending_block(&self) -> Result<(PreLatestBlock, StateUpdate), SequencerError> {
         self.as_ref().pending_block().await
     }
 
@@ -488,10 +488,10 @@ fn resolve_hosts(url: &Url) -> anyhow::Result<Vec<std::net::IpAddr>> {
 #[async_trait::async_trait]
 impl GatewayApi for Client {
     #[tracing::instrument(skip(self))]
-    async fn pending_block(&self) -> Result<(PendingBlock, StateUpdate), SequencerError> {
+    async fn pending_block(&self) -> Result<(PreLatestBlock, StateUpdate), SequencerError> {
         #[derive(Clone, Debug, serde::Deserialize)]
         struct Dto {
-            pub block: PendingBlock,
+            pub block: PreLatestBlock,
             pub state_update: starknet_gateway_types::reply::StateUpdate,
         }
 

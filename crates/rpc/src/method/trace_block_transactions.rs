@@ -1171,7 +1171,7 @@ pub(crate) mod tests {
 
             let transaction_receipts = vec![(dummy_receipt, vec![]); 3];
 
-            let pending_block = starknet_gateway_types::reply::PendingBlock {
+            let pending_block = starknet_gateway_types::reply::PreLatestBlock {
                 l1_gas_price: GasPrices {
                     price_in_wei: last_block_header.eth_l1_gas_price,
                     price_in_fri: last_block_header.strk_l1_gas_price,

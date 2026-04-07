@@ -867,7 +867,7 @@ pub mod test_utils {
                 contract_nonce_bytes!(b"pending nonce"),
             );
 
-        let block = starknet_gateway_types::reply::PendingBlock {
+        let block = starknet_gateway_types::reply::PreLatestBlock {
             l1_gas_price: GasPrices {
                 price_in_wei: GasPrice::from_be_slice(b"gas price").unwrap(),
                 price_in_fri: GasPrice::from_be_slice(b"strk gas price").unwrap(),

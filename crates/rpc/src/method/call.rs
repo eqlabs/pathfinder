@@ -262,7 +262,7 @@ mod tests {
             CONTRACT_DEFINITION,
             CONTRACT_DEFINITION_CLASS_HASH,
         };
-        use starknet_gateway_types::reply::{GasPrices, L1DataAvailabilityMode, PendingBlock};
+        use starknet_gateway_types::reply::{GasPrices, L1DataAvailabilityMode};
 
         use super::*;
         use crate::pending::PendingData;
