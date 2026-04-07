@@ -247,3 +247,21 @@ jobs:
         run: |
           cd crates/load-test
           cargo check
+
+  required:
+    needs:
+      - test-all-features
+      - test-consensus
+      - test-default-features
+      - clippy
+      - rustfmt
+      - doc
+      - dep-sort
+      - typos
+      - load_test
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: On failure
+        if: always() && contains(needs.*.result, 'failure')
+        run: exit 1
