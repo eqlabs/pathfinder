@@ -85,122 +85,109 @@ pub struct PreLatestData {
     pub state_update: StateUpdate,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum PendingBlockVariant {
-    Pending(PendingBlock),
-    PreConfirmed {
-        block: Box<PreConfirmedBlock>,
-        candidate_transactions: Vec<pathfinder_common::transaction::Transaction>,
-        pre_latest_data: Option<Box<PreLatestData>>,
-    },
+/// Currently known chain data that is yet to be confirmed on L2
+#[derive(Clone, Default, Debug, PartialEq)]
+pub struct PendingBlocks {
+    /// Pre confirmed block, sequencer's nightly state
+    pub pre_confirmed: PreConfirmedBlock,
+    /// Pre-latest parent of pre-confirmed block, exists if not yet confirmed
+    pub pre_latest: Option<PreLatestData>,
+    /// Txs submitted but not yet executed
+    pub candidate_transactions: Vec<pathfinder_common::transaction::Transaction>,
 }
 
-impl Default for PendingBlockVariant {
-    fn default() -> Self {
-        Self::Pending(PendingBlock::default())
-    }
-}
-
-impl PendingBlockVariant {
+impl PendingBlocks {
     pub fn transactions(&self) -> &[pathfinder_common::transaction::Transaction] {
-        match self {
-            PendingBlockVariant::Pending(block) => &block.transactions,
-            PendingBlockVariant::PreConfirmed { block, .. } => &block.transactions,
-        }
+        &self.pre_confirmed.transactions
     }
 
     pub fn pre_latest_transactions(
         &self,
     ) -> Option<&[pathfinder_common::transaction::Transaction]> {
-        let PendingBlockVariant::PreConfirmed {
-            pre_latest_data, ..
-        } = self
-        else {
-            return None;
-        };
-        pre_latest_data
+        self.pre_latest
             .as_ref()
             .map(|data| data.block.transactions.as_slice())
     }
 
     pub fn tx_receipts_and_events(&self) -> &[TxnReceiptAndEvents] {
-        match self {
-            PendingBlockVariant::Pending(block) => &block.transaction_receipts,
-            PendingBlockVariant::PreConfirmed { block, .. } => &block.transaction_receipts,
-        }
+        &self.pre_confirmed.transaction_receipts
     }
 
     pub fn pre_latest_tx_receipts_and_events(&self) -> Option<&[TxnReceiptAndEvents]> {
-        let PendingBlockVariant::PreConfirmed {
-            pre_latest_data, ..
-        } = self
-        else {
-            return None;
-        };
-        pre_latest_data
+        self.pre_latest
             .as_ref()
             .map(|data| data.block.transaction_receipts.as_slice())
     }
 
     pub fn finality_status(&self) -> crate::dto::TxnFinalityStatus {
-        match self {
-            // FIXME: The `PendingBlockVariant::Pending` case is dead code now that all networks
-            // are on Starknet 0.14.0+ and should be removed. Otherwise, returning `AcceptedOnL2`
-            // would be wrong.
-            //
-            // For more info:
-            //  - on why `AcceptedOnL2` is wrong: https://github.com/eqlabs/pathfinder/issues/3259
-            //  - on why `PendingBlockVariant::Pending` case is dead code:
-            //  https://github.com/eqlabs/pathfinder/issues/3272
-            PendingBlockVariant::Pending(_) => crate::dto::TxnFinalityStatus::AcceptedOnL2,
-            PendingBlockVariant::PreConfirmed { .. } => crate::dto::TxnFinalityStatus::PreConfirmed,
-        }
+        // For more info:
+        //  - on why `AcceptedOnL2` is wrong: https://github.com/eqlabs/pathfinder/issues/3259
+        //  - on why `PendingBlockVariant::Pending` case was dead code:
+        //  https://github.com/eqlabs/pathfinder/issues/3272
+        crate::dto::TxnFinalityStatus::PreConfirmed
     }
 }
 
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct PendingData {
-    /// The pending block, either in the pending or pre-confirmed
-    /// [variant](PendingBlockVariant).
-    block: Arc<PendingBlockVariant>,
-    /// The pending state update, either from the pending or pre-confirmed
-    /// [variant](PendingBlockVariant).
+    /// The blocks container, holding pre-confirmed, pre-latest, and candidate
+    /// data.
+    blocks: Arc<PendingBlocks>,
+    /// The state update of the pre-confirmed block.
     ///
     /// Does not include the [pre-latest](PreLatestData) state update.
     state_update: Arc<StateUpdate>,
     /// The aggregated state update. Contains the merged state update from
-    /// the pre-latest block (if exists) and the pending/pre-confirmed block.
+    /// the pre-latest block (if exists) and the pre-confirmed block.
     aggregated_state_update: Arc<StateUpdate>,
-    /// The block number of the pending/pre-confirmed block.
+    /// The block number of the pre-confirmed block.
     number: BlockNumber,
 }
 
 impl PendingData {
-    pub fn from_pending_block(
-        block: PendingBlock,
-        state_update: StateUpdate,
-        number: BlockNumber,
-    ) -> Self {
-        let state_update = Arc::new(state_update);
-        Self {
-            block: Arc::new(PendingBlockVariant::Pending(block)),
-            state_update: Arc::clone(&state_update),
-            aggregated_state_update: state_update,
-            number,
-        }
-    }
-
     #[cfg(test)]
     pub fn from_parts(
-        block: PendingBlockVariant,
+        blocks: PendingBlocks,
         state_update: StateUpdate,
         aggregated_state_update: StateUpdate,
         number: BlockNumber,
     ) -> Self {
         Self {
-            block: Arc::new(block),
+            blocks: Arc::new(blocks),
             state_update: Arc::new(state_update),
             aggregated_state_update: Arc::new(aggregated_state_update),
+            number,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn from_pending_block(
+        block: PendingBlock,
+        state_update: StateUpdate,
+        number: BlockNumber,
+    ) -> Self {
+        let pre_confirmed = PreConfirmedBlock {
+            number,
+            l1_gas_price: block.l1_gas_price,
+            l1_data_gas_price: block.l1_data_gas_price,
+            l2_gas_price: block.l2_gas_price,
+            sequencer_address: block.sequencer_address,
+            status: block.status,
+            timestamp: block.timestamp,
+            starknet_version: block.starknet_version,
+            l1_da_mode: block.l1_da_mode.into(),
+            transactions: block.transactions,
+            transaction_receipts: block.transaction_receipts,
+        };
+        let state_update = Arc::new(state_update);
+        Self {
+            block: Arc::new(PendingBlocks {
+                pre_confirmed,
+                pre_latest: None,
+                candidate_transactions: vec![],
+            }),
+            state_update: Arc::clone(&state_update),
+            aggregated_state_update: state_update,
             number,
         }
     }
@@ -314,11 +301,10 @@ impl PendingData {
                 transactions: pre_latest_block.transactions,
                 transaction_receipts: pre_latest_block.transaction_receipts,
             };
-            let data = PreLatestData {
+            PreLatestData {
                 block: pre_latest_block,
                 state_update: pre_latest_state_update,
-            };
-            Box::new(data)
+            }
         });
 
         let aggregated_state_update = Arc::new(
@@ -330,10 +316,10 @@ impl PendingData {
         );
 
         Ok(Self {
-            block: Arc::new(PendingBlockVariant::PreConfirmed {
-                block: pre_confirmed_block.into(),
+            blocks: Arc::new(PendingBlocks {
+                pre_confirmed: pre_confirmed_block,
+                pre_latest: pre_latest_data,
                 candidate_transactions,
-                pre_latest_data,
             }),
             state_update: pre_confirmed_state_update,
             aggregated_state_update,
@@ -341,35 +327,7 @@ impl PendingData {
         })
     }
 
-    fn empty_pending(latest: &BlockHeader) -> Self {
-        let block = PendingBlock {
-            l1_gas_price: GasPrices {
-                price_in_wei: latest.eth_l1_gas_price,
-                price_in_fri: latest.strk_l1_gas_price,
-            },
-            l1_data_gas_price: GasPrices {
-                price_in_wei: latest.eth_l1_data_gas_price,
-                price_in_fri: latest.strk_l1_data_gas_price,
-            },
-            l2_gas_price: GasPrices {
-                price_in_wei: latest.eth_l2_gas_price,
-                price_in_fri: latest.strk_l2_gas_price,
-            },
-            timestamp: latest.timestamp,
-            parent_hash: latest.hash,
-            starknet_version: latest.starknet_version,
-            l1_da_mode: latest.l1_da_mode.into(),
-            status: Status::Pending,
-            sequencer_address: latest.sequencer_address,
-            transaction_receipts: vec![],
-            transactions: vec![],
-        };
-        let state_update =
-            StateUpdate::default().with_parent_state_commitment(latest.state_commitment);
-        Self::from_pending_block(block, state_update, latest.number + 1)
-    }
-
-    fn empty_pre_confirmed(latest: &BlockHeader) -> Self {
+    fn empty(latest: &BlockHeader) -> Self {
         let block = PreConfirmedBlock {
             number: latest.number + 1,
             l1_gas_price: GasPrices {
@@ -395,10 +353,10 @@ impl PendingData {
         let state_update =
             Arc::new(StateUpdate::default().with_parent_state_commitment(latest.state_commitment));
         Self {
-            block: Arc::new(PendingBlockVariant::PreConfirmed {
-                block: block.into(),
+            blocks: Arc::new(PendingBlocks {
+                pre_confirmed: block,
                 candidate_transactions: vec![],
-                pre_latest_data: None,
+                pre_latest: None,
             }),
             state_update: Arc::clone(&state_update),
             aggregated_state_update: state_update,
@@ -411,13 +369,10 @@ impl PendingData {
     }
 
     pub fn pre_latest_block_number(&self) -> Option<BlockNumber> {
-        let PendingBlockVariant::PreConfirmed {
-            pre_latest_data, ..
-        } = self.block.as_ref()
-        else {
-            return None;
-        };
-        pre_latest_data.as_ref().map(|data| data.block.number)
+        self.blocks
+            .pre_latest
+            .as_ref()
+            .map(|data| data.block.number)
     }
 
     /// Returns a mutable reference to the block number.
@@ -426,74 +381,39 @@ impl PendingData {
         &mut self.number
     }
 
-    /// Get the header of the pending/pre-confirmed block.
-    pub fn pending_header(&self) -> BlockHeader {
-        match self.block.as_ref() {
-            PendingBlockVariant::Pending(block) => {
-                BlockHeader {
-                    parent_hash: block.parent_hash,
-                    number: self.number,
-                    timestamp: block.timestamp,
-                    eth_l1_gas_price: block.l1_gas_price.price_in_wei,
-                    strk_l1_gas_price: block.l1_gas_price.price_in_fri,
-                    eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
-                    strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
-                    eth_l2_gas_price: block.l2_gas_price.price_in_wei,
-                    strk_l2_gas_price: block.l2_gas_price.price_in_fri,
-                    sequencer_address: block.sequencer_address,
-                    starknet_version: block.starknet_version,
-                    // Pending block does not know what these are yet.
-                    hash: Default::default(),
-                    event_commitment: Default::default(),
-                    state_commitment: Default::default(),
-                    transaction_commitment: Default::default(),
-                    transaction_count: Default::default(),
-                    event_count: Default::default(),
-                    l1_da_mode: block.l1_da_mode.into(),
-                    receipt_commitment: Default::default(),
-                    state_diff_commitment: Default::default(),
-                    state_diff_length: Default::default(),
-                }
-            }
-            PendingBlockVariant::PreConfirmed { block, .. } => {
-                BlockHeader {
-                    // Pre-confirmed blocks do not have a parent hash.
-                    parent_hash: pathfinder_common::BlockHash::ZERO,
-                    number: self.number,
-                    timestamp: block.timestamp,
-                    eth_l1_gas_price: block.l1_gas_price.price_in_wei,
-                    strk_l1_gas_price: block.l1_gas_price.price_in_fri,
-                    eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
-                    strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
-                    eth_l2_gas_price: block.l2_gas_price.price_in_wei,
-                    strk_l2_gas_price: block.l2_gas_price.price_in_fri,
-                    sequencer_address: block.sequencer_address,
-                    starknet_version: block.starknet_version,
-                    // Pending block does not know what these are yet.
-                    hash: Default::default(),
-                    event_commitment: Default::default(),
-                    state_commitment: Default::default(),
-                    transaction_commitment: Default::default(),
-                    transaction_count: Default::default(),
-                    event_count: Default::default(),
-                    l1_da_mode: block.l1_da_mode,
-                    receipt_commitment: Default::default(),
-                    state_diff_commitment: Default::default(),
-                    state_diff_length: Default::default(),
-                }
-            }
+    /// Get the header of the pre-confirmed block.
+    pub fn pre_confirmed_header(&self) -> BlockHeader {
+        let block = &self.blocks.pre_confirmed;
+        BlockHeader {
+            // Pre-confirmed blocks do not have a parent hash.
+            parent_hash: pathfinder_common::BlockHash::ZERO,
+            number: self.number,
+            timestamp: block.timestamp,
+            eth_l1_gas_price: block.l1_gas_price.price_in_wei,
+            strk_l1_gas_price: block.l1_gas_price.price_in_fri,
+            eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
+            strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
+            eth_l2_gas_price: block.l2_gas_price.price_in_wei,
+            strk_l2_gas_price: block.l2_gas_price.price_in_fri,
+            sequencer_address: block.sequencer_address,
+            starknet_version: block.starknet_version,
+            // Pre-confirmed block does not know what these are yet.
+            hash: Default::default(),
+            event_commitment: Default::default(),
+            state_commitment: Default::default(),
+            transaction_commitment: Default::default(),
+            transaction_count: Default::default(),
+            event_count: Default::default(),
+            l1_da_mode: block.l1_da_mode,
+            receipt_commitment: Default::default(),
+            state_diff_commitment: Default::default(),
+            state_diff_length: Default::default(),
         }
     }
 
     /// Get the header of the pre-latest block, if it exists.
     pub fn pre_latest_header(&self) -> Option<BlockHeader> {
-        let PendingBlockVariant::PreConfirmed {
-            pre_latest_data, ..
-        } = self.block.as_ref()
-        else {
-            return None;
-        };
-        pre_latest_data.as_ref().map(|data| {
+        self.blocks.pre_latest.as_ref().map(|data| {
             let pre_latest_block = &data.block;
             BlockHeader {
                 parent_hash: pre_latest_block.parent_hash,
@@ -507,7 +427,7 @@ impl PendingData {
                 strk_l2_gas_price: pre_latest_block.l2_gas_price.price_in_fri,
                 sequencer_address: pre_latest_block.sequencer_address,
                 starknet_version: pre_latest_block.starknet_version,
-                // Pending block does not know what these are yet.
+                // Pre-latest block does not know what these are yet.
                 hash: Default::default(),
                 event_commitment: Default::default(),
                 state_commitment: Default::default(),
@@ -522,84 +442,64 @@ impl PendingData {
         })
     }
 
-    /// Get the pending/pre-confirmed block.
-    pub fn pending_block(&self) -> Arc<PendingBlockVariant> {
-        Arc::clone(&self.block)
+    /// Get the pending blocks container.
+    pub fn pending_block(&self) -> Arc<PendingBlocks> {
+        Arc::clone(&self.blocks)
     }
 
     /// Get the pre-latest block, if it exists.
     pub fn pre_latest_block(&self) -> Option<Arc<PreLatestBlock>> {
-        let PendingBlockVariant::PreConfirmed {
-            pre_latest_data, ..
-        } = self.block.as_ref()
-        else {
-            return None;
-        };
-        pre_latest_data
+        self.blocks
+            .pre_latest
             .as_ref()
             .map(|data| Arc::new(data.block.clone()))
     }
 
-    /// Get the state update in the pending/pre-confirmed block.
-    pub fn pending_state_update(&self) -> Arc<StateUpdate> {
+    /// Get the state update of the pre-confirmed block.
+    pub fn pre_confirmed_state_update(&self) -> Arc<StateUpdate> {
         Arc::clone(&self.state_update)
     }
 
     /// Get the aggregated state update from the pre-latest (if exists) and the
-    /// pending/pre-confirmed block.
+    /// pre-confirmed block.
     pub fn aggregated_state_update(&self) -> Arc<StateUpdate> {
         Arc::clone(&self.aggregated_state_update)
     }
 
-    /// Get the transactions in the pending/pre-confirmed block.
-    pub fn pending_transactions(&self) -> &[pathfinder_common::transaction::Transaction] {
-        self.block.transactions()
+    /// Get the transactions in the pre-confirmed block.
+    pub fn pre_confirmed_transactions(&self) -> &[pathfinder_common::transaction::Transaction] {
+        self.blocks.transactions()
     }
 
     /// Get the transactions in the pre-latest block, if it exists.
     pub fn pre_latest_transactions(
         &self,
     ) -> Option<&[pathfinder_common::transaction::Transaction]> {
-        self.block.pre_latest_transactions()
+        self.blocks.pre_latest_transactions()
     }
 
-    /// Get the transaction receipts and events in the pending/pre-confirmed
-    /// block.
-    pub fn pending_tx_receipts_and_events(&self) -> &[TxnReceiptAndEvents] {
-        self.block.tx_receipts_and_events()
+    /// Get the transaction receipts and events in the pre-confirmed block.
+    pub fn pre_confirmed_tx_receipts_and_events(&self) -> &[TxnReceiptAndEvents] {
+        self.blocks.tx_receipts_and_events()
     }
 
     /// Get the transaction receipts and events in the pre-latest block, if it
     /// exists.
     pub fn pre_latest_tx_receipts_and_events(&self) -> Option<&[TxnReceiptAndEvents]> {
-        self.block.pre_latest_tx_receipts_and_events()
+        self.blocks.pre_latest_tx_receipts_and_events()
     }
 
-    /// Get the candidate transactions in the pending block, if it is
-    /// pre-confirmed.
-    pub fn candidate_transactions(&self) -> Option<&[pathfinder_common::transaction::Transaction]> {
-        match self.block.as_ref() {
-            PendingBlockVariant::Pending(_) => None,
-            PendingBlockVariant::PreConfirmed {
-                candidate_transactions,
-                ..
-            } => Some(candidate_transactions),
-        }
-    }
-
-    pub fn is_pre_confirmed(&self) -> bool {
-        matches!(
-            self.block.as_ref(),
-            PendingBlockVariant::PreConfirmed { .. }
-        )
+    /// Get the candidate transactions in the pre-confirmed block.
+    pub fn candidate_transactions(&self) -> &[pathfinder_common::transaction::Transaction] {
+        &self.blocks.candidate_transactions
     }
 
     pub fn finality_status(&self) -> crate::dto::TxnFinalityStatus {
-        self.block.finality_status()
+        self.blocks.finality_status()
     }
 
     /// Find a contract nonce by its contract address in the
-    /// pending/pre-confirmed or pre-latest block (in that order).
+    /// pre-confirmed or pre-latest block (in that order).
     pub fn find_nonce(
         &self,
         contract_address: pathfinder_common::ContractAddress,
@@ -609,7 +509,7 @@ impl PendingData {
     }
 
     /// Find a storage value by its contract and storage address in
-    /// the pending/pre-confirmed or pre-latest block (in that order).
+    /// the pre-confirmed or pre-latest block (in that order).
     pub fn find_storage_value(
         &self,
         contract_address: pathfinder_common::ContractAddress,
@@ -619,19 +519,21 @@ impl PendingData {
             .storage_value_with_provenance(contract_address, storage_address)
     }
 
-    /// Find a transaction by its hash in the pending/pre-confirmed block,
+    /// Find a transaction by its hash in the pre-confirmed block,
     /// candidate transactions, or pre-latest block (in that order).
     pub fn find_transaction(
         &self,
         tx_hash: pathfinder_common::TransactionHash,
     ) -> Option<pathfinder_common::transaction::Transaction> {
-        self.pending_transactions()
+        self.pre_confirmed_transactions()
             .iter()
             .find(|tx| tx.hash == tx_hash)
             .cloned()
             .or_else(|| {
                 self.candidate_transactions()
-                    .and_then(|candidate| candidate.iter().find(|tx| tx.hash == tx_hash).cloned())
+                    .iter()
+                    .find(|tx| tx.hash == tx_hash)
+                    .cloned()
             })
             .or_else(|| {
                 self.pre_latest_transactions()
@@ -640,7 +542,7 @@ impl PendingData {
     }
 
     /// Find a [FinalizedTxData] by the transaction hash in the
-    /// pending/pre-confirmed or pre-latest block (in that order).
+    /// pre-confirmed or pre-latest block (in that order).
     ///
     /// This function does not check candidate transactions, as they are not
     /// finalized.
@@ -649,12 +551,12 @@ impl PendingData {
         tx_hash: pathfinder_common::TransactionHash,
     ) -> Option<FinalizedTxData> {
         let pending_tx = self
-            .pending_transactions()
+            .pre_confirmed_transactions()
             .iter()
             .find(|tx| tx.hash == tx_hash);
         if let Some(pending_tx) = pending_tx {
             let (receipt, events) = self
-                .pending_tx_receipts_and_events()
+                .pre_confirmed_tx_receipts_and_events()
                 .iter()
                 .find(|(receipt, _)| receipt.transaction_hash == tx_hash)
                 .cloned()
@@ -699,7 +601,7 @@ impl PendingData {
     }
 
     /// Find a contract class hash by its contract address in the
-    /// pending/pre-confirmed or pre-latest block (in that order).
+    /// pre-confirmed or pre-latest block (in that order).
     pub fn find_contract_class(
         &self,
         contract_address: pathfinder_common::ContractAddress,
@@ -708,7 +610,7 @@ impl PendingData {
             .contract_class(contract_address)
     }
 
-    /// Check if a class hash has been declared in the pending/pre-confirmed
+    /// Check if a class hash has been declared in the pre-confirmed
     /// or pre-latest block.
     pub fn class_is_declared(&self, class_hash: pathfinder_common::ClassHash) -> bool {
         self.aggregated_state_update().class_is_declared(class_hash)
@@ -743,111 +645,105 @@ impl PendingWatcher {
             .unwrap_or_default();
 
         let watched_pending_data = self.0.borrow();
-        let pending_data = match watched_pending_data.pending_block().as_ref() {
-            PendingBlockVariant::Pending(block) => {
-                if block.parent_hash == latest.hash {
-                    watched_pending_data.clone()
-                } else {
-                    PendingData::empty_pending(&latest)
-                }
-            }
-            // The pre-confirmed block is to be only ever used on JSON-RPC 0.9 and up.
-            // Older versions did have the semantics that expected that pending block
-            // contents are L2_ACCEPTED, which is not the case for the pre-confirmed
-            // block.
-            PendingBlockVariant::PreConfirmed {
-                block,
-                candidate_transactions,
-                pre_latest_data,
-            } if rpc_version >= RpcVersion::V09 => {
-                // The parent state commitment is only available here. The task polling the
-                // pre-confirmed block has no access to the parent block header, thus it
-                // cannot properly set the parent state commitment.
+        let watched_pending_blocks = watched_pending_data.pending_block();
+        let PendingBlocks {
+            pre_confirmed,
+            pre_latest,
+            candidate_transactions,
+        } = watched_pending_blocks.as_ref();
+        // The pre-confirmed block is to be only ever used on JSON-RPC 0.9 and up.
+        // Older versions did have the semantics that expected that pending block
+        // contents are L2_ACCEPTED, which is not the case for the pre-confirmed
+        // block.
+        let pending_data = if rpc_version >= RpcVersion::V09 {
+            // The parent state commitment is only available here. The task polling the
+            // pre-confirmed block has no access to the parent block header, thus it
+            // cannot properly set the parent state commitment.
 
-                // We can consider the pre-confirmed block valid if:
-                //   - the pre-latest block exists and is the child our latest stored block,
-                //   - the pre-latest block exists and is the same block as our latest block,
-                //   i.e. we received that block as a finalized L2 block but it still lingers
-                //   in pending data.
-                //   - the pre-latest block does not exist and the pre-confirmed block is the
-                //   child of our latest stored block.
-                match pre_latest_data {
-                    // Is pre-latest the next block?
-                    Some(pre_latest) if pre_latest.block.number == latest.number + 1 => {
-                        assert_eq!(
-                            pre_latest.block.number + 1,
-                            block.number,
-                            "Pre-confirmed block should be child of pre-latest"
-                        );
-                        // Set pre-latest block parent state commitment, clone rest of the data.
-                        let pre_latest = pre_latest.clone();
-                        let pre_latest_state_update = pre_latest
-                            .state_update
-                            .with_parent_state_commitment(latest.state_commitment);
-                        let pre_latest_data = PreLatestData {
-                            block: pre_latest.block,
-                            state_update: pre_latest_state_update,
-                        };
-                        PendingData {
-                            block: PendingBlockVariant::PreConfirmed {
-                                block: block.clone(),
-                                candidate_transactions: candidate_transactions.clone(),
-                                pre_latest_data: Some(Box::new(pre_latest_data)),
-                            }
-                            .into(),
-                            state_update: Arc::clone(&watched_pending_data.state_update),
-                            aggregated_state_update: Arc::clone(
-                                &watched_pending_data.aggregated_state_update,
-                            ),
-                            number: block.number,
-                        }
-                    }
-                    // Is pre-latest already in the database?
-                    Some(pre_latest) if pre_latest.block.number == latest.number => {
-                        // We'll ignore pre-latest data here but let's make sure everything is
-                        // still as expected.
-                        assert_eq!(
-                            pre_latest.block.number + 1,
-                            block.number,
-                            "Pre-confirmed block should be child of pre-latest"
-                        );
-                        // Set pre-latest data to `None`, pre-confirmed block parent state
-                        // commitment and clone rest of the data.
-                        let pre_confirmed_block = PendingBlockVariant::PreConfirmed {
-                            block: block.clone(),
+            // We can consider the pre-confirmed block valid if:
+            //   - the pre-latest block exists and is the child our latest stored block,
+            //   - the pre-latest block exists and is the same block as our latest block,
+            //   i.e. we received that block as a finalized L2 block but it still lingers
+            //   in pending data.
+            //   - the pre-latest block does not exist and the pre-confirmed block is the
+            //   child of our latest stored block.
+            match pre_latest {
+                // Is pre-latest the next block?
+                Some(pre_latest) if pre_latest.block.number == latest.number + 1 => {
+                    assert_eq!(
+                        pre_latest.block.number + 1,
+                        pre_confirmed.number,
+                        "Pre-confirmed block should be child of pre-latest"
+                    );
+                    // Set pre-latest block parent state commitment, clone rest of the data.
+                    let pre_latest = pre_latest.clone();
+                    let pre_latest_state_update = pre_latest
+                        .state_update
+                        .with_parent_state_commitment(latest.state_commitment);
+                    let pre_latest = PreLatestData {
+                        block: pre_latest.block,
+                        state_update: pre_latest_state_update,
+                    };
+                    PendingData {
+                        blocks: PendingBlocks {
+                            pre_confirmed: pre_confirmed.clone(),
                             candidate_transactions: candidate_transactions.clone(),
-                            pre_latest_data: None,
-                        };
-                        let pre_confirmed_state_update = Arc::new(
-                            StateUpdate::clone(&watched_pending_data.state_update)
-                                .with_parent_state_commitment(latest.state_commitment),
-                        );
-
-                        PendingData {
-                            block: Arc::new(pre_confirmed_block),
-                            state_update: Arc::clone(&pre_confirmed_state_update),
-                            aggregated_state_update: pre_confirmed_state_update,
-                            number: block.number,
+                            pre_latest: Some(pre_latest),
                         }
+                        .into(),
+                        state_update: Arc::clone(&watched_pending_data.state_update),
+                        aggregated_state_update: Arc::clone(
+                            &watched_pending_data.aggregated_state_update,
+                        ),
+                        number: pre_confirmed.number,
                     }
-                    // Is pre-confirmed the next block?
-                    None if block.number == latest.number + 1 => {
-                        // Set pre-confirmed block parent state commitment, clone rest of the data.
-                        let pre_confirmed_state_update =
-                            StateUpdate::clone(&watched_pending_data.state_update)
-                                .with_parent_state_commitment(latest.state_commitment);
-                        let state_update = Arc::new(pre_confirmed_state_update);
-                        PendingData {
-                            block: Arc::clone(&watched_pending_data.block),
-                            state_update: Arc::clone(&state_update),
-                            aggregated_state_update: state_update,
-                            number: block.number,
-                        }
-                    }
-                    _ => PendingData::empty_pre_confirmed(&latest),
                 }
+                // Is pre-latest already in the database?
+                Some(pre_latest) if pre_latest.block.number == latest.number => {
+                    // We'll ignore pre-latest data here but let's make sure everything is
+                    // still as expected.
+                    assert_eq!(
+                        pre_latest.block.number + 1,
+                        pre_confirmed.number,
+                        "Pre-confirmed block should be child of pre-latest"
+                    );
+                    // Set pre-latest data to `None`, pre-confirmed block parent state
+                    // commitment and clone rest of the data.
+                    let pre_confirmed_block = PendingBlocks {
+                        pre_confirmed: pre_confirmed.clone(),
+                        candidate_transactions: candidate_transactions.clone(),
+                        pre_latest: None,
+                    };
+                    let pre_confirmed_state_update = Arc::new(
+                        StateUpdate::clone(&watched_pending_data.state_update)
+                            .with_parent_state_commitment(latest.state_commitment),
+                    );
+
+                    PendingData {
+                        blocks: Arc::new(pre_confirmed_block),
+                        state_update: Arc::clone(&pre_confirmed_state_update),
+                        aggregated_state_update: pre_confirmed_state_update,
+                        number: pre_confirmed.number,
+                    }
+                }
+                // Is pre-confirmed the next block?
+                None if pre_confirmed.number == latest.number + 1 => {
+                    // Set pre-confirmed block parent state commitment, clone rest of the data.
+                    let pre_confirmed_state_update =
+                        StateUpdate::clone(&watched_pending_data.state_update)
+                            .with_parent_state_commitment(latest.state_commitment);
+                    let state_update = Arc::new(pre_confirmed_state_update);
+                    PendingData {
+                        blocks: Arc::clone(&watched_pending_data.blocks),
+                        state_update: Arc::clone(&state_update),
+                        aggregated_state_update: state_update,
+                        number: pre_confirmed.number,
+                    }
+                }
+                _ => PendingData::empty(&latest),
             }
-            PendingBlockVariant::PreConfirmed { .. } => PendingData::empty_pending(&latest),
+        } else {
+            PendingData::empty(&latest)
         };
 
         Ok(pending_data)
@@ -875,53 +771,14 @@ mod tests {
             .finalize_with_hash(block_hash_bytes!(b"latest hash"))
     }
 
-    fn valid_pending_block(latest: &BlockHeader) -> PendingData {
-        let block = PendingBlock {
-            parent_hash: latest.hash,
-            timestamp: BlockTimestamp::new_or_panic(112233),
-            l1_gas_price: GasPrices {
-                price_in_wei: GasPrice(51123),
-                price_in_fri: GasPrice(44411),
-            },
-            ..Default::default()
-        };
-        let state_update = StateUpdate::default().with_contract_nonce(
-            contract_address_bytes!(b"contract address"),
-            contract_nonce_bytes!(b"nonce"),
-        );
-        PendingData::from_pending_block(block, state_update, BlockNumber::GENESIS + 10)
-    }
-
-    #[test]
-    fn valid_pending() {
-        let (sender, receiver) = tokio::sync::watch::channel(Default::default());
-        let uut = PendingWatcher::new(receiver);
-
-        let mut storage = pathfinder_storage::StorageBuilder::in_memory()
-            .unwrap()
-            .connection()
-            .unwrap();
-
-        let latest = latest_block();
-
-        let tx = storage.transaction().unwrap();
-        tx.insert_block_header(&latest).unwrap();
-
-        let pending = valid_pending_block(&latest);
-        sender.send(pending.clone()).unwrap();
-
-        let result = uut.get(&tx, RpcVersion::V09).unwrap();
-        pretty_assertions_sorted::assert_eq_sorted!(result, pending);
-    }
-
     fn valid_pre_confirmed_block(latest: &BlockHeader) -> PendingData {
         let state_update = Arc::new(StateUpdate::default().with_contract_nonce(
             contract_address_bytes!(b"contract address"),
             contract_nonce_bytes!(b"nonce"),
         ));
         PendingData {
-            block: PendingBlockVariant::PreConfirmed {
-                block: PreConfirmedBlock {
+            blocks: PendingBlocks {
+                pre_confirmed: PreConfirmedBlock {
                     number: latest.number + 1,
                     l1_gas_price: Default::default(),
                     l1_data_gas_price: Default::default(),
@@ -933,10 +790,9 @@ mod tests {
                     l1_da_mode: L1DataAvailabilityMode::Blob,
                     transactions: vec![],
                     transaction_receipts: vec![],
-                }
-                .into(),
+                },
                 candidate_transactions: vec![],
-                pre_latest_data: None,
+                pre_latest: None,
             }
             .into(),
             state_update: Arc::clone(&state_update),
@@ -974,14 +830,9 @@ mod tests {
             .clone()
             .apply(&pre_confirmed_state_update);
 
-        let pre_latest_data = Box::new(PreLatestData {
-            block: pre_latest_block,
-            state_update: pre_latest_state_update,
-        });
-
         PendingData {
-            block: PendingBlockVariant::PreConfirmed {
-                block: PreConfirmedBlock {
+            blocks: PendingBlocks {
+                pre_confirmed: PreConfirmedBlock {
                     number: latest.number + 2,
                     l1_gas_price: Default::default(),
                     l1_data_gas_price: Default::default(),
@@ -996,10 +847,12 @@ mod tests {
                         pathfinder_common::receipt::Receipt::default(),
                         vec![],
                     )],
-                }
-                .into(),
+                },
                 candidate_transactions: vec![],
-                pre_latest_data: Some(pre_latest_data),
+                pre_latest: Some(PreLatestData {
+                    block: pre_latest_block,
+                    state_update: pre_latest_state_update,
+                }),
             }
             .into(),
             state_update: pre_confirmed_state_update.into(),
@@ -1015,21 +868,20 @@ mod tests {
             parent_hash: latest.hash,
             ..Default::default()
         };
-        let pre_latest_data = Box::new(PreLatestData {
+        let pre_latest_data = PreLatestData {
             block: pre_latest_block,
             ..Default::default()
-        });
+        };
 
         PendingData {
-            block: PendingBlockVariant::PreConfirmed {
-                block: PreConfirmedBlock {
+            blocks: PendingBlocks {
+                pre_confirmed: PreConfirmedBlock {
                     // This is not okay. Should be latest.number + 2 to be valid.
                     number: latest.number + 3,
                     ..Default::default()
-                }
-                .into(),
+                },
                 candidate_transactions: vec![],
-                pre_latest_data: Some(pre_latest_data),
+                pre_latest: Some(pre_latest_data),
             }
             .into(),
             state_update: StateUpdate::default().into(),
@@ -1110,7 +962,7 @@ mod tests {
 
         let result = uut.get(&tx, RpcVersion::V09).unwrap();
         // We got a non-empty pre-confirmed block..
-        assert!(!result.pending_transactions().is_empty());
+        assert!(!result.pre_confirmed_transactions().is_empty());
         // ..and we did not receive a pre-latest block.
         assert!(result.pre_latest_block().is_none());
     }
@@ -1133,7 +985,7 @@ mod tests {
         let pending = valid_pre_confirmed_block(&latest);
         sender.send(pending.clone()).unwrap();
 
-        let expected_empty_pending_data = empty_pending_block(&latest);
+        let expected_empty_pending_data = PendingData::empty(&latest);
 
         let result = uut.get(&tx, RpcVersion::V06).unwrap();
         pretty_assertions_sorted::assert_eq_sorted!(result, expected_empty_pending_data);
@@ -1161,7 +1013,7 @@ mod tests {
         let pending = valid_pre_confirmed_block_with_pre_latest(&latest);
         sender.send(pending.clone()).unwrap();
 
-        let expected_empty_pending_data = empty_pending_block(&latest);
+        let expected_empty_pending_data = PendingData::empty(&latest);
 
         let result = uut.get(&tx, RpcVersion::V06).unwrap();
         pretty_assertions_sorted::assert_eq_sorted!(result, expected_empty_pending_data);
@@ -1207,30 +1059,9 @@ mod tests {
 
         let result = uut.get(&tx, RpcVersion::V09).unwrap();
 
-        let expected = empty_pending_block(&latest);
+        let expected = PendingData::empty(&latest);
 
         pretty_assertions_sorted::assert_eq_sorted!(result, expected);
-    }
-
-    fn empty_pending_block(latest: &BlockHeader) -> PendingData {
-        let block = PendingBlock {
-            l1_gas_price: GasPrices {
-                price_in_wei: latest.eth_l1_gas_price,
-                price_in_fri: latest.strk_l1_gas_price,
-            },
-            l1_data_gas_price: GasPrices {
-                price_in_wei: latest.eth_l1_data_gas_price,
-                price_in_fri: latest.strk_l1_data_gas_price,
-            },
-            l1_da_mode: latest.l1_da_mode.into(),
-            timestamp: latest.timestamp,
-            sequencer_address: latest.sequencer_address,
-            parent_hash: latest.hash,
-            starknet_version: latest.starknet_version,
-            status: Status::Pending,
-            ..Default::default()
-        };
-        PendingData::from_pending_block(block, StateUpdate::default(), latest.number + 1)
     }
 
     #[test]
@@ -1371,7 +1202,7 @@ mod tests {
     }
 
     fn empty_pre_confirmed_block(latest: &BlockHeader) -> PendingData {
-        let block = PreConfirmedBlock {
+        let pre_confirmed = PreConfirmedBlock {
             number: latest.number + 1,
             l1_gas_price: GasPrices {
                 price_in_wei: latest.eth_l1_gas_price,
@@ -1394,10 +1225,10 @@ mod tests {
             transaction_receipts: vec![],
         };
         PendingData {
-            block: Arc::new(PendingBlockVariant::PreConfirmed {
-                block: block.into(),
+            blocks: Arc::new(PendingBlocks {
+                pre_confirmed,
+                pre_latest: None,
                 candidate_transactions: vec![],
-                pre_latest_data: None,
             }),
             state_update: StateUpdate::default().into(),
             aggregated_state_update: StateUpdate::default().into(),
@@ -1487,19 +1318,19 @@ mod tests {
             );
         pretty_assertions_sorted::assert_eq_sorted!(
             &expected_state_update,
-            pending_data.pending_state_update().as_ref()
+            pending_data.pre_confirmed_state_update().as_ref()
         );
 
         // We expect the transaction list to contain pre-confirmed transactions only.
         assert_eq!(
             number_of_pre_confirmed_transactions,
-            pending_data.pending_transactions().len()
+            pending_data.pre_confirmed_transactions().len()
         );
 
         // And the single candidate transaction we've added.
         assert_eq!(
             &vec![candidate_transaction],
-            pending_data.candidate_transactions().unwrap()
+            pending_data.candidate_transactions()
         );
     }
 }

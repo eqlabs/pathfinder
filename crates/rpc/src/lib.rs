@@ -32,7 +32,7 @@ pub use executor::compose_executor_transaction;
 use http_body::Body;
 pub use jsonrpc::{Notifications, Reorg};
 use pathfinder_common::{integration_testing, AllowedOrigins};
-pub use pending::{FinalizedTxData, PendingBlockVariant, PendingData};
+pub use pending::{FinalizedTxData, PendingBlocks, PendingData};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tower_http::cors::CorsLayer;
@@ -1060,8 +1060,8 @@ pub mod test_utils {
                 contract_nonce_bytes!(b"preconfirmed nonce"),
             );
 
-        let block = crate::pending::PendingBlockVariant::PreConfirmed {
-            block: crate::pending::PreConfirmedBlock {
+        let block = crate::pending::PendingBlocks {
+            pre_confirmed: crate::pending::PreConfirmedBlock {
                 number: latest.number + 1,
                 l1_gas_price: GasPrices {
                     price_in_wei: GasPrice::from_be_slice(b"gas price").unwrap(),
@@ -1082,10 +1082,9 @@ pub mod test_utils {
                 transactions,
                 starknet_version: StarknetVersion::V_0_13_2,
                 l1_da_mode: L1DataAvailabilityMode::Calldata,
-            }
-            .into(),
+            },
             candidate_transactions,
-            pre_latest_data: None,
+            pre_latest: None,
         };
 
         // The class definitions must be inserted into the database.
@@ -1408,8 +1407,8 @@ pub mod test_utils {
                 contract_nonce_bytes!(b"preconfirmed nonce"),
             );
 
-        let pre_confirmed_block = crate::pending::PendingBlockVariant::PreConfirmed {
-            block: crate::pending::PreConfirmedBlock {
+        let pre_confirmed_block = crate::pending::PendingBlocks {
+            pre_confirmed: crate::pending::PreConfirmedBlock {
                 // Pre-confirmed block is two blocks after latest when pre-latest
                 // is also present.
                 number: latest.number + 2,
@@ -1432,13 +1431,12 @@ pub mod test_utils {
                 transactions: pre_confirmed_transactions,
                 starknet_version: StarknetVersion::V_0_13_2,
                 l1_da_mode: L1DataAvailabilityMode::Calldata,
-            }
-            .into(),
+            },
             candidate_transactions,
-            pre_latest_data: Some(Box::new(PreLatestData {
+            pre_latest: Some(PreLatestData {
                 block: pre_latest_block,
                 state_update: pre_latest_state_update.clone(),
-            })),
+            }),
         };
 
         let aggregated_state_update = pre_latest_state_update

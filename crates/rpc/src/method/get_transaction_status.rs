@@ -86,7 +86,8 @@ pub async fn get_transaction_status(
 
         if pending_data
             .candidate_transactions()
-            .is_some_and(|txs| txs.iter().any(|tx| tx.hash == input.transaction_hash))
+            .iter()
+            .any(|tx| tx.hash == input.transaction_hash)
         {
             return Ok(Some(Output::Candidate));
         }
@@ -292,32 +293,6 @@ mod tests {
     #[case::v09(RpcVersion::V09)]
     #[case::v10(RpcVersion::V10)]
     #[tokio::test]
-    async fn pending(#[case] version: RpcVersion) {
-        let context = RpcContext::for_tests_with_pending().await;
-        let tx_hash = transaction_hash_bytes!(b"pending tx hash 0");
-        let input = Input {
-            transaction_hash: tx_hash,
-        };
-        let status = get_transaction_status(context, input, version)
-            .await
-            .unwrap();
-
-        let output_json = status.serialize(Serializer { version }).unwrap();
-
-        crate::assert_json_matches_fixture!(
-            output_json,
-            version,
-            "transactions/status_pending.json"
-        );
-    }
-
-    #[rstest::rstest]
-    #[case::v06(RpcVersion::V06)]
-    #[case::v07(RpcVersion::V07)]
-    #[case::v08(RpcVersion::V08)]
-    #[case::v09(RpcVersion::V09)]
-    #[case::v10(RpcVersion::V10)]
-    #[tokio::test]
     async fn pre_confirmed(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests_with_pre_confirmed().await;
         let tx_hash = transaction_hash_bytes!(b"preconfirmed tx hash 0");
@@ -498,7 +473,7 @@ mod tests {
     #[case::v10(RpcVersion::V10)]
     #[tokio::test]
     async fn reverted(#[case] version: RpcVersion) {
-        let context = RpcContext::for_tests_with_pending().await;
+        let context = RpcContext::for_tests_with_pre_confirmed().await;
         let input = Input {
             transaction_hash: transaction_hash_bytes!(b"txn reverted"),
         };
@@ -515,13 +490,16 @@ mod tests {
         );
 
         let input = Input {
-            transaction_hash: transaction_hash_bytes!(b"pending reverted"),
+            transaction_hash: transaction_hash_bytes!(b"preconfirmed reverted"),
         };
-        let status = get_transaction_status(context, input, version)
-            .await
-            .unwrap();
+        let status = get_transaction_status(context, input, version).await;
 
-        let output_json = status.serialize(Serializer { version }).unwrap();
+        if version < RpcVersion::V09 {
+            assert_matches::assert_matches!(status, Err(Error::TxnHashNotFound));
+            return;
+        }
+
+        let output_json = status.unwrap().serialize(Serializer { version }).unwrap();
 
         crate::assert_json_matches_fixture!(
             output_json,
@@ -532,7 +510,7 @@ mod tests {
 
     #[tokio::test]
     async fn txn_hash_not_found() {
-        let context = RpcContext::for_tests_with_pending().await;
+        let context = RpcContext::for_tests_with_pre_confirmed().await;
         let input = Input {
             transaction_hash: transaction_hash_bytes!(b"non-existent"),
         };

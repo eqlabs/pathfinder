@@ -185,33 +185,6 @@ mod tests {
     #[case::v09(RpcVersion::V09)]
     #[case::v10(RpcVersion::V10)]
     #[tokio::test]
-    async fn pending(#[case] version: RpcVersion) {
-        let context = RpcContext::for_tests_with_pending().await;
-        let tx_hash = transaction_hash_bytes!(b"pending tx hash 0");
-        let input = Input {
-            transaction_hash: tx_hash,
-            response_flags: TransactionResponseFlags::default(),
-        };
-        let output = get_transaction_by_hash(context, input, version)
-            .await
-            .unwrap();
-
-        let output_json = output.serialize(Serializer { version }).unwrap();
-
-        crate::assert_json_matches_fixture!(
-            output_json,
-            version,
-            "transactions/txn_pending_hash_0.json"
-        );
-    }
-
-    #[rstest::rstest]
-    #[case::v06(RpcVersion::V06)]
-    #[case::v07(RpcVersion::V07)]
-    #[case::v08(RpcVersion::V08)]
-    #[case::v09(RpcVersion::V09)]
-    #[case::v10(RpcVersion::V10)]
-    #[tokio::test]
     async fn pre_confirmed(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests_with_pre_confirmed().await;
         let tx_hash = transaction_hash_bytes!(b"preconfirmed tx hash 0");
@@ -342,7 +315,7 @@ mod tests {
     #[case::v10(RpcVersion::V10)]
     #[tokio::test]
     async fn reverted(#[case] version: RpcVersion) {
-        let context = RpcContext::for_tests_with_pending().await;
+        let context = RpcContext::for_tests_with_pre_confirmed().await;
         let input = Input {
             transaction_hash: transaction_hash_bytes!(b"txn reverted"),
             response_flags: TransactionResponseFlags::default(),
@@ -356,19 +329,25 @@ mod tests {
         crate::assert_json_matches_fixture!(output_json, version, "transactions/txn_reverted.json");
 
         let input = Input {
-            transaction_hash: transaction_hash_bytes!(b"pending reverted"),
+            transaction_hash: transaction_hash_bytes!(b"preconfirmed reverted"),
             response_flags: TransactionResponseFlags::default(),
         };
-        let output = get_transaction_by_hash(context, input, version)
-            .await
-            .unwrap();
+        let result = get_transaction_by_hash(context, input, version).await;
 
-        let output_json = output.serialize(Serializer { version }).unwrap();
+        if version < RpcVersion::V09 {
+            assert_matches::assert_matches!(
+                result,
+                Err(GetTransactionByHashError::TxnHashNotFound)
+            );
+            return;
+        }
+
+        let output_json = result.unwrap().serialize(Serializer { version }).unwrap();
 
         crate::assert_json_matches_fixture!(
             output_json,
             version,
-            "transactions/txn_pending_reverted.json"
+            "transactions/txn_preconfirmed_reverted.json"
         );
     }
 }

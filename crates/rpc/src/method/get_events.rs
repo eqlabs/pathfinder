@@ -281,7 +281,8 @@ pub async fn get_events(
         });
 
         // TODO: Verify the added `| None` in review.
-        let append_from_pending = db_ct.is_none() && matches!(to_block_id, Some(PreConfirmed) | None);
+        let append_from_pending =
+            db_ct.is_none() && matches!(to_block_id, Some(PreConfirmed) | None);
 
         let continuation_token = if append_from_pending {
             if events.len() < request.chunk_size {
@@ -396,7 +397,7 @@ fn get_pending_events(
             let amount_to_take = max_amount - taken_from_pre_latest;
 
             let pending_events_exhausted = match_and_fill_events(
-                pending.pending_tx_receipts_and_events(),
+                pending.pre_confirmed_tx_receipts_and_events(),
                 &mut events,
                 // Continuation token was used on pre-latest block, no offset for pending.
                 0,
@@ -420,7 +421,7 @@ fn get_pending_events(
         _ => {
             // Fetch from pending/pre-confirmed block only.
             let pending_events_exhausted = match_and_fill_events(
-                pending.pending_tx_receipts_and_events(),
+                pending.pre_confirmed_tx_receipts_and_events(),
                 &mut events,
                 start_offset,
                 max_amount,
@@ -1217,8 +1218,8 @@ mod tests {
                 },
             };
 
-            // Block 0 has a single event. Blocks, 1 and 2 have no events. PreConfirmed block (3
-            // in this case) has 3 events.
+            // Block 0 has a single event. Blocks, 1 and 2 have no events. PreConfirmed
+            // block (3 in this case) has 3 events.
             let all = get_events(context.clone(), input.clone(), RPC_VERSION)
                 .await
                 .unwrap()

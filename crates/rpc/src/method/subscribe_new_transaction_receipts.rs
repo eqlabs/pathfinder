@@ -269,11 +269,11 @@ impl RpcSubscriptionFlow for SubscribeNewTransactionReceipts {
                         .or_default();
 
                     let pending_txs_and_receipts = pending
-                        .pending_transactions()
+                        .pre_confirmed_transactions()
                         .iter()
                         .zip(
                             pending
-                                .pending_tx_receipts_and_events()
+                                .pre_confirmed_tx_receipts_and_events()
                                 .iter()
                         );
 

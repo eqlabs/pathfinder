@@ -72,7 +72,7 @@ pub async fn get_state_update(
                 .pending_data
                 .get(&tx, rpc_version)
                 .context("Query pending data")?
-                .pending_state_update();
+                .pre_confirmed_state_update();
             if !input.contract_addresses.is_empty() {
                 let mut own_state_update = state_update.as_ref().clone();
                 filter_state_update_contracts(&mut own_state_update, &input.contract_addresses);
@@ -432,7 +432,10 @@ mod tests {
             contract_addresses: HashSet::default(),
         };
 
-        let expected = context.pending_data.get_unchecked().pending_state_update();
+        let expected = context
+            .pending_data
+            .get_unchecked()
+            .pre_confirmed_state_update();
 
         let result = get_state_update(context.clone(), input.clone(), RpcVersion::V09)
             .await

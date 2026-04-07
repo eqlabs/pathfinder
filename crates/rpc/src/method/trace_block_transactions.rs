@@ -111,8 +111,8 @@ pub async fn trace_block_transactions(
                     .get(&db_tx, rpc_version)
                     .context("Querying pending data")?;
 
-                let header = pending.pending_header();
-                let transactions = pending.pending_transactions().to_vec();
+                let header = pending.pre_confirmed_header();
+                let transactions = pending.pre_confirmed_transactions().to_vec();
 
                 (
                     None,

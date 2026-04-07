@@ -297,11 +297,7 @@ impl RpcSubscriptionFlow for SubscribeNewTransactions {
 
                     let pending = pending_data.borrow_and_update().clone();
                     let pending_block_number = pending.pre_confirmed_block_number();
-                    let pending_finality_status = if pending.is_pre_confirmed() {
-                        TxnFinalityStatusWithoutL1Accepted::PreConfirmed
-                    } else {
-                        TxnFinalityStatusWithoutL1Accepted::AcceptedOnL2
-                    };
+                    let pending_finality_status = TxnFinalityStatusWithoutL1Accepted::PreConfirmed;
 
                     tracing::trace!(
                         block_number = %pending_block_number,
@@ -314,14 +310,13 @@ impl RpcSubscriptionFlow for SubscribeNewTransactions {
                         .or_default();
 
                     let pending_txs = pending
-                        .pending_transactions()
+                        .pre_confirmed_transactions()
                         .iter()
                         .zip(std::iter::repeat(pending_finality_status))
                         .chain(
                             pending
                                 .candidate_transactions()
-                                .into_iter()
-                                .flatten()
+                                .iter()
                                 .zip(std::iter::repeat(TxnFinalityStatusWithoutL1Accepted::Candidate)),
                         );
 
