@@ -783,7 +783,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pending_block() {
+    async fn pre_confirmed_block() {
         let context = RpcContext::for_tests();
         let input = Input {
             block_id: BlockId::PreConfirmed,

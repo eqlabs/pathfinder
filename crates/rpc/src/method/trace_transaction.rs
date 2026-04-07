@@ -318,7 +318,6 @@ impl From<TraceTransactionError> for ApplicationError {
 pub mod tests {
 
     use super::super::trace_block_transactions::tests::{
-        setup_multi_tx_trace_pending_test,
         setup_multi_tx_trace_pre_confirmed_test,
         setup_multi_tx_trace_pre_latest_test,
         setup_multi_tx_trace_test,
@@ -332,38 +331,6 @@ pub mod tests {
     #[tokio::test]
     async fn test_multiple_transactions() -> anyhow::Result<()> {
         let (context, _, traces) = setup_multi_tx_trace_test().await?;
-
-        for trace in traces {
-            let input = Input {
-                transaction_hash: trace.transaction_hash,
-            };
-            let output = trace_transaction(context.clone(), input, RPC_VERSION)
-                .await
-                .unwrap();
-            let expected = Output(crate::dto::TransactionTrace {
-                trace: trace.trace_root,
-                include_state_diff: false,
-            });
-            pretty_assertions_sorted::assert_eq!(
-                output
-                    .serialize(Serializer {
-                        version: RPC_VERSION
-                    })
-                    .unwrap(),
-                expected
-                    .serialize(Serializer {
-                        version: RPC_VERSION
-                    })
-                    .unwrap()
-            );
-        }
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_multiple_pending_transactions() -> anyhow::Result<()> {
-        let (context, traces) = setup_multi_tx_trace_pending_test().await?;
 
         for trace in traces {
             let input = Input {

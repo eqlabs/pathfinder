@@ -160,38 +160,6 @@ impl PendingData {
         }
     }
 
-    #[cfg(test)]
-    pub fn from_pending_block(
-        block: starknet_gateway_types::reply::PreLatestBlock,
-        state_update: StateUpdate,
-        number: BlockNumber,
-    ) -> Self {
-        let pre_confirmed = PreConfirmedBlock {
-            number,
-            l1_gas_price: block.l1_gas_price,
-            l1_data_gas_price: block.l1_data_gas_price,
-            l2_gas_price: block.l2_gas_price,
-            sequencer_address: block.sequencer_address,
-            status: block.status,
-            timestamp: block.timestamp,
-            starknet_version: block.starknet_version,
-            l1_da_mode: block.l1_da_mode.into(),
-            transactions: block.transactions,
-            transaction_receipts: block.transaction_receipts,
-        };
-        let state_update = Arc::new(state_update);
-        Self {
-            block: Arc::new(PendingBlocks {
-                pre_confirmed,
-                pre_latest: None,
-                candidate_transactions: vec![],
-            }),
-            state_update: Arc::clone(&state_update),
-            aggregated_state_update: state_update,
-            number,
-        }
-    }
-
     /// Converts a pre-confirmed block fetched from the gateway into pending
     /// data.
     ///

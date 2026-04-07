@@ -228,17 +228,6 @@ mod tests {
         assert_matches!(error, Error::BlockNotFound);
     }
 
-    #[tokio::test]
-    async fn pending() {
-        let context = RpcContext::for_tests_with_pending().await;
-        let input = Input {
-            block_id: BlockId::PreConfirmed,
-            contract_address: contract_address_bytes!(b"pending contract 0 address"),
-        };
-
-        get_class_at(context, input, RPC_VERSION).await.unwrap();
-    }
-
     #[rstest::rstest]
     #[case::v06(RpcVersion::V06)]
     #[case::v07(RpcVersion::V07)]

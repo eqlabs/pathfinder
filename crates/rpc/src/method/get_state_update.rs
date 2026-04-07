@@ -407,24 +407,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pending() {
-        let context = RpcContext::for_tests_with_pending().await;
-        let input = Input {
-            block_id: BlockId::PreConfirmed,
-            contract_addresses: HashSet::default(),
-        };
-
-        let expected = context.pending_data.get_unchecked().pending_state_update();
-
-        let result = get_state_update(context, input, RPC_VERSION)
-            .await
-            .unwrap()
-            .unwrap_pending();
-
-        assert_eq!(result, expected);
-    }
-
-    #[tokio::test]
     async fn pre_confirmed() {
         let context = RpcContext::for_tests_with_pre_confirmed().await;
         let input = Input {
