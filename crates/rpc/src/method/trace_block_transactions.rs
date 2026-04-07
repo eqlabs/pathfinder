@@ -118,7 +118,8 @@ pub async fn trace_block_transactions(
                     None,
                     header,
                     transactions,
-                    // Can't use the cache for pending blocks since they have no block hash.
+                    // Can't use the cache for pending blocks since they have no
+                    // block hash.
                     pathfinder_executor::TraceCache::default(),
                 )
             }
@@ -164,7 +165,7 @@ pub async fn trace_block_transactions(
         // when these blocks were produced). We should fall back to fetching
         // traces from the feeder gateway instead.
         if context.chain_id == ChainId::MAINNET
-            && input.block_id != BlockId::PreConfirmed
+            && !input.block_id.is_pending()
             && header.number >= MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START
             && header.number <= MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_END
         {
@@ -837,6 +838,8 @@ pub(crate) mod tests {
     };
     use crate::RpcVersion;
 
+    const RPC_VERSION: RpcVersion = RpcVersion::V09;
+
     #[derive(Debug)]
     pub struct Trace {
         pub transaction_hash: TransactionHash,
@@ -1050,7 +1053,62 @@ pub(crate) mod tests {
         Ok(())
     }
 
-    const RPC_VERSION: RpcVersion = RpcVersion::V09;
+    #[rstest::rstest]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
+    #[tokio::test]
+    async fn test_multiple_pre_confirmed_transactions(
+        #[case] version: RpcVersion,
+    ) -> anyhow::Result<()> {
+        let (context, _expected_traces) = setup_multi_tx_trace_pre_confirmed_test().await?;
+
+        let input = TraceBlockTransactionsInput {
+            block_id: BlockId::PreConfirmed,
+            trace_flags: crate::dto::TraceFlags::new(),
+        };
+        let output = trace_block_transactions(context, input, version)
+            .await
+            .unwrap()
+            .serialize(Serializer { version })
+            .unwrap();
+
+        crate::assert_json_matches_fixture!(
+            output,
+            version,
+            "traces/multiple_pre_confirmed_txs.json"
+        );
+
+        Ok(())
+    }
+
+    #[rstest::rstest]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[case::v10(RpcVersion::V10)]
+    #[tokio::test]
+    async fn test_multiple_pre_latest_transactions(
+        #[case] version: RpcVersion,
+    ) -> anyhow::Result<()> {
+        let (context, _expected_traces) = setup_multi_tx_trace_pre_latest_test().await?;
+
+        let input = TraceBlockTransactionsInput {
+            block_id: BlockId::PreConfirmed,
+            trace_flags: crate::dto::TraceFlags::new(),
+        };
+        let output = trace_block_transactions(context, input, version)
+            .await
+            .unwrap()
+            .serialize(Serializer { version })
+            .unwrap();
+
+        // trace_block_transactions only looks into the pre-confirmed block
+        assert!(output.as_array().unwrap().is_empty());
+
+        Ok(())
+    }
 
     /// Test that multiple requests for the same block return correctly. This
     /// checks that the trace request coalescing doesn't do anything
@@ -1532,10 +1590,11 @@ pub(crate) mod tests {
         //   - Starknet version is new enough to support local tracing
         //   - Block number is in the range where we fetch traces from the gateway
         //   - `RETURN_INITIAL_READS` is set
-        #[rustfmt::skip]
         let (re_execution_impossible_block, re_execution_impossible_starknet_version) = (
-            MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START + 10, // 1943704 + 10 = 1943714.
-            StarknetVersion::new(0, 13, 6, 0), // Version for block 1943714 on mainnet.
+            // 1943704 + 10 = 1943714.
+            MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START + 10,
+            // Version for block 1943714 on mainnet.
+            StarknetVersion::new(0, 13, 6, 0),
         );
         assert!(
             re_execution_impossible_starknet_version
