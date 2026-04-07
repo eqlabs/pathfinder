@@ -244,33 +244,6 @@ mod tests {
     const RPC_VERSION: RpcVersion = RpcVersion::V09;
 
     #[tokio::test]
-    async fn pending() {
-        let ctx = RpcContext::for_tests_with_pending().await;
-        let contract_address = contract_address_bytes!(b"pending contract 1 address");
-        let key = storage_address_bytes!(b"pending storage key 0");
-        let block_id = BlockId::PreConfirmed;
-        let response_flags = StorageResponseFlags::default();
-
-        let result = get_storage_at(
-            ctx,
-            Input {
-                contract_address,
-                key,
-                block_id,
-                response_flags,
-            },
-            RPC_VERSION,
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(
-            result.value,
-            storage_value_bytes!(b"pending storage value 0")
-        );
-    }
-
-    #[tokio::test]
     async fn pre_confirmed() {
         let ctx = RpcContext::for_tests_with_pre_confirmed().await;
 
@@ -327,8 +300,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pending_falls_back_to_latest() {
-        let ctx = RpcContext::for_tests_with_pending().await;
+    async fn pre_confirmed_falls_back_to_latest() {
+        let ctx = RpcContext::for_tests_with_pre_confirmed().await;
         let contract_address = contract_address_bytes!(b"contract 1");
         let key = storage_address_bytes!(b"storage addr 0");
         let block_id = BlockId::PreConfirmed;
@@ -350,10 +323,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pending_deployed_defaults_to_zero() {
-        let ctx = RpcContext::for_tests_with_pending().await;
+    async fn pre_confirmed_deployed_defaults_to_zero() {
+        let ctx = RpcContext::for_tests_with_pre_confirmed().await;
         // Contract is deployed in pending block, but has no storage values set.
-        let contract_address = contract_address_bytes!(b"pending contract 0 address");
+        let contract_address = contract_address_bytes!(b"preconfirmed contract 0 address");
         let key = storage_address_bytes!(b"non-existent");
         let block_id = BlockId::PreConfirmed;
         let response_flags = StorageResponseFlags::default();
@@ -377,7 +350,7 @@ mod tests {
 
     #[tokio::test]
     async fn latest() {
-        let ctx = RpcContext::for_tests_with_pending().await;
+        let ctx = RpcContext::for_tests_with_pre_confirmed().await;
         let contract_address = contract_address_bytes!(b"contract 1");
         let key = storage_address_bytes!(b"storage addr 0");
         let block_id = BlockId::Latest;
@@ -401,7 +374,7 @@ mod tests {
 
     #[tokio::test]
     async fn latest_with_update_block() {
-        let ctx = RpcContext::for_tests_with_pending().await;
+        let ctx = RpcContext::for_tests_with_pre_confirmed().await;
         let version = RpcVersion::V10;
         let contract_address = contract_address_bytes!(b"contract 1");
         let key = storage_address_bytes!(b"storage addr 0");
@@ -432,7 +405,7 @@ mod tests {
 
     #[tokio::test]
     async fn latest_without_update_block() {
-        let ctx = RpcContext::for_tests_with_pending().await;
+        let ctx = RpcContext::for_tests_with_pre_confirmed().await;
         let version = RpcVersion::V10;
         let contract_address = contract_address_bytes!(b"contract 1");
         let key = storage_address_bytes!(b"storage addr 0");
@@ -461,7 +434,7 @@ mod tests {
 
     #[tokio::test]
     async fn l1_accepted() {
-        let ctx = RpcContext::for_tests_with_pending().await;
+        let ctx = RpcContext::for_tests_with_pre_confirmed().await;
         let contract_address = contract_address_bytes!(b"contract 1");
         let key = storage_address_bytes!(b"storage addr 0");
         let block_id = BlockId::L1Accepted;
@@ -485,7 +458,7 @@ mod tests {
 
     #[tokio::test]
     async fn defaults_to_zero() {
-        let ctx = RpcContext::for_tests_with_pending().await;
+        let ctx = RpcContext::for_tests_with_pre_confirmed().await;
         let contract_address = contract_address_bytes!(b"contract 1");
         let key = storage_address_bytes!(b"non-existent");
         let block_id = BlockId::Latest;
@@ -510,7 +483,7 @@ mod tests {
 
     #[tokio::test]
     async fn by_hash() {
-        let ctx = RpcContext::for_tests_with_pending().await;
+        let ctx = RpcContext::for_tests_with_pre_confirmed().await;
         let contract_address = contract_address_bytes!(b"contract 1");
         let key = storage_address_bytes!(b"storage addr 0");
         let block_id = BlockId::Hash(block_hash_bytes!(b"block 1"));
@@ -534,7 +507,7 @@ mod tests {
 
     #[tokio::test]
     async fn by_number() {
-        let ctx = RpcContext::for_tests_with_pending().await;
+        let ctx = RpcContext::for_tests_with_pre_confirmed().await;
         let contract_address = contract_address_bytes!(b"contract 1");
         let key = storage_address_bytes!(b"storage addr 0");
         let block_id = BlockId::Number(BlockNumber::GENESIS + 1);
@@ -558,7 +531,7 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_contract() {
-        let ctx = RpcContext::for_tests_with_pending().await;
+        let ctx = RpcContext::for_tests_with_pre_confirmed().await;
         let contract_address = contract_address_bytes!(b"non-existent");
         let key = storage_address_bytes!(b"storage addr 0");
         let block_id = BlockId::Latest;
@@ -581,7 +554,7 @@ mod tests {
 
     #[tokio::test]
     async fn contract_is_unknown_before_deployment() {
-        let ctx = RpcContext::for_tests_with_pending().await;
+        let ctx = RpcContext::for_tests_with_pre_confirmed().await;
         let contract_address = contract_address_bytes!(b"contract 1");
         let key = storage_address_bytes!(b"storage addr 0");
         let block_id = BlockId::Hash(block_hash_bytes!(b"genesis"));
@@ -604,7 +577,7 @@ mod tests {
 
     #[tokio::test]
     async fn block_not_found_by_number() {
-        let ctx = RpcContext::for_tests_with_pending().await;
+        let ctx = RpcContext::for_tests_with_pre_confirmed().await;
         let contract_address = contract_address_bytes!(b"contract 1");
         let key = storage_address_bytes!(b"storage addr 0");
         let block_id = BlockId::Number(BlockNumber::MAX);
@@ -627,7 +600,7 @@ mod tests {
 
     #[tokio::test]
     async fn block_not_found_by_hash() {
-        let ctx = RpcContext::for_tests_with_pending().await;
+        let ctx = RpcContext::for_tests_with_pre_confirmed().await;
         let contract_address = contract_address_bytes!(b"contract 1");
         let key = storage_address_bytes!(b"storage addr 0");
         let block_id = BlockId::Hash(block_hash_bytes!(b"unknown"));

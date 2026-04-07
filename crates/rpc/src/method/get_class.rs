@@ -153,8 +153,8 @@ mod tests {
     const RPC_VERSION: RpcVersion = RpcVersion::V09;
 
     #[tokio::test]
-    async fn pending() {
-        let context = RpcContext::for_tests_with_pending().await;
+    async fn pre_confirmed() {
+        let context = RpcContext::for_tests_with_pre_confirmed().await;
 
         // Cairo v0.x class
         let valid_v0 = class_hash_bytes!(b"class 0 hash");
@@ -180,12 +180,12 @@ mod tests {
         )
         .await
         .unwrap();
-        let valid_pending = class_hash_bytes!(b"pending class 0 hash");
+        let valid_pre_confirmed = class_hash_bytes!(b"preconfirmed class 0 hash");
         super::get_class(
             context.clone(),
             Input {
                 block_id: BlockId::PreConfirmed,
-                class_hash: valid_pending,
+                class_hash: valid_pre_confirmed,
             },
             RPC_VERSION,
         )

@@ -1153,7 +1153,7 @@ mod tests {
 
         #[tokio::test]
         async fn backward_range() {
-            let context = RpcContext::for_tests_with_pending().await;
+            let context = RpcContext::for_tests_with_pre_confirmed().await;
 
             let input = GetEventsInput {
                 filter: EventFilter {
@@ -1169,7 +1169,7 @@ mod tests {
 
         #[tokio::test]
         async fn all_events() {
-            let context = RpcContext::for_tests_with_pending().await;
+            let context = RpcContext::for_tests_with_pre_confirmed().await;
 
             let mut input = GetEventsInput {
                 filter: EventFilter {
@@ -1208,90 +1208,6 @@ mod tests {
 
         #[tokio::test]
         async fn paging() {
-            let context = RpcContext::for_tests_with_pending().await;
-
-            let mut input = GetEventsInput {
-                filter: EventFilter {
-                    to_block: Some(BlockId::PreConfirmed),
-                    chunk_size: 1024,
-                    ..Default::default()
-                },
-            };
-
-            // Block 0 has a single event. Blocks, 1 and 2 have no events. PreConfirmed
-            // block (3 in this case) has 3 events.
-            let all = get_events(context.clone(), input.clone(), RPC_VERSION)
-                .await
-                .unwrap()
-                .events;
-
-            // Check edge case where the page is full with events from the DB but this was
-            // the last page from the DB -- should continue from offset 0 of the
-            // pending block next time
-            input.filter.chunk_size = 1;
-            input.filter.continuation_token = None;
-            let result = get_events(context.clone(), input.clone(), RPC_VERSION)
-                .await
-                .unwrap();
-            assert_eq!(result.events, &all[0..1]);
-            assert_eq!(result.continuation_token, Some("3-0".to_string()));
-
-            // Page includes a DB event and an event from the pending block, but there are
-            // more pending events for the next page
-            input.filter.chunk_size = 2;
-            input.filter.continuation_token = None;
-            let result = get_events(context.clone(), input.clone(), RPC_VERSION)
-                .await
-                .unwrap();
-            assert_eq!(result.events, &all[0..2]);
-            assert_eq!(result.continuation_token, Some("3-1".to_string()));
-
-            input.filter.chunk_size = 1;
-            input.filter.continuation_token = result.continuation_token;
-            let result = get_events(context.clone(), input.clone(), RPC_VERSION)
-                .await
-                .unwrap();
-            assert_eq!(result.events, &all[2..3]);
-            assert_eq!(result.continuation_token, Some("3-2".to_string()));
-
-            input.filter.chunk_size = 100; // Only a single event remains though
-            input.filter.continuation_token = result.continuation_token;
-            let result = get_events(context.clone(), input.clone(), RPC_VERSION)
-                .await
-                .unwrap();
-            assert_eq!(result.events, &all[3..4]);
-            assert_eq!(result.continuation_token, None);
-
-            // continuing from a page that does exist, should return all events (even from
-            // pending)
-            input.filter.chunk_size = 123;
-            input.filter.continuation_token = Some("0-0".to_string());
-            let result = get_events(context.clone(), input.clone(), RPC_VERSION)
-                .await
-                .unwrap();
-            assert_eq!(result.events, all);
-            assert_eq!(result.continuation_token, None);
-
-            // nonexistent page: offset too large
-            input.filter.chunk_size = 123; // Does not matter
-            input.filter.continuation_token = Some("3-3".to_string()); // Points to after the last event
-            let result = get_events(context.clone(), input.clone(), RPC_VERSION)
-                .await
-                .unwrap();
-            assert_eq!(result.events, &[]);
-            assert_eq!(result.continuation_token, None);
-
-            // nonexistent page: block number
-            input.filter.chunk_size = 123; // Does not matter
-            input.filter.continuation_token = Some("4-1".to_string()); // Points to after the last event
-            let error = get_events(context.clone(), input, RPC_VERSION)
-                .await
-                .unwrap_err();
-            assert_eq!(error, GetEventsError::InvalidContinuationToken);
-        }
-
-        #[tokio::test]
-        async fn paging_with_pre_latest_and_pre_confirmed() {
             let context = RpcContext::for_tests_with_pre_latest_and_pre_confirmed().await;
 
             let mut input = GetEventsInput {
@@ -1400,8 +1316,8 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn paging_with_no_more_matching_events_in_pending() {
-            let context = RpcContext::for_tests_with_pending().await;
+        async fn paging_with_no_more_matching_events_in_pre_confirmed() {
+            let context = RpcContext::for_tests_with_pre_confirmed().await;
 
             let mut input = GetEventsInput {
                 filter: EventFilter {
@@ -1410,7 +1326,7 @@ mod tests {
                     addresses: HashSet::new(),
                     keys: vec![vec![
                         event_key_bytes!(b"event 0 key"),
-                        event_key_bytes!(b"pending key 2"),
+                        event_key_bytes!(b"preconfirmed key 2"),
                     ]],
                     chunk_size: 1024,
                     continuation_token: None,
@@ -1434,7 +1350,7 @@ mod tests {
 
         #[tokio::test]
         async fn key_matching() {
-            let context = RpcContext::for_tests_with_pending().await;
+            let context = RpcContext::for_tests_with_pre_confirmed().await;
 
             let mut input = GetEventsInput {
                 filter: EventFilter {
@@ -1453,14 +1369,14 @@ mod tests {
                 .events;
             assert_eq!(all.len(), 3);
 
-            input.filter.keys = vec![vec![event_key_bytes!(b"pending key 2")]];
+            input.filter.keys = vec![vec![event_key_bytes!(b"preconfirmed key 2")]];
             let events = get_events(context.clone(), input.clone(), RPC_VERSION)
                 .await
                 .unwrap()
                 .events;
             assert_eq!(events, &all[2..3]);
 
-            input.filter.keys = vec![vec![], vec![event_key_bytes!(b"second pending key")]];
+            input.filter.keys = vec![vec![], vec![event_key_bytes!(b"second preconfirmed key")]];
             let events = get_events(context.clone(), input.clone(), RPC_VERSION)
                 .await
                 .unwrap()
@@ -1469,8 +1385,8 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn from_block_past_pending() {
-            let context = RpcContext::for_tests_with_pending().await;
+        async fn from_block_past_pre_confirmed() {
+            let context = RpcContext::for_tests_with_pre_confirmed().await;
 
             let input = GetEventsInput {
                 filter: EventFilter {
@@ -1485,8 +1401,8 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn from_block_pending_to_block_none() {
-            let context = RpcContext::for_tests_with_pending().await;
+        async fn from_block_pre_confirmed_to_block_none() {
+            let context = RpcContext::for_tests_with_pre_confirmed().await;
 
             let input = GetEventsInput {
                 filter: EventFilter {
@@ -1501,7 +1417,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn pending_block_by_number_returns_only_pending_data() {
+        async fn pre_confirmed_block_by_number_returns_only_pending_data() {
             let context = RpcContext::for_tests_with_pre_latest_and_pre_confirmed().await;
 
             const PRE_LATEST_BLOCK: BlockNumber = BlockNumber::new_or_panic(3);

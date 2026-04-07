@@ -94,7 +94,7 @@ mod tests {
     #[case::pending(BlockId::PreConfirmed, 3)]
     #[tokio::test]
     async fn ok(#[case] input: BlockId, #[case] expected: u64) {
-        let context = RpcContext::for_tests_with_pending().await;
+        let context = RpcContext::for_tests_with_pre_confirmed().await;
         let input = Input { block_id: input };
         let result = get_block_transaction_count(context, input, RPC_VERSION)
             .await
@@ -108,7 +108,7 @@ mod tests {
         let input = Input {
             block_id: block_hash_bytes!(b"invalid").into(),
         };
-        let context = RpcContext::for_tests_with_pending().await;
+        let context = RpcContext::for_tests_with_pre_confirmed().await;
         let result = get_block_transaction_count(context, input, RPC_VERSION).await;
 
         assert_matches::assert_matches!(result, Err(Error::BlockNotFound));

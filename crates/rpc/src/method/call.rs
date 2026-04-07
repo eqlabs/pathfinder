@@ -352,12 +352,12 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn storage_updated_in_pending() {
+        async fn storage_updated_in_pre_confirmed() {
             let (context, last_block_header, contract_address, test_key, test_value) =
                 test_context().await;
 
             let new_value = StorageValue(felt!("0x09"));
-            let pending_data = pending_data_with_update(
+            let pending_data = pre_confirmed_data_with_update(
                 last_block_header,
                 StateUpdate::default().with_storage_update(contract_address, test_key, new_value),
             );
@@ -391,13 +391,13 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn contract_deployed_in_pending() {
+        async fn contract_deployed_in_pre_confirmed() {
             let (context, last_block_header, _contract_address, test_key, _test_value) =
                 test_context().await;
 
             let new_value = storage_value!("0x09");
             let new_contract_address = contract_address!("0xdeadbeef");
-            let pending_data = pending_data_with_update(
+            let pending_data = pre_confirmed_data_with_update(
                 last_block_header,
                 StateUpdate::default()
                     .with_deployed_contract(new_contract_address, CONTRACT_DEFINITION_CLASS_HASH)
@@ -416,86 +416,6 @@ mod tests {
             };
             let result = call(context.clone(), input, RPC_VERSION).await.unwrap();
             assert_eq!(result, Output(vec![CallResultValue(new_value.0)]));
-        }
-
-        #[test_log::test(tokio::test)]
-        async fn contract_declared_and_deployed_in_pending() {
-            let (context, last_block_header, _contract_address, _test_key, _test_value) =
-                test_context().await;
-
-            let sierra_definition = include_bytes!("../../fixtures/contracts/storage_access.json");
-            let sierra_hash =
-                sierra_hash!("0x0544b92d358447cb9e50b65092b7169f931d29e05c1404a2cd08c6fd7e32ba90");
-            let casm_definition = include_bytes!("../../fixtures/contracts/storage_access.casm");
-            let casm_hash =
-                casm_hash!("0x069032ff71f77284e1a0864a573007108ca5cc08089416af50f03260f5d6d4d8");
-            let casm_hash_v2 = casm_hash_bytes!(b"casm hash blake");
-
-            let mut connection = context.storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
-            tx.insert_sierra_class_definition(
-                &sierra_hash,
-                sierra_definition,
-                casm_definition,
-                &casm_hash_v2,
-            )
-            .unwrap();
-            tx.commit().unwrap();
-
-            drop(connection);
-
-            let storage_key = StorageAddress::from_name(b"my_storage_var");
-            let storage_value = storage_value!("0x09");
-            let new_contract_address = contract_address!("0xdeadbeef");
-            let pending_data = pending_data_with_update(
-                last_block_header,
-                StateUpdate::default()
-                    .with_declared_sierra_class(sierra_hash, casm_hash)
-                    .with_deployed_contract(new_contract_address, ClassHash(sierra_hash.0))
-                    .with_storage_update(new_contract_address, storage_key, storage_value),
-            );
-            let (_tx, rx) = tokio::sync::watch::channel(pending_data);
-            let context = context.with_pending_data(rx);
-
-            let input = Input {
-                request: FunctionCall {
-                    contract_address: new_contract_address,
-                    entry_point_selector: EntryPoint::hashed(b"get_data"),
-                    calldata: vec![],
-                },
-                block_id: BlockId::PreConfirmed,
-            };
-            let result = call(context.clone(), input, RPC_VERSION).await.unwrap();
-            assert_eq!(result, Output(vec![CallResultValue(storage_value.0)]));
-        }
-
-        fn pending_data_with_update(
-            last_block_header: BlockHeader,
-            state_update: StateUpdate,
-        ) -> PendingData {
-            PendingData::from_pending_block(
-                PendingBlock {
-                    l1_gas_price: GasPrices {
-                        price_in_wei: last_block_header.eth_l1_gas_price,
-                        price_in_fri: Default::default(),
-                    },
-                    l2_gas_price: GasPrices {
-                        price_in_wei: last_block_header.eth_l2_gas_price,
-                        price_in_fri: last_block_header.strk_l2_gas_price,
-                    },
-                    l1_data_gas_price: Default::default(),
-                    parent_hash: last_block_header.hash,
-                    sequencer_address: last_block_header.sequencer_address,
-                    status: starknet_gateway_types::reply::Status::Pending,
-                    timestamp: BlockTimestamp::new_or_panic(last_block_header.timestamp.get() + 1),
-                    transaction_receipts: vec![],
-                    transactions: vec![],
-                    starknet_version: last_block_header.starknet_version,
-                    l1_da_mode: L1DataAvailabilityMode::Calldata,
-                },
-                state_update,
-                last_block_header.number + 1,
-            )
         }
 
         #[test_log::test(tokio::test)]
@@ -551,7 +471,7 @@ mod tests {
             assert_eq!(result, Output(vec![CallResultValue(storage_value.0)]));
 
             // We expect that JSON-RPC versions older than 0.9 do _not_ use the
-            // pre-committed block.
+            // pre-confirmed block.
             let error = call(context.clone(), input.clone(), RpcVersion::V08)
                 .await
                 .unwrap_err();
@@ -589,8 +509,8 @@ mod tests {
                         starknet_version: last_block_header.starknet_version,
                         l1_da_mode: L1DataAvailabilityMode::Blob.into(),
                     },
-                    candidate_transactions: vec![],
                     pre_latest: None,
+                    candidate_transactions: vec![],
                 },
                 state_update,
                 aggregated_state_update,

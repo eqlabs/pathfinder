@@ -332,17 +332,17 @@ mod tests {
             transaction_hash: transaction_hash_bytes!(b"preconfirmed reverted"),
             response_flags: TransactionResponseFlags::default(),
         };
-        let result = get_transaction_by_hash(context, input, version).await;
+        let output = get_transaction_by_hash(context, input, version).await;
 
         if version < RpcVersion::V09 {
             assert_matches::assert_matches!(
-                result,
+                output,
                 Err(GetTransactionByHashError::TxnHashNotFound)
             );
             return;
         }
 
-        let output_json = result.unwrap().serialize(Serializer { version }).unwrap();
+        let output_json = output.unwrap().serialize(Serializer { version }).unwrap();
 
         crate::assert_json_matches_fixture!(
             output_json,

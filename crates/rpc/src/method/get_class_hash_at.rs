@@ -229,8 +229,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pending() {
-        let context = RpcContext::for_tests_with_pending().await;
+    async fn pre_confirmed() {
+        let context = RpcContext::for_tests_with_pre_confirmed().await;
 
         // This should still work even though it was deployed in an actual block.
         let expected = class_hash_bytes!(b"class 0 hash");
@@ -243,11 +243,11 @@ mod tests {
             .unwrap();
         assert_eq!(result.0, expected);
 
-        // This is an actual pending deployed contract.
-        let expected = class_hash_bytes!(b"pending class 0 hash");
+        // This is an actual pre-confirmed deployed contract.
+        let expected = class_hash_bytes!(b"preconfirmed class 0 hash");
         let input = Input {
             block_id: BlockId::PreConfirmed,
-            contract_address: contract_address_bytes!(b"pending contract 0 address"),
+            contract_address: contract_address_bytes!(b"preconfirmed contract 0 address"),
         };
         let result = get_class_hash_at(context.clone(), input, RPC_VERSION)
             .await
@@ -255,10 +255,10 @@ mod tests {
         assert_eq!(result.0, expected);
 
         // Replaced class in pending should also work.
-        let expected = class_hash_bytes!(b"pending class 2 hash (replaced)");
+        let expected = class_hash_bytes!(b"preconfirmed class 2 hash rplcd");
         let input = Input {
             block_id: BlockId::PreConfirmed,
-            contract_address: contract_address_bytes!(b"pending contract 2 (replaced)"),
+            contract_address: contract_address_bytes!(b"preconfirmed contract 2 rplcd"),
         };
         let result = get_class_hash_at(context.clone(), input, RPC_VERSION)
             .await
@@ -273,6 +273,7 @@ mod tests {
         let result = get_class_hash_at(context, input, RPC_VERSION).await;
         assert_matches!(result, Err(Error::ContractNotFound));
     }
+
     use crate::dto::{SerializeForVersion, Serializer};
 
     #[rstest::rstest]
@@ -295,28 +296,6 @@ mod tests {
             .unwrap();
 
         crate::assert_json_matches_fixture!(output, version, "class_hash/latest.json");
-    }
-
-    #[rstest::rstest]
-    #[case::v06(RpcVersion::V06)]
-    #[case::v07(RpcVersion::V07)]
-    #[case::v08(RpcVersion::V08)]
-    #[case::v09(RpcVersion::V09)]
-    #[tokio::test]
-    async fn json_rpc_pending(#[case] version: RpcVersion) {
-        let context = RpcContext::for_tests_with_pending().await;
-        let input = Input {
-            block_id: BlockId::PreConfirmed,
-            contract_address: contract_address_bytes!(b"pending contract 0 address"),
-        };
-
-        let output = get_class_hash_at(context, input, RPC_VERSION)
-            .await
-            .unwrap()
-            .serialize(Serializer { version })
-            .unwrap();
-
-        crate::assert_json_matches_fixture!(output, version, "class_hash/pending.json");
     }
 
     #[rstest::rstest]
