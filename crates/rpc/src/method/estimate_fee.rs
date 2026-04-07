@@ -87,7 +87,7 @@ pub async fn estimate_fee(
                     .context("Querying pending data")?;
 
                 (
-                    pending.pending_header(),
+                    pending.pre_confirmed_header(),
                     Some(pending.aggregated_state_update()),
                 )
             }

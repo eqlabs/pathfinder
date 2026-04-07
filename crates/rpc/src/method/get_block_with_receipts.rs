@@ -4,7 +4,7 @@ use anyhow::Context;
 
 use crate::context::RpcContext;
 use crate::dto::TransactionResponseFlags;
-use crate::pending::PendingBlockVariant;
+use crate::pending::PendingBlocks;
 use crate::types::BlockId;
 use crate::RpcVersion;
 
@@ -20,8 +20,10 @@ pub enum Output {
         include_proof_facts: bool,
     },
     Pending {
-        block: Arc<PendingBlockVariant>,
-        block_number: pathfinder_common::BlockNumber,
+        block: Arc<PendingBlocks>,
+        // for backward compatibility with pre 0.9 versions we need to
+        // mimic the structure of the "pending" block, which included parent block hash
+        parent_hash: Option<pathfinder_common::BlockHash>,
         include_proof_facts: bool,
     },
 }
@@ -85,9 +87,22 @@ pub async fn get_block_with_receipts(
                     .get(&db, rpc_version)
                     .context("Querying pending data")?;
 
+                let parent_hash = (rpc_version < RpcVersion::V09)
+                    .then(|| {
+                        // versions before 0.9 don't have access to pre-confirmed data
+                        // so we never need to worry about parent hash coming from pre-latest
+                        Ok::<_, anyhow::Error>(
+                            db.block_header(pathfinder_common::BlockId::Latest)
+                                .context("Querying latest block header")?
+                                .unwrap_or_default()
+                                .hash,
+                        )
+                    })
+                    .transpose()?;
+
                 return Ok(Output::Pending {
                     block: pending.pending_block(),
-                    block_number: pending.pre_confirmed_block_number(),
+                    parent_hash,
                     include_proof_facts,
                 });
             }
@@ -164,10 +179,10 @@ impl crate::dto::SerializeForVersion for Output {
             }
             Output::Pending {
                 block,
-                block_number,
+                parent_hash,
                 include_proof_facts,
             } => {
-                serializer.flatten(&(*block_number, block.as_ref()))?;
+                serializer.flatten(&(parent_hash, &block.pre_confirmed))?;
                 let transactions = block.transactions();
                 serializer.serialize_iter(
                     "transactions",
@@ -299,29 +314,6 @@ mod tests {
     #[case::v09(RpcVersion::V09)]
     #[case::v10(RpcVersion::V10)]
     #[tokio::test]
-    async fn pending(#[case] version: RpcVersion) {
-        let context = RpcContext::for_tests_with_pending().await;
-        let input = Input {
-            block_id: BlockId::PreConfirmed,
-            response_flags: TransactionResponseFlags::default(),
-        };
-
-        let output = get_block_with_receipts(context.clone(), input, version)
-            .await
-            .unwrap()
-            .serialize(Serializer { version })
-            .unwrap();
-
-        crate::assert_json_matches_fixture!(output, version, "blocks/pending.json");
-    }
-
-    #[rstest::rstest]
-    #[case::v06(RpcVersion::V06)]
-    #[case::v07(RpcVersion::V07)]
-    #[case::v08(RpcVersion::V08)]
-    #[case::v09(RpcVersion::V09)]
-    #[case::v10(RpcVersion::V10)]
-    #[tokio::test]
     async fn pre_confirmed(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests_with_pre_confirmed().await;
         let input = Input {
@@ -346,7 +338,7 @@ mod tests {
     #[case::v10(RpcVersion::V10)]
     #[tokio::test]
     async fn latest(#[case] version: RpcVersion) {
-        let context = RpcContext::for_tests_with_pending().await;
+        let context = RpcContext::for_tests_with_pre_confirmed().await;
         let input = Input {
             block_id: BlockId::Latest,
             response_flags: TransactionResponseFlags::default(),

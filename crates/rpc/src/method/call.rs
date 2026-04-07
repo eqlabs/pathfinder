@@ -142,7 +142,7 @@ pub async fn call(
                     .context("Querying pending data")?;
 
                 (
-                    pending.pending_header(),
+                    pending.pre_confirmed_header(),
                     Some(pending.aggregated_state_update()),
                 )
             }
@@ -567,8 +567,8 @@ mod tests {
             let aggregated_state_update = state_update.clone();
 
             PendingData::from_parts(
-                crate::pending::PendingBlockVariant::PreConfirmed {
-                    block: crate::pending::PreConfirmedBlock {
+                crate::pending::PendingBlocks {
+                    pre_confirmed: crate::pending::PreConfirmedBlock {
                         number: last_block_header.number + 1,
                         l1_gas_price: GasPrices {
                             price_in_wei: last_block_header.eth_l1_gas_price,
@@ -588,10 +588,9 @@ mod tests {
                         transactions: vec![],
                         starknet_version: last_block_header.starknet_version,
                         l1_da_mode: L1DataAvailabilityMode::Blob.into(),
-                    }
-                    .into(),
+                    },
                     candidate_transactions: vec![],
-                    pre_latest_data: None,
+                    pre_latest: None,
                 },
                 state_update,
                 aggregated_state_update,

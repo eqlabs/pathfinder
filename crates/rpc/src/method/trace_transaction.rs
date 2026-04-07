@@ -73,11 +73,11 @@ pub async fn trace_transaction(
                 .context("Querying pending data")?;
 
             let (header, transactions, cache) = if let Some(pending_tx) = pending
-                .pending_transactions()
+                .pre_confirmed_transactions()
                 .iter()
                 .find(|tx| tx.hash == input.transaction_hash)
             {
-                let header = pending.pending_header();
+                let header = pending.pre_confirmed_header();
 
                 if header.starknet_version
                     < VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY
@@ -87,7 +87,7 @@ pub async fn trace_transaction(
 
                 (
                     header,
-                    pending.pending_transactions().to_vec(),
+                    pending.pre_confirmed_transactions().to_vec(),
                     // Can't use the cache for pending blocks since they have no block hash.
                     pathfinder_executor::TraceCache::default(),
                 )

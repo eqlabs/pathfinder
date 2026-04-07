@@ -83,7 +83,7 @@ pub async fn get_transaction_by_block_id_and_index(
                     .pending_data
                     .get(&db_tx, rpc_version)
                     .context("Querying pending dat")?
-                    .pending_transactions()
+                    .pre_confirmed_transactions()
                     .get(index)
                     .cloned()
                     .ok_or(GetTransactionByBlockIdAndIndexError::InvalidTxnIndex);

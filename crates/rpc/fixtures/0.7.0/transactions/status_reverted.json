@@ -1,4 +1,1 @@
-{
-  "execution_status": "REVERTED",
-  "finality_status": "ACCEPTED_ON_L2"
-}
+"pre-0.9 json rpc doesn't have access to pre-confirmed data"

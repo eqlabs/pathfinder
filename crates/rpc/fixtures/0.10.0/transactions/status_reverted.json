@@ -1,5 +1,5 @@
 {
   "execution_status": "REVERTED",
   "failure_reason": "Reverted!",
-  "finality_status": "ACCEPTED_ON_L2"
+  "finality_status": "PRE_CONFIRMED"
 }

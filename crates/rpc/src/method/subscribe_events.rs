@@ -377,23 +377,23 @@ impl RpcSubscriptionFlow for SubscribeEvents {
 
                     let pending = pending_data.borrow_and_update().clone();
                     // pre-confirmed data is returned only if explicitly requested
-                    if pending.is_pre_confirmed() && !params.finality_status.is_pre_confirmed() {
+                    if  !params.finality_status.is_pre_confirmed() {
                         continue;
                     }
 
                     tracing::trace!(block_number=%pending.pre_confirmed_block_number(), "Received pre-confirmed block update");
 
                     let pending_finality = pending.finality_status();
-                    let pending_block_number = pending.pre_confirmed_block_number();
+                    let pre_confirmed_block_number = pending.pre_confirmed_block_number();
                     let sent_pending_updates = sent_updates_per_block
-                        .entry(pending_block_number)
+                        .entry(pre_confirmed_block_number)
                         .or_default();
 
                     if send_event_updates(
-                        pending.pending_tx_receipts_and_events(),
+                        pending.pre_confirmed_tx_receipts_and_events(),
                         sent_pending_updates,
                         None,
-                        pending_block_number,
+                        pre_confirmed_block_number,
                         pending_finality,
                         &params,
                         &tx
@@ -494,7 +494,7 @@ mod tests {
     use pathfinder_crypto::Felt;
     use pathfinder_storage::StorageBuilder;
     use pretty_assertions_sorted::assert_eq;
-    use starknet_gateway_types::reply::{PendingBlock, PreConfirmedBlock};
+    use starknet_gateway_types::reply::PreConfirmedBlock;
     use tokio::sync::mpsc;
 
     use crate::context::{RpcContext, WebsocketContext};
@@ -773,9 +773,9 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
-    async fn filter_keys_pending() {
+    async fn filter_keys_pre_confirmed() {
         let num_blocks = SubscribeEvents::CATCH_UP_BATCH_SIZE + 10;
-        let (router, pending_data_tx) = setup(num_blocks, RpcVersion::V08).await;
+        let (router, pending_data_tx) = setup(num_blocks, RpcVersion::V09).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -783,6 +783,7 @@ mod tests {
             {
                 "block_id": {"block_number": 0},
                 "keys": [["0x16", format!("{:x}", num_blocks), format!("{:x}", num_blocks + 1)]],
+                "finality_status": "PRE_CONFIRMED",
             }
         );
         receiver_tx
@@ -809,7 +810,7 @@ mod tests {
             _ => panic!("Expected text message"),
         };
 
-        let expected = sample_event_message(0x16, subscription_id, RpcVersion::V08);
+        let expected = sample_event_message(0x16, subscription_id, RpcVersion::V09);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -819,11 +820,13 @@ mod tests {
 
         let next_block_number = SubscribeEvents::CATCH_UP_BATCH_SIZE + 10;
         pending_data_tx
-            .send(crate::PendingData::from_pending_block(
-                sample_pending_block(next_block_number),
-                StateUpdate::default(),
-                BlockNumber::new_or_panic(next_block_number),
-            ))
+            .send(
+                crate::PendingData::try_from_pre_confirmed_block(
+                    sample_pre_confirmed_block(next_block_number).into(),
+                    BlockNumber::new_or_panic(next_block_number),
+                )
+                .unwrap(),
+            )
             .unwrap();
         let expected = sample_event_message_without_block_hash(next_block_number, subscription_id);
         let event = sender_rx.recv().await.unwrap().unwrap();
@@ -840,6 +843,14 @@ mod tests {
             .send(sample_block(next_block_number).into())
             .unwrap();
 
+        let expected = sample_event_message(next_block_number, subscription_id, RpcVersion::V09);
+        let event = sender_rx.recv().await.unwrap().unwrap();
+        let json: serde_json::Value = match event {
+            Message::Text(json) => serde_json::from_str(&json).unwrap(),
+            _ => panic!("Expected text message"),
+        };
+        assert_eq!(json, expected);
+
         let next_block_number = next_block_number + 1;
         assert_eq!(
             router
@@ -851,7 +862,7 @@ mod tests {
             1
         );
 
-        let expected = sample_event_message(next_block_number, subscription_id, RpcVersion::V08);
+        let expected = sample_event_message(next_block_number, subscription_id, RpcVersion::V09);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -1326,17 +1337,6 @@ mod tests {
         }
     }
 
-    fn sample_pending_block(block_number: u64) -> PendingBlock {
-        PendingBlock {
-            transaction_receipts: vec![(
-                sample_receipt(block_number),
-                vec![sample_event(block_number)],
-            )],
-            transactions: vec![sample_transaction(block_number)],
-            ..Default::default()
-        }
-    }
-
     fn sample_pre_confirmed_block(block_number: u64) -> PreConfirmedBlock {
         PreConfirmedBlock {
             transaction_receipts: vec![Some((
@@ -1395,6 +1395,8 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove("block_hash");
+        message["params"]["result"]["finality_status"] = "PRE_CONFIRMED".into();
+
         message
     }
 

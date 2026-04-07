@@ -6,7 +6,7 @@ use pathfinder_common::BlockHeader;
 
 use crate::context::RpcContext;
 use crate::dto::TransactionResponseFlags;
-use crate::pending::PendingBlockVariant;
+use crate::pending::PendingBlocks;
 use crate::types::BlockId;
 use crate::RpcVersion;
 
@@ -43,8 +43,10 @@ impl crate::dto::DeserializeForVersion for Input {
 #[derive(Debug)]
 pub enum Output {
     Pending {
-        header: Arc<PendingBlockVariant>,
-        block_number: pathfinder_common::BlockNumber,
+        block: Arc<PendingBlocks>,
+        // for backward compatibility with pre 0.9 versions we need to
+        // mimic the structure of the "pending" block, which included parent block hash
+        parent_hash: Option<pathfinder_common::BlockHash>,
         transactions: Vec<Transaction>,
         include_proof_facts: bool,
     },
@@ -88,11 +90,25 @@ pub async fn get_block_with_txs(
                     .get(&transaction, rpc_version)
                     .context("Querying pending data")?;
 
-                let transactions = pending.pending_transactions().to_vec();
+                let transactions = pending.pre_confirmed_transactions().to_vec();
+
+                let parent_hash = (rpc_version < RpcVersion::V09)
+                    .then(|| {
+                        // versions before 0.9 don't have access to pre-confirmed data
+                        // so we never need to worry about parent hash coming from pre-latest
+                        Ok::<_, anyhow::Error>(
+                            transaction
+                                .block_header(pathfinder_common::BlockId::Latest)
+                                .context("Querying latest block header")?
+                                .unwrap_or_default()
+                                .hash,
+                        )
+                    })
+                    .transpose()?;
 
                 return Ok(Output::Pending {
-                    header: pending.pending_block(),
-                    block_number: pending.pre_confirmed_block_number(),
+                    block: pending.pending_block(),
+                    parent_hash,
                     transactions,
                     include_proof_facts,
                 });
@@ -134,13 +150,13 @@ impl crate::dto::SerializeForVersion for Output {
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
             Output::Pending {
-                header,
-                block_number,
+                block,
+                parent_hash,
                 transactions,
                 include_proof_facts,
             } => {
                 let mut serializer = serializer.serialize_struct()?;
-                serializer.flatten(&(*block_number, header.as_ref()))?;
+                serializer.flatten(&(parent_hash, &block.pre_confirmed))?;
                 serializer.serialize_iter(
                     "transactions",
                     transactions.len(),
@@ -249,27 +265,6 @@ mod tests {
     #[case::v09(RpcVersion::V09)]
     #[case::v10(RpcVersion::V10)]
     #[tokio::test]
-    async fn pending(#[case] version: RpcVersion) {
-        let context = RpcContext::for_tests_with_pending().await;
-
-        let input = Input {
-            block_id: BlockId::PreConfirmed,
-            response_flags: Default::default(),
-        };
-
-        let output = get_block_with_txs(context, input, version).await.unwrap();
-        let output_json = output.serialize(Serializer { version }).unwrap();
-
-        crate::assert_json_matches_fixture!(output_json, version, "blocks/pending_with_txs.json");
-    }
-
-    #[rstest::rstest]
-    #[case::v06(RpcVersion::V06)]
-    #[case::v07(RpcVersion::V07)]
-    #[case::v08(RpcVersion::V08)]
-    #[case::v09(RpcVersion::V09)]
-    #[case::v10(RpcVersion::V10)]
-    #[tokio::test]
     async fn pre_confirmed(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests_with_pre_confirmed().await;
 
@@ -296,7 +291,7 @@ mod tests {
     #[case::v10(RpcVersion::V10)]
     #[tokio::test]
     async fn latest(#[case] version: RpcVersion) {
-        let context = RpcContext::for_tests_with_pending().await;
+        let context = RpcContext::for_tests_with_pre_confirmed().await;
 
         let input = Input {
             block_id: BlockId::Latest,
@@ -311,7 +306,7 @@ mod tests {
 
     #[tokio::test]
     async fn latest_with_proof_facts() {
-        let context = RpcContext::for_tests_with_pending().await;
+        let context = RpcContext::for_tests_with_pre_confirmed().await;
         let version = RpcVersion::V10;
 
         let input = Input {
