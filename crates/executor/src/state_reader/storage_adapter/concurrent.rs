@@ -11,7 +11,6 @@ use pathfinder_common::{
     ContractAddress,
     ContractNonce,
     DecidedBlocks,
-    SierraHash,
     StorageAddress,
     StorageValue,
 };
@@ -128,17 +127,10 @@ impl StorageAdapter for ConcurrentStorageAdapter {
     }
 
     fn casm_definition(&self, class_hash: ClassHash) -> Result<Option<Vec<u8>>, StateError> {
-        {
-            let decided_blocks = self.decided_blocks.read().unwrap();
-            if let Some(casm_def) = decided_blocks.iter().find_map(|(_, b)| {
-                b.block.declared_classes.iter().find_map(|c| {
-                    (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_def.clone())
-                })
-            }) {
-                return Ok(Some(casm_def));
-            }
-            // Otherwise fetch from the database
+        if let Some(casm_def) = decided::casm_definition(&self.decided_blocks, class_hash) {
+            return Ok(Some(casm_def));
         }
+        // Otherwise fetch from the database
 
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
@@ -151,18 +143,12 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         &self,
         class_hash: ClassHash,
     ) -> Result<Option<(Option<BlockNumber>, Vec<u8>)>, StateError> {
+        if let Some(block_number_and_class_def) =
+            decided::class_definition_with_block_number(&self.decided_blocks, class_hash)
         {
-            let decided_blocks = self.decided_blocks.read().unwrap();
-            if let Some(block_number_and_class_def) = decided_blocks.iter().find_map(|(n, b)| {
-                b.block.declared_classes.iter().find_map(|c| {
-                    (c.sierra_hash == SierraHash(class_hash.0))
-                        .then_some((Some(*n), c.sierra_def.clone()))
-                })
-            }) {
-                return Ok(Some(block_number_and_class_def));
-            }
-            // Otherwise fetch from the database
+            return Ok(Some(block_number_and_class_def));
         }
+        // Otherwise fetch from the database
 
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
@@ -176,38 +162,12 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         block_id: BlockId,
         class_hash: ClassHash,
     ) -> Result<Option<Vec<u8>>, StateError> {
-        match block_id {
-            BlockId::Number(block_number) => {
-                let decided_blocks = self.decided_blocks.read().unwrap();
-                let class_def = decided_blocks.iter().rev().find_map(|(n, b)| {
-                    (*n <= block_number)
-                        .then_some(b.block.declared_classes.iter().find_map(|c| {
-                            (c.sierra_hash == SierraHash(class_hash.0))
-                                .then_some(c.casm_def.clone())
-                        }))
-                        .and_then(|x| x)
-                });
-
-                if let Some(class_def) = class_def {
-                    return Ok(Some(class_def));
-                }
-                // Otherwise fetch from the database
-            }
-            BlockId::Hash(_) => { /* Decided blocks don't have a hash yet */ }
-            BlockId::Latest => {
-                let decided_blocks = self.decided_blocks.read().unwrap();
-                let class_def = decided_blocks.iter().rev().find_map(|(_, b)| {
-                    b.block.declared_classes.iter().find_map(|c| {
-                        (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_def.clone())
-                    })
-                });
-
-                if let Some(class_def) = class_def {
-                    return Ok(Some(class_def));
-                }
-                // Otherwise fetch from the database
-            }
+        if let Some(casm_def) =
+            decided::casm_definition_at(&self.decided_blocks, block_id, class_hash)
+        {
+            return Ok(Some(casm_def));
         }
+        // Otherwise fetch from the database
 
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
@@ -221,44 +181,14 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         block_id: BlockId,
         class_hash: ClassHash,
     ) -> Result<Option<(BlockNumber, Vec<u8>)>, StateError> {
-        match block_id {
-            BlockId::Number(block_number) => {
-                let decided_blocks = self.decided_blocks.read().unwrap();
-                let block_number_and_class_def = decided_blocks.iter().rev().find_map(|(n, b)| {
-                    (*n <= block_number)
-                        .then_some(b.block.declared_classes.iter().find_map(|c| {
-                            (c.sierra_hash == SierraHash(class_hash.0))
-                                .then_some(c.sierra_def.clone())
-                        }))
-                        .and_then(|x| x)
-                        .map(|def| (*n, def))
-                });
-
-                if let Some(block_number_and_class_def) = block_number_and_class_def {
-                    return Ok(Some(block_number_and_class_def));
-                }
-                // Otherwise fetch from the database
-            }
-            BlockId::Hash(_) => { /* Decided blocks don't have a hash yet */ }
-            BlockId::Latest => {
-                let decided_blocks = self.decided_blocks.read().unwrap();
-                let block_number_and_class_def = decided_blocks.iter().rev().find_map(|(n, b)| {
-                    b.block
-                        .declared_classes
-                        .iter()
-                        .find_map(|c| {
-                            (c.sierra_hash == SierraHash(class_hash.0))
-                                .then_some(c.sierra_def.clone())
-                        })
-                        .map(|def| (*n, def))
-                });
-
-                if let Some(block_number_and_class_def) = block_number_and_class_def {
-                    return Ok(Some(block_number_and_class_def));
-                }
-                // Otherwise fetch from the database
-            }
+        if let Some(result) = decided::class_definition_at_with_block_number(
+            &self.decided_blocks,
+            block_id,
+            class_hash,
+        ) {
+            return Ok(Some(result));
         }
+        // Otherwise fetch from the database
 
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
@@ -275,71 +205,15 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         contract_address: ContractAddress,
         storage_address: StorageAddress,
     ) -> Result<Option<StorageValue>, StateError> {
-        match block_id {
-            BlockId::Number(block_number) => {
-                let decided_blocks = self.decided_blocks.read().unwrap();
-                let storage_value = decided_blocks.iter().rev().find_map(|(n, b)| {
-                    (*n <= block_number)
-                        .then_some(
-                            b.block
-                                .state_update
-                                .contract_updates
-                                .iter()
-                                .map(|(address, update)| (address, &update.storage))
-                                .chain(
-                                    b.block
-                                        .state_update
-                                        .system_contract_updates
-                                        .iter()
-                                        .map(|(address, update)| (address, &update.storage)),
-                                )
-                                .find_map(|(address, storage)| {
-                                    (*address == contract_address).then_some(
-                                        storage.iter().find_map(|(address, value)| {
-                                            (*address == storage_address).then_some(*value)
-                                        }),
-                                    )
-                                }),
-                        )
-                        .and_then(|x| x)
-                        .and_then(|x| x)
-                });
-
-                if let Some(storage_value) = storage_value {
-                    return Ok(Some(storage_value));
-                }
-                // Otherwise fetch from the database
-            }
-            BlockId::Hash(_) => { /* Decided blocks don't have a hash yet */ }
-            BlockId::Latest => {
-                let decided_blocks = self.decided_blocks.read().unwrap();
-                let storage_value = decided_blocks.iter().rev().find_map(|(_, b)| {
-                    b.block
-                        .state_update
-                        .contract_updates
-                        .iter()
-                        .map(|(address, update)| (address, &update.storage))
-                        .chain(
-                            b.block
-                                .state_update
-                                .system_contract_updates
-                                .iter()
-                                .map(|(address, update)| (address, &update.storage)),
-                        )
-                        .find_map(|(address, storage)| {
-                            (*address == contract_address).then_some(storage.iter().find_map(
-                                |(address, value)| (*address == storage_address).then_some(*value),
-                            ))
-                        })
-                        .and_then(|x| x)
-                });
-
-                if let Some(storage_value) = storage_value {
-                    return Ok(Some(storage_value));
-                }
-                // Otherwise fetch from the database
-            }
+        if let Some(value) = decided::storage_value(
+            &self.decided_blocks,
+            block_id,
+            contract_address,
+            storage_address,
+        ) {
+            return Ok(Some(value));
         }
+        // Otherwise fetch from the database
 
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
@@ -358,45 +232,12 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         contract_address: ContractAddress,
         block_id: BlockId,
     ) -> Result<Option<ContractNonce>, StateError> {
-        match block_id {
-            BlockId::Number(block_number) => {
-                let decided_blocks = self.decided_blocks.read().unwrap();
-                let nonce = decided_blocks.iter().rev().find_map(|(n, b)| {
-                    (*n <= block_number)
-                        .then_some(b.block.state_update.contract_updates.iter().find_map(
-                            |(address, update)| {
-                                (*address == contract_address).then_some(update.nonce)
-                            },
-                        ))
-                        .and_then(|x| x)
-                        .and_then(|x| x)
-                });
-
-                if let Some(nonce) = nonce {
-                    return Ok(Some(nonce));
-                }
-                // Otherwise fetch from the database
-            }
-            BlockId::Hash(_) => { /* Decided blocks don't have a hash yet */ }
-            BlockId::Latest => {
-                let decided_blocks = self.decided_blocks.read().unwrap();
-                let nonce = decided_blocks.iter().rev().find_map(|(_, b)| {
-                    b.block
-                        .state_update
-                        .contract_updates
-                        .iter()
-                        .find_map(|(address, update)| {
-                            (*address == contract_address).then_some(update.nonce)
-                        })
-                        .and_then(|x| x)
-                });
-
-                if let Some(nonce) = nonce {
-                    return Ok(Some(nonce));
-                }
-                // Otherwise fetch from the database
-            }
+        if let Some(nonce) =
+            decided::contract_nonce(&self.decided_blocks, contract_address, block_id)
+        {
+            return Ok(Some(nonce));
         }
+        // Otherwise fetch from the database
 
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
@@ -410,47 +251,12 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         block_id: BlockId,
         contract_address: ContractAddress,
     ) -> Result<Option<ClassHash>, StateError> {
-        match block_id {
-            BlockId::Number(block_number) => {
-                let decided_blocks = self.decided_blocks.read().unwrap();
-                let class_hash = decided_blocks.iter().rev().find_map(|(n, b)| {
-                    (*n <= block_number)
-                        .then_some(b.block.state_update.contract_updates.iter().find_map(
-                            |(address, update)| {
-                                (*address == contract_address)
-                                    .then_some(update.class.map(|c| c.class_hash()))
-                            },
-                        ))
-                        .and_then(|x| x)
-                        .and_then(|x| x)
-                });
-
-                if let Some(class_hash) = class_hash {
-                    return Ok(Some(class_hash));
-                }
-                // Otherwise fetch from the database
-            }
-            BlockId::Hash(_) => { /* Decided blocks don't have a hash yet */ }
-            BlockId::Latest => {
-                let decided_blocks = self.decided_blocks.read().unwrap();
-                let class_hash = decided_blocks.iter().rev().find_map(|(_, b)| {
-                    b.block
-                        .state_update
-                        .contract_updates
-                        .iter()
-                        .find_map(|(address, update)| {
-                            (*address == contract_address)
-                                .then_some(update.class.map(|c| c.class_hash()))
-                        })
-                        .and_then(|x| x)
-                });
-
-                if let Some(class_hash) = class_hash {
-                    return Ok(Some(class_hash));
-                }
-                // Otherwise fetch from the database
-            }
+        if let Some(class_hash) =
+            decided::contract_class_hash(&self.decided_blocks, block_id, contract_address)
+        {
+            return Ok(Some(class_hash));
         }
+        // Otherwise fetch from the database
 
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
@@ -469,17 +275,10 @@ impl StorageAdapter for ConcurrentStorageAdapter {
     }
 
     fn casm_hash_v2(&self, class_hash: ClassHash) -> Result<Option<CasmHash>, StateError> {
-        {
-            let decided_blocks = self.decided_blocks.read().unwrap();
-            if let Some(casm_def) = decided_blocks.iter().find_map(|(_, b)| {
-                b.block.declared_classes.iter().find_map(|c| {
-                    (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_hash_v2)
-                })
-            }) {
-                return Ok(Some(casm_def));
-            }
-            // Otherwise fetch from the database
+        if let Some(casm_hash) = decided::casm_hash_v2(&self.decided_blocks, class_hash) {
+            return Ok(Some(casm_hash));
         }
+        // Otherwise fetch from the database
 
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
@@ -493,37 +292,10 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         block_id: BlockId,
         class_hash: ClassHash,
     ) -> Result<Option<CasmHash>, StateError> {
-        match block_id {
-            BlockId::Number(block_number) => {
-                let decided_blocks = self.decided_blocks.read().unwrap();
-                let casm_hash = decided_blocks.iter().rev().find_map(|(n, b)| {
-                    (*n <= block_number)
-                        .then_some(b.block.declared_classes.iter().find_map(|c| {
-                            (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_hash_v2)
-                        }))
-                        .and_then(|x| x)
-                });
-
-                if let Some(casm_hash) = casm_hash {
-                    return Ok(Some(casm_hash));
-                }
-                // Otherwise fetch from the database
-            }
-            BlockId::Hash(_) => { /* Decided blocks don't have a hash yet */ }
-            BlockId::Latest => {
-                let decided_blocks = self.decided_blocks.read().unwrap();
-                let casm_hash = decided_blocks.iter().rev().find_map(|(_, b)| {
-                    b.block.declared_classes.iter().find_map(|c| {
-                        (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_hash_v2)
-                    })
-                });
-
-                if let Some(casm_hash) = casm_hash {
-                    return Ok(Some(casm_hash));
-                }
-                // Otherwise fetch from the database
-            }
+        if let Some(casm_hash) = decided::casm_hash_at(&self.decided_blocks, block_id, class_hash) {
+            return Ok(Some(casm_hash));
         }
+        // Otherwise fetch from the database
 
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
@@ -625,6 +397,1000 @@ fn db_thread(
                         .map_err(map_anyhow_to_state_err),
                 )
                 .expect("Receiver not to be dropped"),
+        }
+    }
+}
+
+mod decided {
+    use pathfinder_common::{
+        BlockId,
+        BlockNumber,
+        CasmHash,
+        ClassHash,
+        ContractAddress,
+        ContractNonce,
+        DecidedBlocks,
+        SierraHash,
+        StorageAddress,
+        StorageValue,
+    };
+
+    pub fn casm_definition(
+        decided_blocks: &DecidedBlocks,
+        class_hash: ClassHash,
+    ) -> Option<Vec<u8>> {
+        let decided_blocks = decided_blocks.read().unwrap();
+        decided_blocks.iter().find_map(|(_, b)| {
+            b.block.declared_classes.iter().find_map(|c| {
+                (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_def.clone())
+            })
+        })
+    }
+
+    pub fn class_definition_with_block_number(
+        decided_blocks: &DecidedBlocks,
+        class_hash: ClassHash,
+    ) -> Option<(Option<BlockNumber>, Vec<u8>)> {
+        let decided_blocks = decided_blocks.read().unwrap();
+        decided_blocks.iter().find_map(|(n, b)| {
+            b.block.declared_classes.iter().find_map(|c| {
+                (c.sierra_hash == SierraHash(class_hash.0))
+                    .then_some((Some(*n), c.sierra_def.clone()))
+            })
+        })
+    }
+
+    pub fn casm_definition_at(
+        decided_blocks: &DecidedBlocks,
+        block_id: BlockId,
+        class_hash: ClassHash,
+    ) -> Option<Vec<u8>> {
+        match block_id {
+            BlockId::Number(block_number) => {
+                let decided_blocks = decided_blocks.read().unwrap();
+                decided_blocks.iter().rev().find_map(|(n, b)| {
+                    (*n <= block_number)
+                        .then_some(b.block.declared_classes.iter().find_map(|c| {
+                            (c.sierra_hash == SierraHash(class_hash.0))
+                                .then_some(c.casm_def.clone())
+                        }))
+                        .and_then(|x| x)
+                })
+            }
+            BlockId::Hash(_) => {
+                // Decided blocks don't have a hash yet
+                None
+            }
+            BlockId::Latest => {
+                let decided_blocks = decided_blocks.read().unwrap();
+                decided_blocks.iter().rev().find_map(|(_, b)| {
+                    b.block.declared_classes.iter().find_map(|c| {
+                        (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_def.clone())
+                    })
+                })
+            }
+        }
+    }
+
+    pub fn class_definition_at_with_block_number(
+        decided_blocks: &DecidedBlocks,
+        block_id: BlockId,
+        class_hash: ClassHash,
+    ) -> Option<(BlockNumber, Vec<u8>)> {
+        match block_id {
+            BlockId::Number(block_number) => {
+                let decided_blocks = decided_blocks.read().unwrap();
+                decided_blocks.iter().rev().find_map(|(n, b)| {
+                    (*n <= block_number)
+                        .then_some(b.block.declared_classes.iter().find_map(|c| {
+                            (c.sierra_hash == SierraHash(class_hash.0))
+                                .then_some(c.sierra_def.clone())
+                        }))
+                        .and_then(|x| x)
+                        .map(|def| (*n, def))
+                })
+            }
+            BlockId::Hash(_) => {
+                // Decided blocks don't have a hash yet
+                None
+            }
+            BlockId::Latest => {
+                let decided_blocks = decided_blocks.read().unwrap();
+                decided_blocks.iter().rev().find_map(|(n, b)| {
+                    b.block
+                        .declared_classes
+                        .iter()
+                        .find_map(|c| {
+                            (c.sierra_hash == SierraHash(class_hash.0))
+                                .then_some(c.sierra_def.clone())
+                        })
+                        .map(|def| (*n, def))
+                })
+            }
+        }
+    }
+
+    pub fn storage_value(
+        decided_blocks: &DecidedBlocks,
+        block_id: BlockId,
+        contract_address: ContractAddress,
+        storage_address: StorageAddress,
+    ) -> Option<StorageValue> {
+        match block_id {
+            BlockId::Number(block_number) => {
+                let decided_blocks = decided_blocks.read().unwrap();
+                decided_blocks.iter().rev().find_map(|(n, b)| {
+                    (*n <= block_number)
+                        .then_some(
+                            b.block
+                                .state_update
+                                .contract_updates
+                                .iter()
+                                .map(|(address, update)| (address, &update.storage))
+                                .chain(
+                                    b.block
+                                        .state_update
+                                        .system_contract_updates
+                                        .iter()
+                                        .map(|(address, update)| (address, &update.storage)),
+                                )
+                                .find_map(|(address, storage)| {
+                                    (*address == contract_address).then_some(
+                                        storage.iter().find_map(|(address, value)| {
+                                            (*address == storage_address).then_some(*value)
+                                        }),
+                                    )
+                                }),
+                        )
+                        .and_then(|x| x)
+                        .and_then(|x| x)
+                })
+            }
+            BlockId::Hash(_) => {
+                // Decided blocks don't have a hash yet
+                None
+            }
+            BlockId::Latest => {
+                let decided_blocks = decided_blocks.read().unwrap();
+                decided_blocks.iter().rev().find_map(|(_, b)| {
+                    b.block
+                        .state_update
+                        .contract_updates
+                        .iter()
+                        .map(|(address, update)| (address, &update.storage))
+                        .chain(
+                            b.block
+                                .state_update
+                                .system_contract_updates
+                                .iter()
+                                .map(|(address, update)| (address, &update.storage)),
+                        )
+                        .find_map(|(address, storage)| {
+                            (*address == contract_address).then_some(storage.iter().find_map(
+                                |(address, value)| (*address == storage_address).then_some(*value),
+                            ))
+                        })
+                        .and_then(|x| x)
+                })
+            }
+        }
+    }
+
+    pub fn contract_nonce(
+        decided_blocks: &DecidedBlocks,
+        contract_address: ContractAddress,
+        block_id: BlockId,
+    ) -> Option<ContractNonce> {
+        match block_id {
+            BlockId::Number(block_number) => {
+                let decided_blocks = decided_blocks.read().unwrap();
+                decided_blocks.iter().rev().find_map(|(n, b)| {
+                    (*n <= block_number)
+                        .then_some(b.block.state_update.contract_updates.iter().find_map(
+                            |(address, update)| {
+                                (*address == contract_address).then_some(update.nonce)
+                            },
+                        ))
+                        .and_then(|x| x)
+                        .and_then(|x| x)
+                })
+            }
+            BlockId::Hash(_) => {
+                // Decided blocks don't have a hash yet
+                None
+            }
+            BlockId::Latest => {
+                let decided_blocks = decided_blocks.read().unwrap();
+                decided_blocks.iter().rev().find_map(|(_, b)| {
+                    b.block
+                        .state_update
+                        .contract_updates
+                        .iter()
+                        .find_map(|(address, update)| {
+                            (*address == contract_address).then_some(update.nonce)
+                        })
+                        .and_then(|x| x)
+                })
+            }
+        }
+    }
+
+    pub fn contract_class_hash(
+        decided_blocks: &DecidedBlocks,
+        block_id: BlockId,
+        contract_address: ContractAddress,
+    ) -> Option<ClassHash> {
+        match block_id {
+            BlockId::Number(block_number) => {
+                let decided_blocks = decided_blocks.read().unwrap();
+                decided_blocks.iter().rev().find_map(|(n, b)| {
+                    (*n <= block_number)
+                        .then_some(b.block.state_update.contract_updates.iter().find_map(
+                            |(address, update)| {
+                                (*address == contract_address)
+                                    .then_some(update.class.map(|c| c.class_hash()))
+                            },
+                        ))
+                        .and_then(|x| x)
+                        .and_then(|x| x)
+                })
+            }
+            BlockId::Hash(_) => {
+                // Decided blocks don't have a hash yet
+                None
+            }
+            BlockId::Latest => {
+                let decided_blocks = decided_blocks.read().unwrap();
+                decided_blocks.iter().rev().find_map(|(_, b)| {
+                    b.block
+                        .state_update
+                        .contract_updates
+                        .iter()
+                        .find_map(|(address, update)| {
+                            (*address == contract_address)
+                                .then_some(update.class.map(|c| c.class_hash()))
+                        })
+                        .and_then(|x| x)
+                })
+            }
+        }
+    }
+
+    pub fn casm_hash_v2(decided_blocks: &DecidedBlocks, class_hash: ClassHash) -> Option<CasmHash> {
+        let decided_blocks = decided_blocks.read().unwrap();
+        decided_blocks.iter().find_map(|(_, b)| {
+            b.block
+                .declared_classes
+                .iter()
+                .find_map(|c| (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_hash_v2))
+        })
+    }
+
+    pub fn casm_hash_at(
+        decided_blocks: &DecidedBlocks,
+        block_id: BlockId,
+        class_hash: ClassHash,
+    ) -> Option<CasmHash> {
+        match block_id {
+            BlockId::Number(block_number) => {
+                let decided_blocks = decided_blocks.read().unwrap();
+                decided_blocks.iter().rev().find_map(|(n, b)| {
+                    (*n <= block_number)
+                        .then_some(b.block.declared_classes.iter().find_map(|c| {
+                            (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_hash_v2)
+                        }))
+                        .and_then(|x| x)
+                })
+            }
+            BlockId::Hash(_) => {
+                // Decided blocks don't have a hash yet
+                None
+            }
+            BlockId::Latest => {
+                let decided_blocks = decided_blocks.read().unwrap();
+                decided_blocks.iter().rev().find_map(|(_, b)| {
+                    b.block.declared_classes.iter().find_map(|c| {
+                        (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_hash_v2)
+                    })
+                })
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use std::collections::{BTreeMap, HashMap};
+        use std::sync::{Arc, RwLock};
+
+        use pathfinder_common::state_update::{
+            ContractClassUpdate,
+            ContractUpdate,
+            StateUpdateData,
+            SystemContractUpdate,
+        };
+        use pathfinder_common::{
+            BlockHash,
+            BlockNumber,
+            CasmHash,
+            ClassHash,
+            ConsensusFinalizedL2Block,
+            ContractAddress,
+            ContractNonce,
+            DecidedBlock,
+            DecidedBlocks,
+            DeclaredClass,
+            SierraHash,
+            StorageAddress,
+            StorageValue,
+        };
+        use pathfinder_crypto::Felt;
+
+        fn matching_genesis() -> (BlockNumber, DecidedBlock) {
+            let block = ConsensusFinalizedL2Block {
+                declared_classes: vec![DeclaredClass {
+                    sierra_hash: SierraHash::ZERO,
+                    casm_hash_v2: CasmHash::ZERO,
+                    sierra_def: vec![0],
+                    casm_def: vec![1],
+                }],
+                state_update: StateUpdateData {
+                    contract_updates: HashMap::from([
+                        (
+                            ContractAddress::ZERO,
+                            ContractUpdate {
+                                storage: HashMap::from([(
+                                    StorageAddress::ZERO,
+                                    StorageValue::ZERO,
+                                )]),
+                                nonce: Some(ContractNonce::ZERO),
+                                class: Some(ContractClassUpdate::Deploy(ClassHash::ZERO)),
+                            },
+                        ),
+                        (
+                            ContractAddress::ONE,
+                            ContractUpdate {
+                                class: Some(ContractClassUpdate::Replace(ClassHash::ZERO)),
+                                ..Default::default()
+                            },
+                        ),
+                    ]),
+                    system_contract_updates: HashMap::from([(
+                        ContractAddress::TWO,
+                        SystemContractUpdate {
+                            storage: HashMap::from([(
+                                StorageAddress(Felt::ONE),
+                                StorageValue(Felt::ONE),
+                            )]),
+                        },
+                    )]),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+
+            (BlockNumber::GENESIS, DecidedBlock { round: 0, block })
+        }
+
+        fn dummy_block_one() -> (BlockNumber, DecidedBlock) {
+            (
+                BlockNumber::GENESIS + 1,
+                DecidedBlock {
+                    round: 0,
+                    block: Default::default(),
+                },
+            )
+        }
+
+        fn one() -> DecidedBlocks {
+            Arc::new(RwLock::new(BTreeMap::from([matching_genesis()])))
+        }
+
+        fn two() -> DecidedBlocks {
+            Arc::new(RwLock::new(BTreeMap::from([
+                matching_genesis(),
+                dummy_block_one(),
+            ])))
+        }
+
+        mod casm_definition {
+            use super::super::*;
+            use super::two;
+
+            #[test]
+            fn in_empty_returns_none() {
+                assert!(casm_definition(&DecidedBlocks::default(), ClassHash::ZERO).is_none());
+            }
+
+            #[test]
+            fn success() {
+                assert_eq!(casm_definition(&two(), ClassHash::ZERO), Some(vec![1]));
+            }
+        }
+
+        mod class_definition_with_block_number {
+            use super::super::*;
+            use super::two;
+
+            #[test]
+            fn in_empty_returns_none() {
+                assert!(class_definition_with_block_number(
+                    &DecidedBlocks::default(),
+                    ClassHash::ZERO
+                )
+                .is_none());
+            }
+
+            #[test]
+            fn success() {
+                assert_eq!(
+                    class_definition_with_block_number(&two(), ClassHash::ZERO),
+                    Some((Some(BlockNumber::GENESIS), vec![0]))
+                );
+            }
+        }
+
+        mod casm_definition_at {
+            use super::super::*;
+            use super::*;
+
+            #[test]
+            fn by_number_in_empty_returns_none() {
+                assert!(casm_definition_at(
+                    &DecidedBlocks::default(),
+                    BlockId::Number(BlockNumber::GENESIS),
+                    ClassHash::ZERO,
+                )
+                .is_none());
+            }
+
+            #[test]
+            fn by_number_exact_match() {
+                assert_eq!(
+                    casm_definition_at(
+                        &one(),
+                        BlockId::Number(BlockNumber::GENESIS),
+                        ClassHash::ZERO,
+                    ),
+                    Some(vec![1])
+                );
+            }
+
+            #[test]
+            fn by_number_skips_blocks_that_dont_match() {
+                assert_eq!(
+                    casm_definition_at(
+                        &two(),
+                        // Note: it's the genesis block that contains the matching class
+                        // definition
+                        BlockId::Number(BlockNumber::GENESIS + 1),
+                        ClassHash::ZERO,
+                    ),
+                    Some(vec![1])
+                );
+            }
+
+            #[test]
+            fn by_hash_returns_none() {
+                assert!(casm_definition_at(
+                    &DecidedBlocks::default(),
+                    BlockId::Hash(BlockHash::ZERO),
+                    ClassHash::ZERO,
+                )
+                .is_none());
+            }
+
+            #[test]
+            fn latest_in_empty_returns_none() {
+                assert!(casm_definition_at(
+                    &DecidedBlocks::default(),
+                    BlockId::Latest,
+                    ClassHash::ZERO,
+                )
+                .is_none());
+            }
+
+            #[test]
+            fn latest_instant_match() {
+                assert_eq!(
+                    casm_definition_at(&one(), BlockId::Latest, ClassHash::ZERO,),
+                    Some(vec![1])
+                );
+            }
+
+            #[test]
+            fn latest_skips_blocks_that_dont_match() {
+                assert_eq!(
+                    casm_definition_at(&two(), BlockId::Latest, ClassHash::ZERO,),
+                    Some(vec![1])
+                );
+            }
+        }
+
+        mod class_definition_at_with_block_number {
+            use super::super::*;
+            use super::*;
+
+            #[test]
+            fn by_number_in_empty_returns_none() {
+                assert!(class_definition_at_with_block_number(
+                    &DecidedBlocks::default(),
+                    BlockId::Number(BlockNumber::GENESIS),
+                    ClassHash::ZERO,
+                )
+                .is_none());
+            }
+
+            #[test]
+            fn by_number_exact_match() {
+                assert_eq!(
+                    class_definition_at_with_block_number(
+                        &one(),
+                        BlockId::Number(BlockNumber::GENESIS),
+                        ClassHash::ZERO,
+                    ),
+                    Some((BlockNumber::GENESIS, vec![0]))
+                );
+            }
+
+            #[test]
+            fn by_number_skips_blocks_that_dont_match() {
+                assert_eq!(
+                    class_definition_at_with_block_number(
+                        &two(),
+                        // Note: it's the genesis block that contains the matching class
+                        // definition
+                        BlockId::Number(BlockNumber::GENESIS + 1),
+                        ClassHash::ZERO,
+                    ),
+                    Some((BlockNumber::GENESIS, vec![0]))
+                );
+            }
+
+            #[test]
+            fn by_hash_returns_none() {
+                assert!(class_definition_at_with_block_number(
+                    &DecidedBlocks::default(),
+                    BlockId::Hash(BlockHash::ZERO),
+                    ClassHash::ZERO,
+                )
+                .is_none());
+            }
+
+            #[test]
+            fn latest_in_empty_returns_none() {
+                assert!(class_definition_at_with_block_number(
+                    &DecidedBlocks::default(),
+                    BlockId::Latest,
+                    ClassHash::ZERO,
+                )
+                .is_none());
+            }
+
+            #[test]
+            fn latest_instant_match() {
+                assert_eq!(
+                    class_definition_at_with_block_number(&one(), BlockId::Latest, ClassHash::ZERO),
+                    Some((BlockNumber::GENESIS, vec![0]))
+                );
+            }
+
+            #[test]
+            fn latest_skips_blocks_that_dont_match() {
+                assert_eq!(
+                    class_definition_at_with_block_number(&two(), BlockId::Latest, ClassHash::ZERO),
+                    Some((BlockNumber::GENESIS, vec![0]))
+                );
+            }
+        }
+
+        mod storage_value {
+            use super::super::*;
+            use super::*;
+
+            #[test]
+            fn by_number_in_empty_returns_none() {
+                assert!(storage_value(
+                    &DecidedBlocks::default(),
+                    BlockId::Number(BlockNumber::GENESIS),
+                    ContractAddress::ZERO,
+                    StorageAddress::ZERO,
+                )
+                .is_none());
+            }
+
+            #[test]
+            fn by_number_exact_match() {
+                // "Normal" contract
+                assert_eq!(
+                    storage_value(
+                        &one(),
+                        BlockId::Number(BlockNumber::GENESIS),
+                        ContractAddress::ZERO,
+                        StorageAddress::ZERO,
+                    ),
+                    Some(StorageValue::ZERO)
+                );
+                // System contract
+                assert_eq!(
+                    storage_value(
+                        &one(),
+                        BlockId::Number(BlockNumber::GENESIS),
+                        ContractAddress::TWO,
+                        StorageAddress(Felt::ONE),
+                    ),
+                    Some(StorageValue(Felt::ONE))
+                );
+            }
+
+            #[test]
+            fn by_number_skips_blocks_that_dont_match() {
+                // "Normal" contract
+                assert_eq!(
+                    storage_value(
+                        &two(),
+                        // Note: it's the genesis block that contains the matching storage entry
+                        BlockId::Number(BlockNumber::GENESIS + 1),
+                        ContractAddress::ZERO,
+                        StorageAddress::ZERO,
+                    ),
+                    Some(StorageValue::ZERO)
+                );
+                // System contract
+                assert_eq!(
+                    storage_value(
+                        &two(),
+                        // Note: it's the genesis block that contains the matching storage entry
+                        BlockId::Number(BlockNumber::GENESIS + 1),
+                        ContractAddress::TWO,
+                        StorageAddress(Felt::ONE),
+                    ),
+                    Some(StorageValue(Felt::ONE))
+                );
+            }
+
+            #[test]
+            fn by_hash_returns_none() {
+                assert!(storage_value(
+                    &DecidedBlocks::default(),
+                    BlockId::Hash(BlockHash::ZERO),
+                    ContractAddress::ZERO,
+                    StorageAddress::ZERO,
+                )
+                .is_none());
+            }
+
+            #[test]
+            fn latest_in_empty_returns_none() {
+                assert!(storage_value(
+                    &DecidedBlocks::default(),
+                    BlockId::Latest,
+                    ContractAddress::ZERO,
+                    StorageAddress::ZERO,
+                )
+                .is_none());
+            }
+
+            #[test]
+            fn latest_instant_match() {
+                // "Normal" contract
+                assert_eq!(
+                    storage_value(
+                        &one(),
+                        BlockId::Latest,
+                        ContractAddress::ZERO,
+                        StorageAddress::ZERO
+                    ),
+                    Some(StorageValue::ZERO)
+                );
+                // System contract
+                assert_eq!(
+                    storage_value(
+                        &one(),
+                        BlockId::Latest,
+                        ContractAddress::TWO,
+                        StorageAddress(Felt::ONE)
+                    ),
+                    Some(StorageValue(Felt::ONE))
+                );
+            }
+
+            #[test]
+            fn latest_skips_blocks_that_dont_match() {
+                // "Normal" contract
+                assert_eq!(
+                    storage_value(
+                        &two(),
+                        BlockId::Latest,
+                        ContractAddress::ZERO,
+                        StorageAddress::ZERO
+                    ),
+                    Some(StorageValue::ZERO)
+                );
+                // System contract
+                assert_eq!(
+                    storage_value(
+                        &two(),
+                        BlockId::Latest,
+                        ContractAddress::TWO,
+                        StorageAddress(Felt::ONE)
+                    ),
+                    Some(StorageValue(Felt::ONE))
+                );
+            }
+        }
+
+        mod contract_nonce {
+            use super::super::*;
+            use super::*;
+
+            #[test]
+            fn by_number_in_empty_returns_none() {
+                assert!(contract_nonce(
+                    &DecidedBlocks::default(),
+                    ContractAddress::ZERO,
+                    BlockId::Number(BlockNumber::GENESIS),
+                )
+                .is_none());
+            }
+
+            #[test]
+            fn by_number_exact_match() {
+                assert_eq!(
+                    contract_nonce(
+                        &one(),
+                        ContractAddress::ZERO,
+                        BlockId::Number(BlockNumber::GENESIS),
+                    ),
+                    Some(ContractNonce::ZERO)
+                );
+            }
+
+            #[test]
+            fn by_number_skips_blocks_that_dont_match() {
+                assert_eq!(
+                    contract_nonce(
+                        &two(),
+                        // Note: it's the genesis block that contains the matching nonce
+                        ContractAddress::ZERO,
+                        BlockId::Number(BlockNumber::GENESIS + 1),
+                    ),
+                    Some(ContractNonce::ZERO)
+                );
+            }
+
+            #[test]
+            fn by_hash_returns_none() {
+                assert!(contract_nonce(
+                    &DecidedBlocks::default(),
+                    ContractAddress::ZERO,
+                    BlockId::Hash(BlockHash::ZERO),
+                )
+                .is_none());
+            }
+
+            #[test]
+            fn latest_in_empty_returns_none() {
+                assert!(contract_nonce(
+                    &DecidedBlocks::default(),
+                    ContractAddress::ZERO,
+                    BlockId::Latest,
+                )
+                .is_none());
+            }
+
+            #[test]
+            fn latest_instant_match() {
+                assert_eq!(
+                    contract_nonce(&one(), ContractAddress::ZERO, BlockId::Latest),
+                    Some(ContractNonce::ZERO)
+                );
+            }
+
+            #[test]
+            fn latest_skips_blocks_that_dont_match() {
+                assert_eq!(
+                    contract_nonce(&two(), ContractAddress::ZERO, BlockId::Latest),
+                    Some(ContractNonce::ZERO)
+                );
+            }
+        }
+
+        mod contract_class_hash {
+            use super::super::*;
+            use super::*;
+
+            #[test]
+            fn by_number_in_empty_returns_none() {
+                assert!(contract_class_hash(
+                    &DecidedBlocks::default(),
+                    BlockId::Number(BlockNumber::GENESIS),
+                    ContractAddress::ZERO,
+                )
+                .is_none());
+            }
+
+            #[test]
+            fn by_number_exact_match() {
+                // Deployed
+                assert_eq!(
+                    contract_class_hash(
+                        &one(),
+                        BlockId::Number(BlockNumber::GENESIS),
+                        ContractAddress::ZERO,
+                    ),
+                    Some(ClassHash::ZERO)
+                );
+                // Replaced
+                assert_eq!(
+                    contract_class_hash(
+                        &one(),
+                        BlockId::Number(BlockNumber::GENESIS),
+                        ContractAddress::ONE,
+                    ),
+                    Some(ClassHash::ZERO)
+                );
+            }
+
+            #[test]
+            fn by_number_skips_blocks_that_dont_match() {
+                // Deployed
+                assert_eq!(
+                    contract_class_hash(
+                        &two(),
+                        // Note: it's the genesis block that contains the matching class hash
+                        BlockId::Number(BlockNumber::GENESIS + 1),
+                        ContractAddress::ZERO,
+                    ),
+                    Some(ClassHash::ZERO)
+                );
+                // Replaced
+                assert_eq!(
+                    contract_class_hash(
+                        &two(),
+                        // Note: it's the genesis block that contains the matching class hash
+                        BlockId::Number(BlockNumber::GENESIS + 1),
+                        ContractAddress::ONE,
+                    ),
+                    Some(ClassHash::ZERO)
+                );
+            }
+
+            #[test]
+            fn by_hash_returns_none() {
+                assert!(contract_class_hash(
+                    &DecidedBlocks::default(),
+                    BlockId::Hash(BlockHash::ZERO),
+                    ContractAddress::ZERO,
+                )
+                .is_none());
+            }
+
+            #[test]
+            fn latest_in_empty_returns_none() {
+                assert!(contract_class_hash(
+                    &DecidedBlocks::default(),
+                    BlockId::Latest,
+                    ContractAddress::ZERO,
+                )
+                .is_none());
+            }
+
+            #[test]
+            fn latest_instant_match() {
+                // Deployed
+                assert_eq!(
+                    contract_class_hash(&one(), BlockId::Latest, ContractAddress::ZERO),
+                    Some(ClassHash::ZERO)
+                );
+                // Replaced
+                assert_eq!(
+                    contract_class_hash(&one(), BlockId::Latest, ContractAddress::ONE),
+                    Some(ClassHash::ZERO)
+                );
+            }
+
+            #[test]
+            fn latest_skips_blocks_that_dont_match() {
+                // Deployed
+                assert_eq!(
+                    contract_class_hash(&two(), BlockId::Latest, ContractAddress::ZERO),
+                    Some(ClassHash::ZERO)
+                );
+                // Replaced
+                assert_eq!(
+                    contract_class_hash(&two(), BlockId::Latest, ContractAddress::ONE),
+                    Some(ClassHash::ZERO)
+                );
+            }
+        }
+
+        mod casm_hash_v2 {
+            use super::super::*;
+            use super::two;
+
+            #[test]
+            fn in_empty_returns_none() {
+                assert!(casm_hash_v2(&DecidedBlocks::default(), ClassHash::ZERO).is_none());
+            }
+
+            #[test]
+            fn success() {
+                assert_eq!(casm_hash_v2(&two(), ClassHash::ZERO), Some(CasmHash::ZERO));
+            }
+        }
+
+        mod casm_hash_at {
+            use super::super::*;
+            use super::*;
+
+            #[test]
+            fn by_number_in_empty_returns_none() {
+                assert!(casm_hash_at(
+                    &DecidedBlocks::default(),
+                    BlockId::Number(BlockNumber::GENESIS),
+                    ClassHash::ZERO,
+                )
+                .is_none());
+            }
+
+            #[test]
+            fn by_number_exact_match() {
+                assert_eq!(
+                    casm_hash_at(
+                        &one(),
+                        BlockId::Number(BlockNumber::GENESIS),
+                        ClassHash::ZERO,
+                    ),
+                    Some(CasmHash::ZERO)
+                );
+            }
+
+            #[test]
+            fn by_number_skips_blocks_that_dont_match() {
+                assert_eq!(
+                    casm_hash_at(
+                        &two(),
+                        // Note: it's the genesis block that contains the matching class
+                        BlockId::Number(BlockNumber::GENESIS + 1),
+                        ClassHash::ZERO,
+                    ),
+                    Some(CasmHash::ZERO)
+                );
+            }
+
+            #[test]
+            fn by_hash_returns_none() {
+                assert!(casm_hash_at(
+                    &DecidedBlocks::default(),
+                    BlockId::Hash(BlockHash::ZERO),
+                    ClassHash::ZERO,
+                )
+                .is_none());
+            }
+
+            #[test]
+            fn latest_in_empty_returns_none() {
+                assert!(
+                    casm_hash_at(&DecidedBlocks::default(), BlockId::Latest, ClassHash::ZERO,)
+                        .is_none()
+                );
+            }
+
+            #[test]
+            fn latest_instant_match() {
+                assert_eq!(
+                    casm_hash_at(&one(), BlockId::Latest, ClassHash::ZERO),
+                    Some(CasmHash::ZERO)
+                );
+            }
+
+            #[test]
+            fn latest_skips_blocks_that_dont_match() {
+                assert_eq!(
+                    casm_hash_at(&two(), BlockId::Latest, ClassHash::ZERO),
+                    Some(CasmHash::ZERO)
+                );
+            }
         }
     }
 }

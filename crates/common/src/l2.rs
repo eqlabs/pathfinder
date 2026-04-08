@@ -93,7 +93,7 @@ pub struct ConsensusFinalizedBlockHeader {
     pub l2_gas_consumed: u128,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct DeclaredClass {
     pub sierra_hash: SierraHash,
     pub casm_hash_v2: CasmHash,
