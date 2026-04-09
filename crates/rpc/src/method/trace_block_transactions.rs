@@ -1606,8 +1606,12 @@ pub(crate) mod tests {
         async fn setup(
             starknet_version: StarknetVersion,
             block_num_to_insert: BlockNumber,
-        ) -> anyhow::Result<(RpcContext, TraceBlockTransactionsInput)> {
-            let (context, _, _) = setup_multi_tx_trace_test_with_starknet_version_and_chain(
+        ) -> anyhow::Result<(
+            RpcContext,
+            TraceBlockTransactionsInput,
+            Option<tokio::task::JoinHandle<()>>,
+        )> {
+            let (mut context, _, _) = setup_multi_tx_trace_test_with_starknet_version_and_chain(
                 starknet_version,
                 Chain::Mainnet,
             )
@@ -1622,6 +1626,16 @@ pub(crate) mod tests {
             })?;
             tx.commit()?;
 
+            let path = format!(
+                "/feeder_gateway/get_block_traces?blockNumber={}",
+                block_num_to_insert.get()
+            );
+            let (handle, url) =
+                gateway_test_utils::setup([(path, (r#"{"traces":[]}"#.to_string(), 200u16))]);
+            context.sequencer = starknet_gateway_client::Client::for_test(url)
+                .unwrap()
+                .disable_retry_for_tests();
+
             let input = TraceBlockTransactionsInput {
                 block_id: block_num_to_insert.into(),
                 trace_flags: crate::dto::TraceFlags(vec![
@@ -1629,7 +1643,7 @@ pub(crate) mod tests {
                 ]),
             };
 
-            Ok((context, input))
+            Ok((context, input, handle))
         }
 
         // First test that with a Starknet version that requires fetching traces from
@@ -1643,7 +1657,8 @@ pub(crate) mod tests {
             starknet_version_with_fallback
                 < VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
         );
-        let (context, input) = setup(starknet_version_with_fallback, block_with_fallback).await?;
+        let (context, input, _handle) =
+            setup(starknet_version_with_fallback, block_with_fallback).await?;
 
         let output_json = trace_block_transactions(context, input, rpc_version)
             .await
@@ -1670,7 +1685,7 @@ pub(crate) mod tests {
             re_execution_impossible_starknet_version
                 >= VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
         );
-        let (context, input) = setup(
+        let (context, input, _handle) = setup(
             re_execution_impossible_starknet_version,
             re_execution_impossible_block,
         )
