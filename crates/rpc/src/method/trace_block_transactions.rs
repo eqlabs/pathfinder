@@ -1709,7 +1709,7 @@ pub(crate) mod tests {
     /// with blockifier.
     #[tokio::test]
     async fn mainnet_blockifier_backwards_incompatible_transaction_tracing() {
-        let context = RpcContext::for_tests_on(pathfinder_common::Chain::Mainnet);
+        let mut context = RpcContext::for_tests_on(pathfinder_common::Chain::Mainnet);
         let mut connection = context.storage.connection().unwrap();
         let transaction = connection.transaction().unwrap();
 
@@ -1784,6 +1784,17 @@ pub(crate) mod tests {
         transaction.commit().unwrap();
         drop(connection);
 
+        let (_handle, url) = gateway_test_utils::setup([(
+            format!(
+                "/feeder_gateway/get_block_traces?blockNumber={}",
+                block.block_number.get()
+            ),
+            (r#"{"traces":[]}"#.to_string(), 200u16),
+        )]);
+        context.sequencer = starknet_gateway_client::Client::for_test(url)
+            .unwrap()
+            .disable_retry_for_tests();
+
         // The tracing succeeds.
         trace_block_transactions(
             context.clone(),
@@ -1801,7 +1812,7 @@ pub(crate) mod tests {
     /// traces are missing the `call_type` field.
     #[tokio::test]
     async fn mainnet_pre_0_9_traces() {
-        let context = RpcContext::for_tests_on(pathfinder_common::Chain::Mainnet);
+        let mut context = RpcContext::for_tests_on(pathfinder_common::Chain::Mainnet);
         let mut connection = context.storage.connection().unwrap();
         let transaction = connection.transaction().unwrap();
 
@@ -1875,6 +1886,22 @@ pub(crate) mod tests {
             .unwrap();
         transaction.commit().unwrap();
         drop(connection);
+
+        // Use a pre-0.9 format trace fixture (no `call_type` field) to verify
+        // that the gateway fallback path handles the old schema correctly.
+        let traces_json =
+            String::from_utf8(starknet_gateway_test_fixtures::traces::TESTNET_GENESIS.to_vec())
+                .unwrap();
+        let (_handle, url) = gateway_test_utils::setup([(
+            format!(
+                "/feeder_gateway/get_block_traces?blockNumber={}",
+                block.block_number.get()
+            ),
+            (traces_json, 200u16),
+        )]);
+        context.sequencer = starknet_gateway_client::Client::for_test(url)
+            .unwrap()
+            .disable_retry_for_tests();
 
         // The tracing succeeds.
         trace_block_transactions(
