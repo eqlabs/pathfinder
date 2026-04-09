@@ -456,7 +456,7 @@ mod decided {
                             (c.sierra_hash == SierraHash(class_hash.0))
                                 .then_some(c.casm_def.clone())
                         }))
-                        .and_then(|x| x)
+                        .flatten()
                 })
             }
             BlockId::Hash(_) => {
@@ -488,7 +488,7 @@ mod decided {
                             (c.sierra_hash == SierraHash(class_hash.0))
                                 .then_some(c.sierra_def.clone())
                         }))
-                        .and_then(|x| x)
+                        .flatten()
                         .map(|def| (*n, def))
                 })
             }
@@ -544,8 +544,8 @@ mod decided {
                                     )
                                 }),
                         )
-                        .and_then(|x| x)
-                        .and_then(|x| x)
+                        .flatten()
+                        .flatten()
                 })
             }
             BlockId::Hash(_) => {
@@ -572,7 +572,7 @@ mod decided {
                                 |(address, value)| (*address == storage_address).then_some(*value),
                             ))
                         })
-                        .and_then(|x| x)
+                        .flatten()
                 })
             }
         }
@@ -593,8 +593,8 @@ mod decided {
                                 (*address == contract_address).then_some(update.nonce)
                             },
                         ))
-                        .and_then(|x| x)
-                        .and_then(|x| x)
+                        .flatten()
+                        .flatten()
                 })
             }
             BlockId::Hash(_) => {
@@ -611,7 +611,7 @@ mod decided {
                         .find_map(|(address, update)| {
                             (*address == contract_address).then_some(update.nonce)
                         })
-                        .and_then(|x| x)
+                        .flatten()
                 })
             }
         }
@@ -633,8 +633,8 @@ mod decided {
                                     .then_some(update.class.map(|c| c.class_hash()))
                             },
                         ))
-                        .and_then(|x| x)
-                        .and_then(|x| x)
+                        .flatten()
+                        .flatten()
                 })
             }
             BlockId::Hash(_) => {
@@ -652,7 +652,7 @@ mod decided {
                             (*address == contract_address)
                                 .then_some(update.class.map(|c| c.class_hash()))
                         })
-                        .and_then(|x| x)
+                        .flatten()
                 })
             }
         }
@@ -681,7 +681,7 @@ mod decided {
                         .then_some(b.block.declared_classes.iter().find_map(|c| {
                             (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_hash_v2)
                         }))
-                        .and_then(|x| x)
+                        .flatten()
                 })
             }
             BlockId::Hash(_) => {
