@@ -180,7 +180,7 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         &self,
         block_id: BlockId,
         class_hash: ClassHash,
-    ) -> Result<Option<(BlockNumber, Vec<u8>)>, StateError> {
+    ) -> Result<ClassDefinitionAtWithBlockNumber, StateError> {
         if let Some(result) = decided::class_definition_at_with_block_number(
             &self.decided_blocks,
             block_id,
@@ -415,6 +415,8 @@ mod decided {
         StorageValue,
     };
 
+    use crate::state_reader::storage_adapter::ClassDefinitionAtWithBlockNumber;
+
     pub fn casm_definition(
         decided_blocks: &DecidedBlocks,
         class_hash: ClassHash,
@@ -476,7 +478,7 @@ mod decided {
         decided_blocks: &DecidedBlocks,
         block_id: BlockId,
         class_hash: ClassHash,
-    ) -> Option<(BlockNumber, Vec<u8>)> {
+    ) -> ClassDefinitionAtWithBlockNumber {
         match block_id {
             BlockId::Number(block_number) => {
                 let decided_blocks = decided_blocks.read().unwrap();
