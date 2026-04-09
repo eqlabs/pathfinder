@@ -80,7 +80,6 @@ zeroize = { workspace = true }
 zstd = { workspace = true }
 
 [dev-dependencies]
-apollo_consensus_orchestrator = { workspace = true }
 assert_matches = { workspace = true }
 const-decoder = { workspace = true }
 flate2 = { workspace = true }

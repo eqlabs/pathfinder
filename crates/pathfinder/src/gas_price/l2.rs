@@ -160,31 +160,33 @@ impl L2GasPriceProvider {
 
 #[cfg(test)]
 mod tests {
-    use apollo_consensus_orchestrator::orchestrator_versioned_constants;
+    use anyhow::Context;
     use rstest::rstest;
+    use serde::Deserialize;
 
     use super::*;
 
     const TEST_PRICE: u128 = 30_000_000_000;
+
+    /// Apollo versioned constants as they are defined in the
+    /// `apollo_consensus_orchestrator` crate.
+    #[derive(Debug, Deserialize)]
+    struct ApolloVersionedConstants {
+        gas_price_max_change_denominator: u128,
+        gas_target: starknet_api::execution_resources::GasAmount,
+        max_block_size: starknet_api::execution_resources::GasAmount,
+        min_gas_price: starknet_api::block::GasPrice,
+    }
 
     #[rstest]
     #[case::v0_13_2(StarknetVersion::V_0_13_2)]
     #[case::v0_13_4(StarknetVersion::V_0_13_4)]
     #[case::v0_14_0(StarknetVersion::V_0_14_0)]
     #[case::v0_14_1(StarknetVersion::V_0_14_1)]
-    fn l2_gas_constants_match_with_apollo(#[case] version: StarknetVersion) {
+    #[tokio::test]
+    async fn l2_gas_constants_match_with_apollo(#[case] version: StarknetVersion) {
         let pathfinder_c = L2GasPriceConstants::for_version(version);
-        let apollo_c = match version {
-            // Pre v0.14.1
-            StarknetVersion::V_0_13_2 | StarknetVersion::V_0_13_4 | StarknetVersion::V_0_14_0 => {
-                &*orchestrator_versioned_constants::VERSIONED_CONSTANTS_V0_14_0
-            }
-            // Post v0.14.1
-            StarknetVersion::V_0_14_1 => {
-                &*orchestrator_versioned_constants::VERSIONED_CONSTANTS_V0_14_1
-            }
-            _ => unreachable!("not covered by this test"),
-        };
+        let apollo_c = fetch_apollo_constants_for(version).await.unwrap();
 
         assert_eq!(
             pathfinder_c.gas_price_max_change_denominator,
@@ -196,6 +198,41 @@ mod tests {
             apollo_c.max_block_size.0 as u128
         );
         assert_eq!(pathfinder_c.min_gas_price, apollo_c.min_gas_price.0);
+    }
+
+    async fn fetch_apollo_constants_for(
+        version: StarknetVersion,
+    ) -> anyhow::Result<ApolloVersionedConstants> {
+        // Pin the constants URL to the most recent blockifier tag for stability.
+        // Update the tag when the current one does not have the constants for the
+        // tested version.
+        const LATEST_BLOCKIFIER_TAG: &str = "blockifier-v0.18.0-rc.1";
+
+        // Apollo's constants are only versioned starting from v0.14.0, so for older
+        // versions (which are expected to be same as v0.14.0) we fetch the v0.14.0
+        // constants.
+        let version = if version < StarknetVersion::V_0_14_0 {
+            StarknetVersion::V_0_14_0
+        } else {
+            version
+        };
+
+        let url = format!(
+            "https://raw.githubusercontent.com/starkware-libs/sequencer/\
+                refs/tags/{}/\
+                crates/apollo_consensus_orchestrator/resources/orchestrator_versioned_constants_{}_{}_{}.json",
+            LATEST_BLOCKIFIER_TAG,
+            version.major(),
+            version.minor(),
+            version.patch()
+        );
+        let resp = reqwest::get(url)
+            .await
+            .context("fetching apollo constants")?
+            .error_for_status()
+            .context("http get failed")?;
+        let json = resp.bytes().await.context("reading apollo response body")?;
+        serde_json::from_slice(&json).context("parsing apollo constants JSON")
     }
 
     // Apollo test vectors (from fee_market/test.rs)
