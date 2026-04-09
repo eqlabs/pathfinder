@@ -503,6 +503,21 @@ impl StarknetVersion {
         StarknetVersion(a, b, c, d)
     }
 
+    #[inline]
+    pub fn major(&self) -> u8 {
+        self.0
+    }
+
+    #[inline]
+    pub fn minor(&self) -> u8 {
+        self.1
+    }
+
+    #[inline]
+    pub fn patch(&self) -> u8 {
+        self.2
+    }
+
     pub const V_0_13_2: Self = Self::new(0, 13, 2, 0);
 
     // TODO: version at which block hash definition changes taken from
