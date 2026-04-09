@@ -160,6 +160,8 @@ impl L2GasPriceProvider {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use anyhow::Context;
     use rstest::rstest;
     use serde::Deserialize;
@@ -226,13 +228,20 @@ mod tests {
             version.minor(),
             version.patch()
         );
-        let resp = reqwest::get(url)
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .context("building http client")?;
+        let resp = client
+            .get(url)
+            .send()
             .await
-            .context("fetching apollo constants")?
-            .error_for_status()
-            .context("http get failed")?;
-        let json = resp.bytes().await.context("reading apollo response body")?;
-        serde_json::from_slice(&json).context("parsing apollo constants JSON")
+            .context("fetching apollo constants")?;
+        resp.error_for_status()
+            .context("http get failed")?
+            .json()
+            .await
+            .context("parsing apollo constants")
     }
 
     // Apollo test vectors (from fee_market/test.rs)
