@@ -41,7 +41,7 @@ pub trait StorageAdapter {
         &self,
         block_id: BlockId,
         class_hash: ClassHash,
-    ) -> Result<Option<(BlockNumber, Vec<u8>)>, StateError>;
+    ) -> Result<ClassDefinitionAtWithBlockNumber, StateError>;
 
     fn storage_value(
         &self,
