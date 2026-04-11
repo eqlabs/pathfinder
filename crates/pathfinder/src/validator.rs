@@ -107,7 +107,6 @@ pub fn should_defer_validation(
         // The node did not observe parent block get decided - either it has not been
         // decided on yet, or the node joined the network too late to observe it. Fall
         // back to checking the committed blocks in DB.
-
         let parent_block = BlockNumber::new(parent_height)
             .context("Block number is larger than i64::MAX")
             .map_err(ProposalHandlingError::Fatal)?;
