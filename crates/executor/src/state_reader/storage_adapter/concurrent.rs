@@ -402,6 +402,9 @@ fn db_thread(
 }
 
 mod decided {
+    use std::collections::BTreeMap;
+    use std::sync::RwLockReadGuard;
+
     use pathfinder_common::{
         BlockId,
         BlockNumber,
@@ -409,6 +412,7 @@ mod decided {
         ClassHash,
         ContractAddress,
         ContractNonce,
+        DecidedBlock,
         DecidedBlocks,
         SierraHash,
         StorageAddress,
@@ -416,6 +420,26 @@ mod decided {
     };
 
     use crate::state_reader::storage_adapter::ClassDefinitionAtWithBlockNumber;
+
+    fn rev_blocks_by_id<'a>(
+        decided_blocks: &'a RwLockReadGuard<'a, BTreeMap<BlockNumber, DecidedBlock>>,
+        block_id: BlockId,
+    ) -> impl Iterator<Item = (BlockNumber, &'a DecidedBlock)> + 'a {
+        match block_id {
+            BlockId::Number(block_number) => Box::new(
+                decided_blocks
+                    .range(..=block_number)
+                    .rev()
+                    .map(|(n, b)| (*n, b)),
+            ),
+            BlockId::Hash(_) => {
+                // Decided blocks don't have a hash yet
+                Box::new(std::iter::empty())
+                    as Box<dyn Iterator<Item = (BlockNumber, &DecidedBlock)>>
+            }
+            BlockId::Latest => Box::new(decided_blocks.iter().rev().map(|(n, b)| (*n, b))),
+        }
+    }
 
     pub fn casm_definition(
         decided_blocks: &DecidedBlocks,
@@ -447,31 +471,15 @@ mod decided {
         block_id: BlockId,
         class_hash: ClassHash,
     ) -> Option<Vec<u8>> {
-        match block_id {
-            BlockId::Number(block_number) => {
-                let decided_blocks = decided_blocks.read().unwrap();
-                decided_blocks.iter().rev().find_map(|(n, b)| {
-                    (*n <= block_number)
-                        .then_some(b.block.declared_classes.iter().find_map(|c| {
-                            (c.sierra_hash == SierraHash(class_hash.0))
-                                .then_some(c.casm_def.clone())
-                        }))
-                        .flatten()
-                })
-            }
-            BlockId::Hash(_) => {
-                // Decided blocks don't have a hash yet
-                None
-            }
-            BlockId::Latest => {
-                let decided_blocks = decided_blocks.read().unwrap();
-                decided_blocks.iter().rev().find_map(|(_, b)| {
-                    b.block.declared_classes.iter().find_map(|c| {
-                        (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_def.clone())
-                    })
-                })
-            }
-        }
+        let guard = decided_blocks.read().unwrap();
+        // Let binding and drop to avoid: "guard` does not live long enough"
+        let result = rev_blocks_by_id(&guard, block_id).find_map(|(_, b)| {
+            b.block.declared_classes.iter().find_map(|c| {
+                (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_def.clone())
+            })
+        });
+        drop(guard);
+        result
     }
 
     pub fn class_definition_at_with_block_number(
@@ -479,37 +487,19 @@ mod decided {
         block_id: BlockId,
         class_hash: ClassHash,
     ) -> ClassDefinitionAtWithBlockNumber {
-        match block_id {
-            BlockId::Number(block_number) => {
-                let decided_blocks = decided_blocks.read().unwrap();
-                decided_blocks.iter().rev().find_map(|(n, b)| {
-                    (*n <= block_number)
-                        .then_some(b.block.declared_classes.iter().find_map(|c| {
-                            (c.sierra_hash == SierraHash(class_hash.0))
-                                .then_some(c.sierra_def.clone())
-                        }))
-                        .flatten()
-                        .map(|def| (*n, def))
+        let guard = decided_blocks.read().unwrap();
+        // Let binding and drop to avoid: "guard` does not live long enough"
+        let result = rev_blocks_by_id(&guard, block_id).find_map(|(n, b)| {
+            b.block
+                .declared_classes
+                .iter()
+                .find_map(|c| {
+                    (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.sierra_def.clone())
                 })
-            }
-            BlockId::Hash(_) => {
-                // Decided blocks don't have a hash yet
-                None
-            }
-            BlockId::Latest => {
-                let decided_blocks = decided_blocks.read().unwrap();
-                decided_blocks.iter().rev().find_map(|(n, b)| {
-                    b.block
-                        .declared_classes
-                        .iter()
-                        .find_map(|c| {
-                            (c.sierra_hash == SierraHash(class_hash.0))
-                                .then_some(c.sierra_def.clone())
-                        })
-                        .map(|def| (*n, def))
-                })
-            }
-        }
+                .map(|def| (n, def))
+        });
+        drop(guard);
+        result
     }
 
     pub fn storage_value(
@@ -518,64 +508,28 @@ mod decided {
         contract_address: ContractAddress,
         storage_address: StorageAddress,
     ) -> Option<StorageValue> {
-        match block_id {
-            BlockId::Number(block_number) => {
-                let decided_blocks = decided_blocks.read().unwrap();
-                decided_blocks.iter().rev().find_map(|(n, b)| {
-                    (*n <= block_number)
-                        .then_some(
-                            b.block
-                                .state_update
-                                .contract_updates
-                                .iter()
-                                .map(|(address, update)| (address, &update.storage))
-                                .chain(
-                                    b.block
-                                        .state_update
-                                        .system_contract_updates
-                                        .iter()
-                                        .map(|(address, update)| (address, &update.storage)),
-                                )
-                                .find_map(|(address, storage)| {
-                                    (*address == contract_address).then_some(
-                                        storage.iter().find_map(|(address, value)| {
-                                            (*address == storage_address).then_some(*value)
-                                        }),
-                                    )
-                                }),
-                        )
-                        .flatten()
-                        .flatten()
-                })
-            }
-            BlockId::Hash(_) => {
-                // Decided blocks don't have a hash yet
-                None
-            }
-            BlockId::Latest => {
-                let decided_blocks = decided_blocks.read().unwrap();
-                decided_blocks.iter().rev().find_map(|(_, b)| {
+        let guard = decided_blocks.read().unwrap();
+        // Let binding and drop to avoid: "guard` does not live long enough"
+        let result = rev_blocks_by_id(&guard, block_id).find_map(|(_, b)| {
+            b.block
+                .state_update
+                .contract_updates
+                .iter()
+                .map(|(address, update)| (address, &update.storage))
+                .chain(
                     b.block
                         .state_update
-                        .contract_updates
+                        .system_contract_updates
                         .iter()
-                        .map(|(address, update)| (address, &update.storage))
-                        .chain(
-                            b.block
-                                .state_update
-                                .system_contract_updates
-                                .iter()
-                                .map(|(address, update)| (address, &update.storage)),
-                        )
-                        .find_map(|(address, storage)| {
-                            (*address == contract_address).then_some(storage.iter().find_map(
-                                |(address, value)| (*address == storage_address).then_some(*value),
-                            ))
-                        })
-                        .flatten()
+                        .map(|(address, update)| (address, &update.storage)),
+                )
+                .find_map(|(address, storage)| {
+                    (*address == contract_address).then_some(storage.get(&storage_address).copied())
                 })
-            }
-        }
+                .flatten()
+        });
+        drop(guard);
+        result
     }
 
     pub fn contract_nonce(
@@ -583,38 +537,19 @@ mod decided {
         contract_address: ContractAddress,
         block_id: BlockId,
     ) -> Option<ContractNonce> {
-        match block_id {
-            BlockId::Number(block_number) => {
-                let decided_blocks = decided_blocks.read().unwrap();
-                decided_blocks.iter().rev().find_map(|(n, b)| {
-                    (*n <= block_number)
-                        .then_some(b.block.state_update.contract_updates.iter().find_map(
-                            |(address, update)| {
-                                (*address == contract_address).then_some(update.nonce)
-                            },
-                        ))
-                        .flatten()
-                        .flatten()
-                })
-            }
-            BlockId::Hash(_) => {
-                // Decided blocks don't have a hash yet
-                None
-            }
-            BlockId::Latest => {
-                let decided_blocks = decided_blocks.read().unwrap();
-                decided_blocks.iter().rev().find_map(|(_, b)| {
-                    b.block
-                        .state_update
-                        .contract_updates
-                        .iter()
-                        .find_map(|(address, update)| {
-                            (*address == contract_address).then_some(update.nonce)
-                        })
-                        .flatten()
-                })
-            }
-        }
+        let guard = decided_blocks.read().unwrap();
+        // Let binding and drop to avoid: "guard` does not live long enough"
+        let result = rev_blocks_by_id(&guard, block_id)
+            .find_map(|(_, b)| {
+                b.block
+                    .state_update
+                    .contract_updates
+                    .get(&contract_address)
+                    .map(|update| update.nonce)
+            })
+            .flatten();
+        drop(guard);
+        result
     }
 
     pub fn contract_class_hash(
@@ -622,40 +557,19 @@ mod decided {
         block_id: BlockId,
         contract_address: ContractAddress,
     ) -> Option<ClassHash> {
-        match block_id {
-            BlockId::Number(block_number) => {
-                let decided_blocks = decided_blocks.read().unwrap();
-                decided_blocks.iter().rev().find_map(|(n, b)| {
-                    (*n <= block_number)
-                        .then_some(b.block.state_update.contract_updates.iter().find_map(
-                            |(address, update)| {
-                                (*address == contract_address)
-                                    .then_some(update.class.map(|c| c.class_hash()))
-                            },
-                        ))
-                        .flatten()
-                        .flatten()
-                })
-            }
-            BlockId::Hash(_) => {
-                // Decided blocks don't have a hash yet
-                None
-            }
-            BlockId::Latest => {
-                let decided_blocks = decided_blocks.read().unwrap();
-                decided_blocks.iter().rev().find_map(|(_, b)| {
-                    b.block
-                        .state_update
-                        .contract_updates
-                        .iter()
-                        .find_map(|(address, update)| {
-                            (*address == contract_address)
-                                .then_some(update.class.map(|c| c.class_hash()))
-                        })
-                        .flatten()
-                })
-            }
-        }
+        let guard = decided_blocks.read().unwrap();
+        // Let binding and drop to avoid: "guard` does not live long enough"
+        let result = rev_blocks_by_id(&guard, block_id)
+            .find_map(|(_, b)| {
+                b.block
+                    .state_update
+                    .contract_updates
+                    .get(&contract_address)
+                    .map(|update| update.class.map(|c| c.class_hash()))
+            })
+            .flatten();
+        drop(guard);
+        result
     }
 
     pub fn casm_hash_v2(decided_blocks: &DecidedBlocks, class_hash: ClassHash) -> Option<CasmHash> {
@@ -673,30 +587,16 @@ mod decided {
         block_id: BlockId,
         class_hash: ClassHash,
     ) -> Option<CasmHash> {
-        match block_id {
-            BlockId::Number(block_number) => {
-                let decided_blocks = decided_blocks.read().unwrap();
-                decided_blocks.iter().rev().find_map(|(n, b)| {
-                    (*n <= block_number)
-                        .then_some(b.block.declared_classes.iter().find_map(|c| {
-                            (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_hash_v2)
-                        }))
-                        .flatten()
-                })
-            }
-            BlockId::Hash(_) => {
-                // Decided blocks don't have a hash yet
-                None
-            }
-            BlockId::Latest => {
-                let decided_blocks = decided_blocks.read().unwrap();
-                decided_blocks.iter().rev().find_map(|(_, b)| {
-                    b.block.declared_classes.iter().find_map(|c| {
-                        (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_hash_v2)
-                    })
-                })
-            }
-        }
+        let guard = decided_blocks.read().unwrap();
+        // Let binding and drop to avoid: "guard` does not live long enough"
+        let result = rev_blocks_by_id(&guard, block_id).find_map(|(_, b)| {
+            b.block
+                .declared_classes
+                .iter()
+                .find_map(|c| (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_hash_v2))
+        });
+        drop(guard);
+        result
     }
 
     #[cfg(test)]
