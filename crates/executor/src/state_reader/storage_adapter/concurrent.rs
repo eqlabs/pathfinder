@@ -405,6 +405,7 @@ mod decided {
     use std::collections::BTreeMap;
     use std::sync::RwLockReadGuard;
 
+    use pathfinder_common::state_update::ContractUpdate;
     use pathfinder_common::{
         BlockId,
         BlockNumber,
@@ -414,6 +415,7 @@ mod decided {
         ContractNonce,
         DecidedBlock,
         DecidedBlocks,
+        DeclaredClass,
         SierraHash,
         StorageAddress,
         StorageValue,
@@ -424,21 +426,35 @@ mod decided {
     fn rev_blocks_by_id<'a>(
         decided_blocks: &'a RwLockReadGuard<'a, BTreeMap<BlockNumber, DecidedBlock>>,
         block_id: BlockId,
-    ) -> impl Iterator<Item = (BlockNumber, &'a DecidedBlock)> + 'a {
+    ) -> impl Iterator<Item = &'a DecidedBlock> + 'a {
         match block_id {
-            BlockId::Number(block_number) => Box::new(
-                decided_blocks
-                    .range(..=block_number)
-                    .rev()
-                    .map(|(n, b)| (*n, b)),
-            ),
+            BlockId::Number(block_number) => {
+                Box::new(decided_blocks.range(..=block_number).rev().map(|(_, b)| b))
+            }
             BlockId::Hash(_) => {
                 // Decided blocks don't have a hash yet
-                Box::new(std::iter::empty())
-                    as Box<dyn Iterator<Item = (BlockNumber, &DecidedBlock)>>
+                Box::new(std::iter::empty()) as Box<dyn Iterator<Item = &DecidedBlock>>
             }
-            BlockId::Latest => Box::new(decided_blocks.iter().rev().map(|(n, b)| (*n, b))),
+            BlockId::Latest => Box::new(decided_blocks.values().rev()),
         }
+    }
+
+    fn find_class<'a>(
+        mut blocks_it: impl Iterator<Item = &'a DecidedBlock> + 'a,
+        class_hash: ClassHash,
+    ) -> Option<(BlockNumber, &'a DeclaredClass)> {
+        blocks_it.find_map(|b| {
+            b.block.declared_classes.iter().find_map(|c| {
+                (c.sierra_hash == SierraHash(class_hash.0)).then_some((b.block.header.number, c))
+            })
+        })
+    }
+
+    fn find_contract_update<'a>(
+        mut blocks_it: impl Iterator<Item = &'a DecidedBlock> + 'a,
+        contract_address: ContractAddress,
+    ) -> Option<&'a ContractUpdate> {
+        blocks_it.find_map(|b| b.block.state_update.contract_updates.get(&contract_address))
     }
 
     pub fn casm_definition(
@@ -446,11 +462,7 @@ mod decided {
         class_hash: ClassHash,
     ) -> Option<Vec<u8>> {
         let decided_blocks = decided_blocks.read().unwrap();
-        decided_blocks.iter().find_map(|(_, b)| {
-            b.block.declared_classes.iter().find_map(|c| {
-                (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_def.clone())
-            })
-        })
+        find_class(decided_blocks.values(), class_hash).map(|(_, c)| c.casm_def.clone())
     }
 
     pub fn class_definition_with_block_number(
@@ -458,12 +470,8 @@ mod decided {
         class_hash: ClassHash,
     ) -> Option<(Option<BlockNumber>, Vec<u8>)> {
         let decided_blocks = decided_blocks.read().unwrap();
-        decided_blocks.iter().find_map(|(n, b)| {
-            b.block.declared_classes.iter().find_map(|c| {
-                (c.sierra_hash == SierraHash(class_hash.0))
-                    .then_some((Some(*n), c.sierra_def.clone()))
-            })
-        })
+        find_class(decided_blocks.values(), class_hash)
+            .map(|(b, c)| (Some(b), c.sierra_def.clone()))
     }
 
     pub fn casm_definition_at(
@@ -473,11 +481,8 @@ mod decided {
     ) -> Option<Vec<u8>> {
         let guard = decided_blocks.read().unwrap();
         // Let binding and drop to avoid: "guard` does not live long enough"
-        let result = rev_blocks_by_id(&guard, block_id).find_map(|(_, b)| {
-            b.block.declared_classes.iter().find_map(|c| {
-                (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_def.clone())
-            })
-        });
+        let it = rev_blocks_by_id(&guard, block_id);
+        let result = find_class(it, class_hash).map(|(_, c)| c.casm_def.clone());
         drop(guard);
         result
     }
@@ -489,15 +494,8 @@ mod decided {
     ) -> ClassDefinitionAtWithBlockNumber {
         let guard = decided_blocks.read().unwrap();
         // Let binding and drop to avoid: "guard` does not live long enough"
-        let result = rev_blocks_by_id(&guard, block_id).find_map(|(n, b)| {
-            b.block
-                .declared_classes
-                .iter()
-                .find_map(|c| {
-                    (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.sierra_def.clone())
-                })
-                .map(|def| (n, def))
-        });
+        let it = rev_blocks_by_id(&guard, block_id);
+        let result = find_class(it, class_hash).map(|(b, c)| (b, c.sierra_def.clone()));
         drop(guard);
         result
     }
@@ -510,7 +508,7 @@ mod decided {
     ) -> Option<StorageValue> {
         let guard = decided_blocks.read().unwrap();
         // Let binding and drop to avoid: "guard` does not live long enough"
-        let result = rev_blocks_by_id(&guard, block_id).find_map(|(_, b)| {
+        let result = rev_blocks_by_id(&guard, block_id).find_map(|b| {
             b.block
                 .state_update
                 .contract_updates
@@ -539,15 +537,8 @@ mod decided {
     ) -> Option<ContractNonce> {
         let guard = decided_blocks.read().unwrap();
         // Let binding and drop to avoid: "guard` does not live long enough"
-        let result = rev_blocks_by_id(&guard, block_id)
-            .find_map(|(_, b)| {
-                b.block
-                    .state_update
-                    .contract_updates
-                    .get(&contract_address)
-                    .map(|update| update.nonce)
-            })
-            .flatten();
+        let it = rev_blocks_by_id(&guard, block_id);
+        let result = find_contract_update(it, contract_address).and_then(|update| update.nonce);
         drop(guard);
         result
     }
@@ -559,27 +550,16 @@ mod decided {
     ) -> Option<ClassHash> {
         let guard = decided_blocks.read().unwrap();
         // Let binding and drop to avoid: "guard` does not live long enough"
-        let result = rev_blocks_by_id(&guard, block_id)
-            .find_map(|(_, b)| {
-                b.block
-                    .state_update
-                    .contract_updates
-                    .get(&contract_address)
-                    .map(|update| update.class.map(|c| c.class_hash()))
-            })
-            .flatten();
+        let it = rev_blocks_by_id(&guard, block_id);
+        let result = find_contract_update(it, contract_address)
+            .and_then(|update| update.class.map(|c| c.class_hash()));
         drop(guard);
         result
     }
 
     pub fn casm_hash_v2(decided_blocks: &DecidedBlocks, class_hash: ClassHash) -> Option<CasmHash> {
         let decided_blocks = decided_blocks.read().unwrap();
-        decided_blocks.iter().find_map(|(_, b)| {
-            b.block
-                .declared_classes
-                .iter()
-                .find_map(|c| (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_hash_v2))
-        })
+        find_class(decided_blocks.values(), class_hash).map(|(_, c)| c.casm_hash_v2)
     }
 
     pub fn casm_hash_at(
@@ -589,12 +569,8 @@ mod decided {
     ) -> Option<CasmHash> {
         let guard = decided_blocks.read().unwrap();
         // Let binding and drop to avoid: "guard` does not live long enough"
-        let result = rev_blocks_by_id(&guard, block_id).find_map(|(_, b)| {
-            b.block
-                .declared_classes
-                .iter()
-                .find_map(|c| (c.sierra_hash == SierraHash(class_hash.0)).then_some(c.casm_hash_v2))
-        });
+        let it = rev_blocks_by_id(&guard, block_id);
+        let result = find_class(it, class_hash).map(|(_, c)| c.casm_hash_v2);
         drop(guard);
         result
     }
