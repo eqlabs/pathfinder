@@ -11,10 +11,10 @@ use anyhow::Context;
 use p2p::consensus::HeightAndRound;
 use p2p_proto::consensus as proto_consensus;
 use pathfinder_common::DecidedBlocks;
+use pathfinder_gas_price::{L1GasPriceProvider, L2GasPriceProvider};
 use pathfinder_storage::Storage;
 
 use crate::consensus::ProposalHandlingError;
-use crate::gas_price::{L1GasPriceProvider, L2GasPriceProvider};
 use crate::validator::{
     should_defer_validation,
     TransactionExt,

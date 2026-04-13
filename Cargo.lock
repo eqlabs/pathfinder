@@ -8447,6 +8447,7 @@ dependencies = [
  "pathfinder-crypto",
  "pathfinder-ethereum",
  "pathfinder-executor",
+ "pathfinder-gas-price",
  "pathfinder-merkle-tree",
  "pathfinder-retry",
  "pathfinder-rpc",

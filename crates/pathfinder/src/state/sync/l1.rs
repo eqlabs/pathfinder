@@ -3,10 +3,10 @@ use std::time::Duration;
 use anyhow::Context;
 use pathfinder_common::{Chain, L1BlockNumber};
 use pathfinder_ethereum::{EthereumClient, L1GasPriceData};
+use pathfinder_gas_price::{AddSampleError, L1GasPriceProvider};
 use primitive_types::H160;
 use tokio::sync::mpsc;
 
-use crate::gas_price::{AddSampleError, L1GasPriceProvider};
 use crate::state::sync::SyncEvent;
 
 #[derive(Clone)]

@@ -40,6 +40,7 @@ use pathfinder_consensus::{
     SignedVote,
 };
 use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
+use pathfinder_gas_price::{L1GasPriceProvider, L2GasPriceConstants, L2GasPriceProvider};
 use pathfinder_storage::{Storage, Transaction, TransactionBehavior};
 use tokio::sync::{mpsc, watch};
 
@@ -54,7 +55,6 @@ use crate::consensus::inner::batch_execution::{
 };
 use crate::consensus::inner::create_empty_block;
 use crate::consensus::{ProposalError, ProposalHandlingError};
-use crate::gas_price::{L1GasPriceProvider, L2GasPriceConstants, L2GasPriceProvider};
 use crate::validator::{
     should_defer_validation,
     ProdTransactionMapper,

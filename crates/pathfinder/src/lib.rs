@@ -3,7 +3,6 @@
 pub mod config;
 pub mod consensus;
 pub mod devnet;
-pub mod gas_price;
 pub mod monitoring;
 pub mod p2p_network;
 pub mod state;
