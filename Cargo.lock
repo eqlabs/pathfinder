@@ -8670,6 +8670,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "pathfinder-gas-price"
+version = "0.22.2"
+dependencies = [
+ "anyhow",
+ "mockall 0.11.4",
+ "pathfinder-common",
+ "pathfinder-ethereum",
+ "reqwest 0.12.28",
+ "rstest",
+ "serde",
+ "starknet_api",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "pathfinder-merkle-tree"
 version = "0.22.2"
 dependencies = [
