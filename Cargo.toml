@@ -11,6 +11,7 @@ members = [
     "crates/ethereum",
     "crates/executor",
     "crates/feeder-gateway",
+    "crates/gas-price",
     "crates/gateway-client",
     "crates/gateway-test-fixtures",
     "crates/gateway-test-utils",
