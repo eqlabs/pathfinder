@@ -920,6 +920,7 @@ pub(crate) mod tests {
             use super::*;
             use crate::types::request::{
                 BroadcastedDeclareTransactionV2,
+                BroadcastedDeclareTransactionV3,
                 BroadcastedInvokeTransaction,
                 BroadcastedInvokeTransactionV1,
                 BroadcastedInvokeTransactionV3,
@@ -948,9 +949,58 @@ pub(crate) mod tests {
                 ))
             }
 
+            pub fn declare_integration(
+                account_contract_address: ContractAddress,
+            ) -> (BroadcastedTransaction, ClassHash) {
+                let contract_definition =
+                    include_bytes!("../../fixtures/contracts/libfuncs_coverage.json");
+                let contract_class =
+                    crate::types::ContractClass::from_definition_bytes(contract_definition)
+                        .unwrap()
+                        .as_sierra()
+                        .unwrap();
+                let contract_hash = contract_class.class_hash().unwrap().hash();
+                let declare_tx = BroadcastedTransaction::Declare(
+                    BroadcastedDeclareTransaction::V3(BroadcastedDeclareTransactionV3 {
+                        version: TransactionVersion::THREE,
+                        signature: vec![],
+                        nonce: transaction_nonce!("0x0"),
+                        resource_bounds: ResourceBounds {
+                            l1_gas: ResourceBound {
+                                max_amount: ResourceAmount(100000),
+                                max_price_per_unit: ResourcePricePerUnit(10),
+                            },
+                            l2_gas: Default::default(),
+                            l1_data_gas: Default::default(),
+                        },
+                        tip: Tip(0),
+                        paymaster_data: vec![],
+                        account_deployment_data: vec![],
+                        nonce_data_availability_mode: DataAvailabilityMode::L1,
+                        fee_data_availability_mode: DataAvailabilityMode::L1,
+                        contract_class,
+                        sender_address: account_contract_address,
+                        compiled_class_hash: CASM_HASH,
+                    }),
+                );
+                (declare_tx, contract_hash)
+            }
+
             pub fn universal_deployer(
                 account_contract_address: ContractAddress,
                 universal_deployer_address: ContractAddress,
+            ) -> BroadcastedTransaction {
+                universal_deployer_ex(
+                    account_contract_address,
+                    universal_deployer_address,
+                    SIERRA_HASH,
+                )
+            }
+
+            pub fn universal_deployer_ex(
+                account_contract_address: ContractAddress,
+                universal_deployer_address: ContractAddress,
+                contract_hash: ClassHash,
             ) -> BroadcastedTransaction {
                 BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                     BroadcastedInvokeTransactionV1 {
@@ -970,7 +1020,7 @@ pub(crate) mod tests {
                             // AccountCallArray::data_len
                             call_param!("4"),
                             // classHash
-                            CallParam(SIERRA_HASH.0),
+                            CallParam(contract_hash.0),
                             // salt
                             call_param!("0x0"),
                             // unique
@@ -2765,6 +2815,38 @@ pub(crate) mod tests {
             version,
             "simulations/declare_deploy_and_invoke_sierra_class_starknet_0_14_0.json"
         );
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn declare_and_deploy_integration_test() {
+        let version = RpcVersion::V10;
+        let (storage, last_block_header, account_contract_address, universal_deployer_address, _) =
+            setup_storage_with_starknet_version(StarknetVersion::new(0, 14, 0, 0)).await;
+        let context = RpcContext::for_tests().with_storage(storage);
+
+        let (declare_tx, contract_hash) =
+            fixtures::input::declare_integration(account_contract_address);
+        let input = SimulateTransactionInput {
+            transactions: vec![
+                declare_tx,
+                fixtures::input::universal_deployer_ex(
+                    account_contract_address,
+                    universal_deployer_address,
+                    contract_hash,
+                ),
+            ],
+            block_id: BlockId::Number(last_block_header.number),
+            simulation_flags: crate::dto::SimulationFlags(vec![]),
+        };
+        let result_serialized = simulate_transactions(context, input, version)
+            .await
+            .unwrap()
+            .serialize(crate::dto::Serializer { version })
+            .unwrap();
+        let fixture_str =
+            include_str!("../../fixtures/0.10.0/simulations/declare_and_deploy_integration.json");
+        let fixture_json: serde_json::Value = serde_json::from_str(fixture_str).unwrap();
+        pretty_assertions_sorted::assert_eq!(result_serialized, fixture_json);
     }
 
     #[test_log::test(tokio::test)]
