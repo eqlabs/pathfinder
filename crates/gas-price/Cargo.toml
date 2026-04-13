@@ -1,0 +1,24 @@
+[package]
+name = "pathfinder-gas-price"
+version = { workspace = true }
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+rust-version = { workspace = true }
+
+[dependencies]
+pathfinder-common = { path = "../common" }
+pathfinder-ethereum = { path = "../ethereum" }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+mockall = { workspace = true }
+pathfinder-common = { path = "../common" }
+pathfinder-ethereum = { path = "../ethereum" }
+reqwest = { workspace = true }
+rstest = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+starknet_api = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
