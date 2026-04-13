@@ -27,6 +27,7 @@ use pathfinder_common::{
     StarknetVersion,
 };
 use pathfinder_consensus::{ConsensusCommand, ConsensusEvent, NetworkMessage};
+use pathfinder_gas_price::L1GasPriceProvider;
 use pathfinder_storage::Storage;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, watch};
@@ -34,7 +35,6 @@ use tokio::sync::{mpsc, watch};
 use super::{ConsensusChannels, ConsensusTaskHandles};
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
-use crate::gas_price::L1GasPriceProvider;
 use crate::SyncMessageToConsensus;
 
 #[allow(clippy::too_many_arguments)]

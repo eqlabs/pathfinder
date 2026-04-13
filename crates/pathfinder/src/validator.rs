@@ -59,8 +59,7 @@ pub type ValidatorWorkerPool = Arc<
     >,
 >;
 
-use crate::consensus::ProposalHandlingError;
-use crate::gas_price::{
+use pathfinder_gas_price::{
     L1GasPriceProvider,
     L1GasPriceValidationResult,
     L1ToFriValidationResult,
@@ -68,6 +67,8 @@ use crate::gas_price::{
     L2GasPriceProvider,
     L2GasPriceValidationResult,
 };
+
+use crate::consensus::ProposalHandlingError;
 use crate::state::block_hash::{
     calculate_event_commitment,
     calculate_receipt_commitment,
