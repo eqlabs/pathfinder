@@ -323,10 +323,20 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     let gas_price_provider = if integration_testing_config.is_gas_price_validation_disabled() {
         None
     } else if let Some(consensus_config) = &config.consensus {
-        let provider = L1GasPriceProvider::new(L1GasPriceConfig {
-            tolerance: consensus_config.l1_gas_price_tolerance,
-            max_time_gap_seconds: consensus_config.l1_gas_price_max_time_gap,
-            ..Default::default()
+        let provider = L1GasPriceProvider::new({
+            #[cfg(feature = "p2p")]
+            {
+                L1GasPriceConfig {
+                    tolerance: consensus_config.l1_gas_price_tolerance,
+                    max_time_gap_seconds: consensus_config.l1_gas_price_max_time_gap,
+                    ..Default::default()
+                }
+            }
+            #[cfg(not(feature = "p2p"))]
+            {
+                let _ = consensus_config;
+                L1GasPriceConfig::default()
+            }
         });
 
         // Spawn the L1 gas price sync task
