@@ -141,8 +141,8 @@ mod tests {
     use pathfinder_ethereum::L1GasPriceData;
 
     use super::*;
-    use crate::gas_price::l1::L1GasPriceConfig;
-    use crate::gas_price::oracle::MockEthToFriOracle;
+    use crate::l1::L1GasPriceConfig;
+    use crate::oracle::MockEthToFriOracle;
 
     fn sample(block_num: u64, timestamp: u64, base_fee: u128, blob_fee: u128) -> L1GasPriceData {
         let mut hash_bytes = [0u8; 32];
@@ -209,7 +209,7 @@ mod tests {
 
         let mut mock = MockEthToFriOracle::new();
         mock.expect_wei_to_fri().returning(|_, ts| {
-            Err(crate::gas_price::oracle::EthToFriOracleError::Unavailable { timestamp: ts })
+            Err(crate::oracle::EthToFriOracleError::Unavailable { timestamp: ts })
         });
         let v = L1ToFriValidator::new(
             Arc::new(mock),
