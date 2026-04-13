@@ -480,11 +480,8 @@ mod decided {
         class_hash: ClassHash,
     ) -> Option<Vec<u8>> {
         let guard = decided_blocks.read().unwrap();
-        // Let binding and drop to avoid: "guard` does not live long enough"
         let it = rev_blocks_by_id(&guard, block_id);
-        let result = find_class(it, class_hash).map(|(_, c)| c.casm_def.clone());
-        drop(guard);
-        result
+        find_class(it, class_hash).map(|(_, c)| c.casm_def.clone())
     }
 
     pub fn class_definition_at_with_block_number(
@@ -493,11 +490,8 @@ mod decided {
         class_hash: ClassHash,
     ) -> ClassDefinitionAtWithBlockNumber {
         let guard = decided_blocks.read().unwrap();
-        // Let binding and drop to avoid: "guard` does not live long enough"
         let it = rev_blocks_by_id(&guard, block_id);
-        let result = find_class(it, class_hash).map(|(b, c)| (b, c.sierra_def.clone()));
-        drop(guard);
-        result
+        find_class(it, class_hash).map(|(b, c)| (b, c.sierra_def.clone()))
     }
 
     pub fn storage_value(
@@ -507,8 +501,8 @@ mod decided {
         storage_address: StorageAddress,
     ) -> Option<StorageValue> {
         let guard = decided_blocks.read().unwrap();
-        // Let binding and drop to avoid: "guard` does not live long enough"
-        let result = rev_blocks_by_id(&guard, block_id).find_map(|b| {
+        let mut it = rev_blocks_by_id(&guard, block_id);
+        it.find_map(|b| {
             b.block
                 .state_update
                 .contract_updates
@@ -525,9 +519,7 @@ mod decided {
                     (*address == contract_address).then_some(storage.get(&storage_address).copied())
                 })
                 .flatten()
-        });
-        drop(guard);
-        result
+        })
     }
 
     pub fn contract_nonce(
@@ -536,11 +528,8 @@ mod decided {
         block_id: BlockId,
     ) -> Option<ContractNonce> {
         let guard = decided_blocks.read().unwrap();
-        // Let binding and drop to avoid: "guard` does not live long enough"
         let it = rev_blocks_by_id(&guard, block_id);
-        let result = find_contract_update(it, contract_address).and_then(|update| update.nonce);
-        drop(guard);
-        result
+        find_contract_update(it, contract_address).and_then(|update| update.nonce)
     }
 
     pub fn contract_class_hash(
@@ -549,12 +538,9 @@ mod decided {
         contract_address: ContractAddress,
     ) -> Option<ClassHash> {
         let guard = decided_blocks.read().unwrap();
-        // Let binding and drop to avoid: "guard` does not live long enough"
         let it = rev_blocks_by_id(&guard, block_id);
-        let result = find_contract_update(it, contract_address)
-            .and_then(|update| update.class.map(|c| c.class_hash()));
-        drop(guard);
-        result
+        find_contract_update(it, contract_address)
+            .and_then(|update| update.class.map(|c| c.class_hash()))
     }
 
     pub fn casm_hash_v2(decided_blocks: &DecidedBlocks, class_hash: ClassHash) -> Option<CasmHash> {
@@ -568,11 +554,8 @@ mod decided {
         class_hash: ClassHash,
     ) -> Option<CasmHash> {
         let guard = decided_blocks.read().unwrap();
-        // Let binding and drop to avoid: "guard` does not live long enough"
         let it = rev_blocks_by_id(&guard, block_id);
-        let result = find_class(it, class_hash).map(|(_, c)| c.casm_hash_v2);
-        drop(guard);
-        result
+        find_class(it, class_hash).map(|(_, c)| c.casm_hash_v2)
     }
 
     #[cfg(test)]
