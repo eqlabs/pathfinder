@@ -209,18 +209,7 @@ impl Transaction<'_> {
         Ok(Some((block_number, definition)))
     }
 
-    /// Returns the compressed class definition if it has been declared at
-    /// `block_id`.
-    pub fn compressed_class_definition_at(
-        &self,
-        block_id: BlockId,
-        class_hash: ClassHash,
-    ) -> anyhow::Result<Option<Vec<u8>>> {
-        self.compressed_class_definition_at_with_block_number(block_id, class_hash)
-            .map(|option| option.map(|(_block_number, definition)| definition))
-    }
-
-    pub fn compressed_class_definition_at_with_block_number(
+    fn compressed_class_definition_at_with_block_number(
         &self,
         block_id: BlockId,
         class_hash: ClassHash,
