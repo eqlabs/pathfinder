@@ -4,10 +4,10 @@ use futures::StreamExt;
 use p2p::libp2p::PeerId;
 use p2p::PeerData;
 use p2p_proto::sync::header;
+use pathfinder_block_commitments::VerifyResult;
 use pathfinder_common::prelude::*;
 use pathfinder_storage::Storage;
 
-use crate::state::block_hash::VerifyResult;
 use crate::sync::error::SyncError;
 use crate::sync::stream::{ProcessStage, SyncReceiver};
 
@@ -233,7 +233,7 @@ impl VerifyHashAndSignature {
             .as_ref()
             .and_then(|db| db.block_hash(header.number))
             .unwrap_or(header.hash);
-        let computed_hash = crate::state::block_hash::compute_final_hash(header);
+        let computed_hash = pathfinder_block_commitments::compute_final_hash(header);
         {
             if computed_hash == expected_hash {
                 true

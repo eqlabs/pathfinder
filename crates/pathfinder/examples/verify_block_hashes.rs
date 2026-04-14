@@ -1,12 +1,8 @@
 use std::num::NonZeroU32;
 
 use anyhow::Context;
+use pathfinder_block_commitments::{calculate_receipt_commitment, verify_block_hash, VerifyResult};
 use pathfinder_common::{BlockNumber, Chain, ChainId, ReceiptCommitment};
-use pathfinder_lib::state::block_hash::{
-    calculate_receipt_commitment,
-    verify_block_hash,
-    VerifyResult,
-};
 
 /// Verify block hashes in a pathfinder database.
 ///

@@ -23,6 +23,7 @@ use p2p_proto::sync::transaction::{
     TransactionsRequest,
     TransactionsResponse,
 };
+use pathfinder_block_commitments::calculate_transaction_commitment;
 use pathfinder_block_hashes::BlockHashDb;
 use pathfinder_common::prelude::*;
 use pathfinder_common::receipt::Receipt;
@@ -36,7 +37,6 @@ use starknet_gateway_client::{BlockId, Client, GatewayApi};
 use tokio::sync::Mutex;
 use tracing::Instrument;
 
-use crate::state::block_hash::calculate_transaction_commitment;
 use crate::sync::error::SyncError;
 use crate::sync::stream::{InfallibleSource, Source, SyncReceiver, SyncResult};
 use crate::sync::{class_definitions, events, headers, state_updates, transactions};
@@ -1684,6 +1684,7 @@ mod tests {
         use fake::{Fake, Faker};
         use futures::stream;
         use p2p::libp2p::PeerId;
+        use pathfinder_block_commitments::calculate_event_commitment;
         use pathfinder_common::event::Event;
         use pathfinder_common::transaction::TransactionVariant;
         use pathfinder_common::{StarknetVersion, TransactionHash};
@@ -1693,7 +1694,6 @@ mod tests {
 
         use super::super::handle_event_stream;
         use super::*;
-        use crate::state::block_hash::calculate_event_commitment;
 
         type TransactionInfo = (TransactionHash, TransactionIndex);
 

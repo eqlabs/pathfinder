@@ -5,6 +5,7 @@ use anyhow::Context;
 use p2p::libp2p::PeerId;
 use p2p::sync::client::types::EventsForBlockByTransaction;
 use p2p::PeerData;
+use pathfinder_block_commitments::calculate_event_commitment;
 use pathfinder_common::event::Event;
 use pathfinder_common::prelude::*;
 use pathfinder_common::receipt::Receipt;
@@ -15,7 +16,6 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use super::error::SyncError;
 use super::storage_adapters;
-use crate::state::block_hash::calculate_event_commitment;
 use crate::sync::stream::ProcessStage;
 
 /// Returns the first block number whose events are missing in storage, counting

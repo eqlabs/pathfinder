@@ -58,7 +58,7 @@ fn main() -> anyhow::Result<()> {
             .map(|(tx, _, _)| tx)
             .collect::<Vec<_>>();
         let computed_transaction_commitment =
-            pathfinder_lib::state::block_hash::calculate_transaction_commitment(
+            pathfinder_block_commitments::calculate_transaction_commitment(
                 &transactions,
                 header.starknet_version,
             )?;
