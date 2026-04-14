@@ -12,6 +12,15 @@ use crate::{ByteCodeOffset, EntryPoint};
 
 pub const CLASS_DEFINITION_MAX_ALLOWED_SIZE: u64 = 4 * 1024 * 1024;
 
+#[derive(Clone, Debug, Default)]
+struct SerializedSierraDefinition(Vec<u8>);
+
+#[derive(Clone, Debug, Default)]
+struct SerializedCasmDefinition(Vec<u8>);
+
+#[derive(Clone, Debug, Default)]
+struct SerializedCairoDefinition(Vec<u8>);
+
 #[derive(Debug, Deserialize, Dummy)]
 pub enum ClassDefinition<'a> {
     Sierra(Sierra<'a>),
@@ -189,4 +198,46 @@ impl<T> Dummy<T> for SelectorAndOffset {
 pub struct SelectorAndFunctionIndex {
     pub selector: EntryPoint,
     pub function_idx: u64,
+}
+
+impl SerializedSierraDefinition {
+    pub fn from_bytes(bytes: Vec<u8>) -> Self {
+        Self(bytes)
+    }
+
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.0
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl SerializedCasmDefinition {
+    pub fn from_bytes(bytes: Vec<u8>) -> Self {
+        Self(bytes)
+    }
+
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.0
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl SerializedCairoDefinition {
+    pub fn from_bytes(bytes: Vec<u8>) -> Self {
+        Self(bytes)
+    }
+
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.0
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
 }
