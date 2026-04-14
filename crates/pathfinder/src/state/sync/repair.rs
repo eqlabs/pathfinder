@@ -153,6 +153,10 @@ fn store_repaired_class(
 mod tests {
     use std::collections::HashSet;
 
+    use pathfinder_common::class_definition::{
+        SerializedCairoDefinition,
+        SerializedClassDefinition,
+    };
     use pathfinder_common::state_update::StateUpdateData;
     use pathfinder_common::BlockNumber;
     use pathfinder_storage::StorageBuilder;
@@ -192,7 +196,7 @@ mod tests {
     async fn cairo_repair() {
         let storage = storage();
         let hash = ClassHash(pathfinder_crypto::Felt::from_hex_str("0xdeadbeef").unwrap());
-        let definition = b"cairo class definition bytes".to_vec();
+        let definition = SerializedCairoDefinition::from_slice(b"cairo class definition bytes");
 
         insert_placeholder(&storage, hash);
 
@@ -214,7 +218,7 @@ mod tests {
         let mut db = storage.connection().unwrap();
         let tx = db.transaction().unwrap();
         let stored = tx.class_definition(hash).unwrap();
-        assert_eq!(stored, Some(definition));
+        assert_eq!(stored, Some(SerializedClassDefinition::from(definition)));
     }
 
     /// Cairo 0 classes can have a mismatch between the declared hash and the
@@ -225,7 +229,7 @@ mod tests {
         let storage = storage();
         let declared = ClassHash(pathfinder_crypto::Felt::from_hex_str("0xaaaa").unwrap());
         let computed = ClassHash(pathfinder_crypto::Felt::from_hex_str("0xbbbb").unwrap());
-        let definition = b"cairo class definition bytes".to_vec();
+        let definition = SerializedCairoDefinition::from_slice(b"cairo class definition bytes");
 
         insert_placeholder(&storage, declared);
 
@@ -248,7 +252,10 @@ mod tests {
         let mut db = storage.connection().unwrap();
         let tx = db.transaction().unwrap();
         // Stored under the declared hash, not the computed one.
-        assert_eq!(tx.class_definition(declared).unwrap(), Some(definition));
+        assert_eq!(
+            tx.class_definition(declared).unwrap(),
+            Some(SerializedClassDefinition::from(definition))
+        );
         assert_eq!(tx.class_definition(computed).unwrap(), None);
     }
 
@@ -258,7 +265,7 @@ mod tests {
         let storage = storage();
         let good = ClassHash(pathfinder_crypto::Felt::from_hex_str("0x1111").unwrap());
         let bad = ClassHash(pathfinder_crypto::Felt::from_hex_str("0x2222").unwrap());
-        let definition = b"good class definition".to_vec();
+        let definition = SerializedCairoDefinition::from_slice(b"good class definition");
 
         // Insert both in one state update to avoid block number conflicts.
         {
@@ -292,7 +299,10 @@ mod tests {
 
         let mut db = storage.connection().unwrap();
         let tx = db.transaction().unwrap();
-        assert_eq!(tx.class_definition(good).unwrap(), Some(definition));
+        assert_eq!(
+            tx.class_definition(good).unwrap(),
+            Some(SerializedClassDefinition::from(definition))
+        );
         // bad was not repaired — definition IS NULL, so it still appears in
         // the missing list.
         let still_missing = tx.class_hashes_with_missing_definitions().unwrap();

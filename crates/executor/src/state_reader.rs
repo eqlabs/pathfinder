@@ -4,6 +4,7 @@ use blockifier::execution::contract_class::RunnableCompiledClass;
 use blockifier::state::errors::StateError;
 use blockifier::state::state_api::StateReader;
 use cached::Cached;
+use pathfinder_common::class_definition::SerializedClassDefinition;
 use pathfinder_common::{BlockNumber, ClassHash, StorageAddress, StorageValue};
 use pathfinder_crypto::Felt;
 use starknet_api::contract_class::compiled_class_hash::{HashVersion, HashableCompiledClass};
@@ -121,7 +122,7 @@ impl<S: StorageAdapter> PathfinderStateReader<S> {
             Some(casm_definition) => {
                 // There's a CASM definition in storage, so this is a Sierra class. Extract
                 // class version from program.
-                let sierra_version = self.sierra_version_from_class(&class_definition)?;
+                let sierra_version = self.try_sierra_version_from_class(&class_definition)?;
 
                 #[cfg(feature = "cairo-native")]
                 let runnable_class = if self.native_execution_force_use_for_incompatible_classes
@@ -160,15 +161,16 @@ impl<S: StorageAdapter> PathfinderStateReader<S> {
             }
             None => {
                 // No CASM definition means this is a legacy Cairo 0 class.
-                let class_definition = String::from_utf8(class_definition).map_err(|error| {
-                    StateError::StateReadError(format!(
-                        "Class definition is not valid UTF-8: {error}"
-                    ))
-                })?;
+                let class_definition =
+                    std::str::from_utf8(class_definition.as_bytes()).map_err(|error| {
+                        StateError::StateReadError(format!(
+                            "Class definition is not valid UTF-8: {error}"
+                        ))
+                    })?;
 
                 let class =
                     blockifier::execution::contract_class::CompiledClassV0::try_from_json_string(
-                        &class_definition,
+                        class_definition,
                     )
                     .map_err(StateError::ProgramError)?;
 
@@ -177,14 +179,14 @@ impl<S: StorageAdapter> PathfinderStateReader<S> {
         }
     }
 
-    fn sierra_version_from_class(
+    fn try_sierra_version_from_class(
         &self,
-        class_definition: &[u8],
+        class_definition: &SerializedClassDefinition,
     ) -> Result<SierraVersion, StateError> {
         use cairo_vm::types::errors::program_errors::ProgramError;
 
         let sierra_class: pathfinder_common::class_definition::Sierra<'_> =
-            serde_json::from_slice(class_definition)
+            serde_json::from_slice(class_definition.as_bytes())
                 .map_err(|error| StateError::ProgramError(ProgramError::Parse(error)))?;
         SierraVersion::extract_from_program(&sierra_class.sierra_program).map_err(Into::into)
     }
@@ -192,13 +194,13 @@ impl<S: StorageAdapter> PathfinderStateReader<S> {
 
 fn sierra_class_as_casm(
     sierra_version: SierraVersion,
-    casm_definition: Vec<u8>,
+    casm_definition: pathfinder_common::class_definition::SerializedCasmDefinition,
 ) -> Result<RunnableCompiledClass, StateError> {
-    let casm_definition = String::from_utf8(casm_definition).map_err(|error| {
+    let casm_definition = std::str::from_utf8(casm_definition.as_bytes()).map_err(|error| {
         StateError::StateReadError(format!("CASM definition is not valid UTF-8: {error}"))
     })?;
     let casm_class = blockifier::execution::contract_class::CompiledClassV1::try_from_json_string(
-        &casm_definition,
+        casm_definition,
         sierra_version,
     )
     .map_err(StateError::ProgramError)?;

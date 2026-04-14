@@ -1,3 +1,8 @@
+use pathfinder_common::class_definition::{
+    SerializedCairoDefinition,
+    SerializedCasmDefinition,
+    SerializedSierraDefinition,
+};
 use pathfinder_common::macro_prelude::*;
 use pathfinder_common::prelude::*;
 use pathfinder_storage::Storage;
@@ -42,8 +47,8 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
         casm_hash!("0x0224b815fab6827eb21993e02e45e532e5476af6536dcf1f7085989ba9dc5bf0");
     tx.insert_sierra_class_definition(
         &openzeppelin_account_sierra_hash,
-        openzeppelin_account_class_definition,
-        openzeppelin_account_casm_definition,
+        &SerializedSierraDefinition::from_slice(openzeppelin_account_class_definition),
+        &SerializedCasmDefinition::from_slice(openzeppelin_account_casm_definition),
         &casm_hash_bytes!(b"casm hash blake"),
     )
     .unwrap();
@@ -53,16 +58,22 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
         include_bytes!("../fixtures/contracts/universal_deployer.json");
     let universal_deployer_class_hash =
         class_hash!("0x06f38fb91ddbf325a0625533576bb6f6eafd9341868a9ec3faa4b01ce6c4f4dc");
-    tx.insert_cairo_class_definition(universal_deployer_class_hash, universal_deployer_definition)
-        .unwrap();
+    tx.insert_cairo_class_definition(
+        universal_deployer_class_hash,
+        &SerializedCairoDefinition::from_slice(universal_deployer_definition),
+    )
+    .unwrap();
 
     // Declare ERC20 fee token contract class
     let erc20_class_hash =
         starknet_gateway_test_fixtures::class_definitions::ERC20_CONTRACT_DEFINITION_CLASS_HASH;
     let erc20_class_definition =
         starknet_gateway_test_fixtures::class_definitions::ERC20_CONTRACT_DEFINITION;
-    tx.insert_cairo_class_definition(erc20_class_hash, erc20_class_definition)
-        .unwrap();
+    tx.insert_cairo_class_definition(
+        erc20_class_hash,
+        &SerializedCairoDefinition::from_slice(erc20_class_definition),
+    )
+    .unwrap();
 
     let header = BlockHeader::child_builder(&genesis)
         .timestamp(BlockTimestamp::new_or_panic(1))

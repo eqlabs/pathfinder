@@ -1,6 +1,11 @@
 use anyhow::Context;
 use fake::Dummy;
 use libp2p::PeerId;
+use pathfinder_common::class_definition::{
+    SerializedCairoDefinition,
+    SerializedClassDefinition,
+    SerializedSierraDefinition,
+};
 use pathfinder_common::event::Event;
 use pathfinder_common::prelude::*;
 use pathfinder_common::receipt::{ExecutionResources, ExecutionStatus, L2ToL1Message};
@@ -14,24 +19,24 @@ use crate::sync::client::conv::TryFromDto;
 pub enum ClassDefinition {
     Cairo {
         block_number: BlockNumber,
-        definition: Vec<u8>,
+        definition: SerializedCairoDefinition,
         hash: ClassHash,
     },
     Sierra {
         block_number: BlockNumber,
-        sierra_definition: Vec<u8>,
+        sierra_definition: SerializedSierraDefinition,
         hash: SierraHash,
     },
 }
 
 impl ClassDefinition {
     /// Return Cairo or Sierra class definition depending on the variant.
-    pub fn class_definition(&self) -> Vec<u8> {
+    pub fn class_definition(&self) -> SerializedClassDefinition {
         match self {
-            Self::Cairo { definition, .. } => definition.clone(),
+            Self::Cairo { definition, .. } => definition.clone().into(),
             Self::Sierra {
                 sierra_definition, ..
-            } => sierra_definition.clone(),
+            } => sierra_definition.clone().into(),
         }
     }
 }

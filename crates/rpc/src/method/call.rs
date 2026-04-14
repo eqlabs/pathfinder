@@ -256,6 +256,11 @@ mod tests {
 
     mod in_memory {
         use assert_matches::assert_matches;
+        use pathfinder_common::class_definition::{
+            SerializedCairoDefinition,
+            SerializedCasmDefinition,
+            SerializedSierraDefinition,
+        };
         use pathfinder_common::felt;
         use pathfinder_common::prelude::*;
         use starknet_gateway_test_fixtures::class_definitions::{
@@ -292,8 +297,11 @@ mod tests {
             let block1_number = BlockNumber::GENESIS + 1;
             let block1_hash = BlockHash(felt!("0xb01"));
 
-            tx.insert_cairo_class_definition(CONTRACT_DEFINITION_CLASS_HASH, CONTRACT_DEFINITION)
-                .unwrap();
+            tx.insert_cairo_class_definition(
+                CONTRACT_DEFINITION_CLASS_HASH,
+                &SerializedCairoDefinition::from_slice(CONTRACT_DEFINITION),
+            )
+            .unwrap();
 
             let header = BlockHeader::builder()
                 .number(block1_number)
@@ -435,8 +443,8 @@ mod tests {
             let tx = connection.transaction().unwrap();
             tx.insert_sierra_class_definition(
                 &sierra_hash,
-                sierra_definition,
-                casm_definition,
+                &SerializedSierraDefinition::from_slice(sierra_definition),
+                &SerializedCasmDefinition::from_slice(casm_definition),
                 &casm_hash_v2,
             )
             .unwrap();
@@ -541,8 +549,8 @@ mod tests {
 
             tx.insert_sierra_class_definition(
                 &sierra_hash,
-                sierra_definition,
-                casm_definition,
+                &SerializedSierraDefinition::from_slice(sierra_definition),
+                &SerializedCasmDefinition::from_slice(casm_definition),
                 &casm_hash_v2,
             )
             .unwrap();
@@ -701,15 +709,15 @@ mod tests {
 
             tx.insert_sierra_class_definition(
                 &sierra_hash,
-                sierra_definition,
-                casm_definition,
+                &SerializedSierraDefinition::from_slice(sierra_definition),
+                &SerializedCasmDefinition::from_slice(casm_definition),
                 &casm_hash_v2,
             )
             .unwrap();
             tx.insert_sierra_class_definition(
                 &caller_sierra_hash,
-                &caller_sierra_definition,
-                caller_casm_definition,
+                &SerializedSierraDefinition::from_bytes(caller_sierra_definition),
+                &SerializedCasmDefinition::from_slice(caller_casm_definition),
                 &caller_casm_hash_v2,
             )
             .unwrap();

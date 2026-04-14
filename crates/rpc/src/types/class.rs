@@ -1,5 +1,6 @@
 use anyhow::Context;
 use base64::prelude::*;
+use pathfinder_common::class_definition::SerializedClassDefinition;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ContractClass {
@@ -19,8 +20,11 @@ impl ContractClass {
     ///
     /// Note that this function does not validate the class definition in any
     /// way, so this is only ever to be called for trusted data from storage.
-    pub fn from_definition_bytes(data: &[u8]) -> anyhow::Result<ContractClass> {
-        let mut json = serde_json::from_slice::<serde_json::Value>(data).context("Parsing json")?;
+    pub fn try_from_serialized_definition(
+        serialized_definition: &SerializedClassDefinition,
+    ) -> anyhow::Result<ContractClass> {
+        let mut json = serde_json::from_slice::<serde_json::Value>(serialized_definition.as_bytes())
+            .context("Parsing json")?;
         let json_obj = json
             .as_object_mut()
             .context("Class definition is not a json object")?;
@@ -228,8 +232,11 @@ pub mod cairo {
     impl CairoContractClass {
         pub fn class_hash(&self) -> anyhow::Result<ComputedClassHash> {
             let serialized = self.serialize_to_json()?;
+            let definition = pathfinder_common::class_definition::SerializedClassDefinition::from_bytes(serialized);
 
-            compute_class_hash(&serialized).context("Compute class hash")
+            compute_class_hash(definition)
+                .map(|(hash, _)| hash)
+                .context("Compute class hash")
         }
 
         pub fn serialize_to_json(&self) -> anyhow::Result<Vec<u8>> {
@@ -687,7 +694,8 @@ pub mod sierra {
     impl SierraContractClass {
         pub fn class_hash(&self) -> anyhow::Result<ComputedClassHash> {
             let definition = serde_json::to_vec(self)?;
-            compute_class_hash(&definition)
+            let definition = pathfinder_common::class_definition::SerializedClassDefinition::from_bytes(definition);
+            compute_class_hash(definition).map(|(hash, _)| hash)
         }
     }
 
@@ -779,6 +787,7 @@ mod tests {
 
     mod declare_class_hash {
         use pathfinder_class_hash::compute_class_hash;
+        use pathfinder_common::class_definition::SerializedClassDefinition;
         use starknet_gateway_test_fixtures::class_definitions::{
             CAIRO_0_11_SIERRA,
             CONTRACT_DEFINITION,
@@ -788,22 +797,33 @@ mod tests {
 
         #[test]
         fn compute_sierra_class_hash() {
-            let class_hash = compute_class_hash(CAIRO_0_11_SIERRA).unwrap();
+            let (class_hash, _) =
+                compute_class_hash(SerializedClassDefinition::from_slice(CAIRO_0_11_SIERRA))
+                    .unwrap();
 
-            let class = ContractClass::from_definition_bytes(CAIRO_0_11_SIERRA).unwrap();
+            let class = ContractClass::try_from_serialized_definition(
+                &SerializedClassDefinition::from_slice(CAIRO_0_11_SIERRA),
+            )
+            .unwrap();
             assert_eq!(class.class_hash().unwrap(), class_hash);
         }
 
         #[test]
         fn compute_cairo_class_hash() {
-            let class_hash = compute_class_hash(CONTRACT_DEFINITION).unwrap();
+            let (class_hash, _) =
+                compute_class_hash(SerializedClassDefinition::from_slice(CONTRACT_DEFINITION))
+                    .unwrap();
 
-            let class = ContractClass::from_definition_bytes(CONTRACT_DEFINITION).unwrap();
+            let class = ContractClass::try_from_serialized_definition(
+                &SerializedClassDefinition::from_slice(CONTRACT_DEFINITION),
+            )
+            .unwrap();
             assert_eq!(class.class_hash().unwrap(), class_hash);
         }
     }
 
     mod contract_class_serialization {
+        use pathfinder_common::class_definition::SerializedClassDefinition;
         use pathfinder_executor::parse_deprecated_class_definition;
 
         use super::super::cairo::CairoContractClass;
@@ -830,14 +850,17 @@ mod tests {
 
             let serialized_definition = contract_class.serialize_to_json().unwrap();
 
-            parse_deprecated_class_definition(serialized_definition).unwrap();
+            parse_deprecated_class_definition(SerializedClassDefinition::from_bytes(
+                serialized_definition,
+            ))
+            .unwrap();
         }
 
         #[test]
         fn parse_deprecated_class_definition_with_debug_info() {
             let definition =
                 include_bytes!("../../fixtures/contracts/cairo0_open_zeppelin_class.json");
-            let class = ContractClass::from_definition_bytes(definition).unwrap();
+            let class = ContractClass::try_from_serialized_definition(&SerializedClassDefinition::from_slice(definition)).unwrap();
 
             // this step involves parsing the full program including debug info
             class.as_cairo().unwrap().serialize_to_json().unwrap();

@@ -58,6 +58,12 @@
 
 use anyhow::{Context, Error, Result};
 use pathfinder_common::class_definition::EntryPointType::*;
+use pathfinder_common::class_definition::{
+    SerializedCairoDefinition,
+    SerializedClass,
+    SerializedClassDefinition,
+    SerializedSierraDefinition,
+};
 use pathfinder_common::{felt_bytes, ClassHash};
 use pathfinder_crypto::hash::{HashChain, PoseidonHasher};
 use pathfinder_crypto::Felt;
@@ -80,22 +86,47 @@ impl ComputedClassHash {
     }
 }
 
-/// Computes the starknet class hash for given class definition JSON blob.
+/// Consumes an opaque serialized class definition and outputs the computed
+/// class hash as well as the definition reinterpreted as either a serialized
+/// Cairo or Sierra definition.
 ///
 /// This function first parses the JSON blob to decide if it's a Cairo or Sierra
 /// class definition and then calls the appropriate function to compute the
 /// class hash with the parsed definition.
-pub fn compute_class_hash(contract_definition_dump: &[u8]) -> Result<ComputedClassHash> {
-    let contract_definition = parse_contract_definition(contract_definition_dump)
+pub fn compute_class_hash(
+    serialized_definition: SerializedClassDefinition,
+) -> Result<(ComputedClassHash, SerializedClass)> {
+    let contract_definition = parse_contract_definition(&serialized_definition)
         .context("Failed to parse contract definition")?;
 
     match contract_definition {
         json::ContractDefinition::Sierra(definition) => compute_sierra_class_hash(definition)
             .map(ComputedClassHash::Sierra)
-            .context("Compute class hash"),
+            .context("Compute class hash")
+            .map(|hash| {
+                (
+                    hash,
+                    // It is safe to reinterpret the serialized definition as a Sierra definition
+                    // since the parsing step succeeded and confirmed it is a
+                    // Sierra definition.
+                    SerializedClass::Sierra(SerializedSierraDefinition::from_bytes(
+                        serialized_definition.into_bytes(),
+                    )),
+                )
+            }),
         json::ContractDefinition::Cairo(definition) => compute_cairo_class_hash(definition.into())
             .map(ComputedClassHash::Cairo)
-            .context("Compute class hash"),
+            .context("Compute class hash")
+            .map(|hash| {
+                (
+                    hash,
+                    // It is safe to reinterpret the serialized definition as a Cairo definition
+                    // since the parsing step succeeded and confirmed it is a Cairo definition.
+                    SerializedClass::Cairo(SerializedCairoDefinition::from_bytes(
+                        serialized_definition.into_bytes(),
+                    )),
+                )
+            }),
     }
 }
 
@@ -132,14 +163,16 @@ pub fn compute_cairo_hinted_class_hash(
 ///
 /// Due to an issue in serde_json we can't use an untagged enum and simply
 /// derive a Deserialize implementation: <https://github.com/serde-rs/json/issues/559>
-pub fn parse_contract_definition(
-    contract_definition_dump: &[u8],
+fn parse_contract_definition(
+    serialized_definition: &SerializedClassDefinition,
 ) -> serde_json::Result<json::ContractDefinition<'_>> {
-    serde_json::from_slice::<json::SierraContractDefinition<'_>>(contract_definition_dump)
+    serde_json::from_slice::<json::SierraContractDefinition<'_>>(serialized_definition.as_bytes())
         .map(json::ContractDefinition::Sierra)
         .or_else(|_| {
-            serde_json::from_slice::<json::CairoContractDefinition<'_>>(contract_definition_dump)
-                .map(json::ContractDefinition::Cairo)
+            serde_json::from_slice::<json::CairoContractDefinition<'_>>(
+                serialized_definition.as_bytes(),
+            )
+            .map(json::ContractDefinition::Cairo)
         })
 }
 
@@ -799,17 +832,22 @@ pub mod json {
 
     #[cfg(test)]
     mod test_vectors {
+        use pathfinder_common::class_definition::SerializedClassDefinition;
         use pathfinder_common::macro_prelude::*;
         use starknet_gateway_test_fixtures::class_definitions::*;
 
         use super::super::{compute_class_hash, ComputedClassHash};
 
+        fn hash(data: &[u8]) -> ComputedClassHash {
+            compute_class_hash(SerializedClassDefinition::from_slice(data))
+                .unwrap()
+                .0
+        }
+
         #[tokio::test]
         async fn first() {
-            let hash = compute_class_hash(INTEGRATION_TEST).unwrap();
-
             assert_eq!(
-                hash,
+                hash(INTEGRATION_TEST),
                 ComputedClassHash::Cairo(class_hash!(
                     "0x031da92cf5f54bcb81b447e219e2b791b23f3052d12b6c9abd04ff2e5626576"
                 ))
@@ -818,10 +856,8 @@ pub mod json {
 
         #[test]
         fn second() {
-            let hash = super::super::compute_class_hash(CONTRACT_DEFINITION).unwrap();
-
             assert_eq!(
-                hash,
+                hash(CONTRACT_DEFINITION),
                 ComputedClassHash::Cairo(class_hash!(
                     "0x50b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
                 ))
@@ -830,10 +866,8 @@ pub mod json {
 
         #[tokio::test]
         async fn genesis_contract() {
-            let hash = compute_class_hash(GOERLI_GENESIS).unwrap();
-
             assert_eq!(
-                hash,
+                hash(GOERLI_GENESIS),
                 ComputedClassHash::Cairo(class_hash!(
                     "0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"
                 ))
@@ -851,10 +885,11 @@ pub mod json {
 
             // Known contract which triggered a hash mismatch failure.
             let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-                let hash = compute_class_hash(CAIRO_0_8_NEW_ATTRIBUTES)?;
-                Ok(hash)
+                Ok(compute_class_hash(SerializedClassDefinition::from_slice(
+                    CAIRO_0_8_NEW_ATTRIBUTES,
+                ))?)
             });
-            let calculated_hash = extract.await.unwrap().unwrap();
+            let (calculated_hash, _) = extract.await.unwrap().unwrap();
 
             assert_eq!(calculated_hash, expected);
         }
@@ -863,10 +898,8 @@ pub mod json {
         async fn cairo_0_10() {
             // Contract whose class triggered a deserialization issue because of the new
             // `compiler_version` property.
-            let hash = compute_class_hash(CAIRO_0_10_COMPILER_VERSION).unwrap();
-
             assert_eq!(
-                hash,
+                hash(CAIRO_0_10_COMPILER_VERSION),
                 ComputedClassHash::Cairo(class_hash!(
                     "0xa69700a89b1fa3648adff91c438b79c75f7dcb0f4798938a144cce221639d6"
                 ))
@@ -878,10 +911,8 @@ pub mod json {
             // Contract who's class contains `compiler_version` property as well as
             // `cairo_type` with tuple values. These tuple values require a
             // space to be injected in order to achieve the correct hash.
-            let hash = compute_class_hash(CAIRO_0_10_TUPLES_INTEGRATION).unwrap();
-
             assert_eq!(
-                hash,
+                hash(CAIRO_0_10_TUPLES_INTEGRATION),
                 ComputedClassHash::Cairo(class_hash!(
                     "0x542460935cea188d21e752d8459d82d60497866aaad21f873cbb61621d34f7f"
                 ))
@@ -893,10 +924,8 @@ pub mod json {
             // Contract who's class contains `compiler_version` property as well as
             // `cairo_type` with tuple values. These tuple values require a
             // space to be injected in order to achieve the correct hash.
-            let hash = compute_class_hash(CAIRO_0_10_TUPLES_GOERLI).unwrap();
-
             assert_eq!(
-                hash,
+                hash(CAIRO_0_10_TUPLES_GOERLI),
                 ComputedClassHash::Cairo(class_hash!(
                     "0x66af14b94491ba4e2aea1117acf0a3155c53d92fdfd9c1f1dcac90dc2d30157"
                 ))
@@ -905,10 +934,8 @@ pub mod json {
 
         #[tokio::test]
         async fn cairo_0_11_sierra() {
-            let hash = compute_class_hash(CAIRO_0_11_SIERRA).unwrap();
-
             assert_eq!(
-                hash,
+                hash(CAIRO_0_11_SIERRA),
                 ComputedClassHash::Sierra(class_hash!(
                     "0x4e70b19333ae94bd958625f7b61ce9eec631653597e68645e13780061b2136c"
                 ))
@@ -917,14 +944,17 @@ pub mod json {
 
         #[tokio::test]
         async fn cairo_0_11_with_decimal_entry_point_offset() {
-            let hash = compute_class_hash(CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET).unwrap();
+            let (hash, _) = compute_class_hash(SerializedClassDefinition::from_slice(
+                CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET,
+            ))
+            .unwrap();
 
             assert_eq!(
                 hash,
                 ComputedClassHash::Cairo(class_hash!(
                     "0x0484c163658bcce5f9916f486171ac60143a92897533aa7ff7ac800b16c63311"
                 ))
-            )
+            );
         }
     }
 

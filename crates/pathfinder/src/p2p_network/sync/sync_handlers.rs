@@ -19,7 +19,12 @@ use p2p_proto::sync::transaction::{
     TransactionsRequest,
     TransactionsResponse,
 };
-use pathfinder_common::{class_definition, BlockHash, BlockNumber, SignedBlockHeader};
+use pathfinder_common::class_definition::{
+    self,
+    SerializedCasmDefinition,
+    SerializedClassDefinition,
+};
+use pathfinder_common::{BlockHash, BlockNumber, SignedBlockHeader};
 use pathfinder_storage::{Storage, Transaction};
 use tokio::sync::mpsc;
 
@@ -146,8 +151,11 @@ fn get_header(
 
 #[derive(Debug, Clone)]
 enum ClassDefinition {
-    Cairo(Vec<u8>),
-    Sierra { sierra: Vec<u8>, _casm: Vec<u8> },
+    Cairo(SerializedClassDefinition),
+    Sierra {
+        sierra: SerializedClassDefinition,
+        _casm: SerializedCasmDefinition,
+    },
 }
 
 fn get_classes_for_block(
@@ -166,7 +174,7 @@ fn get_classes_for_block(
             Ok(match casm_definition {
                 Some(_casm) => ClassDefinition::Sierra {
                     sierra: definition,
-                    _casm: Vec::new(), // TODO casm
+                    _casm: SerializedCasmDefinition::from_slice(&[]), // TODO casm
                 },
                 None => ClassDefinition::Cairo(definition),
             })
@@ -184,7 +192,7 @@ fn get_classes_for_block(
         let class: Class = match class_definition {
             ClassDefinition::Cairo(definition) => {
                 let cairo_class =
-                    serde_json::from_slice::<class_definition::Cairo<'_>>(&definition)?;
+                    serde_json::from_slice::<class_definition::Cairo<'_>>(definition.as_bytes())?;
                 Class::Cairo0 {
                     class: cairo_class.to_dto(),
                     domain: 0, // TODO
@@ -195,7 +203,8 @@ fn get_classes_for_block(
                 sierra,
                 _casm: _, // TODO
             } => {
-                let sierra_class = serde_json::from_slice::<class_definition::Sierra<'_>>(&sierra)?;
+                let sierra_class =
+                    serde_json::from_slice::<class_definition::Sierra<'_>>(sierra.as_bytes())?;
 
                 Class::Cairo1 {
                     class: sierra_class.to_dto(),

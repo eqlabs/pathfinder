@@ -5,6 +5,7 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use anyhow::Context;
+use pathfinder_common::class_definition::{SerializedCasmDefinition, SerializedClassDefinition};
 use pathfinder_common::prelude::*;
 use reqwest::Url;
 use starknet_gateway_types::error::SequencerError;
@@ -72,7 +73,7 @@ pub trait GatewayApi: Sync {
         &self,
         class_hash: ClassHash,
         block: BlockId,
-    ) -> Result<bytes::Bytes, SequencerError> {
+    ) -> Result<SerializedClassDefinition, SequencerError> {
         unimplemented!();
     }
 
@@ -80,7 +81,7 @@ pub trait GatewayApi: Sync {
         &self,
         class_hash: ClassHash,
         block: BlockId,
-    ) -> Result<bytes::Bytes, SequencerError> {
+    ) -> Result<SerializedCasmDefinition, SequencerError> {
         unimplemented!();
     }
 
@@ -175,7 +176,7 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for Arc<T> {
         &self,
         class_hash: ClassHash,
         block: BlockId,
-    ) -> Result<bytes::Bytes, SequencerError> {
+    ) -> Result<SerializedClassDefinition, SequencerError> {
         self.as_ref().class_by_hash(class_hash, block).await
     }
 
@@ -183,7 +184,7 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for Arc<T> {
         &self,
         class_hash: ClassHash,
         block: BlockId,
-    ) -> Result<bytes::Bytes, SequencerError> {
+    ) -> Result<SerializedCasmDefinition, SequencerError> {
         self.as_ref().casm_by_hash(class_hash, block).await
     }
 
@@ -556,14 +557,16 @@ impl GatewayApi for Client {
         &self,
         class_hash: ClassHash,
         block: BlockId,
-    ) -> Result<bytes::Bytes, SequencerError> {
-        self.feeder_gateway_request()
+    ) -> Result<SerializedClassDefinition, SequencerError> {
+        let bytes = self
+            .feeder_gateway_request()
             .get_class_by_hash()
             .class_hash(class_hash)
             .block(block)
             .retry(self.retry)
             .get_as_bytes()
-            .await
+            .await?;
+        Ok(SerializedClassDefinition::from_bytes(bytes.to_vec()))
     }
 
     /// Gets CASM for a particular class hash.
@@ -572,14 +575,16 @@ impl GatewayApi for Client {
         &self,
         class_hash: ClassHash,
         block: BlockId,
-    ) -> Result<bytes::Bytes, SequencerError> {
-        self.feeder_gateway_request()
+    ) -> Result<SerializedCasmDefinition, SequencerError> {
+        let bytes = self
+            .feeder_gateway_request()
             .get_compiled_class_by_class_hash()
             .class_hash(class_hash)
             .block(block)
             .retry(self.retry)
             .get_as_bytes()
-            .await
+            .await?;
+        Ok(SerializedCasmDefinition::from_bytes(bytes.to_vec()))
     }
 
     /// Gets transaction status by transaction hash.

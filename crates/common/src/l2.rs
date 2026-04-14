@@ -3,6 +3,7 @@ use std::sync::{Arc, RwLock};
 
 use fake::Dummy;
 
+use crate::class_definition::{SerializedCasmDefinition, SerializedSierraDefinition};
 use crate::event::Event;
 use crate::receipt::Receipt;
 use crate::state_update::StateUpdateData;
@@ -97,8 +98,8 @@ pub struct ConsensusFinalizedBlockHeader {
 pub struct DeclaredClass {
     pub sierra_hash: SierraHash,
     pub casm_hash_v2: CasmHash,
-    pub sierra_def: Vec<u8>,
-    pub casm_def: Vec<u8>,
+    pub sierra_def: SerializedSierraDefinition,
+    pub casm_def: SerializedCasmDefinition,
 }
 
 impl From<L2Block> for L2BlockToCommit {

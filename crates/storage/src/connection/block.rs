@@ -649,6 +649,7 @@ fn parse_row_as_header(row: &rusqlite::Row<'_>) -> rusqlite::Result<BlockHeader>
 
 #[cfg(test)]
 mod tests {
+    use pathfinder_common::class_definition::SerializedCairoDefinition;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
     use pathfinder_common::L1DataAvailabilityMode;
@@ -793,7 +794,8 @@ mod tests {
 
         // Add a class to test that purging a block unsets its block number;
         let cairo_hash = class_hash!("0x1234");
-        tx.insert_cairo_class_definition(cairo_hash, &[]).unwrap();
+        tx.insert_cairo_class_definition(cairo_hash, &SerializedCairoDefinition::from_slice(&[]))
+            .unwrap();
         tx.insert_state_update(
             latest.number,
             &StateUpdate::default().with_declared_cairo_class(cairo_hash),

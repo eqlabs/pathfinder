@@ -37,6 +37,7 @@ use pathfinder_block_commitments::{
     calculate_receipt_commitment,
     calculate_transaction_commitment,
 };
+use pathfinder_common::class_definition::{SerializedCasmDefinition, SerializedClassDefinition};
 use pathfinder_common::integration_testing::debug_create_port_marker_file;
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::ContractClassUpdate;
@@ -505,7 +506,7 @@ async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyh
 
                     match class {
                         Ok(class) => {
-                            let response = warp::http::Response::builder().header("content-type", "application/json").body(class).unwrap();
+                            let response = warp::http::Response::builder().header("content-type", "application/json").body(class.into_bytes()).unwrap();
                             Result::<_, Infallible>::Ok(response)
                         },
                         Err(_) => {
@@ -546,7 +547,7 @@ async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyh
 
                     match compiled_class {
                         Ok(compiled_class) => {
-                            let response = warp::http::Response::builder().header("content-type", "application/json").body(compiled_class).unwrap();
+                            let response = warp::http::Response::builder().header("content-type", "application/json").body(compiled_class.into_bytes()).unwrap();
                             Result::<_, Infallible>::Ok(response)
                         },
                         Err(_) => {
@@ -823,7 +824,7 @@ fn resolve_state_update(
 fn resolve_class(
     tx: &pathfinder_storage::Transaction<'_>,
     class_hash: ClassHash,
-) -> anyhow::Result<Vec<u8>> {
+) -> anyhow::Result<SerializedClassDefinition> {
     let definition = tx
         .class_definition(class_hash)
         .context("Reading class definition from database")?
@@ -836,7 +837,7 @@ fn resolve_class(
 fn resolve_compiled_class(
     tx: &pathfinder_storage::Transaction<'_>,
     compiled_class_hash: ClassHash,
-) -> anyhow::Result<Vec<u8>> {
+) -> anyhow::Result<SerializedCasmDefinition> {
     let definition = tx
         .casm_definition(compiled_class_hash)
         .context("Reading compiled class definition from database")?

@@ -581,10 +581,12 @@ fn compile_main(config: CompileConfig) -> anyhow::Result<()> {
     use std::io::{Read, Write};
 
     const SIERRA_DEFINITION_SIZE_ESTIMATE: usize = 400 * 1024; // 400 KiB
-    let mut sierra_definition = Vec::with_capacity(SIERRA_DEFINITION_SIZE_ESTIMATE);
+    let mut sierra_bytes = Vec::with_capacity(SIERRA_DEFINITION_SIZE_ESTIMATE);
     std::io::stdin()
-        .read_to_end(&mut sierra_definition)
+        .read_to_end(&mut sierra_bytes)
         .context("reading Sierra from stdin")?;
+    let sierra_definition =
+        pathfinder_common::class_definition::SerializedSierraDefinition::from_bytes(sierra_bytes);
 
     let casm = pathfinder_compiler::compile_sierra_to_casm_impl(
         &sierra_definition,
@@ -593,7 +595,7 @@ fn compile_main(config: CompileConfig) -> anyhow::Result<()> {
     .context("compiling Sierra to CASM")?;
 
     std::io::stdout()
-        .write_all(&casm)
+        .write_all(casm.as_bytes())
         .context("writing CASM to stdout")
 }
 

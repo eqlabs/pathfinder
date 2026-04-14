@@ -318,6 +318,12 @@ mod tests {
         calculate_transaction_commitment,
         compute_final_hash,
     };
+    use pathfinder_common::class_definition::{
+        SerializedCairoDefinition,
+        SerializedCasmDefinition,
+        SerializedClassDefinition,
+        SerializedSierraDefinition,
+    };
     use pathfinder_common::event::Event;
     use pathfinder_common::prelude::*;
     use pathfinder_common::receipt::Receipt;
@@ -613,7 +619,11 @@ mod tests {
                 );
                 pretty_assertions_sorted::assert_eq!(
                     cairo_defs,
-                    expected.cairo_defs.into_iter().collect::<HashMap<_, _>>(),
+                    expected
+                        .cairo_defs
+                        .into_iter()
+                        .map(|(h, d)| (h, SerializedClassDefinition::from(d)))
+                        .collect::<HashMap<_, _>>(),
                     "block {}",
                     block_number
                 );
@@ -623,7 +633,15 @@ mod tests {
                         .sierra_defs
                         .into_iter()
                         // All sierra fixtures are not compile-able
-                        .map(|(h, s, _, _)| (h, (s, starknet_gateway_test_fixtures::class_definitions::CAIRO_1_1_0_BALANCE_CASM_JSON.to_vec())))
+                        .map(|(h, s, _, _)| (
+                            h,
+                            (
+                                SerializedClassDefinition::from(s),
+                                SerializedCasmDefinition::from_slice(
+                                    starknet_gateway_test_fixtures::class_definitions::CAIRO_1_1_0_BALANCE_CASM_JSON
+                                ),
+                            )
+                        ))
                         .collect::<HashMap<_, _>>(),
                     "block {}",
                     block_number
@@ -1073,8 +1091,8 @@ mod tests {
             &self,
             _: ClassHash,
             _: BlockId,
-        ) -> Result<bytes::Bytes, SequencerError> {
-            Ok(bytes::Bytes::from_static(
+        ) -> Result<SerializedCasmDefinition, SequencerError> {
+            Ok(SerializedCasmDefinition::from_slice(
                 starknet_gateway_test_fixtures::class_definitions::CAIRO_1_1_0_BALANCE_CASM_JSON,
             ))
         }

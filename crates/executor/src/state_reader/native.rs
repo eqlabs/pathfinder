@@ -6,6 +6,7 @@ use blockifier::state::errors::StateError;
 use cached::{Cached, SizedCache};
 use cairo_native::executor::AotContractExecutor;
 use cairo_vm::types::errors::program_errors::ProgramError;
+use pathfinder_common::class_definition::{SerializedCasmDefinition, SerializedClassDefinition};
 use pathfinder_common::ClassHash;
 use starknet_api::contract_class::SierraVersion;
 use tokio_util::sync::CancellationToken;
@@ -13,8 +14,8 @@ use tokio_util::sync::CancellationToken;
 struct CompilerInput {
     class_hash: ClassHash,
     sierra_version: SierraVersion,
-    class_definition: Vec<u8>,
-    casm_definition: Vec<u8>,
+    class_definition: SerializedClassDefinition,
+    casm_definition: SerializedCasmDefinition,
 }
 
 enum CacheItem {
@@ -53,8 +54,8 @@ impl NativeClassCache {
         &self,
         class_hash: ClassHash,
         sierra_version: SierraVersion,
-        class_definition: Vec<u8>,
-        casm_definition: Vec<u8>,
+        class_definition: SerializedClassDefinition,
+        casm_definition: SerializedCasmDefinition,
     ) -> Option<NativeCompiledClassV1> {
         let mut locked = self.cache.lock().unwrap();
 
@@ -137,8 +138,9 @@ fn sierra_class_as_native(
     input: CompilerInput,
     optimization_level: cairo_native::OptLevel,
 ) -> Result<NativeCompiledClassV1, StateError> {
-    let mut sierra_definition: serde_json::Value = serde_json::from_slice(&input.class_definition)
-        .map_err(|e| StateError::ProgramError(ProgramError::Parse(e)))?;
+    let mut sierra_definition: serde_json::Value =
+        serde_json::from_slice(input.class_definition.as_bytes())
+            .map_err(|e| StateError::ProgramError(ProgramError::Parse(e)))?;
     let sierra_abi_str = sierra_definition
         .get("abi")
         .ok_or_else(|| StateError::StateReadError("Sierra ABI is missing".to_owned()))?
@@ -183,12 +185,13 @@ fn sierra_class_as_native(
     .map_err(|e| StateError::StateReadError(format!("Error compiling native class: {e:?}")))?
     .map_err(|e| StateError::StateReadError(format!("Error compiling native class: {e}")))?;
 
-    let casm_definition = String::from_utf8(input.casm_definition).map_err(|error| {
-        StateError::StateReadError(format!("Class definition is not valid UTF-8: {error}"))
-    })?;
+    let casm_definition =
+        std::str::from_utf8(input.casm_definition.as_bytes()).map_err(|error| {
+            StateError::StateReadError(format!("Class definition is not valid UTF-8: {error}"))
+        })?;
 
     let casm_class = blockifier::execution::contract_class::CompiledClassV1::try_from_json_string(
-        &casm_definition,
+        casm_definition,
         input.sierra_version,
     )
     .map_err(StateError::ProgramError)?;

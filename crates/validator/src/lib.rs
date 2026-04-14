@@ -12,7 +12,11 @@ use p2p_proto::sync::transaction::{DeclareV3WithoutClass, TransactionVariant as 
 use p2p_proto::transaction::DeclareV3WithClass;
 use pathfinder_class_hash::compute_sierra_class_hash;
 use pathfinder_class_hash::json::SierraContractDefinition;
-use pathfinder_common::class_definition::{SelectorAndFunctionIndex, SierraEntryPoints};
+use pathfinder_common::class_definition::{
+    SelectorAndFunctionIndex,
+    SerializedSierraDefinition,
+    SierraEntryPoints,
+};
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::state_update::StateUpdateData;
@@ -1126,7 +1130,7 @@ fn class_info(
                 .collect(),
         },
     };
-    let sierra_def = serde_json::to_vec(&definition)?;
+    let sierra_def = SerializedSierraDefinition::from_bytes(serde_json::to_vec(&definition)?);
     let casm_def = pathfinder_compiler::compile_sierra_to_casm(
         &sierra_def,
         compiler_resource_limits,

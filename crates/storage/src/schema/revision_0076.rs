@@ -51,8 +51,12 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                     let definition = zstd::decode_all(definition.as_slice())
                         .map_err(|e| rusqlite::types::FromSqlError::Other(e.into()))
                         .unwrap();
-                    let computed_hash =
-                        pathfinder_compiler::casm_class_hash_v2(&definition).unwrap();
+                    let computed_hash = pathfinder_compiler::casm_class_hash_v2(
+                        &pathfinder_common::class_definition::SerializedCasmDefinition::from_bytes(
+                            definition,
+                        ),
+                    )
+                    .unwrap();
                     (class_hash, computed_hash)
                 }
             }

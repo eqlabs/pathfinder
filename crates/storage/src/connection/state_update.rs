@@ -1075,6 +1075,11 @@ impl Transaction<'_> {
 
 #[cfg(test)]
 mod tests {
+    use pathfinder_common::class_definition::{
+        SerializedCairoDefinition,
+        SerializedCasmDefinition,
+        SerializedSierraDefinition,
+    };
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::BlockHeader;
 
@@ -1103,7 +1108,8 @@ mod tests {
 
         let state_update = StateUpdate::default().with_declared_cairo_class(target_class);
 
-        tx.insert_cairo_class_definition(target_class, &[]).unwrap();
+        tx.insert_cairo_class_definition(target_class, &SerializedCairoDefinition::from_slice(&[]))
+            .unwrap();
         tx.insert_block_header(&header_0).unwrap();
         tx.insert_block_header(&header_1).unwrap();
         tx.insert_state_update(header_0.number, &state_update)
@@ -1157,10 +1163,16 @@ mod tests {
         let diff_3 = StateUpdate::default();
         let diff_4 = StateUpdate::default();
 
-        tx.insert_cairo_class_definition(original_class, definition)
-            .unwrap();
-        tx.insert_cairo_class_definition(replaced_class, definition)
-            .unwrap();
+        tx.insert_cairo_class_definition(
+            original_class,
+            &SerializedCairoDefinition::from_slice(definition),
+        )
+        .unwrap();
+        tx.insert_cairo_class_definition(
+            replaced_class,
+            &SerializedCairoDefinition::from_slice(definition),
+        )
+        .unwrap();
 
         tx.insert_block_header(&header_0).unwrap();
         tx.insert_block_header(&header_1).unwrap();
@@ -1242,15 +1254,21 @@ mod tests {
 
             // Submit the class definitions since this occurs out of band of the header and
             // state diff.
-            tx.insert_cairo_class_definition(CAIRO_HASH, b"cairo definition")
-                .unwrap();
-            tx.insert_cairo_class_definition(CAIRO_HASH2, b"cairo definition 2")
-                .unwrap();
+            tx.insert_cairo_class_definition(
+                CAIRO_HASH,
+                &SerializedCairoDefinition::from_slice(b"cairo definition"),
+            )
+            .unwrap();
+            tx.insert_cairo_class_definition(
+                CAIRO_HASH2,
+                &SerializedCairoDefinition::from_slice(b"cairo definition 2"),
+            )
+            .unwrap();
 
             tx.insert_sierra_class_definition(
                 &SIERRA_HASH,
-                b"sierra definition",
-                b"casm definition",
+                &SerializedSierraDefinition::from_slice(b"sierra definition"),
+                &SerializedCasmDefinition::from_slice(b"casm definition"),
                 &CASM_HASH_V2,
             )
             .unwrap();
@@ -1323,7 +1341,10 @@ mod tests {
                 .casm_definition_at(BlockId::Latest, ClassHash(SIERRA_HASH.0))
                 .unwrap()
                 .unwrap();
-            assert_eq!(definition, b"casm definition");
+            assert_eq!(
+                definition,
+                SerializedCasmDefinition::from_slice(b"casm definition")
+            );
 
             // non-existent state update
             let non_existent = tx.state_update((header.number + 1).into()).unwrap();

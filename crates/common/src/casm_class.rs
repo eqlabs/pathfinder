@@ -90,10 +90,10 @@ pub enum NestedIntList {
     Node(Vec<NestedIntList>),
 }
 
-impl TryFrom<&str> for CasmContractClass {
-    type Error = serde_json::Error;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        serde_json::from_str(value)
+impl CasmContractClass {
+    pub fn try_from_serialized_definition(
+        definition: &crate::class_definition::SerializedCasmDefinition,
+    ) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(definition.as_bytes())
     }
 }

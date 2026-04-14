@@ -10,7 +10,14 @@ use p2p::sync::client::types::ClassDefinition as P2PClassDefinition;
 use p2p::PeerData;
 use p2p_proto::transaction;
 use pathfinder_class_hash::from_parts::{compute_cairo_class_hash, compute_sierra_class_hash};
-use pathfinder_common::class_definition::{Cairo, ClassDefinition as GwClassDefinition, Sierra};
+use pathfinder_common::class_definition::{
+    Cairo,
+    ClassDefinition as GwClassDefinition,
+    SerializedCairoDefinition,
+    SerializedCasmDefinition,
+    SerializedSierraDefinition,
+    Sierra,
+};
 use pathfinder_common::state_update::DeclaredClasses;
 use pathfinder_common::{BlockNumber, CasmHash, ClassHash, SierraHash};
 use pathfinder_storage::{Storage, Transaction};
@@ -37,8 +44,8 @@ pub struct ClassWithLayout {
 
 #[derive(Debug)]
 pub(super) enum ClassDefinition {
-    Cairo(Vec<u8>),
-    Sierra(Vec<u8>),
+    Cairo(SerializedCairoDefinition),
+    Sierra(SerializedSierraDefinition),
 }
 
 #[derive(Debug)]
@@ -57,10 +64,10 @@ pub struct CompiledClass {
 
 #[derive(Debug)]
 pub enum CompiledClassDefinition {
-    Cairo(Vec<u8>),
+    Cairo(SerializedCairoDefinition),
     Sierra {
-        sierra_definition: Vec<u8>,
-        casm_definition: Vec<u8>,
+        sierra_definition: SerializedSierraDefinition,
+        casm_definition: SerializedCasmDefinition,
         casm_hash_v2: CasmHash,
     },
 }
@@ -143,7 +150,7 @@ fn verify_layout_impl(
             hash,
         } => {
             let layout = GwClassDefinition::Cairo(
-                serde_json::from_slice::<Cairo<'_>>(&definition).map_err(|error| {
+                serde_json::from_slice::<Cairo<'_>>(definition.as_bytes()).map_err(|error| {
                     tracing::debug!(%peer, %block_number, %error, "Bad class layout");
                     SyncError::BadClassLayout(*peer)
                 })?,
@@ -161,10 +168,12 @@ fn verify_layout_impl(
             hash,
         } => {
             let layout = GwClassDefinition::Sierra(
-                serde_json::from_slice::<Sierra<'_>>(&sierra_definition).map_err(|error| {
-                    tracing::debug!(%peer, %block_number, %error, "Bad class layout");
-                    SyncError::BadClassLayout(*peer)
-                })?,
+                serde_json::from_slice::<Sierra<'_>>(sierra_definition.as_bytes()).map_err(
+                    |error| {
+                        tracing::debug!(%peer, %block_number, %error, "Bad class layout");
+                        SyncError::BadClassLayout(*peer)
+                    },
+                )?,
             );
             Ok(ClassWithLayout {
                 block_number,
@@ -523,8 +532,7 @@ fn compile_or_fetch_impl<SequencerClient: GatewayApi + Clone + Send + 'static>(
                     .map_err(|error| {
                         tracing::debug!(%block_number, class_hash=%hash, %error, "Fetching casm from feeder gateway failed");
                         SyncError::FetchingCasmFailed
-                    })?
-                    .to_vec(),
+                    })?,
             };
 
             let casm_hash_v2 = pathfinder_casm_hashes::get_precomputed_casm_v2_hash(&hash);

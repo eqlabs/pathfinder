@@ -11,6 +11,11 @@ use std::time::Duration;
 
 use anyhow::Context;
 use pathfinder_block_commitments as block_hash;
+use pathfinder_common::class_definition::{
+    SerializedCairoDefinition,
+    SerializedCasmDefinition,
+    SerializedSierraDefinition,
+};
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::{
@@ -77,14 +82,14 @@ pub enum SyncEvent {
     Reorg(BlockNumber),
     /// A new unique L2 Cairo 0.x class was found.
     CairoClass {
-        definition: Vec<u8>,
+        definition: SerializedCairoDefinition,
         hash: ClassHash,
     },
     /// A new unique L2 Cairo 1.x class was found.
     SierraClass {
-        sierra_definition: Vec<u8>,
+        sierra_definition: SerializedSierraDefinition,
         sierra_hash: SierraHash,
-        casm_definition: Vec<u8>,
+        casm_definition: SerializedCasmDefinition,
         casm_hash: CasmHash,
         casm_hash_v2: CasmHash,
     },
@@ -1628,6 +1633,12 @@ Blockchain history must include the reorg tail and its parent block to perform a
 mod tests {
     use std::sync::Arc;
 
+    use pathfinder_common::class_definition::{
+        SerializedCairoDefinition,
+        SerializedCasmDefinition,
+        SerializedClassDefinition,
+        SerializedSierraDefinition,
+    };
     use pathfinder_common::event::Event;
     use pathfinder_common::felt_bytes;
     use pathfinder_common::macro_prelude::*;
@@ -2301,7 +2312,7 @@ mod tests {
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
 
         let class_hash = class_hash_bytes!(b"class hash");
-        let expected_definition = b"cairo class definition".to_vec();
+        let expected_definition = SerializedCairoDefinition::from_slice(b"cairo class definition");
 
         event_tx
             .send(SyncEvent::CairoClass {
@@ -2330,7 +2341,10 @@ mod tests {
         let tx = connection.transaction().unwrap();
         let definition = tx.class_definition(class_hash).unwrap().unwrap();
 
-        assert_eq!(definition, expected_definition);
+        assert_eq!(
+            definition,
+            SerializedClassDefinition::from(expected_definition)
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -2345,13 +2359,14 @@ mod tests {
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
 
         let class_hash = felt_bytes!(b"class hash");
-        let expected_definition = b"sierra class definition".to_vec();
+        let expected_definition =
+            SerializedSierraDefinition::from_slice(b"sierra class definition");
 
         event_tx
             .send(SyncEvent::SierraClass {
                 sierra_definition: expected_definition.clone(),
                 sierra_hash: SierraHash(class_hash),
-                casm_definition: b"casm definition".to_vec(),
+                casm_definition: SerializedCasmDefinition::from_slice(b"casm definition"),
                 casm_hash: casm_hash_bytes!(b"casm hash"),
                 casm_hash_v2: casm_hash_bytes!(b"casm hash blake"),
             })
@@ -2377,7 +2392,10 @@ mod tests {
         let tx = connection.transaction().unwrap();
         let definition = tx.class_definition(ClassHash(class_hash)).unwrap().unwrap();
 
-        assert_eq!(definition, expected_definition);
+        assert_eq!(
+            definition,
+            SerializedClassDefinition::from(expected_definition)
+        );
 
         let casm_hash_v2 = tx.casm_hash_v2(ClassHash(class_hash)).unwrap().unwrap();
         assert_eq!(casm_hash_v2, casm_hash_bytes!(b"casm hash blake"));
@@ -3302,8 +3320,8 @@ Blockchain history must include the reorg tail and its parent block to perform a
             let reorg_regression_data = ReorgRegressionData::new();
 
             let removed_class_hash = SierraHash(reorg_regression_data.removed_class_hash.0);
-            let sierra_definition = b"sierra definition".to_vec();
-            let casm_definition = b"casm definition".to_vec();
+            let sierra_definition = SerializedSierraDefinition::from_slice(b"sierra definition");
+            let casm_definition = SerializedCasmDefinition::from_slice(b"casm definition");
             let casm_hash = casm_hash_bytes!(b"casm hash");
             let casm_hash_v2 = casm_hash_bytes!(b"casm hash blake");
 

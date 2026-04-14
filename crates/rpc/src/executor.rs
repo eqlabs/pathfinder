@@ -1,4 +1,5 @@
 use anyhow::Context;
+use pathfinder_common::class_definition::{SerializedClassDefinition, SerializedSierraDefinition};
 use pathfinder_common::transaction::TransactionVariant;
 use pathfinder_common::{BlockNumber, ChainId, StarknetVersion};
 use pathfinder_executor::types::to_starknet_api_transaction;
@@ -91,8 +92,9 @@ pub(crate) fn map_broadcasted_transaction(
                 .serialize_to_json()
                 .context("Serializing Cairo class to JSON")?;
 
-            let contract_class =
-                pathfinder_executor::parse_deprecated_class_definition(contract_class_json)?;
+            let contract_class = pathfinder_executor::parse_deprecated_class_definition(
+                SerializedClassDefinition::from_bytes(contract_class_json),
+            )?;
 
             Some(ClassInfo::new(
                 &contract_class,
@@ -107,8 +109,9 @@ pub(crate) fn map_broadcasted_transaction(
                 .serialize_to_json()
                 .context("Serializing Cairo class to JSON")?;
 
-            let contract_class =
-                pathfinder_executor::parse_deprecated_class_definition(contract_class_json)?;
+            let contract_class = pathfinder_executor::parse_deprecated_class_definition(
+                SerializedClassDefinition::from_bytes(contract_class_json),
+            )?;
 
             Some(ClassInfo::new(
                 &contract_class,
@@ -120,8 +123,9 @@ pub(crate) fn map_broadcasted_transaction(
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(tx)) => {
             let sierra_version =
                 SierraVersion::extract_from_program(&tx.contract_class.sierra_program)?;
-            let sierra_definition = serde_json::to_vec(&tx.contract_class)
-                .context("Serializing Sierra class definition")?;
+            let sierra_definition =
+                SerializedSierraDefinition::from_bytes(serde_json::to_vec(&tx.contract_class)
+                    .context("Serializing Sierra class definition")?);
             let casm_contract_definition = pathfinder_compiler::compile_sierra_to_casm(
                 &sierra_definition,
                 compiler_resource_limits,
@@ -144,8 +148,9 @@ pub(crate) fn map_broadcasted_transaction(
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V3(tx)) => {
             let sierra_version =
                 SierraVersion::extract_from_program(&tx.contract_class.sierra_program)?;
-            let sierra_definition = serde_json::to_vec(&tx.contract_class)
-                .context("Serializing Sierra class definition")?;
+            let sierra_definition =
+                SerializedSierraDefinition::from_bytes(serde_json::to_vec(&tx.contract_class)
+                    .context("Serializing Sierra class definition")?);
             let casm_contract_definition = pathfinder_compiler::compile_sierra_to_casm(
                 &sierra_definition,
                 compiler_resource_limits,
@@ -282,7 +287,7 @@ pub fn compose_executor_transaction(
                 .class_definition(tx.class_hash)?
                 .context("Fetching class definition")?;
             let class_definition: crate::types::class::sierra::SierraContractClass =
-                serde_json::from_str(&String::from_utf8(class_definition)?)
+                serde_json::from_slice(class_definition.as_bytes())
                     .context("Deserializing class definition")?;
             let sierra_version =
                 SierraVersion::extract_from_program(&class_definition.sierra_program)?;
@@ -304,7 +309,7 @@ pub fn compose_executor_transaction(
                 .class_definition(tx.class_hash)?
                 .context("Fetching class definition")?;
             let class_definition: crate::types::class::sierra::SierraContractClass =
-                serde_json::from_str(&String::from_utf8(class_definition)?)
+                serde_json::from_str(&String::from_utf8(class_definition.into_bytes())?)
                     .context("Deserializing class definition")?;
             let sierra_version =
                 SierraVersion::extract_from_program(&class_definition.sierra_program)?;

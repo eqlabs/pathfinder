@@ -85,7 +85,7 @@ pub async fn get_class(
             return Err(Error::ClassHashNotFound);
         };
 
-        let class = ContractClass::from_definition_bytes(&definition)
+        let class = ContractClass::try_from_serialized_definition(&definition)
             .context("Parsing class definition")?
             .into();
 

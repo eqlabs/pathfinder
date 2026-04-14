@@ -2,10 +2,10 @@ use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
 
 use blockifier::blockifier::config::{ConcurrencyConfig, TransactionExecutorConfig};
 use blockifier::state::errors::StateError;
+use pathfinder_common::class_definition::SerializedCasmDefinition;
 use pathfinder_common::{
     BlockHash,
     BlockId,
-    BlockNumber,
     CasmHash,
     ClassHash,
     ContractAddress,
@@ -32,7 +32,10 @@ pub struct ConcurrentStorageAdapter {
 
 enum Command {
     BlockHash(BlockId, SyncSender<anyhow::Result<Option<BlockHash>>>),
-    CasmDefinition(ClassHash, SyncSender<Result<Option<Vec<u8>>, StateError>>),
+    CasmDefinition(
+        ClassHash,
+        SyncSender<Result<Option<SerializedCasmDefinition>, StateError>>,
+    ),
     ClassDefinitionWithBlockNumber(
         ClassHash,
         SyncSender<Result<ClassDefinitionWithBlockNumber, StateError>>,
@@ -40,7 +43,7 @@ enum Command {
     CasmDefinitionAt(
         BlockId,
         ClassHash,
-        SyncSender<Result<Option<Vec<u8>>, StateError>>,
+        SyncSender<Result<Option<SerializedCasmDefinition>, StateError>>,
     ),
     ClassDefinitionAtWithBlockNumber(
         BlockId,
@@ -126,7 +129,10 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         rx.recv().expect("Channel not to be closed")
     }
 
-    fn casm_definition(&self, class_hash: ClassHash) -> Result<Option<Vec<u8>>, StateError> {
+    fn casm_definition(
+        &self,
+        class_hash: ClassHash,
+    ) -> Result<Option<SerializedCasmDefinition>, StateError> {
         if let Some(casm_def) = decided::casm_definition(&self.decided_blocks, class_hash) {
             return Ok(Some(casm_def));
         }
@@ -142,7 +148,7 @@ impl StorageAdapter for ConcurrentStorageAdapter {
     fn class_definition_with_block_number(
         &self,
         class_hash: ClassHash,
-    ) -> Result<Option<(Option<BlockNumber>, Vec<u8>)>, StateError> {
+    ) -> Result<ClassDefinitionWithBlockNumber, StateError> {
         if let Some(block_number_and_class_def) =
             decided::class_definition_with_block_number(&self.decided_blocks, class_hash)
         {
@@ -161,7 +167,7 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         &self,
         block_id: BlockId,
         class_hash: ClassHash,
-    ) -> Result<Option<Vec<u8>>, StateError> {
+    ) -> Result<Option<SerializedCasmDefinition>, StateError> {
         if let Some(casm_def) =
             decided::casm_definition_at(&self.decided_blocks, block_id, class_hash)
         {
@@ -405,6 +411,10 @@ mod decided {
     use std::collections::BTreeMap;
     use std::sync::RwLockReadGuard;
 
+    use pathfinder_common::class_definition::{
+        SerializedCasmDefinition,
+        SerializedClassDefinition,
+    };
     use pathfinder_common::state_update::ContractUpdate;
     use pathfinder_common::{
         BlockId,
@@ -460,7 +470,7 @@ mod decided {
     pub fn casm_definition(
         decided_blocks: &DecidedBlocks,
         class_hash: ClassHash,
-    ) -> Option<Vec<u8>> {
+    ) -> Option<SerializedCasmDefinition> {
         let decided_blocks = decided_blocks.read().unwrap();
         find_class(decided_blocks.values(), class_hash).map(|(_, c)| c.casm_def.clone())
     }
@@ -468,17 +478,17 @@ mod decided {
     pub fn class_definition_with_block_number(
         decided_blocks: &DecidedBlocks,
         class_hash: ClassHash,
-    ) -> Option<(Option<BlockNumber>, Vec<u8>)> {
+    ) -> Option<(Option<BlockNumber>, SerializedClassDefinition)> {
         let decided_blocks = decided_blocks.read().unwrap();
         find_class(decided_blocks.values(), class_hash)
-            .map(|(b, c)| (Some(b), c.sierra_def.clone()))
+            .map(|(b, c)| (Some(b), c.sierra_def.clone().into()))
     }
 
     pub fn casm_definition_at(
         decided_blocks: &DecidedBlocks,
         block_id: BlockId,
         class_hash: ClassHash,
-    ) -> Option<Vec<u8>> {
+    ) -> Option<SerializedCasmDefinition> {
         let guard = decided_blocks.read().unwrap();
         let it = rev_blocks_by_id(&guard, block_id);
         find_class(it, class_hash).map(|(_, c)| c.casm_def.clone())
@@ -491,7 +501,7 @@ mod decided {
     ) -> ClassDefinitionAtWithBlockNumber {
         let guard = decided_blocks.read().unwrap();
         let it = rev_blocks_by_id(&guard, block_id);
-        find_class(it, class_hash).map(|(b, c)| (b, c.sierra_def.clone()))
+        find_class(it, class_hash).map(|(b, c)| (b, c.sierra_def.clone().into()))
     }
 
     pub fn storage_value(
@@ -563,6 +573,10 @@ mod decided {
         use std::collections::{BTreeMap, HashMap};
         use std::sync::{Arc, RwLock};
 
+        use pathfinder_common::class_definition::{
+            SerializedCasmDefinition,
+            SerializedSierraDefinition,
+        };
         use pathfinder_common::state_update::{
             ContractClassUpdate,
             ContractUpdate,
@@ -591,8 +605,8 @@ mod decided {
                 declared_classes: vec![DeclaredClass {
                     sierra_hash: SierraHash::ZERO,
                     casm_hash_v2: CasmHash::ZERO,
-                    sierra_def: vec![0],
-                    casm_def: vec![1],
+                    sierra_def: SerializedSierraDefinition::from_slice(&[0]),
+                    casm_def: SerializedCasmDefinition::from_slice(&[1]),
                 }],
                 state_update: StateUpdateData {
                     contract_updates: HashMap::from([
@@ -664,7 +678,10 @@ mod decided {
 
             #[test]
             fn success() {
-                assert_eq!(casm_definition(&two(), ClassHash::ZERO), Some(vec![1]));
+                assert_eq!(
+                    casm_definition(&two(), ClassHash::ZERO),
+                    Some(SerializedCasmDefinition::from_slice(&[1]))
+                );
             }
         }
 
@@ -685,7 +702,10 @@ mod decided {
             fn success() {
                 assert_eq!(
                     class_definition_with_block_number(&two(), ClassHash::ZERO),
-                    Some((Some(BlockNumber::GENESIS), vec![0]))
+                    Some((
+                        Some(BlockNumber::GENESIS),
+                        SerializedClassDefinition::from_slice(&[0])
+                    ))
                 );
             }
         }
@@ -712,7 +732,7 @@ mod decided {
                         BlockId::Number(BlockNumber::GENESIS),
                         ClassHash::ZERO,
                     ),
-                    Some(vec![1])
+                    Some(SerializedCasmDefinition::from_slice(&[1]))
                 );
             }
 
@@ -726,7 +746,7 @@ mod decided {
                         BlockId::Number(BlockNumber::GENESIS + 1),
                         ClassHash::ZERO,
                     ),
-                    Some(vec![1])
+                    Some(SerializedCasmDefinition::from_slice(&[1]))
                 );
             }
 
@@ -754,7 +774,7 @@ mod decided {
             fn latest_instant_match() {
                 assert_eq!(
                     casm_definition_at(&one(), BlockId::Latest, ClassHash::ZERO,),
-                    Some(vec![1])
+                    Some(SerializedCasmDefinition::from_slice(&[1]))
                 );
             }
 
@@ -762,7 +782,7 @@ mod decided {
             fn latest_skips_blocks_that_dont_match() {
                 assert_eq!(
                     casm_definition_at(&two(), BlockId::Latest, ClassHash::ZERO,),
-                    Some(vec![1])
+                    Some(SerializedCasmDefinition::from_slice(&[1]))
                 );
             }
         }
@@ -789,7 +809,10 @@ mod decided {
                         BlockId::Number(BlockNumber::GENESIS),
                         ClassHash::ZERO,
                     ),
-                    Some((BlockNumber::GENESIS, vec![0]))
+                    Some((
+                        BlockNumber::GENESIS,
+                        SerializedClassDefinition::from_slice(&[0])
+                    ))
                 );
             }
 
@@ -803,7 +826,10 @@ mod decided {
                         BlockId::Number(BlockNumber::GENESIS + 1),
                         ClassHash::ZERO,
                     ),
-                    Some((BlockNumber::GENESIS, vec![0]))
+                    Some((
+                        BlockNumber::GENESIS,
+                        SerializedClassDefinition::from_slice(&[0])
+                    ))
                 );
             }
 
@@ -831,7 +857,10 @@ mod decided {
             fn latest_instant_match() {
                 assert_eq!(
                     class_definition_at_with_block_number(&one(), BlockId::Latest, ClassHash::ZERO),
-                    Some((BlockNumber::GENESIS, vec![0]))
+                    Some((
+                        BlockNumber::GENESIS,
+                        SerializedClassDefinition::from_slice(&[0])
+                    ))
                 );
             }
 
@@ -839,7 +868,10 @@ mod decided {
             fn latest_skips_blocks_that_dont_match() {
                 assert_eq!(
                     class_definition_at_with_block_number(&two(), BlockId::Latest, ClassHash::ZERO),
-                    Some((BlockNumber::GENESIS, vec![0]))
+                    Some((
+                        BlockNumber::GENESIS,
+                        SerializedClassDefinition::from_slice(&[0])
+                    ))
                 );
             }
         }
