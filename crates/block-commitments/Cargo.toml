@@ -12,12 +12,15 @@ pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
 pathfinder-merkle-tree = { path = "../merkle-tree" }
 rayon = { workspace = true }
+serde_json = { workspace = true }
 sha3 = { workspace = true }
 starknet-gateway-types = { path = "../gateway-types" }
+tracing = { workspace = true }
 
 [dev-dependencies]
 assert_matches = { workspace = true }
 pathfinder-common = { path = "../common", features = ["full-serde"] }
 pathfinder-crypto = { path = "../crypto" }
+rstest = { workspace = true }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 starknet-gateway-types = { path = "../gateway-types" }
