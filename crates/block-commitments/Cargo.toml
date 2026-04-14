@@ -1,0 +1,23 @@
+[package]
+name = "pathfinder-block-commitments"
+version = { workspace = true }
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+rust-version = { workspace = true }
+
+[dependencies]
+anyhow = { workspace = true }
+pathfinder-common = { path = "../common" }
+pathfinder-crypto = { path = "../crypto" }
+pathfinder-merkle-tree = { path = "../merkle-tree" }
+rayon = { workspace = true }
+sha3 = { workspace = true }
+starknet-gateway-types = { path = "../gateway-types" }
+
+[dev-dependencies]
+assert_matches = { workspace = true }
+pathfinder-common = { path = "../common", features = ["full-serde"] }
+pathfinder-crypto = { path = "../crypto" }
+starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
+starknet-gateway-types = { path = "../gateway-types" }
