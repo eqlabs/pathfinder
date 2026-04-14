@@ -5,6 +5,7 @@ use anyhow::{anyhow, Context};
 use p2p::libp2p::PeerId;
 use p2p::sync::client::types::TransactionData;
 use p2p::PeerData;
+use pathfinder_block_commitments::calculate_transaction_commitment;
 use pathfinder_common::prelude::*;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::{
@@ -22,7 +23,6 @@ use tokio_stream::wrappers::ReceiverStream;
 use super::error::SyncError;
 use super::storage_adapters;
 use super::stream::ProcessStage;
-use crate::state::block_hash::calculate_transaction_commitment;
 
 /// For a single block
 #[derive(Clone, Debug)]

@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
+use pathfinder_block_commitments as block_hash;
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::{
@@ -41,7 +42,6 @@ use tokio::sync::mpsc::{self, Receiver};
 use tokio::sync::watch::{self, Sender as WatchSender};
 
 use crate::consensus::ConsensusChannels;
-use crate::state::block_hash;
 use crate::state::l1::L1SyncContext;
 use crate::state::l2::{BlockChain, L2SyncContext};
 use crate::SyncMessageToConsensus;

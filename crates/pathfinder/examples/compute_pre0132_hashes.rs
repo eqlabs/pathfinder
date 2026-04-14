@@ -2,13 +2,13 @@ use std::io::Write;
 use std::num::NonZeroU32;
 
 use anyhow::{ensure, Context};
-use pathfinder_common::prelude::*;
-use pathfinder_lib::state::block_hash::{
+use pathfinder_block_commitments::{
     calculate_event_commitment,
     calculate_receipt_commitment,
     calculate_transaction_commitment,
     compute_final_hash,
 };
+use pathfinder_common::prelude::*;
 
 const VERSION_CUTOFF: StarknetVersion = StarknetVersion::V_0_13_2;
 

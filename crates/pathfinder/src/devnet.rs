@@ -14,6 +14,7 @@ use p2p::sync::client::conv::ToDto as _;
 use p2p_proto::common::{Address, Hash};
 use p2p_proto::consensus::{BlockInfo, ProposalInit, ProposalPart};
 use p2p_proto::sync::transaction::DeclareV3WithoutClass;
+use pathfinder_block_commitments::compute_final_hash;
 use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::transaction::{
     DataAvailabilityMode,
@@ -50,7 +51,6 @@ use pathfinder_storage::{Storage, StorageBuilder, TriePruneMode};
 pub use crate::devnet::account::Account;
 use crate::devnet::class::{preprocess_sierra, PrepocessedSierra};
 use crate::devnet::fixtures::RESOURCE_BOUNDS;
-use crate::state::block_hash::compute_final_hash;
 use crate::validator::{
     ProdTransactionMapper,
     ValidatorBlockInfoStage,
@@ -424,6 +424,7 @@ pub mod tests {
     use std::thread::available_parallelism;
 
     use p2p_proto::common::Address;
+    use pathfinder_block_commitments::compute_final_hash;
     use pathfinder_common::{
         BlockHash,
         BlockHeader,
@@ -443,7 +444,6 @@ pub mod tests {
 
     use crate::devnet::account::Account;
     use crate::devnet::{fixtures, init_db, init_proposal_and_validator, BootDb};
-    use crate::state::block_hash::compute_final_hash;
     use crate::validator::{ProdTransactionMapper, ValidatorWorkerPool};
 
     #[test_log::test]

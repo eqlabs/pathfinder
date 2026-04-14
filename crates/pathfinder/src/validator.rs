@@ -59,6 +59,11 @@ pub type ValidatorWorkerPool = Arc<
     >,
 >;
 
+use pathfinder_block_commitments::{
+    calculate_event_commitment,
+    calculate_receipt_commitment,
+    calculate_transaction_commitment,
+};
 use pathfinder_gas_price::{
     L1GasPriceProvider,
     L1GasPriceValidationResult,
@@ -69,11 +74,6 @@ use pathfinder_gas_price::{
 };
 
 use crate::consensus::ProposalHandlingError;
-use crate::state::block_hash::{
-    calculate_event_commitment,
-    calculate_receipt_commitment,
-    calculate_transaction_commitment,
-};
 
 /// TODO: Use this type as validation result.
 pub enum ValidationResult {

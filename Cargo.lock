@@ -5125,6 +5125,7 @@ dependencies = [
  "const-decoder",
  "futures",
  "pathfinder",
+ "pathfinder-block-commitments",
  "pathfinder-common",
  "pathfinder-storage",
  "primitive-types",
@@ -8437,6 +8438,7 @@ dependencies = [
  "p2p",
  "p2p_proto",
  "paste",
+ "pathfinder-block-commitments",
  "pathfinder-block-hashes",
  "pathfinder-casm-hashes",
  "pathfinder-class-hash",
@@ -8486,6 +8488,24 @@ dependencies = [
  "warp",
  "zeroize",
  "zstd",
+]
+
+[[package]]
+name = "pathfinder-block-commitments"
+version = "0.22.2"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "pathfinder-common",
+ "pathfinder-crypto",
+ "pathfinder-merkle-tree",
+ "rayon",
+ "rstest",
+ "serde_json",
+ "sha3",
+ "starknet-gateway-test-fixtures",
+ "starknet-gateway-types",
+ "tracing",
 ]
 
 [[package]]

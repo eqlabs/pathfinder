@@ -3,6 +3,13 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Context};
 use futures::{StreamExt, TryStreamExt};
+use pathfinder_block_commitments::{
+    calculate_event_commitment,
+    calculate_receipt_commitment,
+    calculate_transaction_commitment,
+    header_from_gateway_block,
+    verify_block_hash,
+};
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
 use pathfinder_common::Chain;
@@ -14,13 +21,6 @@ use tokio::sync::{mpsc, watch};
 use tracing::Instrument;
 
 use crate::consensus::ConsensusChannels;
-use crate::state::block_hash::{
-    calculate_event_commitment,
-    calculate_receipt_commitment,
-    calculate_transaction_commitment,
-    header_from_gateway_block,
-    verify_block_hash,
-};
 use crate::state::sync::class::{download_class, DownloadedClass};
 use crate::state::sync::SyncEvent;
 use crate::SyncMessageToConsensus;
@@ -1503,7 +1503,7 @@ fn verify_gateway_block_commitments_and_hash(
     }
 
     Ok(match verify_block_hash(header, chain, chain_id)? {
-        crate::state::block_hash::VerifyResult::Match => {
+        pathfinder_block_commitments::VerifyResult::Match => {
             // For pre-0.13.2 blocks we actually have to re-compute some commitments: after
             // we've verified that the block hash is correct we no longer need
             // the legacy commitments. The P2P protocol requires that all
@@ -1534,7 +1534,7 @@ fn verify_gateway_block_commitments_and_hash(
 
             VerifyResult::Match((transaction_commitment, event_commitment, receipt_commitment))
         }
-        crate::state::block_hash::VerifyResult::Mismatch => VerifyResult::Mismatch,
+        pathfinder_block_commitments::VerifyResult::Mismatch => VerifyResult::Mismatch,
     })
 }
 

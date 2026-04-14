@@ -503,11 +503,11 @@ mod prop {
 
     /// Fixtures for prop tests
     mod fixtures {
+        use pathfinder_block_commitments::calculate_receipt_commitment;
         use pathfinder_storage::fake::{fill, generate, Block, Config};
         use pathfinder_storage::{Storage, StorageBuilder};
 
         use crate::p2p_network::sync::sync_handlers::MAX_COUNT_IN_TESTS;
-        use crate::state::block_hash::calculate_receipt_commitment;
 
         pub const MAX_NUM_BLOCKS: u64 = MAX_COUNT_IN_TESTS * 2;
 

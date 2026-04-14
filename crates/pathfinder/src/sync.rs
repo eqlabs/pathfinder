@@ -312,6 +312,12 @@ mod tests {
         StateDiffsError,
         TransactionData,
     };
+    use pathfinder_block_commitments::{
+        calculate_event_commitment,
+        calculate_receipt_commitment,
+        calculate_transaction_commitment,
+        compute_final_hash,
+    };
     use pathfinder_common::event::Event;
     use pathfinder_common::prelude::*;
     use pathfinder_common::receipt::Receipt;
@@ -331,12 +337,6 @@ mod tests {
     use starknet_gateway_types::error::SequencerError;
 
     use super::*;
-    use crate::state::block_hash::{
-        calculate_event_commitment,
-        calculate_receipt_commitment,
-        calculate_transaction_commitment,
-        compute_final_hash,
-    };
 
     const TIMEOUT: Duration = Duration::from_secs(10);
 
