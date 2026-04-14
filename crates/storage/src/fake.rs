@@ -4,6 +4,12 @@ use std::ops::RangeInclusive;
 
 use fake::{Fake, Faker};
 use pathfinder_class_hash::compute_class_hash;
+use pathfinder_common::class_definition::{
+    SerializedCairoDefinition,
+    SerializedCasmDefinition,
+    SerializedClassDefinition,
+    SerializedSierraDefinition,
+};
 use pathfinder_common::event::Event;
 use pathfinder_common::prelude::*;
 use pathfinder_common::receipt::Receipt;
@@ -35,9 +41,14 @@ pub struct Block {
     /// [`fill`] by setting it to `None`.
     pub state_update: Option<StateUpdate>,
     // Cairo 0 definitions
-    pub cairo_defs: Vec<(ClassHash, Vec<u8>)>,
+    pub cairo_defs: Vec<(ClassHash, SerializedCairoDefinition)>,
     // Sierra + Casm definitions + Casm Blake2 hash
-    pub sierra_defs: Vec<(SierraHash, Vec<u8>, Vec<u8>, CasmHash)>,
+    pub sierra_defs: Vec<(
+        SierraHash,
+        SerializedSierraDefinition,
+        SerializedCasmDefinition,
+        CasmHash,
+    )>,
 }
 
 pub type BlockHashFn = Box<dyn Fn(&BlockHeader) -> BlockHash>;
@@ -335,7 +346,9 @@ pub mod generate {
                         &Faker.fake_with_rng::<class_definition::Cairo<'_>, _>(rng),
                     )
                     .unwrap();
-                    (compute_class_hash(&def).unwrap().hash(), def)
+                    let def = SerializedClassDefinition::from_bytes(def);
+                    let (hash, _) = compute_class_hash(def.clone()).unwrap();
+                    (hash.hash(), SerializedCairoDefinition::from_bytes(def.into_bytes()))
                 })
                 .collect::<HashMap<_, _>>();
             let sierra_defs = (0..num_sierra_classes)
@@ -344,11 +357,18 @@ pub mod generate {
                         &Faker.fake_with_rng::<class_definition::Sierra<'_>, _>(rng),
                     )
                     .unwrap();
+                    let def = SerializedClassDefinition::from_bytes(def);
+                    let (hash, _) = compute_class_hash(def.clone()).unwrap();
+                    let hash = SierraHash(hash.hash().0);
+                    let sierra_def = SerializedSierraDefinition::from_bytes(def.into_bytes());
+                    let casm_def = SerializedCasmDefinition::from_bytes(
+                        Faker.fake_with_rng::<String, _>(rng).into_bytes(),
+                    );
                     (
-                        SierraHash(compute_class_hash(&def).unwrap().hash().0),
+                        hash,
                         (
-                            def,
-                            Faker.fake_with_rng::<String, _>(rng).into_bytes(),
+                            sierra_def,
+                            casm_def,
                             Faker.fake_with_rng::<CasmHash, _>(rng),
                         ),
                     )

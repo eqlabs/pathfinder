@@ -90,13 +90,11 @@ pub async fn get_compiled_casm(context: RpcContext, input: Input) -> Result<Outp
             .map_err(Error::Internal)?
             .ok_or(Error::ClassHashNotFound(input.class_hash))?;
 
-        // Convert to JSON string
-        let casm_definition_str = String::from_utf8_lossy(&casm_definition);
-
         // Parse the casm definition
-        let casm_contract_class = CasmContractClass::try_from(casm_definition_str.as_ref())
-            .context("Parsing casm definition")
-            .map_err(|_| Error::Internal(anyhow::anyhow!("Failed to parse casm definition")))?;
+        let casm_contract_class =
+            CasmContractClass::try_from_serialized_definition(&casm_definition)
+                .context("Parsing casm definition")
+                .map_err(|_| Error::Internal(anyhow::anyhow!("Failed to parse casm definition")))?;
 
         Ok(Output(casm_contract_class))
     });
@@ -111,6 +109,10 @@ mod tests {
         BigUintAsHex,
         CasmContractEntryPoint,
         CasmContractEntryPoints,
+    };
+    use pathfinder_common::class_definition::{
+        SerializedCasmDefinition,
+        SerializedSierraDefinition,
     };
     use pathfinder_common::{casm_hash_bytes, class_hash, felt, sierra_hash, EntryPoint};
     use serde_json::json;
@@ -171,8 +173,8 @@ mod tests {
 
             tx.insert_sierra_class_definition(
                 &sierra_hash!("0x0484c163658bcce5f9916f486171ac60143a92897533aa7ff7ac800b16c63311"),
-                CAIRO_1_1_0_BALANCE_SIERRA_JSON,
-                CAIRO_1_1_0_BALANCE_CASM_JSON,
+                &SerializedSierraDefinition::from_slice(CAIRO_1_1_0_BALANCE_SIERRA_JSON),
+                &SerializedCasmDefinition::from_slice(CAIRO_1_1_0_BALANCE_CASM_JSON),
                 &casm_hash_bytes!(b"casm hash blake"),
             )
             .expect("insert class");

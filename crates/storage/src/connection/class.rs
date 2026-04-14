@@ -1,4 +1,10 @@
 use anyhow::Context;
+use pathfinder_common::class_definition::{
+    SerializedCairoDefinition,
+    SerializedCasmDefinition,
+    SerializedClassDefinition,
+    SerializedSierraDefinition,
+};
 use pathfinder_common::{
     BlockId,
     BlockNumber,
@@ -14,17 +20,17 @@ impl Transaction<'_> {
     pub fn insert_sierra_class_definition(
         &self,
         sierra_hash: &SierraHash,
-        sierra_definition: &[u8],
-        casm_definition: &[u8],
+        sierra_definition: &SerializedSierraDefinition,
+        casm_definition: &SerializedCasmDefinition,
         // Blake2 hash of the compiled class definition
         casm_hash_v2: &CasmHash,
     ) -> anyhow::Result<()> {
         let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
-        let sierra_definition = compressor
-            .compress(sierra_definition)
+        let compressed_sierra_definition = compressor
+            .compress(sierra_definition.as_bytes())
             .context("Compressing sierra definition")?;
-        let casm_definition = compressor
-            .compress(casm_definition)
+        let compressed_casm_definition = compressor
+            .compress(casm_definition.as_bytes())
             .context("Compressing casm definition")?;
 
         self.inner()
@@ -32,7 +38,7 @@ impl Transaction<'_> {
                 "INSERT INTO class_definitions (hash, definition) VALUES (?, ?)
                 ON CONFLICT(hash) DO UPDATE SET definition = excluded.definition
                 WHERE class_definitions.definition IS NULL",
-                params![sierra_hash, &sierra_definition],
+                params![sierra_hash, &compressed_sierra_definition],
             )
             .context("Inserting sierra definition")?;
 
@@ -45,7 +51,7 @@ impl Transaction<'_> {
                 ",
                 named_params! {
                     ":hash": sierra_hash,
-                    ":definition": &casm_definition,
+                    ":definition": &compressed_casm_definition,
                 },
             )
             .context("Inserting CASM definition")?;
@@ -70,23 +76,23 @@ impl Transaction<'_> {
     pub fn update_sierra_class_definition(
         &self,
         sierra_hash: &SierraHash,
-        sierra_definition: &[u8],
-        casm_definition: &[u8],
+        sierra_definition: &SerializedSierraDefinition,
+        casm_definition: &SerializedCasmDefinition,
         casm_hash_v2: &CasmHash,
     ) -> anyhow::Result<()> {
         let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
-        let sierra_definition = compressor
-            .compress(sierra_definition)
+        let compressed_sierra_definition = compressor
+            .compress(sierra_definition.as_bytes())
             .context("Compressing sierra definition")?;
-        let casm_definition = compressor
-            .compress(casm_definition)
+        let compressed_casm_definition = compressor
+            .compress(casm_definition.as_bytes())
             .context("Compressing casm definition")?;
 
         self.inner()
             .execute(
                 r"UPDATE class_definitions SET definition=:definition WHERE hash=:hash",
                 named_params! {
-                    ":definition": &sierra_definition,
+                    ":definition": &compressed_sierra_definition,
                     ":hash": sierra_hash
                 },
             )
@@ -96,7 +102,7 @@ impl Transaction<'_> {
             .execute(
                 r"INSERT OR REPLACE INTO casm_definitions(hash, definition) VALUES(:hash, :definition)",
                 named_params! {
-                    ":definition": &casm_definition,
+                    ":definition": &compressed_casm_definition,
                     ":hash": sierra_hash,
                 },
             )
@@ -118,11 +124,11 @@ impl Transaction<'_> {
     pub fn insert_cairo_class_definition(
         &self,
         cairo_hash: ClassHash,
-        definition: &[u8],
+        definition: &SerializedCairoDefinition,
     ) -> anyhow::Result<()> {
         let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
-        let definition = compressor
-            .compress(definition)
+        let compressed_definition = compressor
+            .compress(definition.as_bytes())
             .context("Compressing cairo definition")?;
 
         self.inner()
@@ -130,7 +136,7 @@ impl Transaction<'_> {
                 r"INSERT INTO class_definitions (hash, definition) VALUES (?, ?)
                 ON CONFLICT(hash) DO UPDATE SET definition = excluded.definition
                 WHERE class_definitions.definition IS NULL",
-                params![&cairo_hash, &definition],
+                params![&cairo_hash, &compressed_definition],
             )
             .context("Inserting cairo definition")?;
 
@@ -140,17 +146,17 @@ impl Transaction<'_> {
     pub fn update_cairo_class_definition(
         &self,
         cairo_hash: ClassHash,
-        definition: &[u8],
+        definition: &SerializedCairoDefinition,
     ) -> anyhow::Result<()> {
         let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
-        let definition = compressor
-            .compress(definition)
+        let compressed_definition = compressor
+            .compress(definition.as_bytes())
             .context("Compressing cairo definition")?;
 
         self.inner()
             .execute(
                 r"UPDATE class_definitions SET definition=? WHERE hash=?",
-                params![&definition, &cairo_hash],
+                params![&compressed_definition, &cairo_hash],
             )
             .context("Updating cairo definition")?;
 
@@ -174,7 +180,10 @@ impl Transaction<'_> {
     }
 
     /// Returns the uncompressed class definition.
-    pub fn class_definition(&self, class_hash: ClassHash) -> anyhow::Result<Option<Vec<u8>>> {
+    pub fn class_definition(
+        &self,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Option<SerializedClassDefinition>> {
         self.class_definition_with_block_number(class_hash)
             .map(|option| option.map(|(_block_number, definition)| definition))
     }
@@ -184,7 +193,7 @@ impl Transaction<'_> {
     pub fn class_definition_with_block_number(
         &self,
         class_hash: ClassHash,
-    ) -> anyhow::Result<Option<(Option<BlockNumber>, Vec<u8>)>> {
+    ) -> anyhow::Result<Option<(Option<BlockNumber>, SerializedClassDefinition)>> {
         let from_row = |row: &rusqlite::Row<'_>| {
             let definition = row.get_blob(0).map(|x| x.to_vec())?;
             let block_number = row.get_optional_block_number(1)?;
@@ -206,7 +215,10 @@ impl Transaction<'_> {
         let definition =
             zstd::decode_all(definition.as_slice()).context("Decompressing class definition")?;
 
-        Ok(Some((block_number, definition)))
+        Ok(Some((
+            block_number,
+            SerializedClassDefinition::from_bytes(definition),
+        )))
     }
 
     fn compressed_class_definition_at_with_block_number(
@@ -260,9 +272,9 @@ impl Transaction<'_> {
         &self,
         block_id: BlockId,
         class_hash: ClassHash,
-    ) -> anyhow::Result<Option<Vec<u8>>> {
+    ) -> anyhow::Result<Option<SerializedClassDefinition>> {
         self.class_definition_at_with_block_number(block_id, class_hash)
-            .map(|option| option.map(|(_block_number, definition)| definition))
+            .map(|option| option.map(|(_, definition)| definition))
     }
 
     /// Returns the uncompressed class definition if it has been declared at
@@ -271,7 +283,7 @@ impl Transaction<'_> {
         &self,
         block_id: BlockId,
         class_hash: ClassHash,
-    ) -> anyhow::Result<Option<(BlockNumber, Vec<u8>)>> {
+    ) -> anyhow::Result<Option<(BlockNumber, SerializedClassDefinition)>> {
         let definition =
             self.compressed_class_definition_at_with_block_number(block_id, class_hash)?;
         let Some((block_number, definition)) = definition else {
@@ -279,12 +291,16 @@ impl Transaction<'_> {
         };
         let definition =
             zstd::decode_all(definition.as_slice()).context("Decompressing class definition")?;
+        let definition = SerializedClassDefinition::from_bytes(definition);
 
         Ok(Some((block_number, definition)))
     }
 
     /// Returns the uncompressed compiled class definition.
-    pub fn casm_definition(&self, class_hash: ClassHash) -> anyhow::Result<Option<Vec<u8>>> {
+    pub fn casm_definition(
+        &self,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Option<SerializedCasmDefinition>> {
         // Don't reuse the "_with_block_number" impl here since the suffixed one
         // requires a join that this one doesn't.
         let mut stmt = self
@@ -303,7 +319,7 @@ impl Transaction<'_> {
         let definition = zstd::decode_all(definition.as_slice())
             .context("Decompressing compiled class definition")?;
 
-        Ok(Some(definition))
+        Ok(Some(SerializedCasmDefinition::from_bytes(definition)))
     }
 
     /// Returns the uncompressed compiled class definition, as well as the block
@@ -311,7 +327,7 @@ impl Transaction<'_> {
     pub fn casm_definition_with_block_number(
         &self,
         class_hash: ClassHash,
-    ) -> anyhow::Result<Option<(Option<BlockNumber>, Vec<u8>)>> {
+    ) -> anyhow::Result<Option<(Option<BlockNumber>, SerializedCasmDefinition)>> {
         let from_row = |row: &rusqlite::Row<'_>| {
             let definition = row.get_blob(0).map(|x| x.to_vec())?;
             let block_number = row.get_optional_block_number(1)?;
@@ -342,7 +358,10 @@ impl Transaction<'_> {
         let definition = zstd::decode_all(definition.as_slice())
             .context("Decompressing compiled class definition")?;
 
-        Ok(Some((block_number, definition)))
+        Ok(Some((
+            block_number,
+            SerializedCasmDefinition::from_bytes(definition),
+        )))
     }
 
     /// Returns the uncompressed compiled class definition if it has been
@@ -351,9 +370,9 @@ impl Transaction<'_> {
         &self,
         block_id: BlockId,
         class_hash: ClassHash,
-    ) -> anyhow::Result<Option<Vec<u8>>> {
+    ) -> anyhow::Result<Option<SerializedCasmDefinition>> {
         self.casm_definition_at_with_block_number(block_id, class_hash)
-            .map(|option| option.map(|(_block_number, definition)| definition))
+            .map(|option| option.map(|(_, definition)| definition))
     }
 
     /// Returns the uncompressed compiled class definition if it has been
@@ -363,14 +382,14 @@ impl Transaction<'_> {
         &self,
         block_id: BlockId,
         class_hash: ClassHash,
-    ) -> anyhow::Result<Option<(Option<BlockNumber>, Vec<u8>)>> {
+    ) -> anyhow::Result<Option<(Option<BlockNumber>, SerializedCasmDefinition)>> {
         let from_row = |row: &rusqlite::Row<'_>| {
-            let definition = row.get_blob(0).map(|x| x.to_vec())?;
+            let compressed_definition = row.get_blob(0).map(|x| x.to_vec())?;
             let block_number = row.get_optional_block_number(1)?;
-            Ok((block_number, definition))
+            Ok((block_number, compressed_definition))
         };
 
-        let definition = match block_id {
+        let compressed_definition = match block_id {
         BlockId::Latest => {
             let mut stmt = self.inner().prepare_cached(
                 r"SELECT
@@ -421,13 +440,16 @@ impl Transaction<'_> {
     .optional()
     .context("Querying for compiled class definition")?;
 
-        let Some((block_number, definition)) = definition else {
+        let Some((block_number, compressed_definition)) = compressed_definition else {
             return Ok(None);
         };
-        let definition = zstd::decode_all(definition.as_slice())
+        let definition = zstd::decode_all(compressed_definition.as_slice())
             .context("Decompressing compiled class definition")?;
 
-        Ok(Some((block_number, definition)))
+        Ok(Some((
+            block_number,
+            SerializedCasmDefinition::from_bytes(definition),
+        )))
     }
 
     /// Returns the compiled class hash for a class.
@@ -617,10 +639,14 @@ mod tests {
         insert_placeholder(&tx, hash);
 
         let definition = b"example cairo program";
-        tx.insert_cairo_class_definition(hash, definition).unwrap();
+        tx.insert_cairo_class_definition(hash, &SerializedCairoDefinition::from_slice(definition))
+            .unwrap();
 
         let result = tx.class_definition(hash).unwrap();
-        assert_eq!(result, Some(definition.to_vec()));
+        assert_eq!(
+            result,
+            Some(SerializedClassDefinition::from_slice(definition))
+        );
     }
 
     #[test]
@@ -641,17 +667,23 @@ mod tests {
 
         tx.insert_sierra_class_definition(
             &sierra_hash,
-            sierra_definition,
-            casm_definition,
+            &SerializedSierraDefinition::from_slice(sierra_definition),
+            &SerializedCasmDefinition::from_slice(casm_definition),
             &casm_hash_v2,
         )
         .unwrap();
 
         let result = tx.class_definition(class_hash).unwrap();
-        assert_eq!(result, Some(sierra_definition.to_vec()));
+        assert_eq!(
+            result,
+            Some(SerializedClassDefinition::from_slice(sierra_definition))
+        );
 
         let result = tx.casm_definition(class_hash).unwrap();
-        assert_eq!(result, Some(casm_definition.to_vec()));
+        assert_eq!(
+            result,
+            Some(SerializedCasmDefinition::from_slice(casm_definition))
+        );
     }
 
     #[test]
@@ -666,13 +698,22 @@ mod tests {
         let definition_a = b"definition A";
         let definition_b = b"definition B";
 
-        tx.insert_cairo_class_definition(hash, definition_a)
-            .unwrap();
-        tx.insert_cairo_class_definition(hash, definition_b)
-            .unwrap();
+        tx.insert_cairo_class_definition(
+            hash,
+            &SerializedCairoDefinition::from_slice(definition_a),
+        )
+        .unwrap();
+        tx.insert_cairo_class_definition(
+            hash,
+            &SerializedCairoDefinition::from_slice(definition_b),
+        )
+        .unwrap();
 
         let result = tx.class_definition(hash).unwrap();
-        assert_eq!(result, Some(definition_a.to_vec()));
+        assert_eq!(
+            result,
+            Some(SerializedClassDefinition::from_slice(definition_a))
+        );
     }
 
     fn setup_class(transaction: &Transaction<'_>) -> (ClassHash, &'static [u8], serde_json::Value) {
@@ -681,7 +722,7 @@ mod tests {
         let definition = br#"{"abi":{"see":"above"},"program":{"huge":"hash"},"entry_points_by_type":{"this might be a":"hash"}}"#;
 
         transaction
-            .insert_cairo_class_definition(hash, definition)
+            .insert_cairo_class_definition(hash, &SerializedCairoDefinition::from_slice(definition))
             .unwrap();
 
         (
@@ -720,12 +761,18 @@ mod tests {
         let cairo_hash = class_hash_bytes!(b"cairo hash");
         let cairo_definition = b"example cairo program";
 
-        tx.insert_cairo_class_definition(cairo_hash, cairo_definition)
-            .unwrap();
+        tx.insert_cairo_class_definition(
+            cairo_hash,
+            &SerializedCairoDefinition::from_slice(cairo_definition),
+        )
+        .unwrap();
 
         let definition = tx.class_definition(cairo_hash).unwrap().unwrap();
 
-        assert_eq!(definition, cairo_definition);
+        assert_eq!(
+            definition,
+            SerializedClassDefinition::from_slice(cairo_definition)
+        );
     }
 
     #[test]
@@ -743,8 +790,8 @@ mod tests {
 
         tx.insert_sierra_class_definition(
             &sierra_hash,
-            sierra_definition,
-            casm_definition,
+            &SerializedSierraDefinition::from_slice(sierra_definition),
+            &SerializedCasmDefinition::from_slice(casm_definition),
             &casm_hash_v2,
         )
         .unwrap();
@@ -753,13 +800,19 @@ mod tests {
             .casm_definition(ClassHash(sierra_hash.0))
             .unwrap()
             .unwrap();
-        assert_eq!(definition, casm_definition);
+        assert_eq!(
+            definition,
+            SerializedCasmDefinition::from_slice(casm_definition)
+        );
 
         let definition = tx
             .class_definition(ClassHash(sierra_hash.0))
             .unwrap()
             .unwrap();
-        assert_eq!(definition, sierra_definition);
+        assert_eq!(
+            definition,
+            SerializedClassDefinition::from_slice(sierra_definition)
+        );
 
         let retrieved_casm_hash_v2 = tx.casm_hash_v2(ClassHash(sierra_hash.0)).unwrap().unwrap();
         assert_eq!(retrieved_casm_hash_v2, casm_hash_v2);

@@ -1,6 +1,10 @@
 use pathfinder_class_hash::compute_sierra_class_hash;
 use pathfinder_class_hash::json::SierraContractDefinition;
-use pathfinder_common::class_definition::Sierra;
+use pathfinder_common::class_definition::{
+    SerializedCasmDefinition,
+    SerializedSierraDefinition,
+    Sierra,
+};
 use pathfinder_common::{state_update, CasmHash, SierraHash};
 use pathfinder_compiler::{
     casm_class_hash_v2,
@@ -57,11 +61,11 @@ pub struct PrepocessedSierra {
     // Deserialized into a format compatible with p2p, and hence the validator (for execution)
     pub cairo1_class_p2p: p2p_proto::class::Cairo1Class,
     // Re-serialized into a storage-compatible format
-    pub sierra_class_ser: Vec<u8>,
+    pub sierra_class_ser: SerializedSierraDefinition,
     // Casm hash v2
     pub casm_hash_v2: CasmHash,
     // Casm - compiled from sierra
-    pub casm: Vec<u8>,
+    pub casm: SerializedCasmDefinition,
 }
 
 /// Preprocess a Sierra class definition. Class hash is computed if not
@@ -101,7 +105,8 @@ pub fn preprocess_sierra(
     };
 
     // Re-serialize into a storage-compatible format
-    let sierra_class_ser = serde_json::to_vec(&sierra_class_def).unwrap();
+    let sierra_class_ser =
+        SerializedSierraDefinition::from_bytes(serde_json::to_vec(&sierra_class_def).unwrap());
     let cairo1_class_p2p = sierra_def_to_p2p_cairo1(&sierra_class_def);
     let casm = compile_sierra_to_casm_deser(
         sierra_class_def,

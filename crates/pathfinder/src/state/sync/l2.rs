@@ -1602,6 +1602,7 @@ mod tests {
         use std::sync::LazyLock;
 
         use assert_matches::assert_matches;
+        use pathfinder_common::class_definition::SerializedClassDefinition;
         use pathfinder_common::macro_prelude::*;
         use pathfinder_common::prelude::*;
         use pathfinder_common::Chain;
@@ -1853,12 +1854,18 @@ mod tests {
             })
         }
 
-        static CONTRACT0_DEF: LazyLock<bytes::Bytes> =
-            LazyLock::new(|| format!("{DEF0}0{DEF1}").into());
-        static CONTRACT0_DEF_V2: LazyLock<bytes::Bytes> =
-            LazyLock::new(|| format!("{DEF0}0 v2{DEF1}").into());
-        static CONTRACT1_DEF: LazyLock<bytes::Bytes> =
-            LazyLock::new(|| format!("{DEF0}1{DEF1}").into());
+        static CONTRACT0_DEF: LazyLock<SerializedClassDefinition> =
+            LazyLock::new(|| {
+                SerializedClassDefinition::from_bytes(format!("{DEF0}0{DEF1}").into_bytes())
+            });
+        static CONTRACT0_DEF_V2: LazyLock<SerializedClassDefinition> =
+            LazyLock::new(|| {
+                SerializedClassDefinition::from_bytes(format!("{DEF0}0 v2{DEF1}").into_bytes())
+            });
+        static CONTRACT1_DEF: LazyLock<SerializedClassDefinition> =
+            LazyLock::new(|| {
+                SerializedClassDefinition::from_bytes(format!("{DEF0}1{DEF1}").into_bytes())
+            });
 
         static BLOCK0: LazyLock<reply::Block> = LazyLock::new(|| reply::Block {
             block_hash: BLOCK0_HASH,
@@ -2134,7 +2141,7 @@ mod tests {
             mock: &mut MockGatewayApi,
             seq: &mut mockall::Sequence,
             class_hash: ClassHash,
-            returned_result: Result<bytes::Bytes, SequencerError>,
+            returned_result: Result<SerializedClassDefinition, SequencerError>,
         ) {
             mock.expect_class_by_hash()
                 .withf(move |x, _| x == &class_hash)
@@ -2147,7 +2154,7 @@ mod tests {
         fn expect_class_by_hash_no_sequence(
             mock: &mut MockGatewayApi,
             class_hash: ClassHash,
-            returned_result: Result<bytes::Bytes, SequencerError>,
+            returned_result: Result<SerializedClassDefinition, SequencerError>,
         ) {
             mock.expect_class_by_hash()
                 .withf(move |x, _| x == &class_hash)
@@ -2158,7 +2165,7 @@ mod tests {
         fn expect_class_by_hash_no_sequence_at_most_once(
             mock: &mut MockGatewayApi,
             class_hash: ClassHash,
-            returned_result: Result<bytes::Bytes, SequencerError>,
+            returned_result: Result<SerializedClassDefinition, SequencerError>,
         ) {
             mock.expect_class_by_hash()
                 .withf(move |x, _| x == &class_hash)

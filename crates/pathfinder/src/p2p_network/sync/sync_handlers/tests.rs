@@ -104,7 +104,7 @@ mod prop {
 
     use futures::channel::mpsc;
     use futures::StreamExt;
-    use p2p::sync::client::conv::{CairoDefinition, SierraDefinition, TryFromDto};
+    use p2p::sync::client::conv::TryFromDto;
     use p2p::sync::client::types::Receipt;
     use p2p_proto::class::Class;
     use p2p_proto::common::BlockNumberOrHash;
@@ -123,6 +123,10 @@ mod prop {
         TransactionWithReceipt,
         TransactionsRequest,
         TransactionsResponse,
+    };
+    use pathfinder_common::class_definition::{
+        SerializedCairoDefinition,
+        SerializedSierraDefinition,
     };
     use pathfinder_common::event::Event;
     use pathfinder_common::prelude::*;
@@ -353,11 +357,10 @@ mod prop {
 
             responses.into_iter().for_each(|response| match response {
                 ClassesResponse::Class(Class::Cairo0 { class, domain: _, class_hash: _ }) => {
-                    actual_cairo.push(CairoDefinition::try_from_dto(class).unwrap().0);
+                    actual_cairo.push(SerializedCairoDefinition::try_from_dto(class).unwrap());
                 },
                 ClassesResponse::Class(Class::Cairo1 { class, domain: _, class_hash: _ }) => {
-                    let SierraDefinition(sierra) = SierraDefinition::try_from_dto(class).unwrap();
-                    actual_sierra.push(sierra);
+                    actual_sierra.push(SerializedSierraDefinition::try_from_dto(class).unwrap());
                 },
                 _ => panic!("unexpected response"),
             });

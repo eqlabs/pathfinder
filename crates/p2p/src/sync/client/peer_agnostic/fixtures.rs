@@ -17,6 +17,7 @@ use p2p_proto::sync::state::{
     StateDiffsResponse,
 };
 use p2p_proto::sync::transaction::{TransactionWithReceipt, TransactionsResponse};
+use pathfinder_common::class_definition::{SerializedCairoDefinition, SerializedSierraDefinition};
 use pathfinder_common::event::Event;
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate, StateUpdateData};
@@ -33,7 +34,7 @@ use rand::seq::SliceRandom;
 use tokio::sync::Mutex;
 
 use super::ClassDefinition;
-use crate::sync::client::conv::{CairoDefinition, SierraDefinition, ToDto, TryFromDto};
+use crate::sync::client::conv::{ToDto, TryFromDto};
 use crate::sync::client::peer_agnostic::Receipt;
 
 #[derive(Clone, PartialEq, TaggedDebug)]
@@ -352,7 +353,7 @@ pub fn class(tag: i32, block_number: u64) -> ClassDefinition {
         }) => {
             Tagged::get(format!("class {tag}"), || ClassDefinition::Cairo {
                 block_number,
-                definition: CairoDefinition::try_from_dto(class).unwrap().0,
+                definition: SerializedCairoDefinition::try_from_dto(class).unwrap(),
                 hash: ClassHash(class_hash.0),
             })
             .unwrap()
@@ -365,7 +366,7 @@ pub fn class(tag: i32, block_number: u64) -> ClassDefinition {
         }) => {
             Tagged::get(format!("class {tag}"), || ClassDefinition::Sierra {
                 block_number,
-                sierra_definition: SierraDefinition::try_from_dto(class).unwrap().0,
+                sierra_definition: SerializedSierraDefinition::try_from_dto(class).unwrap(),
                 hash: SierraHash(class_hash.0),
             })
             .unwrap()

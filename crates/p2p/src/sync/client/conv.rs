@@ -25,6 +25,8 @@ use pathfinder_common::class_definition::{
     Cairo,
     SelectorAndFunctionIndex,
     SelectorAndOffset,
+    SerializedCairoDefinition,
+    SerializedSierraDefinition,
     Sierra,
 };
 use pathfinder_common::event::Event;
@@ -885,10 +887,7 @@ impl TryFromDto<p2p_proto::common::L1DataAvailabilityMode> for L1DataAvailabilit
     }
 }
 
-#[derive(Debug)]
-pub struct CairoDefinition(pub Vec<u8>);
-
-impl TryFromDto<p2p_proto::class::Cairo0Class> for CairoDefinition {
+impl TryFromDto<p2p_proto::class::Cairo0Class> for SerializedCairoDefinition {
     fn try_from_dto(dto: p2p_proto::class::Cairo0Class) -> anyhow::Result<Self> {
         #[derive(Debug, Serialize)]
         struct SelectorAndOffset {
@@ -955,13 +954,11 @@ impl TryFromDto<p2p_proto::class::Cairo0Class> for CairoDefinition {
         };
         let class_def =
             serde_json::to_vec(&class_def).context("serialize cairo class definition")?;
-        Ok(Self(class_def))
+        Ok(Self::from_bytes(class_def))
     }
 }
 
-pub struct SierraDefinition(pub Vec<u8>);
-
-impl TryFromDto<p2p_proto::class::Cairo1Class> for SierraDefinition {
+impl TryFromDto<p2p_proto::class::Cairo1Class> for SerializedSierraDefinition {
     fn try_from_dto(dto: p2p_proto::class::Cairo1Class) -> anyhow::Result<Self> {
         #[derive(Debug, Serialize)]
         pub struct SelectorAndFunctionIndex {
@@ -1020,7 +1017,7 @@ impl TryFromDto<p2p_proto::class::Cairo1Class> for SierraDefinition {
 
         let sierra = serde_json::to_vec(&sierra).context("serialize sierra class definition")?;
 
-        Ok(Self(sierra))
+        Ok(Self::from_bytes(sierra))
     }
 }
 

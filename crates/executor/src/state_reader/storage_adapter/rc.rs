@@ -2,10 +2,16 @@ use std::rc::Rc;
 
 use blockifier::blockifier::config::TransactionExecutorConfig;
 use blockifier::state::errors::StateError;
+use pathfinder_common::class_definition::SerializedCasmDefinition;
 use pathfinder_common::{BlockHash, BlockId};
 use pathfinder_storage::Transaction;
 
-use crate::state_reader::storage_adapter::{map_anyhow_to_state_err, StorageAdapter};
+use crate::state_reader::storage_adapter::{
+    map_anyhow_to_state_err,
+    ClassDefinitionAtWithBlockNumber,
+    ClassDefinitionWithBlockNumber,
+    StorageAdapter,
+};
 
 #[derive(Clone)]
 pub struct RcStorageAdapter<'tx> {
@@ -32,7 +38,7 @@ impl<'tx> StorageAdapter for RcStorageAdapter<'tx> {
     fn casm_definition(
         &self,
         class_hash: pathfinder_common::ClassHash,
-    ) -> Result<Option<Vec<u8>>, StateError> {
+    ) -> Result<Option<SerializedCasmDefinition>, StateError> {
         self.db_tx
             .casm_definition(class_hash)
             .map_err(map_anyhow_to_state_err)
@@ -41,7 +47,7 @@ impl<'tx> StorageAdapter for RcStorageAdapter<'tx> {
     fn class_definition_with_block_number(
         &self,
         class_hash: pathfinder_common::ClassHash,
-    ) -> Result<Option<(Option<pathfinder_common::BlockNumber>, Vec<u8>)>, StateError> {
+    ) -> Result<ClassDefinitionWithBlockNumber, StateError> {
         self.db_tx
             .class_definition_with_block_number(class_hash)
             .map_err(map_anyhow_to_state_err)
@@ -51,7 +57,7 @@ impl<'tx> StorageAdapter for RcStorageAdapter<'tx> {
         &self,
         block_id: BlockId,
         class_hash: pathfinder_common::ClassHash,
-    ) -> Result<Option<Vec<u8>>, StateError> {
+    ) -> Result<Option<SerializedCasmDefinition>, StateError> {
         self.db_tx
             .casm_definition_at(block_id, class_hash)
             .map_err(map_anyhow_to_state_err)
@@ -61,7 +67,7 @@ impl<'tx> StorageAdapter for RcStorageAdapter<'tx> {
         &self,
         block_id: BlockId,
         class_hash: pathfinder_common::ClassHash,
-    ) -> Result<Option<(pathfinder_common::BlockNumber, Vec<u8>)>, StateError> {
+    ) -> Result<ClassDefinitionAtWithBlockNumber, StateError> {
         self.db_tx
             .class_definition_at_with_block_number(block_id, class_hash)
             .map_err(map_anyhow_to_state_err)

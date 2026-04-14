@@ -823,6 +823,10 @@ impl From<TransactionExecutionError> for TraceBlockTransactionsError {
 #[cfg(test)]
 pub(crate) mod tests {
     use assert_matches::assert_matches;
+    use pathfinder_common::class_definition::{
+        SerializedCasmDefinition,
+        SerializedSierraDefinition,
+    };
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
     use pathfinder_common::receipt::Receipt;
@@ -875,8 +879,8 @@ pub(crate) mod tests {
 
             tx.insert_sierra_class_definition(
                 &SierraHash(fixtures::SIERRA_HASH.0),
-                fixtures::SIERRA_DEFINITION,
-                fixtures::CASM_DEFINITION,
+                &SerializedSierraDefinition::from_slice(fixtures::SIERRA_DEFINITION),
+                &SerializedCasmDefinition::from_slice(fixtures::CASM_DEFINITION),
                 &casm_hash_bytes!(b"casm hash blake"),
             )?;
 
@@ -1217,8 +1221,8 @@ pub(crate) mod tests {
 
             tx.insert_sierra_class_definition(
                 &SierraHash(fixtures::SIERRA_HASH.0),
-                fixtures::SIERRA_DEFINITION,
-                fixtures::CASM_DEFINITION,
+                &SerializedSierraDefinition::from_slice(fixtures::SIERRA_DEFINITION),
+                &SerializedCasmDefinition::from_slice(fixtures::CASM_DEFINITION),
                 &casm_hash_bytes!(b"casm hash blake"),
             )?;
 
@@ -1363,8 +1367,8 @@ pub(crate) mod tests {
 
             tx.insert_sierra_class_definition(
                 &SierraHash(fixtures::SIERRA_HASH.0),
-                fixtures::SIERRA_DEFINITION,
-                fixtures::CASM_DEFINITION,
+                &SerializedSierraDefinition::from_slice(fixtures::SIERRA_DEFINITION),
+                &SerializedCasmDefinition::from_slice(fixtures::CASM_DEFINITION),
                 &casm_hash_bytes!(b"casm hash blake"),
             )?;
 

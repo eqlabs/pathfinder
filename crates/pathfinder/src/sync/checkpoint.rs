@@ -1370,6 +1370,12 @@ mod tests {
         use fake::{Dummy, Fake, Faker};
         use futures::{stream, SinkExt};
         use p2p::libp2p::PeerId;
+        use pathfinder_common::class_definition::{
+            SerializedCairoDefinition,
+            SerializedCasmDefinition,
+            SerializedClassDefinition,
+            SerializedSierraDefinition,
+        };
         use pathfinder_common::event::Event;
         use pathfinder_common::macro_prelude::*;
         use pathfinder_common::prelude::*;
@@ -1402,8 +1408,8 @@ mod tests {
                 &self,
                 _: ClassHash,
                 _: BlockId,
-            ) -> Result<bytes::Bytes, SequencerError> {
-                Ok(bytes::Bytes::from_static(CASM2))
+            ) -> Result<SerializedCasmDefinition, SequencerError> {
+                Ok(SerializedCasmDefinition::from_slice(CASM2))
             }
         }
 
@@ -1441,7 +1447,7 @@ mod tests {
         struct Setup {
             pub streamed_classes: Vec<Result<PeerData<ClassDefinition>, anyhow::Error>>,
             pub declared_classes: DeclaredClasses,
-            pub expected_defs: HashMap<ClassHash, Vec<u8>>,
+            pub expected_defs: HashMap<ClassHash, SerializedClassDefinition>,
             pub storage: Storage,
         }
 
@@ -1477,19 +1483,20 @@ mod tests {
                     fake_block(1, state_update1),
                 ];
 
-                blocks[1].cairo_defs = vec![(cairo_hash, CAIRO.to_vec())];
+                blocks[1].cairo_defs =
+                    vec![(cairo_hash, SerializedCairoDefinition::from_slice(CAIRO))];
                 blocks[1].sierra_defs = vec![
                     // Does not compile
                     (
                         sierra0_hash,
-                        SIERRA0.to_vec(),
+                        SerializedSierraDefinition::from_slice(SIERRA0),
                         Default::default(),
                         Default::default(),
                     ),
                     // Compiles just fine
                     (
                         sierra2_hash,
-                        SIERRA2.to_vec(),
+                        SerializedSierraDefinition::from_slice(SIERRA2),
                         Default::default(),
                         Default::default(),
                     ),
@@ -1498,17 +1505,17 @@ mod tests {
                 let streamed_classes = vec![
                     Ok(PeerData::for_tests(ClassDefinition::Cairo {
                         block_number: BlockNumber::GENESIS + 1,
-                        definition: CAIRO.to_vec(),
+                        definition: SerializedCairoDefinition::from_slice(CAIRO),
                         hash: cairo_hash,
                     })),
                     Ok(PeerData::for_tests(ClassDefinition::Sierra {
                         block_number: BlockNumber::GENESIS + 1,
-                        sierra_definition: SIERRA0.to_vec(),
+                        sierra_definition: SerializedSierraDefinition::from_slice(SIERRA0),
                         hash: sierra0_hash,
                     })),
                     Ok(PeerData::for_tests(ClassDefinition::Sierra {
                         block_number: BlockNumber::GENESIS + 1,
-                        sierra_definition: SIERRA2.to_vec(),
+                        sierra_definition: SerializedSierraDefinition::from_slice(SIERRA2),
                         hash: sierra2_hash,
                     })),
                 ];
@@ -1529,9 +1536,15 @@ mod tests {
                 ]);
 
                 let expected_defs = [
-                    (cairo_hash, CAIRO.to_vec()),
-                    (ClassHash(sierra0_hash.0), SIERRA0.to_vec()),
-                    (ClassHash(sierra2_hash.0), SIERRA2.to_vec()),
+                    (cairo_hash, SerializedClassDefinition::from_slice(CAIRO)),
+                    (
+                        ClassHash(sierra0_hash.0),
+                        SerializedClassDefinition::from_slice(SIERRA0),
+                    ),
+                    (
+                        ClassHash(sierra2_hash.0),
+                        SerializedClassDefinition::from_slice(SIERRA2),
+                    ),
                 ]
                 .into();
 
@@ -1576,12 +1589,13 @@ mod tests {
                     db.casm_definition(ClassHash(SIERRA0_HASH.0))
                         .unwrap()
                         .unwrap(),
-                    CASM2
+                    SerializedCasmDefinition::from_slice(CASM2)
                 );
                 assert!(serde_json::from_slice::<serde_json::Value>(
-                    &db.casm_definition(ClassHash(SIERRA2_HASH.0))
+                    db.casm_definition(ClassHash(SIERRA2_HASH.0))
                         .unwrap()
                         .unwrap()
+                        .as_bytes()
                 )
                 .unwrap()["compiler_version"]
                     .is_string());

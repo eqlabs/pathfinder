@@ -283,6 +283,11 @@ impl crate::dto::DeserializeForVersion for SubscriptionId {
 pub mod test_utils {
     use std::collections::HashMap;
 
+    use pathfinder_common::class_definition::{
+        SerializedCairoDefinition,
+        SerializedCasmDefinition,
+        SerializedSierraDefinition,
+    };
     use pathfinder_common::event::Event;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
@@ -398,11 +403,13 @@ pub mod test_utils {
         let contract1_update2 =
             HashMap::from([(storage_addr, storage_value_bytes!(b"storage value 2"))]);
 
-        let class0_definition =
-            starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION.to_vec();
+        let class0_definition = SerializedCairoDefinition::from_slice(
+            starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION,
+        );
         let class1_definition = &class0_definition;
-        let sierra_class_definition =
-            starknet_gateway_test_fixtures::class_definitions::CAIRO_0_11_SIERRA.to_vec();
+        let sierra_class_definition = SerializedSierraDefinition::from_slice(
+            starknet_gateway_test_fixtures::class_definitions::CAIRO_0_11_SIERRA,
+        );
 
         db_txn
             .insert_cairo_class_definition(class0_hash, &class0_definition)
@@ -414,7 +421,7 @@ pub mod test_utils {
             .insert_sierra_class_definition(
                 &sierra_class,
                 &sierra_class_definition,
-                &[],
+                &SerializedCasmDefinition::from_slice(&[]),
                 &sierra_casm_hash_v2,
             )
             .unwrap();
@@ -913,13 +920,21 @@ pub mod test_utils {
                 starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION;
 
             for cairo in state_update_copy.declared_cairo_classes {
-                tx.insert_cairo_class_definition(cairo, class_definition)
-                    .unwrap();
+                tx.insert_cairo_class_definition(
+                    cairo,
+                    &SerializedCairoDefinition::from_slice(class_definition),
+                )
+                .unwrap();
             }
 
             for (sierra, casm) in state_update_copy.declared_sierra_classes {
-                tx.insert_sierra_class_definition(&sierra, b"sierra def", b"casm def", &casm)
-                    .unwrap();
+                tx.insert_sierra_class_definition(
+                    &sierra,
+                    &SerializedSierraDefinition::from_slice(b"sierra def"),
+                    &SerializedCasmDefinition::from_slice(b"casm def"),
+                    &casm,
+                )
+                .unwrap();
             }
 
             tx.commit().unwrap();
@@ -1269,21 +1284,37 @@ pub mod test_utils {
                 starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION;
 
             for cairo in pre_latest_state_update.declared_cairo_classes {
-                tx.insert_cairo_class_definition(cairo, class_definition)
-                    .unwrap();
+                tx.insert_cairo_class_definition(
+                    cairo,
+                    &SerializedCairoDefinition::from_slice(class_definition),
+                )
+                .unwrap();
             }
             for (sierra, casm) in pre_latest_state_update.declared_sierra_classes {
-                tx.insert_sierra_class_definition(&sierra, b"sierra def", b"casm def", &casm)
-                    .unwrap();
+                tx.insert_sierra_class_definition(
+                    &sierra,
+                    &SerializedSierraDefinition::from_slice(b"sierra def"),
+                    &SerializedCasmDefinition::from_slice(b"casm def"),
+                    &casm,
+                )
+                .unwrap();
             }
 
             for cairo in pre_confirmed_state_update_copy.declared_cairo_classes {
-                tx.insert_cairo_class_definition(cairo, class_definition)
-                    .unwrap();
+                tx.insert_cairo_class_definition(
+                    cairo,
+                    &SerializedCairoDefinition::from_slice(class_definition),
+                )
+                .unwrap();
             }
             for (sierra, casm) in pre_confirmed_state_update_copy.declared_sierra_classes {
-                tx.insert_sierra_class_definition(&sierra, b"sierra def", b"casm def", &casm)
-                    .unwrap();
+                tx.insert_sierra_class_definition(
+                    &sierra,
+                    &SerializedSierraDefinition::from_slice(b"sierra def"),
+                    &SerializedCasmDefinition::from_slice(b"casm def"),
+                    &casm,
+                )
+                .unwrap();
             }
 
             tx.commit().unwrap();

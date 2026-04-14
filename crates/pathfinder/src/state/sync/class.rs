@@ -1,16 +1,22 @@
 use anyhow::Context;
+use pathfinder_common::class_definition::{
+    SerializedCairoDefinition,
+    SerializedCasmDefinition,
+    SerializedClass,
+    SerializedSierraDefinition,
+};
 use pathfinder_common::{CasmHash, ClassHash, SierraHash};
 use starknet_gateway_client::{BlockId, GatewayApi};
 
 pub enum DownloadedClass {
     Cairo {
-        definition: Vec<u8>,
+        definition: SerializedCairoDefinition,
         hash: ClassHash,
     },
     Sierra {
-        sierra_definition: Vec<u8>,
+        sierra_definition: SerializedSierraDefinition,
         sierra_hash: SierraHash,
-        casm_definition: Vec<u8>,
+        casm_definition: SerializedCasmDefinition,
         casm_hash_v2: CasmHash,
     },
 }
@@ -27,27 +33,25 @@ pub async fn download_class<SequencerClient: GatewayApi>(
     let definition = sequencer
         .class_by_hash(class_hash, BlockId::Latest)
         .await
-        .with_context(|| format!("Downloading class {}", class_hash.0))?
-        .to_vec();
+        .with_context(|| format!("Downloading class {}", class_hash.0))?;
 
     let (tx, rx) = tokio::sync::oneshot::channel();
     rayon::spawn(move || {
-        let computed_hash = compute_class_hash(&definition).context("Computing class hash");
-        let _ = tx.send((computed_hash, definition));
+        let result = compute_class_hash(definition).context("Computing class hash");
+        let _ = tx.send(result);
     });
-    let (hash, definition) = rx.await.context("Panic on rayon thread")?;
-    let hash = hash?;
+    let (hash, serialized_class) = rx.await.context("Panic on rayon thread")??;
 
     use pathfinder_class_hash::ComputedClassHash;
-    match hash {
-        ComputedClassHash::Cairo(hash) => {
+    match (hash, serialized_class) {
+        (ComputedClassHash::Cairo(hash), SerializedClass::Cairo(definition)) => {
             if class_hash != hash {
                 tracing::warn!(expected=%class_hash, computed=%hash, "Cairo 0 class hash mismatch");
             }
 
             Ok(DownloadedClass::Cairo { definition, hash })
         }
-        ComputedClassHash::Sierra(hash) => {
+        (ComputedClassHash::Sierra(hash), SerializedClass::Sierra(sierra_definition)) => {
             anyhow::ensure!(
                 class_hash == hash,
                 "Class hash mismatch, {} instead of {}",
@@ -66,24 +70,23 @@ pub async fn download_class<SequencerClient: GatewayApi>(
 
             let (sierra_definition, casm_definition) = if fetch_casm_from_fgw {
                 (
-                    definition,
+                    sierra_definition,
                     sequencer
                         .casm_by_hash(class_hash, BlockId::Latest)
                         .await
-                        .with_context(|| format!("Downloading CASM {}", class_hash.0))?
-                        .to_vec(),
+                        .with_context(|| format!("Downloading CASM {}", class_hash.0))?,
                 )
             } else {
                 let (send, recv) = tokio::sync::oneshot::channel();
                 rayon::spawn(move || {
                     let _span = span.entered();
                     let compile_result = pathfinder_compiler::compile_sierra_to_casm(
-                        &definition,
+                        &sierra_definition,
                         compiler_resource_limit,
                         blockifier_libfuncs,
                     )
                     .context("Compiling Sierra class");
-                    let _ = send.send((compile_result, definition));
+                    let _ = send.send((compile_result, sierra_definition));
                 });
                 let (casm_definition, sierra_definition) =
                     recv.await.expect("Panic on rayon thread");
@@ -96,7 +99,6 @@ pub async fn download_class<SequencerClient: GatewayApi>(
                             .casm_by_hash(class_hash, BlockId::Latest)
                             .await
                             .with_context(|| format!("Downloading CASM {}", class_hash.0))?
-                            .to_vec()
                     }
                 };
                 (sierra_definition, casm_definition)
@@ -131,5 +133,6 @@ pub async fn download_class<SequencerClient: GatewayApi>(
                 casm_hash_v2,
             })
         }
+        _ => unreachable!("compute_class_hash returns matching hash and class variants"),
     }
 }

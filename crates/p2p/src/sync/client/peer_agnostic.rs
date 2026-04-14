@@ -26,6 +26,7 @@ use p2p_proto::sync::transaction::{
     TransactionsRequest,
     TransactionsResponse,
 };
+use pathfinder_common::class_definition::{SerializedCairoDefinition, SerializedSierraDefinition};
 use pathfinder_common::event::Event;
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
@@ -50,7 +51,7 @@ use traits::{
 };
 
 use crate::peer_data::PeerData;
-use crate::sync::client::conv::{CairoDefinition, FromDto, SierraDefinition, TryFromDto};
+use crate::sync::client::conv::{FromDto, TryFromDto};
 use crate::sync::client::types::{
     ClassDefinition,
     ClassDefinitionsError,
@@ -461,12 +462,12 @@ impl BlockClient for Client {
 
     async fn class_definitions_for_block(
         self,
-        block: BlockNumber,
+        block_number: BlockNumber,
         declared_classes_count: u64,
     ) -> Result<Option<(PeerId, Vec<ClassDefinition>)>, ClassDefinitionsError> {
         let request = ClassesRequest {
             iteration: Iteration {
-                start: BlockNumberOrHash::Number(block.get()),
+                start: BlockNumberOrHash::Number(block_number.get()),
                 direction: Direction::Forward,
                 limit: 1,
                 step: 1.into(),
@@ -495,11 +496,11 @@ impl BlockClient for Client {
                         domain: _,
                         class_hash,
                     })) => {
-                        let definition = CairoDefinition::try_from_dto(class)
+                        let definition = SerializedCairoDefinition::try_from_dto(class)
                             .map_err(|_| ClassDefinitionsError::CairoDefinitionError(peer))?;
                         class_definitions.push(ClassDefinition::Cairo {
-                            block_number: block,
-                            definition: definition.0,
+                            block_number,
+                            definition,
                             hash: ClassHash(class_hash.0),
                         });
                     }
@@ -508,11 +509,11 @@ impl BlockClient for Client {
                         domain: _,
                         class_hash,
                     })) => {
-                        let definition = SierraDefinition::try_from_dto(class)
+                        let sierra_definition = SerializedSierraDefinition::try_from_dto(class)
                             .map_err(|_| ClassDefinitionsError::SierraDefinitionError(peer))?;
                         class_definitions.push(ClassDefinition::Sierra {
-                            block_number: block,
-                            sierra_definition: definition.0,
+                            block_number,
+                            sierra_definition,
                             hash: SierraHash(class_hash.0),
                         });
                     }
@@ -1261,7 +1262,7 @@ mod class_definition_stream {
                 domain: _,
                 class_hash,
             })) => {
-                let Ok(CairoDefinition(definition)) = CairoDefinition::try_from_dto(class) else {
+                let Ok(definition) = SerializedCairoDefinition::try_from_dto(class) else {
                     // TODO punish the peer
                     tracing::debug!(%peer, "Cairo definition failed to parse");
                     return None;
@@ -1278,7 +1279,7 @@ mod class_definition_stream {
                 domain: _,
                 class_hash,
             })) => {
-                let Ok(SierraDefinition(definition)) = SierraDefinition::try_from_dto(class) else {
+                let Ok(sierra_definition) = SerializedSierraDefinition::try_from_dto(class) else {
                     // TODO punish the peer
                     tracing::debug!(%peer, "Sierra definition failed to parse");
                     return None;
@@ -1286,7 +1287,7 @@ mod class_definition_stream {
 
                 Some(ClassDefinition::Sierra {
                     block_number,
-                    sierra_definition: definition,
+                    sierra_definition,
                     hash: SierraHash(class_hash.0),
                 })
             }
