@@ -32,15 +32,15 @@ use anyhow::Context;
 use clap::{ArgAction, Args, Parser};
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use pathfinder_common::integration_testing::debug_create_port_marker_file;
-use pathfinder_common::prelude::*;
-use pathfinder_common::state_update::ContractClassUpdate;
-use pathfinder_common::{BlockId, Chain};
-use pathfinder_lib::state::block_hash::{
+use pathfinder_block_commitments::{
     calculate_event_commitment,
     calculate_receipt_commitment,
     calculate_transaction_commitment,
 };
+use pathfinder_common::integration_testing::debug_create_port_marker_file;
+use pathfinder_common::prelude::*;
+use pathfinder_common::state_update::ContractClassUpdate;
+use pathfinder_common::{BlockId, Chain};
 use pathfinder_storage::Storage;
 use primitive_types::H160;
 use serde::{Deserialize, Serialize};
