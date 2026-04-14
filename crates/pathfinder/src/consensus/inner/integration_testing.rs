@@ -3,7 +3,6 @@
 //! features are enabled.
 
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use p2p_proto::consensus::ProposalPart;
 use pathfinder_consensus::VoteType;
@@ -229,6 +228,8 @@ pub fn debug_ignore_received_vote(
     vote_round: Option<u32>,
     inject_failure: Option<InjectFailureConfig>,
 ) -> bool {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
     static IGNORE_RECEIVED_VOTE: AtomicBool = AtomicBool::new(true);
 
     let ret = if matches!(vote_type, VoteType::Precommit)
