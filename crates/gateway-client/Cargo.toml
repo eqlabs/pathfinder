@@ -33,7 +33,6 @@ assert_matches = { workspace = true }
 base64 = { workspace = true }
 fake = { workspace = true }
 gateway-test-utils = { path = "../gateway-test-utils" }
-httpmock = { workspace = true }
 pathfinder-crypto = { path = "../crypto" }
 pretty_assertions_sorted = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }

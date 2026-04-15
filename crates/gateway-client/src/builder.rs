@@ -732,31 +732,28 @@ mod tests {
 
     mod api_key_is_set_when_configured {
         use fake::{Fake, Faker};
-        use httpmock::prelude::*;
-        use httpmock::Mock;
         use serde_json::json;
+        use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
 
         use crate::Client;
 
-        async fn setup_with_fake_api_key(server: &MockServer) -> (Mock<'_>, Client) {
+        async fn setup_with_fake_api_key(server: &MockServer) -> Client {
             let api_key = Faker.fake::<String>();
 
-            let mock = server.mock(|when, then| {
-                when.any_request().header("X-Throttling-Bypass", &api_key);
-                then.status(200).json_body(json!({}));
-            });
+            Mock::given(matchers::header("X-Throttling-Bypass", &api_key))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+                .mount(server)
+                .await;
 
-            let client = Client::for_test(server.base_url().parse().unwrap())
+            Client::for_test(server.uri().parse().unwrap())
                 .unwrap()
-                .with_api_key(Some(api_key.clone()));
-
-            (mock, client)
+                .with_api_key(Some(api_key))
         }
 
         #[tokio::test]
         async fn get() -> anyhow::Result<()> {
-            let server = MockServer::start_async().await;
-            let (mock, client) = setup_with_fake_api_key(&server).await;
+            let server = MockServer::start().await;
+            let client = setup_with_fake_api_key(&server).await;
 
             let _: serde_json::Value = client
                 .clone()
@@ -774,15 +771,16 @@ mod tests {
                 .get()
                 .await?;
 
-            mock.assert_calls(2);
+            let requests = server.received_requests().await.unwrap();
+            assert_eq!(requests.len(), 2);
 
             Ok(())
         }
 
         #[tokio::test]
         async fn get_as_bytes() -> anyhow::Result<()> {
-            let server = MockServer::start_async().await;
-            let (mock, client) = setup_with_fake_api_key(&server).await;
+            let server = MockServer::start().await;
+            let client = setup_with_fake_api_key(&server).await;
 
             let _: bytes::Bytes = client
                 .clone()
@@ -800,15 +798,16 @@ mod tests {
                 .get_as_bytes()
                 .await?;
 
-            mock.assert_calls(2);
+            let requests = server.received_requests().await.unwrap();
+            assert_eq!(requests.len(), 2);
 
             Ok(())
         }
 
         #[tokio::test]
         async fn post_with_json() -> anyhow::Result<()> {
-            let server = MockServer::start_async().await;
-            let (mock, client) = setup_with_fake_api_key(&server).await;
+            let server = MockServer::start().await;
+            let client = setup_with_fake_api_key(&server).await;
 
             let _: serde_json::Value = client
                 .clone()
@@ -826,7 +825,8 @@ mod tests {
                 .post_with_json(&json!({}), None)
                 .await?;
 
-            mock.assert_calls(2);
+            let requests = server.received_requests().await.unwrap();
+            assert_eq!(requests.len(), 2);
 
             Ok(())
         }
