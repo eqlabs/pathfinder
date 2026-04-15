@@ -24,12 +24,12 @@ pub struct SerializedCairoDefinition(Vec<u8>);
 /// Carries the definition of a serialized contract class, either Sierra or
 /// Cairo. The caller does not care which class definition it is.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub struct SerializedClassDefinition(Vec<u8>);
+pub struct SerializedOpaqueClassDefinition(Vec<u8>);
 
 /// Carries the definition of a serialized contract class, either Sierra or
 /// Cairo.
 #[derive(Clone, Debug)]
-pub enum SerializedClass {
+pub enum SerializedClassDefinition {
     Sierra(SerializedSierraDefinition),
     Cairo(SerializedCairoDefinition),
 }
@@ -267,7 +267,7 @@ impl SerializedCairoDefinition {
     }
 }
 
-impl SerializedClassDefinition {
+impl SerializedOpaqueClassDefinition {
     pub fn from_bytes(bytes: Vec<u8>) -> Self {
         Self(bytes)
     }
@@ -283,18 +283,17 @@ impl SerializedClassDefinition {
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
-
 }
 
 /// We can use `From` because this is always safe.
-impl From<SerializedSierraDefinition> for SerializedClassDefinition {
+impl From<SerializedSierraDefinition> for SerializedOpaqueClassDefinition {
     fn from(d: SerializedSierraDefinition) -> Self {
         Self::from_bytes(d.into_bytes())
     }
 }
 
 /// We can use `From` because this is always safe.
-impl From<SerializedCairoDefinition> for SerializedClassDefinition {
+impl From<SerializedCairoDefinition> for SerializedOpaqueClassDefinition {
     fn from(d: SerializedCairoDefinition) -> Self {
         Self::from_bytes(d.into_bytes())
     }
@@ -322,7 +321,7 @@ impl<T> Dummy<T> for SerializedCairoDefinition {
 }
 
 // TODO derive?
-impl<T> Dummy<T> for SerializedClassDefinition {
+impl<T> Dummy<T> for SerializedOpaqueClassDefinition {
     fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
         Self(Faker.fake_with_rng(rng))
     }

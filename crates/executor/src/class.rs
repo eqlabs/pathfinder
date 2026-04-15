@@ -1,8 +1,8 @@
 use cairo_lang_starknet_classes::casm_contract_class::CasmContractClass;
-use pathfinder_common::class_definition::{SerializedCasmDefinition, SerializedClassDefinition};
+use pathfinder_common::class_definition::{SerializedCasmDefinition, SerializedOpaqueClassDefinition};
 
 pub fn parse_deprecated_class_definition(
-    definition: SerializedClassDefinition,
+    definition: SerializedOpaqueClassDefinition,
 ) -> anyhow::Result<starknet_api::contract_class::ContractClass> {
     let class: starknet_api::deprecated_contract_class::ContractClass =
         serde_json::from_slice(definition.as_bytes())?;

@@ -2,7 +2,7 @@ use anyhow::Context;
 use pathfinder_common::class_definition::{
     SerializedCairoDefinition,
     SerializedCasmDefinition,
-    SerializedClass,
+    SerializedClassDefinition,
     SerializedSierraDefinition,
 };
 use pathfinder_common::{CasmHash, ClassHash, SierraHash};
@@ -44,14 +44,14 @@ pub async fn download_class<SequencerClient: GatewayApi>(
 
     use pathfinder_class_hash::ComputedClassHash;
     match (hash, serialized_class) {
-        (ComputedClassHash::Cairo(hash), SerializedClass::Cairo(definition)) => {
+        (ComputedClassHash::Cairo(hash), SerializedClassDefinition::Cairo(definition)) => {
             if class_hash != hash {
                 tracing::warn!(expected=%class_hash, computed=%hash, "Cairo 0 class hash mismatch");
             }
 
             Ok(DownloadedClass::Cairo { definition, hash })
         }
-        (ComputedClassHash::Sierra(hash), SerializedClass::Sierra(sierra_definition)) => {
+        (ComputedClassHash::Sierra(hash), SerializedClassDefinition::Sierra(sierra_definition)) => {
             anyhow::ensure!(
                 class_hash == hash,
                 "Class hash mismatch, {} instead of {}",

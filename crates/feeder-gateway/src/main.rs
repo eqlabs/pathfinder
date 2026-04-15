@@ -37,7 +37,7 @@ use pathfinder_block_commitments::{
     calculate_receipt_commitment,
     calculate_transaction_commitment,
 };
-use pathfinder_common::class_definition::{SerializedCasmDefinition, SerializedClassDefinition};
+use pathfinder_common::class_definition::{SerializedCasmDefinition, SerializedOpaqueClassDefinition};
 use pathfinder_common::integration_testing::debug_create_port_marker_file;
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::ContractClassUpdate;
@@ -824,7 +824,7 @@ fn resolve_state_update(
 fn resolve_class(
     tx: &pathfinder_storage::Transaction<'_>,
     class_hash: ClassHash,
-) -> anyhow::Result<SerializedClassDefinition> {
+) -> anyhow::Result<SerializedOpaqueClassDefinition> {
     let definition = tx
         .class_definition(class_hash)
         .context("Reading class definition from database")?

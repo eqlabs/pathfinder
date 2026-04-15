@@ -297,7 +297,7 @@ pub(crate) mod tests {
     use std::collections::{BTreeMap, HashSet};
 
     use assert_matches::assert_matches;
-    use pathfinder_common::class_definition::SerializedClassDefinition;
+    use pathfinder_common::class_definition::SerializedOpaqueClassDefinition;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
     use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBound, ResourceBounds};
@@ -718,7 +718,7 @@ pub(crate) mod tests {
         pub const CAIRO0_HASH: ClassHash =
             class_hash!("02c52e7084728572ea940b4df708a2684677c19fa6296de2ea7ba5327e3a84ef");
 
-        let contract_class = crate::types::ContractClass::try_from_serialized_definition(&SerializedClassDefinition::from_slice(CAIRO0_DEFINITION))
+        let contract_class = crate::types::ContractClass::try_from_serialized_definition(&SerializedOpaqueClassDefinition::from_slice(CAIRO0_DEFINITION))
             .unwrap()
             .as_cairo()
             .unwrap();
@@ -930,7 +930,7 @@ pub(crate) mod tests {
 
             pub fn declare(account_contract_address: ContractAddress) -> BroadcastedTransaction {
                 let contract_class =
-                    crate::types::ContractClass::try_from_serialized_definition(&SerializedClassDefinition::from_slice(SIERRA_DEFINITION))
+                    crate::types::ContractClass::try_from_serialized_definition(&SerializedOpaqueClassDefinition::from_slice(SIERRA_DEFINITION))
                         .unwrap()
                         .as_sierra()
                         .unwrap();
@@ -956,7 +956,7 @@ pub(crate) mod tests {
                 let contract_definition =
                     include_bytes!("../../fixtures/contracts/libfuncs_coverage.json");
                 let contract_class =
-                    crate::types::ContractClass::try_from_serialized_definition(&SerializedClassDefinition::from_slice(contract_definition))
+                    crate::types::ContractClass::try_from_serialized_definition(&SerializedOpaqueClassDefinition::from_slice(contract_definition))
                         .unwrap()
                         .as_sierra()
                         .unwrap();

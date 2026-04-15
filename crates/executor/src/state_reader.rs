@@ -4,7 +4,7 @@ use blockifier::execution::contract_class::RunnableCompiledClass;
 use blockifier::state::errors::StateError;
 use blockifier::state::state_api::StateReader;
 use cached::Cached;
-use pathfinder_common::class_definition::SerializedClassDefinition;
+use pathfinder_common::class_definition::SerializedOpaqueClassDefinition;
 use pathfinder_common::{BlockNumber, ClassHash, StorageAddress, StorageValue};
 use pathfinder_crypto::Felt;
 use starknet_api::contract_class::compiled_class_hash::{HashVersion, HashableCompiledClass};
@@ -181,7 +181,7 @@ impl<S: StorageAdapter> PathfinderStateReader<S> {
 
     fn try_sierra_version_from_class(
         &self,
-        class_definition: &SerializedClassDefinition,
+        class_definition: &SerializedOpaqueClassDefinition,
     ) -> Result<SierraVersion, StateError> {
         use cairo_vm::types::errors::program_errors::ProgramError;
 

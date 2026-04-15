@@ -155,7 +155,7 @@ mod tests {
 
     use pathfinder_common::class_definition::{
         SerializedCairoDefinition,
-        SerializedClassDefinition,
+        SerializedOpaqueClassDefinition,
     };
     use pathfinder_common::state_update::StateUpdateData;
     use pathfinder_common::BlockNumber;
@@ -218,7 +218,7 @@ mod tests {
         let mut db = storage.connection().unwrap();
         let tx = db.transaction().unwrap();
         let stored = tx.class_definition(hash).unwrap();
-        assert_eq!(stored, Some(SerializedClassDefinition::from(definition)));
+        assert_eq!(stored, Some(SerializedOpaqueClassDefinition::from(definition)));
     }
 
     /// Cairo 0 classes can have a mismatch between the declared hash and the
@@ -254,7 +254,7 @@ mod tests {
         // Stored under the declared hash, not the computed one.
         assert_eq!(
             tx.class_definition(declared).unwrap(),
-            Some(SerializedClassDefinition::from(definition))
+            Some(SerializedOpaqueClassDefinition::from(definition))
         );
         assert_eq!(tx.class_definition(computed).unwrap(), None);
     }
@@ -301,7 +301,7 @@ mod tests {
         let tx = db.transaction().unwrap();
         assert_eq!(
             tx.class_definition(good).unwrap(),
-            Some(SerializedClassDefinition::from(definition))
+            Some(SerializedOpaqueClassDefinition::from(definition))
         );
         // bad was not repaired — definition IS NULL, so it still appears in
         // the missing list.

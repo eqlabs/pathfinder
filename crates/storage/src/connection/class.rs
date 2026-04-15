@@ -2,7 +2,7 @@ use anyhow::Context;
 use pathfinder_common::class_definition::{
     SerializedCairoDefinition,
     SerializedCasmDefinition,
-    SerializedClassDefinition,
+    SerializedOpaqueClassDefinition,
     SerializedSierraDefinition,
 };
 use pathfinder_common::{
@@ -183,7 +183,7 @@ impl Transaction<'_> {
     pub fn class_definition(
         &self,
         class_hash: ClassHash,
-    ) -> anyhow::Result<Option<SerializedClassDefinition>> {
+    ) -> anyhow::Result<Option<SerializedOpaqueClassDefinition>> {
         self.class_definition_with_block_number(class_hash)
             .map(|option| option.map(|(_block_number, definition)| definition))
     }
@@ -193,7 +193,7 @@ impl Transaction<'_> {
     pub fn class_definition_with_block_number(
         &self,
         class_hash: ClassHash,
-    ) -> anyhow::Result<Option<(Option<BlockNumber>, SerializedClassDefinition)>> {
+    ) -> anyhow::Result<Option<(Option<BlockNumber>, SerializedOpaqueClassDefinition)>> {
         let from_row = |row: &rusqlite::Row<'_>| {
             let definition = row.get_blob(0).map(|x| x.to_vec())?;
             let block_number = row.get_optional_block_number(1)?;
@@ -217,7 +217,7 @@ impl Transaction<'_> {
 
         Ok(Some((
             block_number,
-            SerializedClassDefinition::from_bytes(definition),
+            SerializedOpaqueClassDefinition::from_bytes(definition),
         )))
     }
 
@@ -272,7 +272,7 @@ impl Transaction<'_> {
         &self,
         block_id: BlockId,
         class_hash: ClassHash,
-    ) -> anyhow::Result<Option<SerializedClassDefinition>> {
+    ) -> anyhow::Result<Option<SerializedOpaqueClassDefinition>> {
         self.class_definition_at_with_block_number(block_id, class_hash)
             .map(|option| option.map(|(_, definition)| definition))
     }
@@ -283,7 +283,7 @@ impl Transaction<'_> {
         &self,
         block_id: BlockId,
         class_hash: ClassHash,
-    ) -> anyhow::Result<Option<(BlockNumber, SerializedClassDefinition)>> {
+    ) -> anyhow::Result<Option<(BlockNumber, SerializedOpaqueClassDefinition)>> {
         let definition =
             self.compressed_class_definition_at_with_block_number(block_id, class_hash)?;
         let Some((block_number, definition)) = definition else {
@@ -291,7 +291,7 @@ impl Transaction<'_> {
         };
         let definition =
             zstd::decode_all(definition.as_slice()).context("Decompressing class definition")?;
-        let definition = SerializedClassDefinition::from_bytes(definition);
+        let definition = SerializedOpaqueClassDefinition::from_bytes(definition);
 
         Ok(Some((block_number, definition)))
     }
@@ -645,7 +645,7 @@ mod tests {
         let result = tx.class_definition(hash).unwrap();
         assert_eq!(
             result,
-            Some(SerializedClassDefinition::from_slice(definition))
+            Some(SerializedOpaqueClassDefinition::from_slice(definition))
         );
     }
 
@@ -676,7 +676,7 @@ mod tests {
         let result = tx.class_definition(class_hash).unwrap();
         assert_eq!(
             result,
-            Some(SerializedClassDefinition::from_slice(sierra_definition))
+            Some(SerializedOpaqueClassDefinition::from_slice(sierra_definition))
         );
 
         let result = tx.casm_definition(class_hash).unwrap();
@@ -712,7 +712,7 @@ mod tests {
         let result = tx.class_definition(hash).unwrap();
         assert_eq!(
             result,
-            Some(SerializedClassDefinition::from_slice(definition_a))
+            Some(SerializedOpaqueClassDefinition::from_slice(definition_a))
         );
     }
 
@@ -771,7 +771,7 @@ mod tests {
 
         assert_eq!(
             definition,
-            SerializedClassDefinition::from_slice(cairo_definition)
+            SerializedOpaqueClassDefinition::from_slice(cairo_definition)
         );
     }
 
@@ -811,7 +811,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             definition,
-            SerializedClassDefinition::from_slice(sierra_definition)
+            SerializedOpaqueClassDefinition::from_slice(sierra_definition)
         );
 
         let retrieved_casm_hash_v2 = tx.casm_hash_v2(ClassHash(sierra_hash.0)).unwrap().unwrap();

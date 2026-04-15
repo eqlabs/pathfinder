@@ -5,7 +5,7 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use anyhow::Context;
-use pathfinder_common::class_definition::{SerializedCasmDefinition, SerializedClassDefinition};
+use pathfinder_common::class_definition::{SerializedCasmDefinition, SerializedOpaqueClassDefinition};
 use pathfinder_common::prelude::*;
 use reqwest::Url;
 use starknet_gateway_types::error::SequencerError;
@@ -73,7 +73,7 @@ pub trait GatewayApi: Sync {
         &self,
         class_hash: ClassHash,
         block: BlockId,
-    ) -> Result<SerializedClassDefinition, SequencerError> {
+    ) -> Result<SerializedOpaqueClassDefinition, SequencerError> {
         unimplemented!();
     }
 
@@ -176,7 +176,7 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for Arc<T> {
         &self,
         class_hash: ClassHash,
         block: BlockId,
-    ) -> Result<SerializedClassDefinition, SequencerError> {
+    ) -> Result<SerializedOpaqueClassDefinition, SequencerError> {
         self.as_ref().class_by_hash(class_hash, block).await
     }
 
@@ -557,7 +557,7 @@ impl GatewayApi for Client {
         &self,
         class_hash: ClassHash,
         block: BlockId,
-    ) -> Result<SerializedClassDefinition, SequencerError> {
+    ) -> Result<SerializedOpaqueClassDefinition, SequencerError> {
         let bytes = self
             .feeder_gateway_request()
             .get_class_by_hash()
@@ -566,7 +566,7 @@ impl GatewayApi for Client {
             .retry(self.retry)
             .get_as_bytes()
             .await?;
-        Ok(SerializedClassDefinition::from_bytes(bytes.to_vec()))
+        Ok(SerializedOpaqueClassDefinition::from_bytes(bytes.to_vec()))
     }
 
     /// Gets CASM for a particular class hash.

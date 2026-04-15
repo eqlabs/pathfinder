@@ -1,6 +1,6 @@
 use blockifier::blockifier::config::TransactionExecutorConfig;
 use blockifier::state::errors::StateError;
-use pathfinder_common::class_definition::{SerializedCasmDefinition, SerializedClassDefinition};
+use pathfinder_common::class_definition::{SerializedCasmDefinition, SerializedOpaqueClassDefinition};
 use pathfinder_common::{
     BlockHash,
     BlockId,
@@ -17,8 +17,8 @@ pub mod concurrent;
 pub mod rc;
 
 // Keep clippy happy
-type ClassDefinitionAtWithBlockNumber = Option<(BlockNumber, SerializedClassDefinition)>;
-type ClassDefinitionWithBlockNumber = Option<(Option<BlockNumber>, SerializedClassDefinition)>;
+type ClassDefinitionAtWithBlockNumber = Option<(BlockNumber, SerializedOpaqueClassDefinition)>;
+type ClassDefinitionWithBlockNumber = Option<(Option<BlockNumber>, SerializedOpaqueClassDefinition)>;
 
 pub trait StorageAdapter {
     fn transaction_executor_config(&self) -> TransactionExecutorConfig;

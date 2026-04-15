@@ -7,7 +7,7 @@ use pathfinder_class_hash::compute_class_hash;
 use pathfinder_common::class_definition::{
     SerializedCairoDefinition,
     SerializedCasmDefinition,
-    SerializedClassDefinition,
+    SerializedOpaqueClassDefinition,
     SerializedSierraDefinition,
 };
 use pathfinder_common::event::Event;
@@ -346,7 +346,7 @@ pub mod generate {
                         &Faker.fake_with_rng::<class_definition::Cairo<'_>, _>(rng),
                     )
                     .unwrap();
-                    let def = SerializedClassDefinition::from_bytes(def);
+                    let def = SerializedOpaqueClassDefinition::from_bytes(def);
                     let (hash, _) = compute_class_hash(def.clone()).unwrap();
                     (hash.hash(), SerializedCairoDefinition::from_bytes(def.into_bytes()))
                 })
@@ -357,7 +357,7 @@ pub mod generate {
                         &Faker.fake_with_rng::<class_definition::Sierra<'_>, _>(rng),
                     )
                     .unwrap();
-                    let def = SerializedClassDefinition::from_bytes(def);
+                    let def = SerializedOpaqueClassDefinition::from_bytes(def);
                     let (hash, _) = compute_class_hash(def.clone()).unwrap();
                     let hash = SierraHash(hash.hash().0);
                     let sierra_def = SerializedSierraDefinition::from_bytes(def.into_bytes());
