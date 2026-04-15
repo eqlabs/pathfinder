@@ -20,7 +20,7 @@ This crate is a derivative of Parity Technologies' [`libp2p request/response`](h
 
 <br>
 
-*): [`pathfinder`](https://github.com/eqlabs/pathfinder) uses this crate with its own [Starknet](https://www.starknet.io/) specific [protocol](https://github.com/starknet-io/starknet-p2p-specs) and decided to drop unnecessary features
+*): [`pathfinder`](https://github.com/equilibriumco/pathfinder) uses this crate with its own [Starknet](https://www.starknet.io/) specific [protocol](https://github.com/starknet-io/starknet-p2p-specs) and decided to drop unnecessary features
 
 # Acknowledgements
 

@@ -28,7 +28,7 @@ pub async fn dial_bootnodes<C>(
 
         // TODO: Use exponential backoff with a max retry limit, at least one boot node
         // needs to be reachable for the node to be useful.
-        // https://github.com/eqlabs/pathfinder/issues/2937
+        // https://github.com/equilibriumco/pathfinder/issues/2937
         for _ in 0..5 {
             match core_client.dial(peer_id, bootstrap_address.clone()).await {
                 Ok(_) => {

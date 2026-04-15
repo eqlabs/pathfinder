@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-More expansive patch notes and explanations may be found in the specific [pathfinder release notes](https://github.com/eqlabs/pathfinder/releases).
+More expansive patch notes and explanations may be found in the specific [pathfinder release notes](https://github.com/equilibriumco/pathfinder/releases).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -307,7 +307,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     b. The latest L2 block if it is behind the latest L1 checkpoint or no L1 checkpoints have been received by the node (practically unreachable)
 
 - `starknet_getTransactionStatus` now returns RECEIVED even when the gateway cannot find the transaction, provided the transaction was successfully sent by the responding node within the last 5 minutes.
-- Pathfinder now allows the users to configure the number of historical messages to be streamed via the [webscoket API](https://eqlabs.github.io/pathfinder/interacting-with-pathfinder/websocket-api). This can be done using the `--rpc.websocket.max-history` CLI option.
+- Pathfinder now allows the users to configure the number of historical messages to be streamed via the [webscoket API](https://equilibriumco.github.io/pathfinder/interacting-with-pathfinder/websocket-api). This can be done using the `--rpc.websocket.max-history` CLI option.
   - Accepted values are:
     - "unlimited" - All historical messages will be streamed.
     - "N" - An integer specifying the number of historical messages to be streamed.
@@ -357,7 +357,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `starknet_subscribeEvents` subscriptions stop sending notifications.
-- Broken aggregate bloom filter migration has been updated to work properly. If you migrated from a database running in archived mode, please [re-download our latest snapshot](https://eqlabs.github.io/pathfinder/database-snapshots) and re-run the migrations.
+- Broken aggregate bloom filter migration has been updated to work properly. If you migrated from a database running in archived mode, please [re-download our latest snapshot](https://equilibriumco.github.io/pathfinder/database-snapshots) and re-run the migrations.
 - `starknet_getStateUpdate` has `new_root` and `old_root` swapped.
 
 ### Changed
@@ -1146,10 +1146,10 @@ Users should not use this version.
 
 ### Removed
 
-- `--config` configuration option (deprecated in [v0.4.1](https://github.com/eqlabs/pathfinder/releases/tag/v0.4.1))
-- `--integration` configuration option (deprecated in [v0.4.1](https://github.com/eqlabs/pathfinder/releases/tag/v0.4.1))
-- `--sequencer-url` configuration option (deprecated in [v0.4.1](https://github.com/eqlabs/pathfinder/releases/tag/v0.4.1))
-- `--testnet2` configuration option (deprecated in [v0.4.1](https://github.com/eqlabs/pathfinder/releases/tag/v0.4.1))
+- `--config` configuration option (deprecated in [v0.4.1](https://github.com/equilibriumco/pathfinder/releases/tag/v0.4.1))
+- `--integration` configuration option (deprecated in [v0.4.1](https://github.com/equilibriumco/pathfinder/releases/tag/v0.4.1))
+- `--sequencer-url` configuration option (deprecated in [v0.4.1](https://github.com/equilibriumco/pathfinder/releases/tag/v0.4.1))
+- `--testnet2` configuration option (deprecated in [v0.4.1](https://github.com/equilibriumco/pathfinder/releases/tag/v0.4.1))
 - `starknet_addDeployTransaction` as this is no longer an allowed transaction
 - RPC api version `0.1`, which used to be served on path `/rpc/v0.1`
 
@@ -1230,4 +1230,4 @@ Users should not use this version.
 
 ## Ancient History
 
-Older history may be found in the [pathfinder release notes](https://github.com/eqlabs/pathfinder/releases).
+Older history may be found in the [pathfinder release notes](https://github.com/equilibriumco/pathfinder/releases).

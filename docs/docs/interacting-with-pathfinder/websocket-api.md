@@ -5,17 +5,17 @@ sidebar_position: 2
 # WebSocket API
 
 The WebSocket interface serves the same API versions and extension endpoints as HTTP, but in a stateful, two-way communication channel. This can be especially useful for real-time notifications, subscription-based events, or building interactive dashboards.
- 
+
 ## Supported Versions
-- **JSON-RPC v0.6.0**  
+- **JSON-RPC v0.6.0**
   Accessible at `/ws/rpc/v0_6`.
-- **JSON-RPC v0.7.1**  
+- **JSON-RPC v0.7.1**
   Accessible at `/ws/rpc/v0_7`.
-- **JSON-RPC v0.8.1**  
+- **JSON-RPC v0.8.1**
   Accessible at `/rpc/v0_8` and `/ws/rpc/v0_8` (deprecated).
 - **JSON-RPC v0.9.0**
   Accessible at `/rpc/v0_9` and `/ws/rpc/v0_9` (deprecated).
-- **Pathfinder Extension**  
+- **Pathfinder Extension**
   Exposed via `/ws/rpc/pathfinder/v0_1`
 
 > **Note:** The WebSocket interface is disabled by default. To enable it, use the `--rpc.websocket.enabled` CLI flag. The default root endpoint (i.e., `/ws`) can be configured using the `--rpc.root-version` parameter.
@@ -48,4 +48,4 @@ As with the [JSON extensions](json-rpc-api#pathfinder-json-extensions), Pathfind
 /ws/rpc/pathfinder/v0_1
 ```
 
-You can find the complete list of WebSocket extensions in the [Pathfinder repository](https://github.com/eqlabs/pathfinder/blob/main/specs/rpc/pathfinder_ws.json).
+You can find the complete list of WebSocket extensions in the [Pathfinder repository](https://github.com/equilibriumco/pathfinder/blob/main/specs/rpc/pathfinder_ws.json).

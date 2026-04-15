@@ -10,7 +10,7 @@
 //! This entire migration should be applied only to Sepolia testnet, as Mainnet
 //! is not on v0.14.0 yet.
 //!
-//! More info [here](https://github.com/eqlabs/pathfinder/issues/2925).
+//! More info [here](https://github.com/equilibriumco/pathfinder/issues/2925).
 
 use std::time::Instant;
 

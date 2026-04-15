@@ -6,7 +6,7 @@ edition = { workspace = true }
 license = { workspace = true }
 rust-version = { workspace = true }
 description = "Cryptographic primitives used by Pathfinder"
-repository = "https://github.com/eqlabs/pathfinder"
+repository = "https://github.com/equilibriumco/pathfinder"
 keywords = ["starknet", "cryptography", "pedersen", "poseidon", "ecdsa"]
 categories = [
     "cryptography",

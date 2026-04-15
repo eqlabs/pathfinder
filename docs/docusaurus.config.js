@@ -13,14 +13,14 @@ const config = {
   favicon: 'img/favicon.ico',
 
   // Set the production url of your site here
-  url: 'https://eqlabs.github.io/',
+  url: 'https://equilibriumco.github.io/',
   // Set the /<baseUrl>/ pathname under which your site is served
   // For GitHub pages deployment, it is often '/<projectName>/'
   baseUrl: '/pathfinder/',
 
   // GitHub pages deployment config.
   // If you aren't using GitHub pages, you don't need these.
-  organizationName: 'eqlabs', // Usually your GitHub org/user name.
+  organizationName: 'equilibriumco', // Usually your GitHub org/user name.
   projectName: 'pathfinder', // Usually your repo name.
 
   onBrokenLinks: 'throw',
@@ -68,7 +68,7 @@ const config = {
             position: 'right',
           },
           {
-            href: 'https://github.com/eqlabs/pathfinder',
+            href: 'https://github.com/equilibriumco/pathfinder',
             label: 'GitHub',
             position: 'right',
           },
@@ -84,14 +84,14 @@ const config = {
                 label: 'Running Pathfinder',
                 to: '/getting-started/running-pathfinder',
               },
-							{
-								label: 'Configuring Pathfinder',
-								to: '/getting-started/configuration',
-							},
-							{
-								label: 'Interfacing with Pathfinder',
-								to: '/interacting-with-pathfinder/json-rpc-api',
-							},
+              {
+                label: 'Configuring Pathfinder',
+                to: '/getting-started/configuration',
+              },
+              {
+                label: 'Interfacing with Pathfinder',
+                to: '/interacting-with-pathfinder/json-rpc-api',
+              },
             ],
           },
           {
@@ -99,7 +99,7 @@ const config = {
             items: [
               {
                 label: 'GitHub',
-                href: 'https://github.com/eqlabs/pathfinder',
+                href: 'https://github.com/equilibriumco/pathfinder',
               },
             ],
           },

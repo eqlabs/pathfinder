@@ -9,12 +9,12 @@ Pathfinder is a Rust implementation of a [Starknet](https://www.starknet.io) ful
 
 ## Key features
 
-* **Full Starknet State Access**: Retrieve the full history, including contracts, transactions, and storage. 
+* **Full Starknet State Access**: Retrieve the full history, including contracts, transactions, and storage.
 * **Verification via Ethereum**: Verifies the state of Starknet using Ethereum, calculating Patricia-Merkle Trie roots to ensure the correctness of data.
 * **JSON-RPC Support**: Implements the Starknet JSON-RPC API, providing full support for interacting with the blockchain through tools like [starknet.js](https://starknetjs.com/) and [starknet.py](https://starknetpy.readthedocs.io/en/latest/).
 * **State Functionality without Transactions**: Execute Starknet functions locally without requiring an actual transaction on the network.
 * **Transaction Fee Estimation**: Estimate the gas fees for a transaction before submitting it to the network.
-    
+
 
 ## Getting Started
 
@@ -74,7 +74,7 @@ import Card from '@site/src/components/Card';
 <p/>
 ```
 
-If you are looking to use the Pathfinder full node as part of a validator setup, install the [attestation tool](https://github.com/eqlabs/starknet-validator-attestation) with the node.
+If you are looking to use the Pathfinder full node as part of a validator setup, install the [attestation tool](https://github.com/equilibriumco/starknet-validator-attestation) with the node.
 
 ## Community and Support
 
@@ -82,9 +82,9 @@ We highly value community engagement, especially during this alpha phase. Whethe
 
 You can contribute to Pathfinder by:
 
-* **Opening an Issue**: If you encounter bugs or have feature requests, please open an issue on our [GitHub repository](https://github.com/eqlabs/pathfinder/issues/new).
+* **Opening an Issue**: If you encounter bugs or have feature requests, please open an issue on our [GitHub repository](https://github.com/equilibriumco/pathfinder/issues/new).
 * **Joining our Community**: Connect with other users and developers by joining the Starknet [Discord channel](https://discord.com/invite/starknet-community).
-* **Contributing to the Codebase**: If you’re interested in contributing to Pathfinder, check out our [contributing guidelines](https://github.com/eqlabs/pathfinder/blob/main/contributing.md) and [open issues](https://github.com/eqlabs/pathfinder/issues) on GitHub.
-    
+* **Contributing to the Codebase**: If you’re interested in contributing to Pathfinder, check out our [contributing guidelines](https://github.com/equilibriumco/pathfinder/blob/main/contributing.md) and [open issues](https://github.com/equilibriumco/pathfinder/issues) on GitHub.
+
 
 
