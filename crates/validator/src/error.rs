@@ -2,7 +2,7 @@
 
 use pathfinder_storage::StorageError;
 
-use crate::validator::WrongValidatorStageError;
+use crate::WrongValidatorStageError;
 
 /// Errors that can occur when handling incoming proposal parts.
 ///

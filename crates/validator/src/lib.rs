@@ -73,7 +73,9 @@ use pathfinder_gas_price::{
     L2GasPriceValidationResult,
 };
 
-use crate::consensus::ProposalHandlingError;
+pub mod error;
+
+use crate::error::ProposalHandlingError;
 
 /// TODO: Use this type as validation result.
 pub enum ValidationResult {
@@ -1194,7 +1196,7 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
-    use crate::consensus::ProposalError;
+    use crate::error::ProposalError;
 
     /// Creates a worker pool for tests.
     fn create_test_worker_pool() -> ValidatorWorkerPool {
