@@ -1,7 +1,7 @@
 //! The purpose if this migration is to repair any database instances that were
 //! affected by a combination of a bug introduced in
 //! [revision 71](super::revision_0071) and a reorg described in the issue that
-//! can be found [here](https://github.com/eqlabs/pathfinder/issues/2920).
+//! can be found [here](https://github.com/equilibriumco/pathfinder/issues/2920).
 //!
 //! The revision also contains a suite of
 //! [regression checks](reorg_regression_checks) that will be used to verify

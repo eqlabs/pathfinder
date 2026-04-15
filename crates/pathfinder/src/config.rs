@@ -39,7 +39,7 @@ const COMPILER_CPU_TIME_ALLOWED_RANGE: std::ops::RangeInclusive<u64> =
 #[command(version = pathfinder_version::VERSION)]
 #[command(propagate_version = true)]
 #[command(
-    about = "A Starknet node implemented by Equilibrium Labs. Submit bug reports and issues at https://github.com/eqlabs/pathfinder."
+    about = "A Starknet node implemented by Equilibrium Labs. Submit bug reports and issues at https://github.com/equilibriumco/pathfinder."
 )]
 pub struct Cli {
     #[command(subcommand)]

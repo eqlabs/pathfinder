@@ -121,9 +121,9 @@ impl PendingBlocks {
 
     pub fn finality_status(&self) -> crate::dto::TxnFinalityStatus {
         // For more info:
-        //  - on why `AcceptedOnL2` is wrong: https://github.com/eqlabs/pathfinder/issues/3259
+        //  - on why `AcceptedOnL2` is wrong: https://github.com/equilibriumco/pathfinder/issues/3259
         //  - on why `PendingBlockVariant::Pending` case was dead code:
-        //  https://github.com/eqlabs/pathfinder/issues/3272
+        //  https://github.com/equilibriumco/pathfinder/issues/3272
         crate::dto::TxnFinalityStatus::PreConfirmed
     }
 }

@@ -550,7 +550,7 @@ impl<
                 let vote_round = internal_consensus.recover_from_wal(entries);
                 if let Some(round) = vote_round {
                     // Schedule rebroadcast timeout.
-                    // See https://github.com/eqlabs/pathfinder/issues/3286 for motivation.
+                    // See https://github.com/equilibriumco/pathfinder/issues/3286 for motivation.
                     internal_consensus.schedule_rebroadcast(round);
                 }
 

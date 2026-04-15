@@ -80,7 +80,7 @@ pub fn spawn(
                     .with_history_depth(config.history_depth)
                     .with_wal_dir(wal_directory),
                 // TODO use a dynamic validator set provider, once fetching the validator set from
-                // the staking contract is implemented. Related issue: https://github.com/eqlabs/pathfinder/issues/2936
+                // the staking contract is implemented. Related issue: https://github.com/equilibriumco/pathfinder/issues/2936
                 Arc::new(validator_set_provider.clone()),
                 proposer_selector,
                 highest_committed,

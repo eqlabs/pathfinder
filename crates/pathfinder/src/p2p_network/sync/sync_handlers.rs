@@ -402,7 +402,7 @@ fn get_start_block_number(
 /// This function must detach the thread used to run the blocking DB operation
 /// otherwise the entire p2p swarm will be blocked.
 ///
-/// Related issue: <https://github.com/eqlabs/pathfinder/issues/2351>
+/// Related issue: <https://github.com/equilibriumco/pathfinder/issues/2351>
 async fn spawn_blocking_get<Request, Response, Getter>(
     request: Request,
     storage: Storage,

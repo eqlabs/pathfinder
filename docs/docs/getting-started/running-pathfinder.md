@@ -6,17 +6,17 @@ sidebar_position: 2
 
 Pathfinder can be set up using one of the following methods:
 
-* [Docker container](#docker-container)  
+* [Docker container](#docker-container)
 * [Building from source](#building-from-source)
-        
+
 
 ## Docker Container
 
-The simplest way to run Pathfinder is using Docker. This method is recommended for beginners as it requires minimal setup and configuration.  
+The simplest way to run Pathfinder is using Docker. This method is recommended for beginners as it requires minimal setup and configuration.
 
 ### Installing Docker
 
-Follow the official [Docker installation guide](https://docs.docker.com/get-docker/) for your operating system. 
+Follow the official [Docker installation guide](https://docs.docker.com/get-docker/) for your operating system.
 
 ### Setting Up the Ethereum API URL
 
@@ -131,7 +131,7 @@ If needed, you can get the latest `protoc` from the [releases page](https://gith
 Clone the Pathfinder repository and check out the latest release:
 
 ```bash
-git clone https://github.com/eqlabs/pathfinder.git
+git clone https://github.com/equilibriumco/pathfinder.git
 cd pathfinder
 git checkout <latest-version-tag>
 ```

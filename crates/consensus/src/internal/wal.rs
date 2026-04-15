@@ -150,7 +150,7 @@ pub(crate) fn convert_wal_entry_to_input<
                 },
             };
             // TODO Differentiate between consensus and sync proposed values once catch up
-            // using sync protocol is implemented, related issue https://github.com/eqlabs/pathfinder/issues/2934
+            // using sync protocol is implemented, related issue https://github.com/equilibriumco/pathfinder/issues/2934
             Input::ProposedValue(proposed_value, malachite_types::ValueOrigin::Consensus)
         }
         _ => unreachable!(),

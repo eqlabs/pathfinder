@@ -637,7 +637,7 @@ mod tests {
     /// we must make sure that inconsistencies in the gateway responses do not
     /// cause the polling task to emit inconsistent updates.
     ///
-    /// See also <https://github.com/eqlabs/pathfinder/issues/3081>.
+    /// See also <https://github.com/equilibriumco/pathfinder/issues/3081>.
     #[tokio::test]
     async fn ignores_inconsistent_pre_latest_from_gateway() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);

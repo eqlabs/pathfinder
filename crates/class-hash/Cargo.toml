@@ -6,7 +6,7 @@ edition = { workspace = true }
 license = { workspace = true }
 rust-version = { workspace = true }
 description = "Pathfinder's class hash computation and verification"
-repository = "https://github.com/eqlabs/pathfinder"
+repository = "https://github.com/equilibriumco/pathfinder"
 keywords = ["starknet", "ethereum", "web3", "cryptography", "hash"]
 categories = [
     "cryptography",
