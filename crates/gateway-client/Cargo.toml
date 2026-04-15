@@ -32,7 +32,6 @@ tracing = { workspace = true }
 assert_matches = { workspace = true }
 base64 = { workspace = true }
 fake = { workspace = true }
-gateway-test-utils = { path = "../gateway-test-utils" }
 pathfinder-crypto = { path = "../crypto" }
 pretty_assertions_sorted = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
@@ -41,7 +40,7 @@ test-log = { workspace = true, features = ["trace"] }
 tracing-subscriber = { workspace = true }
 warp = { workspace = true, features = ["compression-gzip"] }
 # Because httpmock doesn't support byte-matching on response body 
-wiremock = "0.6.5"
+wiremock = { workspace = true }
 
 [[test]]
 name = "integration-metrics"

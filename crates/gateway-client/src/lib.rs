@@ -746,15 +746,26 @@ impl GatewayApi for Client {
 #[cfg(test)]
 mod tests {
     use assert_matches::assert_matches;
-    use gateway_test_utils::*;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
     use pathfinder_crypto::Felt;
     use starknet_gateway_test_fixtures::testnet::*;
     use starknet_gateway_types::error::KnownStarknetErrorCode;
     use starknet_gateway_types::request::add_transaction::ContractDefinition;
+    use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
 
     use super::*;
+
+    fn response_body_from(code: KnownStarknetErrorCode) -> serde_json::Value {
+        use starknet_gateway_types::error::StarknetError;
+
+        let e = StarknetError {
+            code: code.into(),
+            message: "".to_string(),
+        };
+        let s = serde_json::to_string(&e).unwrap();
+        serde_json::from_str(&s).unwrap()
+    }
 
     #[test_log::test(tokio::test)]
     async fn client_user_agent() {
@@ -800,17 +811,20 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_hash() {
-            let (_jh, url) = setup([(
-                format!(
-                    "/feeder_gateway/get_transaction_status?transactionHash={}",
-                    INVALID_TX_HASH.0.to_hex_str()
-                ),
-                (
-                    r#"{"tx_status": "NOT_RECEIVED", "finality_status": "NOT_RECEIVED", "execution_status": null}"#,
-                    200,
-                ),
-            )]);
-            let client = Client::for_test(url).unwrap();
+            let server = MockServer::start().await;
+            Mock::given(matchers::path("/feeder_gateway/get_transaction_status"))
+                .and(matchers::query_param(
+                    "transactionHash",
+                    INVALID_TX_HASH.0.to_hex_str(),
+                ))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "tx_status": "NOT_RECEIVED",
+                    "finality_status": "NOT_RECEIVED",
+                    "execution_status": serde_json::Value::Null,
+                })))
+                .mount(&server)
+                .await;
+            let client = Client::for_test(server.uri().parse().unwrap()).unwrap();
             assert_eq!(
                 client
                     .transaction_status(INVALID_TX_HASH)
@@ -824,22 +838,20 @@ mod tests {
 
     #[tokio::test]
     async fn eth_contract_addresses() {
-        let (_jh, url) = setup([(
-            "/feeder_gateway/get_contract_addresses",
-            (
-                r#"{
-			"FriStatementContract": "0x55d049b4C82807808E76e61a08C6764bbf2ffB55",
-			"GpsStatementVerifier": "0x2046B966994Adcb88D83f467a41b75d64C2a619F",
-			"MemoryPageFactRegistry": "0x5628E75245Cc69eCA0994F0449F4dDA9FbB5Ec6a",
-			"MerkleStatementContract": "0xd414f8f535D4a96cB00fFC8E85160b353cb7809c",
-			"Starknet": "0x4737c0c1B4D5b1A687B42610DdabEE781152359c",
-			"strk_l2_token_address": "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
-			"eth_l2_token_address": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7"
-		}"#,
-                200,
-            ),
-        )]);
-        let client = Client::for_test(url).unwrap();
+        let server = MockServer::start().await;
+        Mock::given(matchers::path("/feeder_gateway/get_contract_addresses"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+		"FriStatementContract": "0x55d049b4C82807808E76e61a08C6764bbf2ffB55",
+		"GpsStatementVerifier": "0x2046B966994Adcb88D83f467a41b75d64C2a619F",
+		"MemoryPageFactRegistry": "0x5628E75245Cc69eCA0994F0449F4dDA9FbB5Ec6a",
+		"MerkleStatementContract": "0xd414f8f535D4a96cB00fFC8E85160b353cb7809c",
+		"Starknet": "0x4737c0c1B4D5b1A687B42610DdabEE781152359c",
+		"strk_l2_token_address": "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+		"eth_l2_token_address": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7"
+            })))
+            .mount(&server)
+            .await;
+        let client = Client::for_test(server.uri().parse().unwrap()).unwrap();
         client.eth_contract_addresses().await.unwrap();
     }
 
@@ -900,11 +912,15 @@ mod tests {
             async fn v0_is_deprecated() {
                 use request::add_transaction::{InvokeFunction, InvokeFunctionV0V1};
 
-                let (_jh, url) = setup([(
-                    "/gateway/add_transaction",
-                    response_from(KnownStarknetErrorCode::DeprecatedTransaction),
-                )]);
-                let client = Client::for_test(url).unwrap();
+                let server = MockServer::start().await;
+                Mock::given(matchers::method("POST"))
+                    .and(matchers::path("/gateway/add_transaction"))
+                    .respond_with(ResponseTemplate::new(500).set_body_json(response_body_from(
+                        KnownStarknetErrorCode::DeprecatedTransaction,
+                    )))
+                    .mount(&server)
+                    .await;
+                let client = Client::for_test(server.uri().parse().unwrap()).unwrap();
                 let (_, fee, sig, nonce, addr, call) = inputs();
                 let invoke = InvokeFunction::V0(InvokeFunctionV0V1 {
                     max_fee: fee,
@@ -926,14 +942,16 @@ mod tests {
             async fn successful() {
                 use request::add_transaction::{InvokeFunction, InvokeFunctionV0V1};
 
-                let (_jh, url) = setup([(
-                    "/gateway/add_transaction",
-                    (
-                        r#"{"code":"TRANSACTION_RECEIVED","transaction_hash":"0x0389DD0629F42176CC8B6C43ACEFC0713D0064ECDFC0470E0FC179F53421A38B"}"#,
-                        200,
-                    ),
-                )]);
-                let client = Client::for_test(url).unwrap();
+                let server = MockServer::start().await;
+                Mock::given(matchers::method("POST"))
+                    .and(matchers::path("/gateway/add_transaction"))
+                    .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                        "code": "TRANSACTION_RECEIVED",
+                        "transaction_hash": "0x0389DD0629F42176CC8B6C43ACEFC0713D0064ECDFC0470E0FC179F53421A38B"
+                    })))
+                    .mount(&server)
+                    .await;
+                let client = Client::for_test(server.uri().parse().unwrap()).unwrap();
                 // test with values dumped from `starknet invoke` for a test contract
                 let (_, fee, sig, nonce, addr, call) = inputs();
                 let invoke = InvokeFunction::V1(InvokeFunctionV0V1 {
@@ -958,11 +976,15 @@ mod tests {
             async fn v0_is_deprecated() {
                 use request::add_transaction::{Declare, DeclareV0V1V2};
 
-                let (_jh, url) = setup([(
-                    "/gateway/add_transaction",
-                    response_from(KnownStarknetErrorCode::DeprecatedTransaction),
-                )]);
-                let client = Client::for_test(url).unwrap();
+                let server = MockServer::start().await;
+                Mock::given(matchers::method("POST"))
+                    .and(matchers::path("/gateway/add_transaction"))
+                    .respond_with(ResponseTemplate::new(500).set_body_json(response_body_from(
+                        KnownStarknetErrorCode::DeprecatedTransaction,
+                    )))
+                    .mount(&server)
+                    .await;
+                let client = Client::for_test(server.uri().parse().unwrap()).unwrap();
 
                 let declare = Declare::V0(DeclareV0V1V2 {
                     version: TransactionVersion::ZERO,
@@ -987,16 +1009,17 @@ mod tests {
             async fn successful_v1() {
                 use request::add_transaction::{Declare, DeclareV0V1V2};
 
-                let (_jh, url) = setup([(
-                    "/gateway/add_transaction",
-                    (
-                        r#"{"code": "TRANSACTION_RECEIVED",
-                            "transaction_hash": "0x77ccba4df42cf0f74a8eb59a96d7880fae371edca5d000ca5f9985652c8a8ed",
-                            "class_hash": "0x711941b11a8236b8cca42b664e19342ac7300abb1dc44957763cb65877c2708"}"#,
-                        200,
-                    ),
-                )]);
-                let client = Client::for_test(url).unwrap();
+                let server = MockServer::start().await;
+                Mock::given(matchers::method("POST"))
+                    .and(matchers::path("/gateway/add_transaction"))
+                    .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                        "code": "TRANSACTION_RECEIVED",
+                        "transaction_hash": "0x77ccba4df42cf0f74a8eb59a96d7880fae371edca5d000ca5f9985652c8a8ed",
+                        "class_hash": "0x711941b11a8236b8cca42b664e19342ac7300abb1dc44957763cb65877c2708"
+                    })))
+                    .mount(&server)
+                    .await;
+                let client = Client::for_test(server.uri().parse().unwrap()).unwrap();
 
                 let declare = Declare::V1(DeclareV0V1V2 {
                     version: TransactionVersion::ONE,
@@ -1064,16 +1087,17 @@ mod tests {
             async fn successful_v2() {
                 use request::add_transaction::{Declare, DeclareV0V1V2};
 
-                let (_jh, url) = setup([(
-                    "/gateway/add_transaction",
-                    (
-                        r#"{"code": "TRANSACTION_RECEIVED",
-                            "transaction_hash": "0x77ccba4df42cf0f74a8eb59a96d7880fae371edca5d000ca5f9985652c8a8ed",
-                            "class_hash": "0x711941b11a8236b8cca42b664e19342ac7300abb1dc44957763cb65877c2708"}"#,
-                        200,
-                    ),
-                )]);
-                let client = Client::for_test(url).unwrap();
+                let server = MockServer::start().await;
+                Mock::given(matchers::method("POST"))
+                    .and(matchers::path("/gateway/add_transaction"))
+                    .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                        "code": "TRANSACTION_RECEIVED",
+                        "transaction_hash": "0x77ccba4df42cf0f74a8eb59a96d7880fae371edca5d000ca5f9985652c8a8ed",
+                        "class_hash": "0x711941b11a8236b8cca42b664e19342ac7300abb1dc44957763cb65877c2708"
+                    })))
+                    .mount(&server)
+                    .await;
+                let client = Client::for_test(server.uri().parse().unwrap()).unwrap();
 
                 let declare = Declare::V2(DeclareV0V1V2 {
                     version: TransactionVersion::TWO,
@@ -1233,18 +1257,19 @@ mod tests {
     mod block_header {
         use super::*;
 
-        const REPLY: &str = r#"{
-            "block_hash": "0x6a2755817d86ade81ed0fea2eaf23d94264e2f25aff43ecb2e5000bf3ec28b7",
-            "block_number": 9703
-        }"#;
-
         #[test_log::test(tokio::test)]
         async fn success_by_number() {
-            let (_jh, url) = setup([(
-                "/feeder_gateway/get_block?blockNumber=9703&headerOnly=true",
-                (REPLY.to_owned(), 200),
-            )]);
-            let client = Client::for_test(url).unwrap();
+            let server = MockServer::start().await;
+            Mock::given(matchers::path("/feeder_gateway/get_block"))
+                .and(matchers::query_param("blockNumber", "9703"))
+                .and(matchers::query_param("headerOnly", "true"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "block_hash": "0x6a2755817d86ade81ed0fea2eaf23d94264e2f25aff43ecb2e5000bf3ec28b7",
+                    "block_number": 9703
+                })))
+                .mount(&server)
+                .await;
+            let client = Client::for_test(server.uri().parse().unwrap()).unwrap();
 
             client
                 .block_header(BlockId::Number(BlockNumber::new_or_panic(9703)))
@@ -1254,13 +1279,17 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn success_by_hash() {
-            let (_jh, url) = setup([(
-                "/feeder_gateway/get_block?\
-                 blockHash=0x6a2755817d86ade81ed0fea2eaf23d94264e2f25aff43ecb2e5000bf3ec28b7&\
-                 headerOnly=true",
-                (REPLY.to_owned(), 200),
-            )]);
-            let client = Client::for_test(url).unwrap();
+            let server = MockServer::start().await;
+            Mock::given(matchers::path("/feeder_gateway/get_block"))
+                .and(matchers::query_param("blockHash", "0x6a2755817d86ade81ed0fea2eaf23d94264e2f25aff43ecb2e5000bf3ec28b7"))
+                .and(matchers::query_param("headerOnly", "true"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "block_hash": "0x6a2755817d86ade81ed0fea2eaf23d94264e2f25aff43ecb2e5000bf3ec28b7",
+                    "block_number": 9703
+                })))
+                .mount(&server)
+                .await;
+            let client = Client::for_test(server.uri().parse().unwrap()).unwrap();
 
             client
                 .block_header(
@@ -1276,11 +1305,20 @@ mod tests {
         #[test_log::test(tokio::test)]
         async fn block_not_found() {
             const BLOCK_NUMBER: u64 = 99999999;
-            let (_jh, url) = setup([(
-                format!("/feeder_gateway/get_block?blockNumber={BLOCK_NUMBER}&headerOnly=true",),
-                response_from(KnownStarknetErrorCode::BlockNotFound),
-            )]);
-            let client = Client::for_test(url).unwrap();
+            let server = MockServer::start().await;
+            Mock::given(matchers::path("/feeder_gateway/get_block"))
+                .and(matchers::query_param(
+                    "blockNumber",
+                    BLOCK_NUMBER.to_string(),
+                ))
+                .and(matchers::query_param("headerOnly", "true"))
+                .respond_with(
+                    ResponseTemplate::new(500)
+                        .set_body_json(response_body_from(KnownStarknetErrorCode::BlockNotFound)),
+                )
+                .mount(&server)
+                .await;
+            let client = Client::for_test(server.uri().parse().unwrap()).unwrap();
             let error = client
                 .block_header(BlockNumber::new_or_panic(BLOCK_NUMBER).into())
                 .await
@@ -1297,25 +1335,32 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn success() {
-            let (_jh, url) = setup([(
-                "/feeder_gateway/get_state_update?blockNumber=pending&includeBlock=true",
-                (
-                    starknet_gateway_test_fixtures::v0_13_1::state_update_with_block::SEPOLIA_INTEGRATION_PENDING,
-                    200,
-                ),
-            )]);
-            let client = Client::for_test(url).unwrap();
+            let body: serde_json::Value = serde_json::from_str(starknet_gateway_test_fixtures::v0_13_1::state_update_with_block::SEPOLIA_INTEGRATION_PENDING).unwrap();
+            let server = MockServer::start().await;
+            Mock::given(matchers::path("/feeder_gateway/get_state_update"))
+                .and(matchers::query_param("blockNumber", "pending"))
+                .and(matchers::query_param("includeBlock", "true"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(body))
+                .mount(&server)
+                .await;
+            let client = Client::for_test(server.uri().parse().unwrap()).unwrap();
 
             client.pending_block().await.unwrap();
         }
 
         #[test_log::test(tokio::test)]
         async fn block_not_found() {
-            let (_jh, url) = setup([(
-                "/feeder_gateway/get_state_update?blockNumber=pending&includeBlock=true",
-                response_from(KnownStarknetErrorCode::BlockNotFound),
-            )]);
-            let client = Client::for_test(url).unwrap();
+            let server = MockServer::start().await;
+            Mock::given(matchers::path("/feeder_gateway/get_state_update"))
+                .and(matchers::query_param("blockNumber", "pending"))
+                .and(matchers::query_param("includeBlock", "true"))
+                .respond_with(
+                    ResponseTemplate::new(500)
+                        .set_body_json(response_body_from(KnownStarknetErrorCode::BlockNotFound)),
+                )
+                .mount(&server)
+                .await;
+            let client = Client::for_test(server.uri().parse().unwrap()).unwrap();
             let error = client.pending_block().await.unwrap_err();
             assert_matches!(
                 error,
@@ -1329,14 +1374,15 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn success() {
-            let (_jh, url) = setup([(
-                "/feeder_gateway/get_state_update?blockNumber=9703&includeBlock=true",
-                (
-                    starknet_gateway_test_fixtures::v0_13_1::state_update_with_block::SEPOLIA_INTEGRATION_NUMBER_9703,
-                    200,
-                ),
-            )]);
-            let client = Client::for_test(url).unwrap();
+            let body: serde_json::Value = serde_json::from_str(starknet_gateway_test_fixtures::v0_13_1::state_update_with_block::SEPOLIA_INTEGRATION_NUMBER_9703).unwrap();
+            let server = MockServer::start().await;
+            Mock::given(matchers::path("/feeder_gateway/get_state_update"))
+                .and(matchers::query_param("blockNumber", "9703"))
+                .and(matchers::query_param("includeBlock", "true"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(body))
+                .mount(&server)
+                .await;
+            let client = Client::for_test(server.uri().parse().unwrap()).unwrap();
 
             client
                 .state_update_with_block(BlockNumber::new_or_panic(9703))
@@ -1346,14 +1392,15 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn success_0_14_1_with_migrated_compiled_classes() {
-            let (_jh, url) = setup([(
-                "/feeder_gateway/get_state_update?blockNumber=3077642&includeBlock=true",
-                (
-                    starknet_gateway_test_fixtures::v0_14_1::state_update_with_block::SEPOLIA_INTEGRATION_3077642,
-                    200,
-                ),
-            )]);
-            let client = Client::for_test(url).unwrap();
+            let body: serde_json::Value = serde_json::from_str(starknet_gateway_test_fixtures::v0_14_1::state_update_with_block::SEPOLIA_INTEGRATION_3077642).unwrap();
+            let server = MockServer::start().await;
+            Mock::given(matchers::path("/feeder_gateway/get_state_update"))
+                .and(matchers::query_param("blockNumber", "3077642"))
+                .and(matchers::query_param("includeBlock", "true"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(body))
+                .mount(&server)
+                .await;
+            let client = Client::for_test(server.uri().parse().unwrap()).unwrap();
 
             client
                 .state_update_with_block(BlockNumber::new_or_panic(3077642))
@@ -1365,14 +1412,15 @@ mod tests {
         // chain.
         #[test_log::test(tokio::test)]
         async fn success_0_14_3_with_invoke_proof_facts() {
-            let (_jh, url) = setup([(
-                "/feeder_gateway/get_state_update?blockNumber=3077642&includeBlock=true",
-                (
-                    starknet_gateway_test_fixtures::v0_14_3::state_update_with_block::SEPOLIA_INTEGRATION_FAKE,
-                    200,
-                ),
-            )]);
-            let client = Client::for_test(url).unwrap();
+            let body: serde_json::Value = serde_json::from_str(starknet_gateway_test_fixtures::v0_14_3::state_update_with_block::SEPOLIA_INTEGRATION_FAKE).unwrap();
+            let server = MockServer::start().await;
+            Mock::given(matchers::path("/feeder_gateway/get_state_update"))
+                .and(matchers::query_param("blockNumber", "3077642"))
+                .and(matchers::query_param("includeBlock", "true"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(body))
+                .mount(&server)
+                .await;
+            let client = Client::for_test(server.uri().parse().unwrap()).unwrap();
 
             client
                 .state_update_with_block(BlockNumber::new_or_panic(3077642))
@@ -1383,13 +1431,20 @@ mod tests {
         #[test_log::test(tokio::test)]
         async fn block_not_found() {
             const BLOCK_NUMBER: u64 = 99999999;
-            let (_jh, url) = setup([(
-                format!(
-                    "/feeder_gateway/get_state_update?blockNumber={BLOCK_NUMBER}&includeBlock=true"
-                ),
-                response_from(KnownStarknetErrorCode::BlockNotFound),
-            )]);
-            let client = Client::for_test(url).unwrap();
+            let server = MockServer::start().await;
+            Mock::given(matchers::path("/feeder_gateway/get_state_update"))
+                .and(matchers::query_param(
+                    "blockNumber",
+                    BLOCK_NUMBER.to_string(),
+                ))
+                .and(matchers::query_param("includeBlock", "true"))
+                .respond_with(
+                    ResponseTemplate::new(500)
+                        .set_body_json(response_body_from(KnownStarknetErrorCode::BlockNotFound)),
+                )
+                .mount(&server)
+                .await;
+            let client = Client::for_test(server.uri().parse().unwrap()).unwrap();
             let error = client
                 .state_update_with_block(BlockNumber::new_or_panic(BLOCK_NUMBER))
                 .await
@@ -1406,14 +1461,17 @@ mod tests {
 
         #[tokio::test]
         async fn success() {
-            let (_jh, url) = setup([(
-                "/feeder_gateway/get_signature?blockNumber=350000",
-                (
-                    starknet_gateway_test_fixtures::v0_13_2::signature::SEPOLIA_INTEGRATION_35748,
-                    200,
-                ),
-            )]);
-            let client = Client::for_test(url).unwrap();
+            let body: serde_json::Value = serde_json::from_str(
+                starknet_gateway_test_fixtures::v0_13_2::signature::SEPOLIA_INTEGRATION_35748,
+            )
+            .unwrap();
+            let server = MockServer::start().await;
+            Mock::given(matchers::path("/feeder_gateway/get_signature"))
+                .and(matchers::query_param("blockNumber", "350000"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(body))
+                .mount(&server)
+                .await;
+            let client = Client::for_test(server.uri().parse().unwrap()).unwrap();
 
             client
                 .signature(BlockId::Number(BlockNumber::new_or_panic(350000)))

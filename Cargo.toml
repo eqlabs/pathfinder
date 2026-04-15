@@ -15,7 +15,6 @@ members = [
     "crates/gas-price",
     "crates/gateway-client",
     "crates/gateway-test-fixtures",
-    "crates/gateway-test-utils",
     "crates/gateway-types",
     "crates/merkle-tree",
     "crates/p2p",
@@ -152,6 +151,7 @@ url = "2.5.8"
 vergen = { version = "8", default-features = false }
 void = "1.0.2"
 warp = "0.3.7"
+wiremock = "0.6.5"
 zeroize = "1.8.2"
 zstd = "0.13.3"
 

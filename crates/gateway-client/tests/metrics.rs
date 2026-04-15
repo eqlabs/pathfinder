@@ -4,37 +4,50 @@
 //! cause weird test failures without any obvious clue to what might have caused
 //! those failures in the first place.
 
-use std::future::Future;
+use std::sync::{Arc, Mutex};
 
 use futures::stream::StreamExt;
-use gateway_test_utils::{response_from, setup_with_varied_responses};
 use pathfinder_common::BlockNumber;
 use pretty_assertions_sorted::assert_eq;
 use starknet_gateway_client::{BlockId, Client, GatewayApi};
-use starknet_gateway_types::error::KnownStarknetErrorCode;
+use starknet_gateway_types::error::{test_response_from, KnownStarknetErrorCode};
+use wiremock::{matchers, Mock, MockServer, Request, Respond, ResponseTemplate};
+
+struct VariedResponse {
+    counter: Arc<Mutex<usize>>,
+    responses: Vec<(String, u16)>,
+}
+
+impl VariedResponse {
+    pub fn new(responses: Vec<(String, u16)>) -> Self {
+        Self {
+            counter: Arc::new(Mutex::new(0)),
+            responses,
+        }
+    }
+}
+
+impl Respond for VariedResponse {
+    fn respond(&self, _request: &Request) -> ResponseTemplate {
+        let mut counter = self.counter.lock().unwrap();
+        if *counter < self.responses.len() {
+            let rsp_def = &self.responses[*counter];
+            *counter += 1;
+            ResponseTemplate::new(rsp_def.1).set_body_string(rsp_def.0.clone())
+        } else {
+            panic!("{} responses already exhausted", self.responses.len());
+        }
+    }
+}
 
 #[tokio::test]
 async fn all_counter_types_including_tags() {
-    with_method(
-        "get_block",
-        |client, x| async move {
-            let _ = client.block_header(x).await;
-        },
-        (
-            r#"{"block_hash": "0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b", "block_number": 0}"#
-                .to_owned(),
-            200,
-        ),
-    )
-    .await;
-}
-
-async fn with_method<F, Fut, T>(method_name: &'static str, f: F, response: (String, u16))
-where
-    F: Fn(Client, BlockId) -> Fut,
-    Fut: Future<Output = T>,
-{
     use pathfinder_common::test_utils::metrics::FakeRecorder;
+
+    let method_name = "get_block";
+    let method_call = |client: Client, x| async move {
+        let _ = client.block_header(x).await;
+    };
 
     let recorder = FakeRecorder::new_for(&["get_block"]);
     let handle = recorder.handle();
@@ -42,11 +55,11 @@ where
     // Automatically deregister the recorder
     let _guard = metrics::set_default_local_recorder(&recorder);
 
-    let responses = [
+    let responses = vec![
         // Any valid fixture
-        response,
+        (r#"{"block_hash": "0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b", "block_number": 0}"#.to_owned(), 200),
         // 1 Starknet error
-        response_from(KnownStarknetErrorCode::BlockNotFound),
+        test_response_from(KnownStarknetErrorCode::BlockNotFound),
         // 2 decode errors
         (r#"{"not":"valid"}"#.to_owned(), 200),
         (r#"{"not":"valid, again"}"#.to_owned(), 200),
@@ -56,27 +69,34 @@ where
         ("".to_owned(), 429),
     ];
 
-    let (_jh, url) = setup_with_varied_responses([
-        (
-            format!("/feeder_gateway/{method_name}?blockNumber=123&headerOnly=true"),
-            responses.clone(),
-        ),
-        (
-            format!("/feeder_gateway/{method_name}?blockNumber=latest&headerOnly=true"),
-            responses.clone(),
-        ),
-        (
-            format!("/feeder_gateway/{method_name}?blockNumber=pending&headerOnly=true"),
-            responses,
-        ),
-    ]);
-    let client = Client::for_test(url).unwrap().disable_retry_for_tests();
+    let server = MockServer::start().await;
+    Mock::given(matchers::path("/feeder_gateway/get_block"))
+        .and(matchers::query_param("blockNumber", "123"))
+        .and(matchers::query_param("headerOnly", "true"))
+        .respond_with(VariedResponse::new(responses.clone()))
+        .mount(&server)
+        .await;
+    Mock::given(matchers::path("/feeder_gateway/get_block"))
+        .and(matchers::query_param("blockNumber", "latest"))
+        .and(matchers::query_param("headerOnly", "true"))
+        .respond_with(VariedResponse::new(responses.clone()))
+        .mount(&server)
+        .await;
+    Mock::given(matchers::path("/feeder_gateway/get_block"))
+        .and(matchers::query_param("blockNumber", "pending"))
+        .and(matchers::query_param("headerOnly", "true"))
+        .respond_with(VariedResponse::new(responses))
+        .mount(&server)
+        .await;
+    let client = Client::for_test(server.uri().parse().unwrap())
+        .unwrap()
+        .disable_retry_for_tests();
 
     [BlockId::Number(BlockNumber::new_or_panic(123)); 7]
         .into_iter()
         .chain([BlockId::Latest; 7].into_iter())
         .chain([BlockId::Pending; 7].into_iter())
-        .map(|x| f(client.clone(), x))
+        .map(|x| method_call(client.clone(), x))
         .collect::<futures::stream::FuturesUnordered<_>>()
         .collect::<Vec<_>>()
         .await;

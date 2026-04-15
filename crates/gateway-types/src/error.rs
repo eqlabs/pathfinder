@@ -135,6 +135,22 @@ pub enum KnownStarknetErrorCode {
     InvalidProof,
 }
 
+/// Helper function which allows for easy creation of a response tuple
+/// that contains a
+/// [StarknetError](starknet_gateway_types::error::StarknetError) for a
+/// given [KnownStarknetErrorCode].
+///
+/// The `message` field is always an empty string.
+/// The HTTP status code for this response is always `500` (`Internal Server
+/// Error`).
+pub fn test_response_from(code: KnownStarknetErrorCode) -> (String, u16) {
+    let e = StarknetError {
+        code: code.into(),
+        message: "".to_string(),
+    };
+    (serde_json::to_string(&e).unwrap(), 500)
+}
+
 #[cfg(test)]
 mod tests {
     use super::StarknetErrorCode;

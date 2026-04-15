@@ -10849,7 +10849,6 @@ dependencies = [
  "fake",
  "flate2",
  "futures",
- "gateway-test-utils",
  "metrics",
  "mockall 0.11.4",
  "pathfinder-common",
