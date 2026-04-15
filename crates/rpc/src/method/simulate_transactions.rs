@@ -718,10 +718,12 @@ pub(crate) mod tests {
         pub const CAIRO0_HASH: ClassHash =
             class_hash!("02c52e7084728572ea940b4df708a2684677c19fa6296de2ea7ba5327e3a84ef");
 
-        let contract_class = crate::types::ContractClass::try_from_serialized_definition(&SerializedOpaqueClassDefinition::from_slice(CAIRO0_DEFINITION))
-            .unwrap()
-            .as_cairo()
-            .unwrap();
+        let contract_class = crate::types::ContractClass::try_from_serialized_definition(
+            &SerializedOpaqueClassDefinition::from_slice(CAIRO0_DEFINITION),
+        )
+        .unwrap()
+        .as_cairo()
+        .unwrap();
 
         assert_eq!(contract_class.class_hash().unwrap().hash(), CAIRO0_HASH);
 
@@ -929,11 +931,12 @@ pub(crate) mod tests {
             };
 
             pub fn declare(account_contract_address: ContractAddress) -> BroadcastedTransaction {
-                let contract_class =
-                    crate::types::ContractClass::try_from_serialized_definition(&SerializedOpaqueClassDefinition::from_slice(SIERRA_DEFINITION))
-                        .unwrap()
-                        .as_sierra()
-                        .unwrap();
+                let contract_class = crate::types::ContractClass::try_from_serialized_definition(
+                    &SerializedOpaqueClassDefinition::from_slice(SIERRA_DEFINITION),
+                )
+                .unwrap()
+                .as_sierra()
+                .unwrap();
 
                 assert_eq!(contract_class.class_hash().unwrap().hash(), SIERRA_HASH);
 
@@ -955,11 +958,12 @@ pub(crate) mod tests {
             ) -> (BroadcastedTransaction, ClassHash) {
                 let contract_definition =
                     include_bytes!("../../fixtures/contracts/libfuncs_coverage.json");
-                let contract_class =
-                    crate::types::ContractClass::try_from_serialized_definition(&SerializedOpaqueClassDefinition::from_slice(contract_definition))
-                        .unwrap()
-                        .as_sierra()
-                        .unwrap();
+                let contract_class = crate::types::ContractClass::try_from_serialized_definition(
+                    &SerializedOpaqueClassDefinition::from_slice(contract_definition),
+                )
+                .unwrap()
+                .as_sierra()
+                .unwrap();
                 let contract_hash = contract_class.class_hash().unwrap().hash();
                 let declare_tx = BroadcastedTransaction::Declare(
                     BroadcastedDeclareTransaction::V3(BroadcastedDeclareTransactionV3 {

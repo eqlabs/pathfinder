@@ -488,10 +488,12 @@ mod tests {
     use crate::types::ContractClass;
 
     pub static CONTRACT_CLASS: LazyLock<CairoContractClass> = LazyLock::new(|| {
-        ContractClass::try_from_serialized_definition(&SerializedOpaqueClassDefinition::from_slice(CONTRACT_DEFINITION))
-            .unwrap()
-            .as_cairo()
-            .unwrap()
+        ContractClass::try_from_serialized_definition(&SerializedOpaqueClassDefinition::from_slice(
+            CONTRACT_DEFINITION,
+        ))
+        .unwrap()
+        .as_cairo()
+        .unwrap()
     });
 
     pub static CONTRACT_CLASS_WITH_INVALID_PRIME: LazyLock<CairoContractClass> =
@@ -505,25 +507,31 @@ mod tests {
                 .get_mut("prime")
                 .unwrap() = serde_json::json!("0x1");
             let definition = serde_json::to_vec(&definition).unwrap();
-            ContractClass::try_from_serialized_definition(&SerializedOpaqueClassDefinition::from_slice(&definition))
-                .unwrap()
-                .as_cairo()
-                .unwrap()
+            ContractClass::try_from_serialized_definition(
+                &SerializedOpaqueClassDefinition::from_slice(&definition),
+            )
+            .unwrap()
+            .as_cairo()
+            .unwrap()
         });
 
     pub static SIERRA_CLASS: LazyLock<SierraContractClass> = LazyLock::new(|| {
-        ContractClass::try_from_serialized_definition(&SerializedOpaqueClassDefinition::from_slice(CAIRO_2_0_0_STACK_OVERFLOW))
-            .unwrap()
-            .as_sierra()
-            .unwrap()
+        ContractClass::try_from_serialized_definition(&SerializedOpaqueClassDefinition::from_slice(
+            CAIRO_2_0_0_STACK_OVERFLOW,
+        ))
+        .unwrap()
+        .as_sierra()
+        .unwrap()
     });
 
     pub static INTEGRATION_SIERRA_CLASS: LazyLock<SierraContractClass> = LazyLock::new(|| {
-        ContractClass::try_from_serialized_definition(&SerializedOpaqueClassDefinition::from_slice(include_bytes!(
+        ContractClass::try_from_serialized_definition(&SerializedOpaqueClassDefinition::from_slice(
+            include_bytes!(
             "../../fixtures/contracts/\
              integration_class_0x5ae9d09292a50ed48c5930904c880dab56e85b825022a7d689cfc9e65e01ee7.\
              json"
-        )))
+        ),
+        ))
         .unwrap()
         .as_sierra()
         .unwrap()

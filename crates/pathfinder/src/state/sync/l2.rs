@@ -1854,18 +1854,15 @@ mod tests {
             })
         }
 
-        static CONTRACT0_DEF: LazyLock<SerializedOpaqueClassDefinition> =
-            LazyLock::new(|| {
-                SerializedOpaqueClassDefinition::from_bytes(format!("{DEF0}0{DEF1}").into_bytes())
-            });
-        static CONTRACT0_DEF_V2: LazyLock<SerializedOpaqueClassDefinition> =
-            LazyLock::new(|| {
-                SerializedOpaqueClassDefinition::from_bytes(format!("{DEF0}0 v2{DEF1}").into_bytes())
-            });
-        static CONTRACT1_DEF: LazyLock<SerializedOpaqueClassDefinition> =
-            LazyLock::new(|| {
-                SerializedOpaqueClassDefinition::from_bytes(format!("{DEF0}1{DEF1}").into_bytes())
-            });
+        static CONTRACT0_DEF: LazyLock<SerializedOpaqueClassDefinition> = LazyLock::new(|| {
+            SerializedOpaqueClassDefinition::from_bytes(format!("{DEF0}0{DEF1}").into_bytes())
+        });
+        static CONTRACT0_DEF_V2: LazyLock<SerializedOpaqueClassDefinition> = LazyLock::new(|| {
+            SerializedOpaqueClassDefinition::from_bytes(format!("{DEF0}0 v2{DEF1}").into_bytes())
+        });
+        static CONTRACT1_DEF: LazyLock<SerializedOpaqueClassDefinition> = LazyLock::new(|| {
+            SerializedOpaqueClassDefinition::from_bytes(format!("{DEF0}1{DEF1}").into_bytes())
+        });
 
         static BLOCK0: LazyLock<reply::Block> = LazyLock::new(|| reply::Block {
             block_hash: BLOCK0_HASH,

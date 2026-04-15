@@ -1536,7 +1536,10 @@ mod tests {
                 ]);
 
                 let expected_defs = [
-                    (cairo_hash, SerializedOpaqueClassDefinition::from_slice(CAIRO)),
+                    (
+                        cairo_hash,
+                        SerializedOpaqueClassDefinition::from_slice(CAIRO),
+                    ),
                     (
                         ClassHash(sierra0_hash.0),
                         SerializedOpaqueClassDefinition::from_slice(SIERRA0),

@@ -266,11 +266,12 @@ mod tests {
         let casm_hash =
             casm_hash!("0x069032ff71f77284e1a0864a573007108ca5cc08089416af50f03260f5d6d4d8");
 
-        let contract_class: SierraContractClass =
-            ContractClass::try_from_serialized_definition(&SerializedOpaqueClassDefinition::from_slice(sierra_definition))
-                .unwrap()
-                .as_sierra()
-                .unwrap();
+        let contract_class: SierraContractClass = ContractClass::try_from_serialized_definition(
+            &SerializedOpaqueClassDefinition::from_slice(sierra_definition),
+        )
+        .unwrap()
+        .as_sierra()
+        .unwrap();
 
         assert_eq!(contract_class.class_hash().unwrap().hash(), sierra_hash);
 
@@ -605,11 +606,12 @@ mod tests {
         let casm_hash =
             casm_hash!("0x02F58B23F7D98FF076AE59C08125AAFFD6DECCF1A7E97378D1A303B1A4223989");
 
-        let contract_class: SierraContractClass =
-            ContractClass::try_from_serialized_definition(&SerializedOpaqueClassDefinition::from_slice(sierra_definition))
-                .unwrap()
-                .as_sierra()
-                .unwrap();
+        let contract_class: SierraContractClass = ContractClass::try_from_serialized_definition(
+            &SerializedOpaqueClassDefinition::from_slice(sierra_definition),
+        )
+        .unwrap()
+        .as_sierra()
+        .unwrap();
 
         self::assert_eq!(contract_class.class_hash().unwrap().hash(), sierra_hash);
 
@@ -641,11 +643,12 @@ mod tests {
         let casm_hash =
             casm_hash!("0x138cd11c6de707426665bd8b0425d7411bb8dc5cbee15867025007a933b3379");
 
-        let contract_class: SierraContractClass =
-            ContractClass::try_from_serialized_definition(&SerializedOpaqueClassDefinition::from_slice(sierra_definition))
-                .unwrap()
-                .as_sierra()
-                .unwrap();
+        let contract_class: SierraContractClass = ContractClass::try_from_serialized_definition(
+            &SerializedOpaqueClassDefinition::from_slice(sierra_definition),
+        )
+        .unwrap()
+        .as_sierra()
+        .unwrap();
 
         self::assert_eq!(contract_class.class_hash().unwrap().hash(), sierra_hash);
 
