@@ -92,6 +92,7 @@ pathfinder-compiler = { path = "../compiler" }
 pathfinder-executor = { path = "../executor" }
 pathfinder-rpc = { path = "../rpc" }
 pathfinder-storage = { path = "../storage", features = ["small_aggregate_filters"] }
+pathfinder-validator = { path = "../validator", features = ["skip-commitment-validation"] }
 pretty_assertions_sorted = { workspace = true }
 proptest = { workspace = true }
 rstest = { workspace = true }
