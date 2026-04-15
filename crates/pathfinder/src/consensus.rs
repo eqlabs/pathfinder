@@ -4,15 +4,12 @@ use p2p::consensus::Event;
 use pathfinder_common::{consensus_info, ChainId};
 use pathfinder_gas_price::L1GasPriceProvider;
 use pathfinder_storage::Storage;
+use pathfinder_validator::ValidatorWorkerPool;
 use tokio::sync::{mpsc, watch};
 
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
-use crate::validator::ValidatorWorkerPool;
 use crate::SyncMessageToConsensus;
-
-mod error;
-pub use error::{ProposalError, ProposalHandlingError};
 
 #[cfg(feature = "p2p")]
 mod inner;

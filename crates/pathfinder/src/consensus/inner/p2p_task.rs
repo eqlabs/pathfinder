@@ -42,6 +42,15 @@ use pathfinder_consensus::{
 use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
 use pathfinder_gas_price::{L1GasPriceProvider, L2GasPriceConstants, L2GasPriceProvider};
 use pathfinder_storage::{Storage, Transaction, TransactionBehavior};
+use pathfinder_validator::error::{ProposalError, ProposalHandlingError};
+use pathfinder_validator::{
+    should_defer_validation,
+    ProdTransactionMapper,
+    TransactionExt,
+    ValidatorBlockInfoStage,
+    ValidatorStage,
+    ValidatorWorkerPool,
+};
 use tokio::sync::{mpsc, watch};
 
 use super::gossip_retry::{GossipHandler, GossipRetryConfig};
@@ -54,15 +63,6 @@ use crate::consensus::inner::batch_execution::{
     ProposalCommitmentWithOrigin,
 };
 use crate::consensus::inner::create_empty_block;
-use crate::consensus::{ProposalError, ProposalHandlingError};
-use crate::validator::{
-    should_defer_validation,
-    ProdTransactionMapper,
-    TransactionExt,
-    ValidatorBlockInfoStage,
-    ValidatorStage,
-    ValidatorWorkerPool,
-};
 use crate::SyncMessageToConsensus;
 
 #[cfg(test)]
@@ -427,8 +427,6 @@ pub fn spawn(
                                 use pathfinder_common::StateCommitment;
                                 use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 
-                                use crate::validator;
-
                                 let starknet_version = block.header.starknet_version;
                                 let state_commitment = update_starknet_state(
                                     &main_db_tx,
@@ -451,12 +449,12 @@ pub fn spawn(
                                 let resp = match state_commitment {
                                     Ok(state_commitment) => {
                                         if state_commitment == block.header.state_commitment {
-                                            validator::ValidationResult::Valid
+                                            pathfinder_validator::ValidationResult::Valid
                                         } else {
-                                            validator::ValidationResult::Invalid
+                                            pathfinder_validator::ValidationResult::Invalid
                                         }
                                     }
-                                    Err(e) => validator::ValidationResult::Error(e),
+                                    Err(e) => pathfinder_validator::ValidationResult::Error(e),
                                 };
 
                                 reply
@@ -1593,13 +1591,13 @@ mod tests {
     use pathfinder_crypto::Felt;
     use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
     use pathfinder_storage::StorageBuilder;
+    use pathfinder_validator::ValidatorWorkerPool;
 
     use super::*;
     use crate::consensus::inner::dummy_proposal::{
         create_with_invalid_l1_handler_transactions,
         ProposalCreationConfig,
     };
-    use crate::validator::ValidatorWorkerPool;
 
     /// Creates a worker pool for tests.
     fn create_test_worker_pool() -> ValidatorWorkerPool {

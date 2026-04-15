@@ -22,11 +22,11 @@ use pathfinder_consensus::Round;
 use pathfinder_crypto::Felt;
 use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
 use pathfinder_storage::Storage;
+use pathfinder_validator::{ProdTransactionMapper, ValidatorBlockInfoStage};
 use rand::seq::SliceRandom;
 use rand::{thread_rng, Rng, SeedableRng};
 
 use crate::devnet::{self, strictly_increasing_timestamp, Account};
-use crate::validator::{ProdTransactionMapper, ValidatorBlockInfoStage};
 
 // TODO consider waiting for the parent block to land in the decided blocks
 /// Blocks consensus tasks's processing loop until the parent block of height is

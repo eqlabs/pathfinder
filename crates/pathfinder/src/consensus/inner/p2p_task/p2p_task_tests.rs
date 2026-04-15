@@ -26,6 +26,7 @@ use pathfinder_common::{
 use pathfinder_consensus::ConsensusCommand;
 use pathfinder_crypto::Felt;
 use pathfinder_storage::{Storage, StorageBuilder};
+use pathfinder_validator::ValidatorWorkerPool;
 use tokio::sync::{mpsc, watch};
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
@@ -41,7 +42,6 @@ use crate::consensus::inner::{
     P2PTaskConfig,
     P2PTaskEvent,
 };
-use crate::validator::ValidatorWorkerPool;
 use crate::SyncMessageToConsensus;
 
 /// Helper struct to setup and manage the test environment (databases,

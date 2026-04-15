@@ -47,16 +47,16 @@ use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
 use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_storage::pruning::BlockchainHistoryMode;
 use pathfinder_storage::{Storage, StorageBuilder, TriePruneMode};
-
-pub use crate::devnet::account::Account;
-use crate::devnet::class::{preprocess_sierra, PrepocessedSierra};
-use crate::devnet::fixtures::RESOURCE_BOUNDS;
-use crate::validator::{
+use pathfinder_validator::{
     ProdTransactionMapper,
     ValidatorBlockInfoStage,
     ValidatorTransactionBatchStage,
     ValidatorWorkerPool,
 };
+
+pub use crate::devnet::account::Account;
+use crate::devnet::class::{preprocess_sierra, PrepocessedSierra};
+use crate::devnet::fixtures::RESOURCE_BOUNDS;
 
 mod account;
 mod class;
@@ -440,11 +440,11 @@ pub mod tests {
     use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
     use pathfinder_merkle_tree::starknet_state::update_starknet_state;
     use pathfinder_storage::{Storage, StorageBuilder};
+    use pathfinder_validator::{ProdTransactionMapper, ValidatorWorkerPool};
     use tempfile::TempDir;
 
     use crate::devnet::account::Account;
     use crate::devnet::{fixtures, init_db, init_proposal_and_validator, BootDb};
-    use crate::validator::{ProdTransactionMapper, ValidatorWorkerPool};
 
     #[test_log::test]
     fn init_declare_deploy_invoke_hello_abi() {

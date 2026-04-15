@@ -14,7 +14,7 @@ path = "src/lib.rs"
 cairo-native = ["pathfinder-executor/cairo-native"]
 consensus-integration-tests = []
 tokio-console = ["console-subscriber", "tokio/tracing"]
-p2p = ["pathfinder-consensus"]
+p2p = ["pathfinder-consensus", "pathfinder-validator/p2p"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -55,6 +55,7 @@ pathfinder-retry = { path = "../retry" }
 pathfinder-rpc = { path = "../rpc" }
 pathfinder-serde = { path = "../serde" }
 pathfinder-storage = { path = "../storage" }
+pathfinder-validator = { path = "../validator" }
 pathfinder-version = { path = "../version" }
 primitive-types = { workspace = true }
 rand = { workspace = true }
