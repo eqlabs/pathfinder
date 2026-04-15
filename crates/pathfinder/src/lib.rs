@@ -7,8 +7,6 @@ pub mod monitoring;
 pub mod p2p_network;
 pub mod state;
 pub mod sync;
-pub mod validator;
-
 pub enum SyncMessageToConsensus {
     /// Ask consensus for the finalized and **decided upon** block with given
     /// number. The only difference from a committed block is that the state
@@ -37,4 +35,4 @@ pub enum SyncMessageToConsensus {
 pub type ConsensusFinalizedBlockReply =
     tokio::sync::oneshot::Sender<Option<Box<pathfinder_common::ConsensusFinalizedL2Block>>>;
 
-pub type ValidateBlockReply = tokio::sync::oneshot::Sender<validator::ValidationResult>;
+pub type ValidateBlockReply = tokio::sync::oneshot::Sender<pathfinder_validator::ValidationResult>;

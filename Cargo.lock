@@ -8465,6 +8465,7 @@ dependencies = [
  "pathfinder-rpc",
  "pathfinder-serde",
  "pathfinder-storage",
+ "pathfinder-validator",
  "pathfinder-version",
  "pretty_assertions_sorted",
  "primitive-types",
@@ -8880,6 +8881,32 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "pathfinder-validator"
+version = "0.22.2"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "p2p",
+ "p2p_proto",
+ "pathfinder-block-commitments",
+ "pathfinder-class-hash",
+ "pathfinder-common",
+ "pathfinder-compiler",
+ "pathfinder-crypto",
+ "pathfinder-executor",
+ "pathfinder-gas-price",
+ "pathfinder-rpc",
+ "pathfinder-storage",
+ "rayon",
+ "rstest",
+ "serde_json",
+ "starknet_api",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

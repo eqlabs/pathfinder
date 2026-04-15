@@ -30,6 +30,7 @@ members = [
     "crates/tagged",
     "crates/tagged-debug-derive",
     "crates/util",
+    "crates/validator",
     "crates/version",
 ]
 exclude = ["crates/load-test", "utils/pathfinder-probe"]

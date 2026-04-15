@@ -1,8 +1,7 @@
 use p2p::consensus::HeightAndRound;
 use p2p_proto::consensus::{ProposalInit, ProposalPart};
 use pathfinder_common::ContractAddress;
-
-use crate::consensus::{ProposalError, ProposalHandlingError};
+use pathfinder_validator::error::{ProposalError, ProposalHandlingError};
 
 /// Validates the structure of incoming proposal parts and stores them.
 ///

@@ -13,9 +13,8 @@ use p2p_proto::consensus as proto_consensus;
 use pathfinder_common::DecidedBlocks;
 use pathfinder_gas_price::{L1GasPriceProvider, L2GasPriceProvider};
 use pathfinder_storage::Storage;
-
-use crate::consensus::ProposalHandlingError;
-use crate::validator::{
+use pathfinder_validator::error::ProposalHandlingError;
+use pathfinder_validator::{
     should_defer_validation,
     TransactionExt,
     ValidatorStage,
@@ -379,13 +378,13 @@ mod tests {
     use pathfinder_crypto::Felt;
     use pathfinder_executor::{ConcurrentStateReader, ExecutorWorkerPool};
     use pathfinder_storage::StorageBuilder;
+    use pathfinder_validator::{ProdTransactionMapper, ValidatorBlockInfoStage};
 
     use super::*;
     use crate::consensus::inner::dummy_proposal::{
         create_test_proposal_init,
         create_transaction_batch,
     };
-    use crate::validator::{ProdTransactionMapper, ValidatorBlockInfoStage};
 
     /// Creates a worker pool for tests.
     fn create_test_worker_pool() -> ValidatorWorkerPool {
