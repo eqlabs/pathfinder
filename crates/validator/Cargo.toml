@@ -6,6 +6,9 @@ edition = { workspace = true }
 license = { workspace = true }
 rust-version = { workspace = true }
 
+[features]
+skip-commitment-validation = []
+
 [dependencies]
 anyhow = { workspace = true }
 p2p = { path = "../p2p" }

@@ -768,7 +768,7 @@ impl ValidatorTransactionBatchStage {
         // Skip commitment validation in tests when using dummy commitment (ZERO)
         // This allows e2e tests to focus on batch execution logic without commitment
         // complexity
-        #[cfg(test)]
+        #[cfg(any(test, feature = "skip-commitment-validation"))]
         if expected_proposal_commitment.0.is_zero() {
             return Ok(block);
         }
