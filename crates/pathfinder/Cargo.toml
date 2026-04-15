@@ -14,7 +14,7 @@ path = "src/lib.rs"
 cairo-native = ["pathfinder-executor/cairo-native"]
 consensus-integration-tests = []
 tokio-console = ["console-subscriber", "tokio/tracing"]
-p2p = ["pathfinder-consensus", "pathfinder-validator/p2p"]
+p2p = ["pathfinder-consensus"]
 
 [dependencies]
 anyhow = { workspace = true }
