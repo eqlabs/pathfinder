@@ -1,5 +1,8 @@
 use cairo_lang_starknet_classes::casm_contract_class::CasmContractClass;
-use pathfinder_common::class_definition::{SerializedCasmDefinition, SerializedOpaqueClassDefinition};
+use pathfinder_common::class_definition::{
+    SerializedCasmDefinition,
+    SerializedOpaqueClassDefinition,
+};
 
 pub fn parse_deprecated_class_definition(
     definition: SerializedOpaqueClassDefinition,

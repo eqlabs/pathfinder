@@ -218,7 +218,10 @@ mod tests {
         let mut db = storage.connection().unwrap();
         let tx = db.transaction().unwrap();
         let stored = tx.class_definition(hash).unwrap();
-        assert_eq!(stored, Some(SerializedOpaqueClassDefinition::from(definition)));
+        assert_eq!(
+            stored,
+            Some(SerializedOpaqueClassDefinition::from(definition))
+        );
     }
 
     /// Cairo 0 classes can have a mismatch between the declared hash and the

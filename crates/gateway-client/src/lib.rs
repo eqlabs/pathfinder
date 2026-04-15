@@ -5,7 +5,10 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use anyhow::Context;
-use pathfinder_common::class_definition::{SerializedCasmDefinition, SerializedOpaqueClassDefinition};
+use pathfinder_common::class_definition::{
+    SerializedCasmDefinition,
+    SerializedOpaqueClassDefinition,
+};
 use pathfinder_common::prelude::*;
 use reqwest::Url;
 use starknet_gateway_types::error::SequencerError;

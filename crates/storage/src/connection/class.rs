@@ -676,7 +676,9 @@ mod tests {
         let result = tx.class_definition(class_hash).unwrap();
         assert_eq!(
             result,
-            Some(SerializedOpaqueClassDefinition::from_slice(sierra_definition))
+            Some(SerializedOpaqueClassDefinition::from_slice(
+                sierra_definition
+            ))
         );
 
         let result = tx.casm_definition(class_hash).unwrap();

@@ -348,7 +348,10 @@ pub mod generate {
                     .unwrap();
                     let def = SerializedOpaqueClassDefinition::from_bytes(def);
                     let (hash, _) = compute_class_hash(def.clone()).unwrap();
-                    (hash.hash(), SerializedCairoDefinition::from_bytes(def.into_bytes()))
+                    (
+                        hash.hash(),
+                        SerializedCairoDefinition::from_bytes(def.into_bytes()),
+                    )
                 })
                 .collect::<HashMap<_, _>>();
             let sierra_defs = (0..num_sierra_classes)

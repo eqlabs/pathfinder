@@ -37,7 +37,10 @@ use pathfinder_block_commitments::{
     calculate_receipt_commitment,
     calculate_transaction_commitment,
 };
-use pathfinder_common::class_definition::{SerializedCasmDefinition, SerializedOpaqueClassDefinition};
+use pathfinder_common::class_definition::{
+    SerializedCasmDefinition,
+    SerializedOpaqueClassDefinition,
+};
 use pathfinder_common::integration_testing::debug_create_port_marker_file;
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::ContractClassUpdate;
