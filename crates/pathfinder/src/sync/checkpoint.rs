@@ -1373,7 +1373,7 @@ mod tests {
         use pathfinder_common::class_definition::{
             SerializedCairoDefinition,
             SerializedCasmDefinition,
-            SerializedClassDefinition,
+            SerializedOpaqueClassDefinition,
             SerializedSierraDefinition,
         };
         use pathfinder_common::event::Event;
@@ -1447,7 +1447,7 @@ mod tests {
         struct Setup {
             pub streamed_classes: Vec<Result<PeerData<ClassDefinition>, anyhow::Error>>,
             pub declared_classes: DeclaredClasses,
-            pub expected_defs: HashMap<ClassHash, SerializedClassDefinition>,
+            pub expected_defs: HashMap<ClassHash, SerializedOpaqueClassDefinition>,
             pub storage: Storage,
         }
 
@@ -1536,14 +1536,14 @@ mod tests {
                 ]);
 
                 let expected_defs = [
-                    (cairo_hash, SerializedClassDefinition::from_slice(CAIRO)),
+                    (cairo_hash, SerializedOpaqueClassDefinition::from_slice(CAIRO)),
                     (
                         ClassHash(sierra0_hash.0),
-                        SerializedClassDefinition::from_slice(SIERRA0),
+                        SerializedOpaqueClassDefinition::from_slice(SIERRA0),
                     ),
                     (
                         ClassHash(sierra2_hash.0),
-                        SerializedClassDefinition::from_slice(SIERRA2),
+                        SerializedOpaqueClassDefinition::from_slice(SIERRA2),
                     ),
                 ]
                 .into();

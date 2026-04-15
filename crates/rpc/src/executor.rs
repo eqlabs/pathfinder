@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::class_definition::{SerializedClassDefinition, SerializedSierraDefinition};
+use pathfinder_common::class_definition::{SerializedOpaqueClassDefinition, SerializedSierraDefinition};
 use pathfinder_common::transaction::TransactionVariant;
 use pathfinder_common::{BlockNumber, ChainId, StarknetVersion};
 use pathfinder_executor::types::to_starknet_api_transaction;
@@ -93,7 +93,7 @@ pub(crate) fn map_broadcasted_transaction(
                 .context("Serializing Cairo class to JSON")?;
 
             let contract_class = pathfinder_executor::parse_deprecated_class_definition(
-                SerializedClassDefinition::from_bytes(contract_class_json),
+                SerializedOpaqueClassDefinition::from_bytes(contract_class_json),
             )?;
 
             Some(ClassInfo::new(
@@ -110,7 +110,7 @@ pub(crate) fn map_broadcasted_transaction(
                 .context("Serializing Cairo class to JSON")?;
 
             let contract_class = pathfinder_executor::parse_deprecated_class_definition(
-                SerializedClassDefinition::from_bytes(contract_class_json),
+                SerializedOpaqueClassDefinition::from_bytes(contract_class_json),
             )?;
 
             Some(ClassInfo::new(

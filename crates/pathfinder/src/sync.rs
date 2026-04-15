@@ -321,7 +321,7 @@ mod tests {
     use pathfinder_common::class_definition::{
         SerializedCairoDefinition,
         SerializedCasmDefinition,
-        SerializedClassDefinition,
+        SerializedOpaqueClassDefinition,
         SerializedSierraDefinition,
     };
     use pathfinder_common::event::Event;
@@ -622,7 +622,7 @@ mod tests {
                     expected
                         .cairo_defs
                         .into_iter()
-                        .map(|(h, d)| (h, SerializedClassDefinition::from(d)))
+                        .map(|(h, d)| (h, SerializedOpaqueClassDefinition::from(d)))
                         .collect::<HashMap<_, _>>(),
                     "block {}",
                     block_number
@@ -636,7 +636,7 @@ mod tests {
                         .map(|(h, s, _, _)| (
                             h,
                             (
-                                SerializedClassDefinition::from(s),
+                                SerializedOpaqueClassDefinition::from(s),
                                 SerializedCasmDefinition::from_slice(
                                     starknet_gateway_test_fixtures::class_definitions::CAIRO_1_1_0_BALANCE_CASM_JSON
                                 ),

@@ -413,7 +413,7 @@ mod decided {
 
     use pathfinder_common::class_definition::{
         SerializedCasmDefinition,
-        SerializedClassDefinition,
+        SerializedOpaqueClassDefinition,
     };
     use pathfinder_common::state_update::ContractUpdate;
     use pathfinder_common::{
@@ -478,7 +478,7 @@ mod decided {
     pub fn class_definition_with_block_number(
         decided_blocks: &DecidedBlocks,
         class_hash: ClassHash,
-    ) -> Option<(Option<BlockNumber>, SerializedClassDefinition)> {
+    ) -> Option<(Option<BlockNumber>, SerializedOpaqueClassDefinition)> {
         let decided_blocks = decided_blocks.read().unwrap();
         find_class(decided_blocks.values(), class_hash)
             .map(|(b, c)| (Some(b), c.sierra_def.clone().into()))
@@ -704,7 +704,7 @@ mod decided {
                     class_definition_with_block_number(&two(), ClassHash::ZERO),
                     Some((
                         Some(BlockNumber::GENESIS),
-                        SerializedClassDefinition::from_slice(&[0])
+                        SerializedOpaqueClassDefinition::from_slice(&[0])
                     ))
                 );
             }
@@ -811,7 +811,7 @@ mod decided {
                     ),
                     Some((
                         BlockNumber::GENESIS,
-                        SerializedClassDefinition::from_slice(&[0])
+                        SerializedOpaqueClassDefinition::from_slice(&[0])
                     ))
                 );
             }
@@ -828,7 +828,7 @@ mod decided {
                     ),
                     Some((
                         BlockNumber::GENESIS,
-                        SerializedClassDefinition::from_slice(&[0])
+                        SerializedOpaqueClassDefinition::from_slice(&[0])
                     ))
                 );
             }
@@ -859,7 +859,7 @@ mod decided {
                     class_definition_at_with_block_number(&one(), BlockId::Latest, ClassHash::ZERO),
                     Some((
                         BlockNumber::GENESIS,
-                        SerializedClassDefinition::from_slice(&[0])
+                        SerializedOpaqueClassDefinition::from_slice(&[0])
                     ))
                 );
             }
@@ -870,7 +870,7 @@ mod decided {
                     class_definition_at_with_block_number(&two(), BlockId::Latest, ClassHash::ZERO),
                     Some((
                         BlockNumber::GENESIS,
-                        SerializedClassDefinition::from_slice(&[0])
+                        SerializedOpaqueClassDefinition::from_slice(&[0])
                     ))
                 );
             }

@@ -22,7 +22,7 @@ use p2p_proto::sync::transaction::{
 use pathfinder_common::class_definition::{
     self,
     SerializedCasmDefinition,
-    SerializedClassDefinition,
+    SerializedOpaqueClassDefinition,
 };
 use pathfinder_common::{BlockHash, BlockNumber, SignedBlockHeader};
 use pathfinder_storage::{Storage, Transaction};
@@ -151,9 +151,9 @@ fn get_header(
 
 #[derive(Debug, Clone)]
 enum ClassDefinition {
-    Cairo(SerializedClassDefinition),
+    Cairo(SerializedOpaqueClassDefinition),
     Sierra {
-        sierra: SerializedClassDefinition,
+        sierra: SerializedOpaqueClassDefinition,
         _casm: SerializedCasmDefinition,
     },
 }

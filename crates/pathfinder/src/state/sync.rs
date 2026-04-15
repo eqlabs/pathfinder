@@ -1636,7 +1636,7 @@ mod tests {
     use pathfinder_common::class_definition::{
         SerializedCairoDefinition,
         SerializedCasmDefinition,
-        SerializedClassDefinition,
+        SerializedOpaqueClassDefinition,
         SerializedSierraDefinition,
     };
     use pathfinder_common::event::Event;
@@ -2343,7 +2343,7 @@ mod tests {
 
         assert_eq!(
             definition,
-            SerializedClassDefinition::from(expected_definition)
+            SerializedOpaqueClassDefinition::from(expected_definition)
         );
     }
 
@@ -2394,7 +2394,7 @@ mod tests {
 
         assert_eq!(
             definition,
-            SerializedClassDefinition::from(expected_definition)
+            SerializedOpaqueClassDefinition::from(expected_definition)
         );
 
         let casm_hash_v2 = tx.casm_hash_v2(ClassHash(class_hash)).unwrap().unwrap();

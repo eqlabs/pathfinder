@@ -60,8 +60,8 @@ use anyhow::{Context, Error, Result};
 use pathfinder_common::class_definition::EntryPointType::*;
 use pathfinder_common::class_definition::{
     SerializedCairoDefinition,
-    SerializedClass,
     SerializedClassDefinition,
+    SerializedOpaqueClassDefinition,
     SerializedSierraDefinition,
 };
 use pathfinder_common::{felt_bytes, ClassHash};
@@ -94,8 +94,8 @@ impl ComputedClassHash {
 /// class definition and then calls the appropriate function to compute the
 /// class hash with the parsed definition.
 pub fn compute_class_hash(
-    serialized_definition: SerializedClassDefinition,
-) -> Result<(ComputedClassHash, SerializedClass)> {
+    serialized_definition: SerializedOpaqueClassDefinition,
+) -> Result<(ComputedClassHash, SerializedClassDefinition)> {
     let contract_definition = parse_contract_definition(&serialized_definition)
         .context("Failed to parse contract definition")?;
 
@@ -109,7 +109,7 @@ pub fn compute_class_hash(
                     // It is safe to reinterpret the serialized definition as a Sierra definition
                     // since the parsing step succeeded and confirmed it is a
                     // Sierra definition.
-                    SerializedClass::Sierra(SerializedSierraDefinition::from_bytes(
+                    SerializedClassDefinition::Sierra(SerializedSierraDefinition::from_bytes(
                         serialized_definition.into_bytes(),
                     )),
                 )
@@ -122,7 +122,7 @@ pub fn compute_class_hash(
                     hash,
                     // It is safe to reinterpret the serialized definition as a Cairo definition
                     // since the parsing step succeeded and confirmed it is a Cairo definition.
-                    SerializedClass::Cairo(SerializedCairoDefinition::from_bytes(
+                    SerializedClassDefinition::Cairo(SerializedCairoDefinition::from_bytes(
                         serialized_definition.into_bytes(),
                     )),
                 )
@@ -164,7 +164,7 @@ pub fn compute_cairo_hinted_class_hash(
 /// Due to an issue in serde_json we can't use an untagged enum and simply
 /// derive a Deserialize implementation: <https://github.com/serde-rs/json/issues/559>
 fn parse_contract_definition(
-    serialized_definition: &SerializedClassDefinition,
+    serialized_definition: &SerializedOpaqueClassDefinition,
 ) -> serde_json::Result<json::ContractDefinition<'_>> {
     serde_json::from_slice::<json::SierraContractDefinition<'_>>(serialized_definition.as_bytes())
         .map(json::ContractDefinition::Sierra)
@@ -832,14 +832,14 @@ pub mod json {
 
     #[cfg(test)]
     mod test_vectors {
-        use pathfinder_common::class_definition::SerializedClassDefinition;
+        use pathfinder_common::class_definition::SerializedOpaqueClassDefinition;
         use pathfinder_common::macro_prelude::*;
         use starknet_gateway_test_fixtures::class_definitions::*;
 
         use super::super::{compute_class_hash, ComputedClassHash};
 
         fn hash(data: &[u8]) -> ComputedClassHash {
-            compute_class_hash(SerializedClassDefinition::from_slice(data))
+            compute_class_hash(SerializedOpaqueClassDefinition::from_slice(data))
                 .unwrap()
                 .0
         }
@@ -885,9 +885,9 @@ pub mod json {
 
             // Known contract which triggered a hash mismatch failure.
             let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-                Ok(compute_class_hash(SerializedClassDefinition::from_slice(
-                    CAIRO_0_8_NEW_ATTRIBUTES,
-                ))?)
+                Ok(compute_class_hash(
+                    SerializedOpaqueClassDefinition::from_slice(CAIRO_0_8_NEW_ATTRIBUTES),
+                )?)
             });
             let (calculated_hash, _) = extract.await.unwrap().unwrap();
 
@@ -944,7 +944,7 @@ pub mod json {
 
         #[tokio::test]
         async fn cairo_0_11_with_decimal_entry_point_offset() {
-            let (hash, _) = compute_class_hash(SerializedClassDefinition::from_slice(
+            let (hash, _) = compute_class_hash(SerializedOpaqueClassDefinition::from_slice(
                 CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET,
             ))
             .unwrap();

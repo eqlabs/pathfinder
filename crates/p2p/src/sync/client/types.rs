@@ -3,7 +3,7 @@ use fake::Dummy;
 use libp2p::PeerId;
 use pathfinder_common::class_definition::{
     SerializedCairoDefinition,
-    SerializedClassDefinition,
+    SerializedOpaqueClassDefinition,
     SerializedSierraDefinition,
 };
 use pathfinder_common::event::Event;
@@ -31,7 +31,7 @@ pub enum ClassDefinition {
 
 impl ClassDefinition {
     /// Return Cairo or Sierra class definition depending on the variant.
-    pub fn class_definition(&self) -> SerializedClassDefinition {
+    pub fn class_definition(&self) -> SerializedOpaqueClassDefinition {
         match self {
             Self::Cairo { definition, .. } => definition.clone().into(),
             Self::Sierra {

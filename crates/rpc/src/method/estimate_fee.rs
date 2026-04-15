@@ -232,7 +232,7 @@ impl crate::dto::SerializeForVersion for Output {
 #[cfg(test)]
 mod tests {
     use assert_matches::assert_matches;
-    use pathfinder_common::class_definition::SerializedClassDefinition;
+    use pathfinder_common::class_definition::SerializedOpaqueClassDefinition;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
     use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBound, ResourceBounds};
@@ -267,7 +267,7 @@ mod tests {
             casm_hash!("0x069032ff71f77284e1a0864a573007108ca5cc08089416af50f03260f5d6d4d8");
 
         let contract_class: SierraContractClass =
-            ContractClass::try_from_serialized_definition(&SerializedClassDefinition::from_slice(sierra_definition))
+            ContractClass::try_from_serialized_definition(&SerializedOpaqueClassDefinition::from_slice(sierra_definition))
                 .unwrap()
                 .as_sierra()
                 .unwrap();
@@ -606,7 +606,7 @@ mod tests {
             casm_hash!("0x02F58B23F7D98FF076AE59C08125AAFFD6DECCF1A7E97378D1A303B1A4223989");
 
         let contract_class: SierraContractClass =
-            ContractClass::try_from_serialized_definition(&SerializedClassDefinition::from_slice(sierra_definition))
+            ContractClass::try_from_serialized_definition(&SerializedOpaqueClassDefinition::from_slice(sierra_definition))
                 .unwrap()
                 .as_sierra()
                 .unwrap();
@@ -642,7 +642,7 @@ mod tests {
             casm_hash!("0x138cd11c6de707426665bd8b0425d7411bb8dc5cbee15867025007a933b3379");
 
         let contract_class: SierraContractClass =
-            ContractClass::try_from_serialized_definition(&SerializedClassDefinition::from_slice(sierra_definition))
+            ContractClass::try_from_serialized_definition(&SerializedOpaqueClassDefinition::from_slice(sierra_definition))
                 .unwrap()
                 .as_sierra()
                 .unwrap();
