@@ -220,11 +220,8 @@ pub fn fill(storage: &Storage, blocks: &[Block], update_tries: Option<UpdateTrie
 /// - transactions
 ///     - transaction hashes are calculated from their respective variant
 pub mod generate {
-    use pathfinder_common::{
-        class_definition,
-        BlockCommitmentSignature,
-        BlockCommitmentSignatureElem,
-    };
+    use pathfinder_common::class_definition::{self, SerializedClassDefinition};
+    use pathfinder_common::{BlockCommitmentSignature, BlockCommitmentSignatureElem};
 
     use super::*;
 
@@ -347,11 +344,11 @@ pub mod generate {
                     )
                     .unwrap();
                     let def = SerializedOpaqueClassDefinition::from_bytes(def);
-                    let (hash, _) = compute_class_hash(def.clone()).unwrap();
-                    (
-                        hash.hash(),
-                        SerializedCairoDefinition::from_bytes(def.into_bytes()),
-                    )
+                    let (hash, def) = compute_class_hash(def).unwrap();
+                    let SerializedClassDefinition::Cairo(def) = def else {
+                        panic!("Expected a Cairo class definition");
+                    };
+                    (hash.hash(), def)
                 })
                 .collect::<HashMap<_, _>>();
             let sierra_defs = (0..num_sierra_classes)
@@ -361,9 +358,11 @@ pub mod generate {
                     )
                     .unwrap();
                     let def = SerializedOpaqueClassDefinition::from_bytes(def);
-                    let (hash, _) = compute_class_hash(def.clone()).unwrap();
+                    let (hash, sierra_def) = compute_class_hash(def).unwrap();
+                    let SerializedClassDefinition::Sierra(sierra_def) = sierra_def else {
+                        panic!("Expected a Sierra class definition");
+                    };
                     let hash = SierraHash(hash.hash().0);
-                    let sierra_def = SerializedSierraDefinition::from_bytes(def.into_bytes());
                     let casm_def = SerializedCasmDefinition::from_bytes(
                         Faker.fake_with_rng::<String, _>(rng).into_bytes(),
                     );
