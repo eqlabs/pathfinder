@@ -11,7 +11,6 @@ use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
 use crate::SyncMessageToConsensus;
 
-#[cfg(feature = "p2p")]
 mod inner;
 
 pub type ConsensusP2PEventProcessingTaskHandle = tokio::task::JoinHandle<anyhow::Result<()>>;
@@ -69,27 +68,4 @@ pub fn start(
         blockifier_libfuncs,
         inject_failure_config,
     )
-}
-
-#[cfg(not(feature = "p2p"))]
-mod inner {
-    use super::*;
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn start(
-        _: ConsensusConfig,
-        _: ChainId,
-        _: Storage,
-        _: p2p::consensus::Client,
-        _: mpsc::UnboundedReceiver<Event>,
-        _: PathBuf,
-        _: &Path,
-        _: Option<L1GasPriceProvider>,
-        _: bool,
-        _: pathfinder_compiler::ResourceLimits,
-        _: pathfinder_compiler::BlockifierLibfuncs,
-        _: Option<InjectFailureConfig>,
-    ) -> ConsensusTaskHandles {
-        ConsensusTaskHandles::pending()
-    }
 }
