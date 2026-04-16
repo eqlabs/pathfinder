@@ -370,6 +370,7 @@ fn get_pending_events(
                 max_amount,
                 &keys,
                 addresses,
+                pre_latest_block.number,
             );
 
             let taken_from_pre_latest = events.len();
@@ -404,6 +405,7 @@ fn get_pending_events(
                 amount_to_take,
                 &keys,
                 addresses,
+                pending_block,
             );
 
             if pending_events_exhausted {
@@ -427,6 +429,7 @@ fn get_pending_events(
                 max_amount,
                 &keys,
                 addresses,
+                pending_block,
             );
 
             if pending_events_exhausted {
@@ -536,6 +539,7 @@ fn match_and_fill_events(
     max_amount: usize,
     keys: &[std::collections::HashSet<EventKey>],
     addresses: &HashSet<ContractAddress>,
+    block_number: BlockNumber,
 ) -> bool {
     let original_len = dst.len();
 
@@ -579,7 +583,7 @@ fn match_and_fill_events(
             keys: event.keys.clone(),
             from_address: event.from_address,
             block_hash: None,
-            block_number: None,
+            block_number: Some(block_number),
             transaction_hash: tx_info.0,
             transaction_index: tx_info.1,
             event_index: EventIndex(idx as u64),
@@ -1435,8 +1439,13 @@ mod tests {
                 .await
                 .unwrap();
             assert!(!result.events.is_empty());
-            // Events from pending data do not have a block number/hash.
-            assert!(result.events.iter().all(|e| e.block_number.is_none()));
+            // Events from pending data have a speculative block number but no
+            // hash.
+            assert!(result.events.iter().all(|e| e.block_hash.is_none()));
+            assert!(result.events.iter().all(|e| {
+                e.block_number == Some(PRE_LATEST_BLOCK)
+                    || e.block_number == Some(PRE_CONFIRMED_BLOCK)
+            }));
 
             input.filter.from_block = Some(BlockId::Number(PRE_CONFIRMED_BLOCK));
             input.filter.to_block = None;
@@ -1445,16 +1454,72 @@ mod tests {
                 .await
                 .unwrap();
             assert!(!result.events.is_empty());
-            // Events from pending data do not have a block number/hash.
-            assert!(result.events.iter().all(|e| e.block_number.is_none()));
+            assert!(result.events.iter().all(|e| e.block_hash.is_none()));
+            assert!(result.events.iter().all(|e| {
+                e.block_number == Some(PRE_LATEST_BLOCK)
+                    || e.block_number == Some(PRE_CONFIRMED_BLOCK)
+            }));
 
             input.filter.from_block = Some(BlockId::Number(PRE_LATEST_BLOCK));
             input.filter.to_block = Some(BlockId::Number(PRE_CONFIRMED_BLOCK));
 
             let result = get_events(context, input, RPC_VERSION).await.unwrap();
             assert!(!result.events.is_empty());
-            // Events from pending data do not have a block number/hash.
-            assert!(result.events.iter().all(|e| e.block_number.is_none()));
+            assert!(result.events.iter().all(|e| e.block_hash.is_none()));
+            assert!(result.events.iter().all(|e| {
+                e.block_number == Some(PRE_LATEST_BLOCK)
+                    || e.block_number == Some(PRE_CONFIRMED_BLOCK)
+            }));
+        }
+
+        #[tokio::test]
+        async fn pending_events_have_block_number_but_no_block_hash() {
+            let context = RpcContext::for_tests_with_pre_latest_and_pre_confirmed().await;
+
+            const PRE_LATEST_BLOCK: BlockNumber = BlockNumber::new_or_panic(3);
+            const PRE_CONFIRMED_BLOCK: BlockNumber = BlockNumber::new_or_panic(4);
+
+            // Pre-confirmed only.
+            let input = GetEventsInput {
+                filter: EventFilter {
+                    from_block: Some(BlockId::PreConfirmed),
+                    to_block: Some(BlockId::PreConfirmed),
+                    chunk_size: 1024,
+                    ..Default::default()
+                },
+            };
+            let result = get_events(context.clone(), input, RPC_VERSION)
+                .await
+                .unwrap();
+            assert!(!result.events.is_empty());
+            assert!(result
+                .events
+                .iter()
+                .all(|e| e.block_number.is_some() && e.block_hash.is_none()));
+
+            // All pending events (from pre-latest through pre-confirmed) have
+            // block_number set and block_hash unset.
+            let input = GetEventsInput {
+                filter: EventFilter {
+                    from_block: Some(BlockId::Number(PRE_LATEST_BLOCK)),
+                    to_block: Some(BlockId::Number(PRE_CONFIRMED_BLOCK)),
+                    chunk_size: 1024,
+                    ..Default::default()
+                },
+            };
+            let result = get_events(context, input, RPC_VERSION).await.unwrap();
+            assert!(!result.events.is_empty());
+            assert!(result.events.iter().all(|e| e.block_hash.is_none()));
+            let has_pre_latest = result
+                .events
+                .iter()
+                .any(|e| e.block_number == Some(PRE_LATEST_BLOCK));
+            let has_pre_confirmed = result
+                .events
+                .iter()
+                .any(|e| e.block_number == Some(PRE_CONFIRMED_BLOCK));
+            assert!(has_pre_latest);
+            assert!(has_pre_confirmed);
         }
     }
 }
