@@ -14,9 +14,14 @@ use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_common::{BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::EthereumClient;
 use pathfinder_gas_price::{L1GasPriceConfig, L1GasPriceProvider};
-use pathfinder_lib::consensus::{ConsensusChannels, ConsensusTaskHandles};
+#[cfg(feature = "p2p")]
+use pathfinder_lib::consensus::ConsensusTaskHandles;
 use pathfinder_lib::state::{sync_gas_prices, L1GasPriceSyncConfig, SyncContext};
+use pathfinder_lib::ConsensusChannels;
+#[cfg(feature = "p2p")]
 use pathfinder_lib::{config, consensus, monitoring, p2p_network, state};
+#[cfg(not(feature = "p2p"))]
+use pathfinder_lib::{config, monitoring, p2p_network, state};
 use pathfinder_rpc::context::{EthContractAddresses, WebsocketContext};
 use pathfinder_rpc::{Notifications, SyncState};
 use pathfinder_storage::Storage;
@@ -359,42 +364,57 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         None
     };
 
-    let ConsensusTaskHandles {
+    #[cfg(feature = "p2p")]
+    let (
         consensus_p2p_event_processing_handle,
         consensus_engine_handle,
         consensus_channels,
         worker_pool,
-    } = if let Some(consensus_config) = &config.consensus {
-        let wal_directory = config.data_directory.join("consensus").join("wal");
-        if !wal_directory.exists() {
-            std::fs::DirBuilder::new()
-                .recursive(true)
-                .create(&wal_directory)
-                .context("Creating consensus wal directory")?;
-        }
+    ) = {
+        let handles = if let Some(consensus_config) = &config.consensus {
+            let wal_directory = config.data_directory.join("consensus").join("wal");
+            if !wal_directory.exists() {
+                std::fs::DirBuilder::new()
+                    .recursive(true)
+                    .create(&wal_directory)
+                    .context("Creating consensus wal directory")?;
+            }
 
-        if let Some((event_rx, client)) = consensus_p2p_client_and_event_rx {
-            consensus::start(
-                consensus_config.clone(),
-                chain_id,
-                consensus_storage,
-                client,
-                event_rx,
-                wal_directory,
-                &config.data_directory,
-                gas_price_provider.clone(),
-                config.verify_tree_hashes,
-                config.compiler_resource_limits,
-                config.blockifier_libfuncs,
-                // Does nothing in production builds. Used for integration testing only.
-                integration_testing_config.inject_failure_config(),
-            )
+            if let Some((event_rx, client)) = consensus_p2p_client_and_event_rx {
+                consensus::start(
+                    consensus_config.clone(),
+                    chain_id,
+                    consensus_storage,
+                    client,
+                    event_rx,
+                    wal_directory,
+                    &config.data_directory,
+                    gas_price_provider.clone(),
+                    config.verify_tree_hashes,
+                    config.compiler_resource_limits,
+                    config.blockifier_libfuncs,
+                    integration_testing_config.inject_failure_config(),
+                )
+            } else {
+                ConsensusTaskHandles::pending()
+            }
         } else {
             ConsensusTaskHandles::pending()
-        }
-    } else {
-        ConsensusTaskHandles::pending()
+        };
+        (
+            handles.consensus_p2p_event_processing_handle,
+            handles.consensus_engine_handle,
+            handles.consensus_channels,
+            handles.worker_pool,
+        )
     };
+
+    #[cfg(not(feature = "p2p"))]
+    let (consensus_p2p_event_processing_handle, consensus_engine_handle, consensus_channels) = (
+        tokio::task::spawn(std::future::pending::<anyhow::Result<()>>()),
+        tokio::task::spawn(std::future::pending::<anyhow::Result<()>>()),
+        None::<ConsensusChannels>,
+    );
 
     let context = if let Some(consensus_info_watch) = consensus_channels
         .as_ref()
@@ -514,6 +534,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 
     // Join all worker pool threads so that they don't panic when the `p2p_task` is
     // cancelled.
+    #[cfg(feature = "p2p")]
     if let Some(worker_pool) = worker_pool {
         match Arc::try_unwrap(worker_pool) {
             Ok(pool) => pool.join(),
