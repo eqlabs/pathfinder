@@ -393,6 +393,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
                     config.verify_tree_hashes,
                     config.compiler_resource_limits,
                     config.blockifier_libfuncs,
+                    // Does nothing in production builds. Used for integration testing only.
                     integration_testing_config.inject_failure_config(),
                 )
             } else {
@@ -410,11 +411,18 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     };
 
     #[cfg(not(feature = "p2p"))]
-    let (consensus_p2p_event_processing_handle, consensus_engine_handle, consensus_channels) = (
-        tokio::task::spawn(std::future::pending::<anyhow::Result<()>>()),
-        tokio::task::spawn(std::future::pending::<anyhow::Result<()>>()),
-        None::<ConsensusChannels>,
-    );
+    let (consensus_p2p_event_processing_handle, consensus_engine_handle, consensus_channels) = {
+        let _ = (
+            consensus_storage,
+            consensus_p2p_client_and_event_rx,
+            gas_price_provider,
+        );
+        (
+            tokio::task::spawn(std::future::pending::<anyhow::Result<()>>()),
+            tokio::task::spawn(std::future::pending::<anyhow::Result<()>>()),
+            None::<ConsensusChannels>,
+        )
+    };
 
     let context = if let Some(consensus_info_watch) = consensus_channels
         .as_ref()

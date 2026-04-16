@@ -44,7 +44,8 @@ pub type ValidateBlockReply = tokio::sync::oneshot::Sender<pathfinder_validator:
 /// Various channels used to communicate with the consensus engine.
 #[derive(Clone)]
 pub struct ConsensusChannels {
-    /// Watcher for the latest [consensus_info::ConsensusInfo].
+    /// Watcher for the latest
+    /// [pathfinder_common::consensus_info::ConsensusInfo].
     pub consensus_info_watch:
         tokio::sync::watch::Receiver<pathfinder_common::consensus_info::ConsensusInfo>,
     /// Channel for the sync task to send requests to consensus.

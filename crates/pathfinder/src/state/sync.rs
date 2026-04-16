@@ -35,10 +35,9 @@ use starknet_gateway_types::reply::{Block, GasPrices, PreConfirmedBlock, PreLate
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::sync::watch::{self, Sender as WatchSender};
 
-use crate::consensus::ConsensusChannels;
 use crate::state::l1::L1SyncContext;
 use crate::state::l2::{BlockChain, L2SyncContext};
-use crate::SyncMessageToConsensus;
+use crate::{ConsensusChannels, SyncMessageToConsensus};
 
 /// Delay before restarting L1 or L2 tasks if they fail. This delay helps
 /// prevent DoS if these tasks are crashing.
