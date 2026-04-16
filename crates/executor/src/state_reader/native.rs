@@ -6,7 +6,10 @@ use blockifier::state::errors::StateError;
 use cached::{Cached, SizedCache};
 use cairo_native::executor::AotContractExecutor;
 use cairo_vm::types::errors::program_errors::ProgramError;
-use pathfinder_common::class_definition::{SerializedCasmDefinition, SerializedClassDefinition};
+use pathfinder_common::class_definition::{
+    SerializedCasmDefinition,
+    SerializedOpaqueClassDefinition,
+};
 use pathfinder_common::ClassHash;
 use starknet_api::contract_class::SierraVersion;
 use tokio_util::sync::CancellationToken;
@@ -14,7 +17,7 @@ use tokio_util::sync::CancellationToken;
 struct CompilerInput {
     class_hash: ClassHash,
     sierra_version: SierraVersion,
-    class_definition: SerializedClassDefinition,
+    class_definition: SerializedOpaqueClassDefinition,
     casm_definition: SerializedCasmDefinition,
 }
 
@@ -54,7 +57,7 @@ impl NativeClassCache {
         &self,
         class_hash: ClassHash,
         sierra_version: SierraVersion,
-        class_definition: SerializedClassDefinition,
+        class_definition: SerializedOpaqueClassDefinition,
         casm_definition: SerializedCasmDefinition,
     ) -> Option<NativeCompiledClassV1> {
         let mut locked = self.cache.lock().unwrap();

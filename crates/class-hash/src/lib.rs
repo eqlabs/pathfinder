@@ -885,9 +885,9 @@ pub mod json {
 
             // Known contract which triggered a hash mismatch failure.
             let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-                Ok(compute_class_hash(
-                    SerializedOpaqueClassDefinition::from_slice(CAIRO_0_8_NEW_ATTRIBUTES),
-                )?)
+                compute_class_hash(SerializedOpaqueClassDefinition::from_slice(
+                    CAIRO_0_8_NEW_ATTRIBUTES,
+                ))
             });
             let (calculated_hash, _) = extract.await.unwrap().unwrap();
 
