@@ -20,10 +20,9 @@ use starknet_gateway_types::reply::{Block, BlockSignature, Status};
 use tokio::sync::{mpsc, watch};
 use tracing::Instrument;
 
-use crate::consensus::ConsensusChannels;
 use crate::state::sync::class::{download_class, DownloadedClass};
 use crate::state::sync::SyncEvent;
-use crate::SyncMessageToConsensus;
+use crate::{ConsensusChannels, SyncMessageToConsensus};
 
 #[derive(Default, Debug, Clone, Copy)]
 pub struct Timings {

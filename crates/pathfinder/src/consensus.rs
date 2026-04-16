@@ -1,15 +1,14 @@
 use std::path::{Path, PathBuf};
 
 use p2p::consensus::Event;
-use pathfinder_common::{consensus_info, ChainId};
+use pathfinder_common::ChainId;
 use pathfinder_gas_price::L1GasPriceProvider;
 use pathfinder_storage::Storage;
 use pathfinder_validator::ValidatorWorkerPool;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::mpsc;
 
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
-use crate::SyncMessageToConsensus;
 
 mod inner;
 
