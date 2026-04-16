@@ -12,18 +12,18 @@ use crate::{ByteCodeOffset, EntryPoint};
 
 pub const CLASS_DEFINITION_MAX_ALLOWED_SIZE: u64 = 4 * 1024 * 1024;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Dummy)]
 pub struct SerializedSierraDefinition(Vec<u8>);
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Dummy)]
 pub struct SerializedCasmDefinition(Vec<u8>);
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Dummy)]
 pub struct SerializedCairoDefinition(Vec<u8>);
 
 /// Carries the definition of a serialized contract class, either Sierra or
 /// Cairo. The caller does not care which class definition it is.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Dummy)]
 pub struct SerializedOpaqueClassDefinition(Vec<u8>);
 
 /// Carries the definition of a serialized contract class, either Sierra or
@@ -296,33 +296,5 @@ impl From<SerializedSierraDefinition> for SerializedOpaqueClassDefinition {
 impl From<SerializedCairoDefinition> for SerializedOpaqueClassDefinition {
     fn from(d: SerializedCairoDefinition) -> Self {
         Self::from_bytes(d.into_bytes())
-    }
-}
-
-// TODO derive?
-impl<T> Dummy<T> for SerializedSierraDefinition {
-    fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-        Self(Faker.fake_with_rng(rng))
-    }
-}
-
-// TODO derive?
-impl<T> Dummy<T> for SerializedCasmDefinition {
-    fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-        Self(Faker.fake_with_rng(rng))
-    }
-}
-
-// TODO derive?
-impl<T> Dummy<T> for SerializedCairoDefinition {
-    fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-        Self(Faker.fake_with_rng(rng))
-    }
-}
-
-// TODO derive?
-impl<T> Dummy<T> for SerializedOpaqueClassDefinition {
-    fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-        Self(Faker.fake_with_rng(rng))
     }
 }
