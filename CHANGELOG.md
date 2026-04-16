@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `starknet_getEvents` now returns `block_number` for events from pre-confirmed and pre-latest blocks.
 
+### Fixed
+
+- `starknet_estimateFee` and `starknet_simulateTransactions` rejecting transactions with a non-zero tip when the account balance could cover the fee. The maximum L2 gas bound now accounts for the tip, matching the blockifier's fee calculation (`max_amount * (max_price_per_unit + tip)`).
+
 ## [0.22.2] - 2026-04-07
 
 ### Changed
