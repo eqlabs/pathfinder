@@ -36,3 +36,13 @@ pub type ConsensusFinalizedBlockReply =
     tokio::sync::oneshot::Sender<Option<Box<pathfinder_common::ConsensusFinalizedL2Block>>>;
 
 pub type ValidateBlockReply = tokio::sync::oneshot::Sender<pathfinder_validator::ValidationResult>;
+
+/// Various channels used to communicate with the consensus engine.
+#[derive(Clone)]
+pub struct ConsensusChannels {
+    /// Watcher for the latest [consensus_info::ConsensusInfo].
+    pub consensus_info_watch:
+        tokio::sync::watch::Receiver<pathfinder_common::consensus_info::ConsensusInfo>,
+    /// Channel for the sync task to send requests to consensus.
+    pub sync_to_consensus_tx: tokio::sync::mpsc::Sender<SyncMessageToConsensus>,
+}
