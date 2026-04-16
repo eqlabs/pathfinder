@@ -24,6 +24,7 @@ pub enum SyncMessageToConsensus {
     ConfirmBlockCommitted {
         number: pathfinder_common::BlockNumber,
     },
+    #[cfg(feature = "p2p")]
     ValidateBlock {
         // TODO: Stubbed for now, as an example. When used by P2P sync it should contain the block
         // commit certificate. Also, since this is never sent, the result is not used. In the
@@ -37,6 +38,7 @@ pub enum SyncMessageToConsensus {
 pub type ConsensusFinalizedBlockReply =
     tokio::sync::oneshot::Sender<Option<Box<pathfinder_common::ConsensusFinalizedL2Block>>>;
 
+#[cfg(feature = "p2p")]
 pub type ValidateBlockReply = tokio::sync::oneshot::Sender<pathfinder_validator::ValidationResult>;
 
 /// Various channels used to communicate with the consensus engine.
