@@ -276,6 +276,7 @@ impl ValidatorBlockInfoStage {
     /// [ValidatorTransactionBatchStage].
     ///
     /// Used only for testing and dummy proposal creation.
+    #[cfg(any(test, feature = "p2p"))]
     pub fn skip_validation(
         self,
         block_info: BlockInfo,
