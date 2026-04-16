@@ -1,7 +1,9 @@
 #![deny(rust_2018_idioms)]
 
 pub mod config;
+#[cfg(feature = "p2p")]
 pub mod consensus;
+#[cfg(feature = "p2p")]
 pub mod devnet;
 pub mod monitoring;
 pub mod p2p_network;
