@@ -5410,17 +5410,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42012b0f064e01aa58b545fe3727f90f7dd4020f4a3ea735b50344965f5a57e9"
 
 [[package]]
-name = "gateway-test-utils"
-version = "0.22.2"
-dependencies = [
- "reqwest 0.12.28",
- "serde_json",
- "starknet-gateway-types",
- "tokio",
- "warp",
-]
-
-[[package]]
 name = "genawaiter"
 version = "0.99.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8671,7 +8660,6 @@ dependencies = [
  "fake",
  "flate2",
  "futures",
- "gateway-test-utils",
  "hex",
  "http 1.4.0",
  "http-body 1.0.1",
@@ -8713,6 +8701,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "util",
+ "wiremock",
  "zstd",
 ]
 

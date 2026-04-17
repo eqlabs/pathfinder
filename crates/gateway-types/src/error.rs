@@ -136,9 +136,8 @@ pub enum KnownStarknetErrorCode {
 }
 
 /// Helper function which allows for easy creation of a response tuple
-/// that contains a
-/// [StarknetError](starknet_gateway_types::error::StarknetError) for a
-/// given [KnownStarknetErrorCode].
+/// that contains a [StarknetError] for a given
+/// [KnownStarknetErrorCode].
 ///
 /// The `message` field is always an empty string.
 /// The HTTP status code for this response is always `500` (`Internal Server

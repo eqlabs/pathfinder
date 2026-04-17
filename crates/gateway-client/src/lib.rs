@@ -750,20 +750,14 @@ mod tests {
     use pathfinder_common::prelude::*;
     use pathfinder_crypto::Felt;
     use starknet_gateway_test_fixtures::testnet::*;
-    use starknet_gateway_types::error::KnownStarknetErrorCode;
+    use starknet_gateway_types::error::{test_response_from, KnownStarknetErrorCode};
     use starknet_gateway_types::request::add_transaction::ContractDefinition;
     use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
 
     use super::*;
 
     fn response_body_from(code: KnownStarknetErrorCode) -> serde_json::Value {
-        use starknet_gateway_types::error::StarknetError;
-
-        let e = StarknetError {
-            code: code.into(),
-            message: "".to_string(),
-        };
-        let s = serde_json::to_string(&e).unwrap();
+        let (s, _) = test_response_from(code);
         serde_json::from_str(&s).unwrap()
     }
 

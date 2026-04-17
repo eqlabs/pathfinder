@@ -56,7 +56,6 @@ bitvec = { workspace = true }
 bytes = { workspace = true }
 fake = { workspace = true }
 flate2 = { workspace = true }
-gateway-test-utils = { path = "../gateway-test-utils" }
 hex = { workspace = true }
 pathfinder-crypto = { path = "../crypto" }
 pathfinder-storage = { path = "../storage", features = ["small_aggregate_filters"] }
@@ -67,3 +66,4 @@ tempfile = { workspace = true }
 test-log = { workspace = true, features = ["trace"] }
 tokio-tungstenite = { workspace = true }
 tracing-subscriber = { workspace = true }
+wiremock = { workspace = true }

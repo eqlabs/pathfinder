@@ -472,6 +472,8 @@ mod tests {
         CAIRO_2_0_0_STACK_OVERFLOW,
         CONTRACT_DEFINITION,
     };
+    use starknet_gateway_types::error::{test_response_from, KnownStarknetErrorCode};
+    use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
 
     use super::*;
     use crate::types::class::cairo::CairoContractClass;
@@ -695,17 +697,18 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn invalid_contract_definition_v1() {
-        use gateway_test_utils::response_from;
-        use starknet_gateway_types::error::KnownStarknetErrorCode;
-
-        let (_handle, url) = gateway_test_utils::setup([(
-            "/gateway/add_transaction",
-            response_from(KnownStarknetErrorCode::InvalidContractDefinition),
-        )]);
+        let (body, code) = test_response_from(KnownStarknetErrorCode::InvalidContractDefinition);
+        let server = MockServer::start().await;
+        Mock::given(matchers::method("POST"))
+            .and(matchers::path("/gateway/add_transaction"))
+            .respond_with(ResponseTemplate::new(code).set_body_string(body))
+            .mount(&server)
+            .await;
         let mut context = RpcContext::for_tests();
-        context.sequencer = starknet_gateway_client::Client::for_test(url)
-            .unwrap()
-            .disable_retry_for_tests();
+        context.sequencer =
+            starknet_gateway_client::Client::for_test(server.uri().parse().unwrap())
+                .unwrap()
+                .disable_retry_for_tests();
 
         let input = Input {
             declare_transaction: Transaction::Declare(BroadcastedDeclareTransaction::V1(
@@ -726,17 +729,18 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn invalid_contract_definition_v2() {
-        use gateway_test_utils::response_from;
-        use starknet_gateway_types::error::KnownStarknetErrorCode;
-
-        let (_handle, url) = gateway_test_utils::setup([(
-            "/gateway/add_transaction",
-            response_from(KnownStarknetErrorCode::InvalidContractDefinition),
-        )]);
+        let (body, code) = test_response_from(KnownStarknetErrorCode::InvalidContractDefinition);
+        let server = MockServer::start().await;
+        Mock::given(matchers::method("POST"))
+            .and(matchers::path("/gateway/add_transaction"))
+            .respond_with(ResponseTemplate::new(code).set_body_string(body))
+            .mount(&server)
+            .await;
         let mut context = RpcContext::for_tests_on(pathfinder_common::Chain::SepoliaIntegration);
-        context.sequencer = starknet_gateway_client::Client::for_test(url)
-            .unwrap()
-            .disable_retry_for_tests();
+        context.sequencer =
+            starknet_gateway_client::Client::for_test(server.uri().parse().unwrap())
+                .unwrap()
+                .disable_retry_for_tests();
 
         let input = Input {
             declare_transaction: Transaction::Declare(BroadcastedDeclareTransaction::V2(
@@ -760,17 +764,18 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn invalid_contract_class() {
-        use gateway_test_utils::response_from;
-        use starknet_gateway_types::error::KnownStarknetErrorCode;
-
-        let (_handle, url) = gateway_test_utils::setup([(
-            "/gateway/add_transaction",
-            response_from(KnownStarknetErrorCode::InvalidProgram),
-        )]);
+        let (body, code) = test_response_from(KnownStarknetErrorCode::InvalidProgram);
+        let server = MockServer::start().await;
+        Mock::given(matchers::method("POST"))
+            .and(matchers::path("/gateway/add_transaction"))
+            .respond_with(ResponseTemplate::new(code).set_body_string(body))
+            .mount(&server)
+            .await;
         let mut context = RpcContext::for_tests();
-        context.sequencer = starknet_gateway_client::Client::for_test(url)
-            .unwrap()
-            .disable_retry_for_tests();
+        context.sequencer =
+            starknet_gateway_client::Client::for_test(server.uri().parse().unwrap())
+                .unwrap()
+                .disable_retry_for_tests();
 
         let input = Input {
             declare_transaction: Transaction::Declare(BroadcastedDeclareTransaction::V1(
@@ -791,17 +796,18 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn duplicate_transaction() {
-        use gateway_test_utils::response_from;
-        use starknet_gateway_types::error::KnownStarknetErrorCode;
-
-        let (_handle, url) = gateway_test_utils::setup([(
-            "/gateway/add_transaction",
-            response_from(KnownStarknetErrorCode::DuplicatedTransaction),
-        )]);
+        let (body, code) = test_response_from(KnownStarknetErrorCode::DuplicatedTransaction);
+        let server = MockServer::start().await;
+        Mock::given(matchers::method("POST"))
+            .and(matchers::path("/gateway/add_transaction"))
+            .respond_with(ResponseTemplate::new(code).set_body_string(body))
+            .mount(&server)
+            .await;
         let mut context = RpcContext::for_tests();
-        context.sequencer = starknet_gateway_client::Client::for_test(url)
-            .unwrap()
-            .disable_retry_for_tests();
+        context.sequencer =
+            starknet_gateway_client::Client::for_test(server.uri().parse().unwrap())
+                .unwrap()
+                .disable_retry_for_tests();
 
         let input = Input {
             declare_transaction: Transaction::Declare(BroadcastedDeclareTransaction::V1(
@@ -822,17 +828,18 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn insufficient_max_fee() {
-        use gateway_test_utils::response_from;
-        use starknet_gateway_types::error::KnownStarknetErrorCode;
-
-        let (_handle, url) = gateway_test_utils::setup([(
-            "/gateway/add_transaction",
-            response_from(KnownStarknetErrorCode::InsufficientAccountBalance),
-        )]);
+        let (body, code) = test_response_from(KnownStarknetErrorCode::InsufficientAccountBalance);
+        let server = MockServer::start().await;
+        Mock::given(matchers::method("POST"))
+            .and(matchers::path("/gateway/add_transaction"))
+            .respond_with(ResponseTemplate::new(code).set_body_string(body))
+            .mount(&server)
+            .await;
         let mut context = RpcContext::for_tests_on(pathfinder_common::Chain::SepoliaIntegration);
-        context.sequencer = starknet_gateway_client::Client::for_test(url)
-            .unwrap()
-            .disable_retry_for_tests();
+        context.sequencer =
+            starknet_gateway_client::Client::for_test(server.uri().parse().unwrap())
+                .unwrap()
+                .disable_retry_for_tests();
 
         let input = Input {
             declare_transaction: Transaction::Declare(BroadcastedDeclareTransaction::V2(
@@ -859,17 +866,18 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn insufficient_account_balance() {
-        use gateway_test_utils::response_from;
-        use starknet_gateway_types::error::KnownStarknetErrorCode;
-
-        let (_handle, url) = gateway_test_utils::setup([(
-            "/gateway/add_transaction",
-            response_from(KnownStarknetErrorCode::InsufficientAccountBalance),
-        )]);
+        let (body, code) = test_response_from(KnownStarknetErrorCode::InsufficientAccountBalance);
+        let server = MockServer::start().await;
+        Mock::given(matchers::method("POST"))
+            .and(matchers::path("/gateway/add_transaction"))
+            .respond_with(ResponseTemplate::new(code).set_body_string(body))
+            .mount(&server)
+            .await;
         let mut context = RpcContext::for_tests_on(pathfinder_common::Chain::SepoliaIntegration);
-        context.sequencer = starknet_gateway_client::Client::for_test(url)
-            .unwrap()
-            .disable_retry_for_tests();
+        context.sequencer =
+            starknet_gateway_client::Client::for_test(server.uri().parse().unwrap())
+                .unwrap()
+                .disable_retry_for_tests();
 
         let input = Input {
             declare_transaction: Transaction::Declare(BroadcastedDeclareTransaction::V2(
@@ -897,17 +905,18 @@ mod tests {
     #[tokio::test]
     // https://external.integration.starknet.io/feeder_gateway/get_transaction?transactionHash=0x41d1f5206ef58a443e7d3d1ca073171ec25fa75313394318fc83a074a6631c3
     async fn duplicate_v3_transaction() {
-        use gateway_test_utils::response_from;
-        use starknet_gateway_types::error::KnownStarknetErrorCode;
-
-        let (_handle, url) = gateway_test_utils::setup([(
-            "/gateway/add_transaction",
-            response_from(KnownStarknetErrorCode::InsufficientAccountBalance),
-        )]);
+        let (body, code) = test_response_from(KnownStarknetErrorCode::InsufficientAccountBalance);
+        let server = MockServer::start().await;
+        Mock::given(matchers::method("POST"))
+            .and(matchers::path("/gateway/add_transaction"))
+            .respond_with(ResponseTemplate::new(code).set_body_string(body))
+            .mount(&server)
+            .await;
         let mut context = RpcContext::for_tests_on(pathfinder_common::Chain::SepoliaIntegration);
-        context.sequencer = starknet_gateway_client::Client::for_test(url)
-            .unwrap()
-            .disable_retry_for_tests();
+        context.sequencer =
+            starknet_gateway_client::Client::for_test(server.uri().parse().unwrap())
+                .unwrap()
+                .disable_retry_for_tests();
 
         let input = Input {
             declare_transaction: Transaction::Declare(BroadcastedDeclareTransaction::V3(
