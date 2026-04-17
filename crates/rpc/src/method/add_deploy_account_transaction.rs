@@ -342,6 +342,8 @@ mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
     use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBound, ResourceBounds};
+    use starknet_gateway_types::error::{test_response_from, KnownStarknetErrorCode};
+    use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
 
     use super::*;
     use crate::dto::{SerializeForVersion, Serializer};
@@ -387,11 +389,7 @@ mod tests {
 
     #[test]
     fn unexpected_error_message() {
-        use starknet_gateway_types::error::{
-            KnownStarknetErrorCode,
-            StarknetError,
-            StarknetErrorCode,
-        };
+        use starknet_gateway_types::error::{StarknetError, StarknetErrorCode};
         let starknet_error = SequencerError::StarknetError(StarknetError {
             code: StarknetErrorCode::Known(KnownStarknetErrorCode::TransactionLimitExceeded),
             message: "StarkNet Alpha throughput limit reached, please wait a few minutes and try \
@@ -447,17 +445,18 @@ mod tests {
 
     #[tokio::test]
     async fn duplicate_transaction() {
-        use gateway_test_utils::response_from;
-        use starknet_gateway_types::error::KnownStarknetErrorCode;
-
-        let (_handle, url) = gateway_test_utils::setup([(
-            "/gateway/add_transaction",
-            response_from(KnownStarknetErrorCode::DuplicatedTransaction),
-        )]);
+        let (body, code) = test_response_from(KnownStarknetErrorCode::DuplicatedTransaction);
+        let server = MockServer::start().await;
+        Mock::given(matchers::method("POST"))
+            .and(matchers::path("/gateway/add_transaction"))
+            .respond_with(ResponseTemplate::new(code).set_body_string(body))
+            .mount(&server)
+            .await;
         let mut context = RpcContext::for_tests();
-        context.sequencer = starknet_gateway_client::Client::for_test(url)
-            .unwrap()
-            .disable_retry_for_tests();
+        context.sequencer =
+            starknet_gateway_client::Client::for_test(server.uri().parse().unwrap())
+                .unwrap()
+                .disable_retry_for_tests();
 
         let error = add_deploy_account_transaction(context, get_input())
             .await
@@ -471,17 +470,18 @@ mod tests {
     #[tokio::test]
     // https://external.integration.starknet.io/feeder_gateway/get_transaction?transactionHash=0x29fd7881f14380842414cdfdd8d6c0b1f2174f8916edcfeb1ede1eb26ac3ef0
     async fn duplicate_v3_transaction() {
-        use gateway_test_utils::response_from;
-        use starknet_gateway_types::error::KnownStarknetErrorCode;
-
-        let (_handle, url) = gateway_test_utils::setup([(
-            "/gateway/add_transaction",
-            response_from(KnownStarknetErrorCode::DuplicatedTransaction),
-        )]);
+        let (body, code) = test_response_from(KnownStarknetErrorCode::DuplicatedTransaction);
+        let server = MockServer::start().await;
+        Mock::given(matchers::method("POST"))
+            .and(matchers::path("/gateway/add_transaction"))
+            .respond_with(ResponseTemplate::new(code).set_body_string(body))
+            .mount(&server)
+            .await;
         let mut context = RpcContext::for_tests_on(pathfinder_common::Chain::SepoliaIntegration);
-        context.sequencer = starknet_gateway_client::Client::for_test(url)
-            .unwrap()
-            .disable_retry_for_tests();
+        context.sequencer =
+            starknet_gateway_client::Client::for_test(server.uri().parse().unwrap())
+                .unwrap()
+                .disable_retry_for_tests();
 
         let input = Input {
             deploy_account_transaction: Transaction::DeployAccount(

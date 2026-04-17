@@ -829,6 +829,7 @@ pub(crate) mod tests {
     use pathfinder_common::Chain;
     use pathfinder_crypto::Felt;
     use starknet_gateway_types::reply::{GasPrices, L1DataAvailabilityMode};
+    use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
 
     use super::*;
     use crate::dto::{DeserializeForVersion, SerializeForVersion, Serializer};
@@ -1520,11 +1521,7 @@ pub(crate) mod tests {
         async fn setup(
             starknet_version: StarknetVersion,
             block_num_to_insert: BlockNumber,
-        ) -> anyhow::Result<(
-            RpcContext,
-            TraceBlockTransactionsInput,
-            Option<tokio::task::JoinHandle<()>>,
-        )> {
+        ) -> anyhow::Result<(RpcContext, TraceBlockTransactionsInput, MockServer)> {
             let (mut context, _, _) = setup_multi_tx_trace_test_with_starknet_version_and_chain(
                 starknet_version,
                 Chain::Mainnet,
@@ -1540,15 +1537,21 @@ pub(crate) mod tests {
             })?;
             tx.commit()?;
 
-            let path = format!(
-                "/feeder_gateway/get_block_traces?blockNumber={}",
-                block_num_to_insert.get()
-            );
-            let (handle, url) =
-                gateway_test_utils::setup([(path, (r#"{"traces":[]}"#.to_string(), 200u16))]);
-            context.sequencer = starknet_gateway_client::Client::for_test(url)
-                .unwrap()
-                .disable_retry_for_tests();
+            let server = MockServer::start().await;
+            Mock::given(matchers::path("/feeder_gateway/get_block_traces"))
+                .and(matchers::query_param(
+                    "blockNumber",
+                    block_num_to_insert.get().to_string(),
+                ))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "traces": []
+                })))
+                .mount(&server)
+                .await;
+            context.sequencer =
+                starknet_gateway_client::Client::for_test(server.uri().parse().unwrap())
+                    .unwrap()
+                    .disable_retry_for_tests();
 
             let input = TraceBlockTransactionsInput {
                 block_id: block_num_to_insert.into(),
@@ -1557,7 +1560,7 @@ pub(crate) mod tests {
                 ]),
             };
 
-            Ok((context, input, handle))
+            Ok((context, input, server))
         }
 
         // First test that with a Starknet version that requires fetching traces from
@@ -1699,16 +1702,21 @@ pub(crate) mod tests {
         transaction.commit().unwrap();
         drop(connection);
 
-        let (_handle, url) = gateway_test_utils::setup([(
-            format!(
-                "/feeder_gateway/get_block_traces?blockNumber={}",
-                block.block_number.get()
-            ),
-            (r#"{"traces":[]}"#.to_string(), 200u16),
-        )]);
-        context.sequencer = starknet_gateway_client::Client::for_test(url)
-            .unwrap()
-            .disable_retry_for_tests();
+        let server = MockServer::start().await;
+        Mock::given(matchers::path("/feeder_gateway/get_block_traces"))
+            .and(matchers::query_param(
+                "blockNumber",
+                block.block_number.get().to_string(),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "traces": []
+            })))
+            .mount(&server)
+            .await;
+        context.sequencer =
+            starknet_gateway_client::Client::for_test(server.uri().parse().unwrap())
+                .unwrap()
+                .disable_retry_for_tests();
 
         // The tracing succeeds.
         trace_block_transactions(
@@ -1807,16 +1815,19 @@ pub(crate) mod tests {
         let traces_json =
             String::from_utf8(starknet_gateway_test_fixtures::traces::TESTNET_GENESIS.to_vec())
                 .unwrap();
-        let (_handle, url) = gateway_test_utils::setup([(
-            format!(
-                "/feeder_gateway/get_block_traces?blockNumber={}",
-                block.block_number.get()
-            ),
-            (traces_json, 200u16),
-        )]);
-        context.sequencer = starknet_gateway_client::Client::for_test(url)
-            .unwrap()
-            .disable_retry_for_tests();
+        let server = MockServer::start().await;
+        Mock::given(matchers::path("/feeder_gateway/get_block_traces"))
+            .and(matchers::query_param(
+                "blockNumber",
+                block.block_number.get().to_string(),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_string(traces_json))
+            .mount(&server)
+            .await;
+        context.sequencer =
+            starknet_gateway_client::Client::for_test(server.uri().parse().unwrap())
+                .unwrap()
+                .disable_retry_for_tests();
 
         // The tracing succeeds.
         trace_block_transactions(
