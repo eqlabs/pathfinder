@@ -864,8 +864,8 @@ pub mod json {
             );
         }
 
-        #[tokio::test]
-        async fn genesis_contract() {
+        #[test]
+        fn genesis_contract() {
             assert_eq!(
                 hash(GOERLI_GENESIS),
                 ComputedClassHash::Cairo(class_hash!(
