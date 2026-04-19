@@ -122,7 +122,7 @@ impl<S: StorageAdapter> PathfinderStateReader<S> {
             Some(casm_definition) => {
                 // There's a CASM definition in storage, so this is a Sierra class. Extract
                 // class version from program.
-                let sierra_version = self.try_sierra_version_from_class(&class_definition)?;
+                let sierra_version = self.sierra_version_from_class(&class_definition)?;
 
                 #[cfg(feature = "cairo-native")]
                 let runnable_class = if self.native_execution_force_use_for_incompatible_classes
@@ -179,7 +179,7 @@ impl<S: StorageAdapter> PathfinderStateReader<S> {
         }
     }
 
-    fn try_sierra_version_from_class(
+    fn sierra_version_from_class(
         &self,
         class_definition: &SerializedOpaqueClassDefinition,
     ) -> Result<SierraVersion, StateError> {
