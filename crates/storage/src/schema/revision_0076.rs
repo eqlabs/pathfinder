@@ -1,5 +1,6 @@
 use anyhow::Context;
 use pathfinder_casm_hashes::get_precomputed_casm_v2_hash;
+use pathfinder_common::class_definition::SerializedCasmDefinition;
 use pathfinder_common::ClassHash;
 use pathfinder_crypto::Felt;
 use rayon::prelude::*;
@@ -52,9 +53,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                         .map_err(|e| rusqlite::types::FromSqlError::Other(e.into()))
                         .unwrap();
                     let computed_hash = pathfinder_compiler::casm_class_hash_v2(
-                        &pathfinder_common::class_definition::SerializedCasmDefinition::from_bytes(
-                            definition,
-                        ),
+                        &SerializedCasmDefinition::from_bytes(definition),
                     )
                     .unwrap();
                     (class_hash, computed_hash)
