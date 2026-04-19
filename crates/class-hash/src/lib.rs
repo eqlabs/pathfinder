@@ -844,8 +844,8 @@ pub mod json {
                 .0
         }
 
-        #[tokio::test]
-        async fn first() {
+        #[test]
+        fn first() {
             assert_eq!(
                 hash(INTEGRATION_TEST),
                 ComputedClassHash::Cairo(class_hash!(
@@ -874,28 +874,21 @@ pub mod json {
             );
         }
 
-        #[tokio::test]
-        async fn cairo_0_8() {
+        #[test]
+        fn cairo_0_8() {
             // Cairo 0.8 update broke our class hash calculation by adding new attribute
             // fields (which we now need to ignore if empty).
-
-            let expected = ComputedClassHash::Cairo(class_hash!(
-                "056b96c1d1bbfa01af44b465763d1b71150fa00c6c9d54c3947f57e979ff68c3"
-            ));
-
-            // Known contract which triggered a hash mismatch failure.
-            let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-                compute_class_hash(SerializedOpaqueClassDefinition::from_slice(
-                    CAIRO_0_8_NEW_ATTRIBUTES,
+            assert_eq!(
+                // Known contract which triggered a hash mismatch failure.
+                hash(CAIRO_0_8_NEW_ATTRIBUTES),
+                ComputedClassHash::Cairo(class_hash!(
+                    "056b96c1d1bbfa01af44b465763d1b71150fa00c6c9d54c3947f57e979ff68c3"
                 ))
-            });
-            let (calculated_hash, _) = extract.await.unwrap().unwrap();
-
-            assert_eq!(calculated_hash, expected);
+            );
         }
 
-        #[tokio::test]
-        async fn cairo_0_10() {
+        #[test]
+        fn cairo_0_10() {
             // Contract whose class triggered a deserialization issue because of the new
             // `compiler_version` property.
             assert_eq!(
@@ -906,8 +899,8 @@ pub mod json {
             );
         }
 
-        #[tokio::test]
-        async fn cairo_0_10_part_2() {
+        #[test]
+        fn cairo_0_10_part_2() {
             // Contract who's class contains `compiler_version` property as well as
             // `cairo_type` with tuple values. These tuple values require a
             // space to be injected in order to achieve the correct hash.
@@ -919,8 +912,8 @@ pub mod json {
             );
         }
 
-        #[tokio::test]
-        async fn cairo_0_10_part_3() {
+        #[test]
+        fn cairo_0_10_part_3() {
             // Contract who's class contains `compiler_version` property as well as
             // `cairo_type` with tuple values. These tuple values require a
             // space to be injected in order to achieve the correct hash.
@@ -932,8 +925,8 @@ pub mod json {
             );
         }
 
-        #[tokio::test]
-        async fn cairo_0_11_sierra() {
+        #[test]
+        fn cairo_0_11_sierra() {
             assert_eq!(
                 hash(CAIRO_0_11_SIERRA),
                 ComputedClassHash::Sierra(class_hash!(
@@ -942,15 +935,10 @@ pub mod json {
             )
         }
 
-        #[tokio::test]
-        async fn cairo_0_11_with_decimal_entry_point_offset() {
-            let (hash, _) = compute_class_hash(SerializedOpaqueClassDefinition::from_slice(
-                CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET,
-            ))
-            .unwrap();
-
+        #[test]
+        fn cairo_0_11_with_decimal_entry_point_offset() {
             assert_eq!(
-                hash,
+                hash(CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET),
                 ComputedClassHash::Cairo(class_hash!(
                     "0x0484c163658bcce5f9916f486171ac60143a92897533aa7ff7ac800b16c63311"
                 ))
