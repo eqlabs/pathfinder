@@ -526,11 +526,7 @@ mod tests {
 
     pub static INTEGRATION_SIERRA_CLASS: LazyLock<SierraContractClass> = LazyLock::new(|| {
         ContractClass::from_serialized_def(&SerializedOpaqueClassDefinition::from_slice(
-            include_bytes!(
-            "../../fixtures/contracts/\
-             integration_class_0x5ae9d09292a50ed48c5930904c880dab56e85b825022a7d689cfc9e65e01ee7.\
-             json"
-        ),
+            include_bytes!("../../fixtures/contracts/integration_class_0x5ae9d09292a50ed48c5930904c880dab56e85b825022a7d689cfc9e65e01ee7.json")
         ))
         .unwrap()
         .as_sierra()
