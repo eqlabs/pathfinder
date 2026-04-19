@@ -98,8 +98,8 @@ pub async fn get_class_at(
             .context("Fetching class definition")?
             .context("Class definition missing from database")?;
 
-        let class = ContractClass::try_from_serialized_definition(&definition)
-            .context("Parsing class definition")?;
+        let class =
+            ContractClass::from_serialized_def(&definition).context("Parsing class definition")?;
 
         Ok(class)
     });

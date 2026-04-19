@@ -91,7 +91,7 @@ pub enum NestedIntList {
 }
 
 impl CasmContractClass {
-    pub fn try_from_serialized_definition(
+    pub fn from_serialized_def(
         definition: &crate::class_definition::SerializedCasmDefinition,
     ) -> Result<Self, serde_json::Error> {
         serde_json::from_slice(definition.as_bytes())
