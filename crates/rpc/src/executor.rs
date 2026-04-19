@@ -11,6 +11,7 @@ use starknet_api::contract_class::SierraVersion;
 use starknet_api::core::PatriciaKey;
 use starknet_api::transaction::fields::Fee;
 
+use crate::types::class::sierra::SierraContractClass;
 use crate::types::request::{
     BroadcastedDeployAccountTransaction,
     BroadcastedInvokeTransaction,
@@ -291,7 +292,7 @@ pub fn compose_executor_transaction(
             let class_definition = db_transaction
                 .class_definition(tx.class_hash)?
                 .context("Fetching class definition")?;
-            let class_definition: crate::types::class::sierra::SierraContractClass =
+            let class_definition: SierraContractClass =
                 serde_json::from_slice(class_definition.as_bytes())
                     .context("Deserializing class definition")?;
             let sierra_version =
@@ -313,8 +314,8 @@ pub fn compose_executor_transaction(
             let class_definition = db_transaction
                 .class_definition(tx.class_hash)?
                 .context("Fetching class definition")?;
-            let class_definition: crate::types::class::sierra::SierraContractClass =
-                serde_json::from_str(&String::from_utf8(class_definition.into_bytes())?)
+            let class_definition: SierraContractClass =
+                serde_json::from_slice(class_definition.as_bytes())
                     .context("Deserializing class definition")?;
             let sierra_version =
                 SierraVersion::extract_from_program(&class_definition.sierra_program)?;
