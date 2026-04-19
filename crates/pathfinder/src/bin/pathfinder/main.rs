@@ -11,6 +11,7 @@ use ::p2p::sync::client::peer_agnostic::Client as P2PSyncClient;
 use anyhow::Context;
 use config::BlockchainHistory;
 use metrics_exporter_prometheus::PrometheusBuilder;
+use pathfinder_common::class_definition::SerializedSierraDefinition;
 use pathfinder_common::{BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::EthereumClient;
 use pathfinder_gas_price::{L1GasPriceConfig, L1GasPriceProvider};
@@ -585,8 +586,7 @@ fn compile_main(config: CompileConfig) -> anyhow::Result<()> {
     std::io::stdin()
         .read_to_end(&mut sierra_bytes)
         .context("reading Sierra from stdin")?;
-    let sierra_definition =
-        pathfinder_common::class_definition::SerializedSierraDefinition::from_bytes(sierra_bytes);
+    let sierra_definition = SerializedSierraDefinition::from_bytes(sierra_bytes);
 
     let casm = pathfinder_compiler::compile_sierra_to_casm_impl(
         &sierra_definition,
