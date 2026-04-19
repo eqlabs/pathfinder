@@ -210,6 +210,7 @@ pub mod cairo {
     use anyhow::Context;
     use base64::prelude::*;
     use pathfinder_class_hash::{compute_class_hash, ComputedClassHash};
+    use pathfinder_common::class_definition::SerializedOpaqueClassDefinition;
     use serde::{Deserialize, Serialize};
 
     /// A Cairo 0.x class.
@@ -233,10 +234,7 @@ pub mod cairo {
     impl CairoContractClass {
         pub fn class_hash(&self) -> anyhow::Result<ComputedClassHash> {
             let serialized = self.serialize_to_json()?;
-            let definition =
-                pathfinder_common::class_definition::SerializedOpaqueClassDefinition::from_bytes(
-                    serialized,
-                );
+            let definition = SerializedOpaqueClassDefinition::from_bytes(serialized);
 
             compute_class_hash(definition)
                 .map(|(hash, _)| hash)
@@ -658,6 +656,7 @@ pub mod cairo {
 
 pub mod sierra {
     use pathfinder_class_hash::{compute_class_hash, ComputedClassHash};
+    use pathfinder_common::class_definition::SerializedOpaqueClassDefinition;
     use pathfinder_crypto::Felt;
     use serde::{Deserialize, Serialize};
 
@@ -698,10 +697,7 @@ pub mod sierra {
     impl SierraContractClass {
         pub fn class_hash(&self) -> anyhow::Result<ComputedClassHash> {
             let definition = serde_json::to_vec(self)?;
-            let definition =
-                pathfinder_common::class_definition::SerializedOpaqueClassDefinition::from_bytes(
-                    definition,
-                );
+            let definition = SerializedOpaqueClassDefinition::from_bytes(definition);
             compute_class_hash(definition).map(|(hash, _)| hash)
         }
     }
