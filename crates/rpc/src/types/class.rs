@@ -20,7 +20,7 @@ impl ContractClass {
     ///
     /// Note that this function does not validate the class definition in any
     /// way, so this is only ever to be called for trusted data from storage.
-    pub fn try_from_serialized_definition(
+    pub fn from_serialized_def(
         serialized_definition: &SerializedOpaqueClassDefinition,
     ) -> anyhow::Result<ContractClass> {
         let mut json =
@@ -809,7 +809,7 @@ mod tests {
             ))
             .unwrap();
 
-            let class = ContractClass::try_from_serialized_definition(
+            let class = ContractClass::from_serialized_def(
                 &SerializedOpaqueClassDefinition::from_slice(CAIRO_0_11_SIERRA),
             )
             .unwrap();
@@ -823,7 +823,7 @@ mod tests {
             ))
             .unwrap();
 
-            let class = ContractClass::try_from_serialized_definition(
+            let class = ContractClass::from_serialized_def(
                 &SerializedOpaqueClassDefinition::from_slice(CONTRACT_DEFINITION),
             )
             .unwrap();
@@ -869,7 +869,7 @@ mod tests {
         fn parse_deprecated_class_definition_with_debug_info() {
             let definition =
                 include_bytes!("../../fixtures/contracts/cairo0_open_zeppelin_class.json");
-            let class = ContractClass::try_from_serialized_definition(
+            let class = ContractClass::from_serialized_def(
                 &SerializedOpaqueClassDefinition::from_slice(definition),
             )
             .unwrap();

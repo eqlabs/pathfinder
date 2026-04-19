@@ -718,7 +718,7 @@ pub(crate) mod tests {
         pub const CAIRO0_HASH: ClassHash =
             class_hash!("02c52e7084728572ea940b4df708a2684677c19fa6296de2ea7ba5327e3a84ef");
 
-        let contract_class = crate::types::ContractClass::try_from_serialized_definition(
+        let contract_class = crate::types::ContractClass::from_serialized_def(
             &SerializedOpaqueClassDefinition::from_slice(CAIRO0_DEFINITION),
         )
         .unwrap()
@@ -931,7 +931,7 @@ pub(crate) mod tests {
             };
 
             pub fn declare(account_contract_address: ContractAddress) -> BroadcastedTransaction {
-                let contract_class = crate::types::ContractClass::try_from_serialized_definition(
+                let contract_class = crate::types::ContractClass::from_serialized_def(
                     &SerializedOpaqueClassDefinition::from_slice(SIERRA_DEFINITION),
                 )
                 .unwrap()
@@ -958,7 +958,7 @@ pub(crate) mod tests {
             ) -> (BroadcastedTransaction, ClassHash) {
                 let contract_definition =
                     include_bytes!("../../fixtures/contracts/libfuncs_coverage.json");
-                let contract_class = crate::types::ContractClass::try_from_serialized_definition(
+                let contract_class = crate::types::ContractClass::from_serialized_def(
                     &SerializedOpaqueClassDefinition::from_slice(contract_definition),
                 )
                 .unwrap()

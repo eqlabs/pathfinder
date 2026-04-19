@@ -91,10 +91,9 @@ pub async fn get_compiled_casm(context: RpcContext, input: Input) -> Result<Outp
             .ok_or(Error::ClassHashNotFound(input.class_hash))?;
 
         // Parse the casm definition
-        let casm_contract_class =
-            CasmContractClass::try_from_serialized_definition(&casm_definition)
-                .context("Parsing casm definition")
-                .map_err(|_| Error::Internal(anyhow::anyhow!("Failed to parse casm definition")))?;
+        let casm_contract_class = CasmContractClass::from_serialized_def(&casm_definition)
+            .context("Parsing casm definition")
+            .map_err(|_| Error::Internal(anyhow::anyhow!("Failed to parse casm definition")))?;
 
         Ok(Output(casm_contract_class))
     });
