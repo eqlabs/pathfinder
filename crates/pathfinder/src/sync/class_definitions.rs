@@ -15,6 +15,7 @@ use pathfinder_common::class_definition::{
     ClassDefinition as GwClassDefinition,
     SerializedCairoDefinition,
     SerializedCasmDefinition,
+    SerializedClassDefinition,
     SerializedSierraDefinition,
     Sierra,
 };
@@ -37,22 +38,16 @@ use crate::sync::stream::ProcessStage;
 #[derive(Debug)]
 pub struct ClassWithLayout {
     pub block_number: BlockNumber,
-    pub definition: ClassDefinition,
+    pub definition: SerializedClassDefinition,
     pub layout: GwClassDefinition<'static>,
     pub hash: ClassHash,
-}
-
-#[derive(Debug)]
-pub(super) enum ClassDefinition {
-    Cairo(SerializedCairoDefinition),
-    Sierra(SerializedSierraDefinition),
 }
 
 #[derive(Debug)]
 pub struct Class {
     pub block_number: BlockNumber,
     pub hash: ClassHash,
-    pub definition: ClassDefinition,
+    pub definition: SerializedClassDefinition,
 }
 
 #[derive(Debug)]
@@ -157,7 +152,7 @@ fn verify_layout_impl(
             );
             Ok(ClassWithLayout {
                 block_number,
-                definition: ClassDefinition::Cairo(definition),
+                definition: SerializedClassDefinition::Cairo(definition),
                 layout,
                 hash,
             })
@@ -177,7 +172,7 @@ fn verify_layout_impl(
             );
             Ok(ClassWithLayout {
                 block_number,
-                definition: ClassDefinition::Sierra(sierra_definition),
+                definition: SerializedClassDefinition::Sierra(sierra_definition),
                 layout,
                 hash: ClassHash(hash.0),
             })
@@ -513,8 +508,8 @@ fn compile_or_fetch_impl<SequencerClient: GatewayApi + Clone + Send + 'static>(
     } = class;
 
     let definition = match definition {
-        ClassDefinition::Cairo(c) => CompiledClassDefinition::Cairo(c),
-        ClassDefinition::Sierra(sierra_definition) => {
+        SerializedClassDefinition::Cairo(c) => CompiledClassDefinition::Cairo(c),
+        SerializedClassDefinition::Sierra(sierra_definition) => {
             let casm_definition = pathfinder_compiler::compile_sierra_to_casm(
                 &sierra_definition,
                 compiler_resource_limits,
