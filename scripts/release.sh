@@ -29,16 +29,23 @@ do_sed() {
     local file=$1
     local pattern=$2
     if [[ "$(uname)" == "Darwin" ]]; then
-        sed -i '.bak' "$pattern" "$file"
+        sed -i '.bak' -E "$pattern" "$file"
         rm "${file}.bak"
     else
-        sed -i "$pattern" "$file"
+        sed -i -E "$pattern" "$file"
     fi
 }
 
-# Update CHANGELOG.md - replace "## Unreleased" with version and date
+# Update CHANGELOG.md - replace the Unreleased heading with version and date.
+# Accepts either "## Unreleased" or "## [Unreleased]" (as used by Keep a Changelog).
 CURRENT_DATE=$(date +%Y-%m-%d)
-do_sed "CHANGELOG.md" "s/## Unreleased/## [${VERSION}] - ${CURRENT_DATE}/"
+UNRELEASED_PATTERN='^## \[?Unreleased\]?[[:space:]]*$'
+if ! grep -qE "$UNRELEASED_PATTERN" CHANGELOG.md; then
+    echo "Error: Could not find an '## Unreleased' or '## [Unreleased]' heading in CHANGELOG.md"
+    echo "Please add an unreleased section before running this script."
+    exit 1
+fi
+do_sed "CHANGELOG.md" "s/${UNRELEASED_PATTERN}/## [${VERSION}] - ${CURRENT_DATE}/"
 
 # Update workspace version
 do_sed "Cargo.toml" "s/^version = \".*\"/version = \"${VERSION}\"/"
