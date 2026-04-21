@@ -109,8 +109,8 @@ pub fn compute_class_hash(
                     // It is safe to reinterpret the serialized definition as a Sierra definition
                     // since the parsing step succeeded and confirmed it is a
                     // Sierra definition.
-                    SerializedClassDefinition::Sierra(SerializedSierraDefinition::from_vec(
-                        serialized_definition.into_vec(),
+                    SerializedClassDefinition::Sierra(SerializedSierraDefinition::from(
+                        serialized_definition.into_inner(),
                     )),
                 )
             }),
@@ -122,8 +122,8 @@ pub fn compute_class_hash(
                     hash,
                     // It is safe to reinterpret the serialized definition as a Cairo definition
                     // since the parsing step succeeded and confirmed it is a Cairo definition.
-                    SerializedClassDefinition::Cairo(SerializedCairoDefinition::from_vec(
-                        serialized_definition.into_vec(),
+                    SerializedClassDefinition::Cairo(SerializedCairoDefinition::from(
+                        serialized_definition.into_inner(),
                     )),
                 )
             }),

@@ -166,12 +166,16 @@ fn get_classes_for_block(
                 .is_sierra(class_hash)?
                 .expect("Class definition exists in storage")
             {
-                SerializedClassDefinition::Sierra(SerializedSierraDefinition::from_vec(
-                    definition.into_vec(),
+                // Assumption: it is safe to reinterpret the serialized definition as a Sierra
+                // definition since there is an accompanying casm definition for the class hash.
+                SerializedClassDefinition::Sierra(SerializedSierraDefinition::from(
+                    definition.into_inner(),
                 ))
             } else {
-                SerializedClassDefinition::Cairo(SerializedCairoDefinition::from_vec(
-                    definition.into_vec(),
+                // Assumption: it is safe to reinterpret the serialized definition as a Cairo
+                // definition since there is no accompanying casm definition for the class hash.
+                SerializedClassDefinition::Cairo(SerializedCairoDefinition::from(
+                    definition.into_inner(),
                 ))
             };
 
