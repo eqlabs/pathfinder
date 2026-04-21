@@ -8462,6 +8462,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "bitvec",
+ "bytes",
  "fake",
  "metrics",
  "num-bigint 0.4.6",

@@ -142,7 +142,7 @@ fn sierra_class_as_native(
     optimization_level: cairo_native::OptLevel,
 ) -> Result<NativeCompiledClassV1, StateError> {
     let mut sierra_definition: serde_json::Value =
-        serde_json::from_slice(input.class_definition.as_bytes())
+        serde_json::from_slice(input.class_definition.as_slice())
             .map_err(|e| StateError::ProgramError(ProgramError::Parse(e)))?;
     let sierra_abi_str = sierra_definition
         .get("abi")
@@ -189,7 +189,7 @@ fn sierra_class_as_native(
     .map_err(|e| StateError::StateReadError(format!("Error compiling native class: {e}")))?;
 
     let casm_definition =
-        std::str::from_utf8(input.casm_definition.as_bytes()).map_err(|error| {
+        std::str::from_utf8(input.casm_definition.as_slice()).map_err(|error| {
             StateError::StateReadError(format!("Class definition is not valid UTF-8: {error}"))
         })?;
 

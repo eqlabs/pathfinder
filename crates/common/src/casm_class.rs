@@ -94,6 +94,6 @@ impl CasmContractClass {
     pub fn from_serialized_def(
         definition: &crate::class_definition::SerializedCasmDefinition,
     ) -> Result<Self, serde_json::Error> {
-        serde_json::from_slice(definition.as_bytes())
+        serde_json::from_slice(definition.as_slice())
     }
 }

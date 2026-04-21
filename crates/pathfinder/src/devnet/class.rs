@@ -106,7 +106,7 @@ pub fn preprocess_sierra(
 
     // Re-serialize into a storage-compatible format
     let sierra_class_ser =
-        SerializedSierraDefinition::from_bytes(serde_json::to_vec(&sierra_class_def).unwrap());
+        SerializedSierraDefinition::from_vec(serde_json::to_vec(&sierra_class_def).unwrap());
     let cairo1_class_p2p = sierra_def_to_p2p_cairo1(&sierra_class_def);
     let casm = compile_sierra_to_casm_deser(
         sierra_class_def,

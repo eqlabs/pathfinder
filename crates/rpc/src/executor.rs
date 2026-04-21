@@ -97,7 +97,7 @@ pub(crate) fn map_broadcasted_transaction(
                 .context("Serializing Cairo class to JSON")?;
 
             let contract_class = pathfinder_executor::parse_deprecated_class_definition(
-                SerializedOpaqueClassDefinition::from_bytes(contract_class_json),
+                SerializedOpaqueClassDefinition::from_vec(contract_class_json),
             )?;
 
             Some(ClassInfo::new(
@@ -114,7 +114,7 @@ pub(crate) fn map_broadcasted_transaction(
                 .context("Serializing Cairo class to JSON")?;
 
             let contract_class = pathfinder_executor::parse_deprecated_class_definition(
-                SerializedOpaqueClassDefinition::from_bytes(contract_class_json),
+                SerializedOpaqueClassDefinition::from_vec(contract_class_json),
             )?;
 
             Some(ClassInfo::new(
@@ -127,7 +127,7 @@ pub(crate) fn map_broadcasted_transaction(
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(tx)) => {
             let sierra_version =
                 SierraVersion::extract_from_program(&tx.contract_class.sierra_program)?;
-            let sierra_definition = SerializedSierraDefinition::from_bytes(
+            let sierra_definition = SerializedSierraDefinition::from_vec(
                 serde_json::to_vec(&tx.contract_class)
                     .context("Serializing Sierra class definition")?,
             );
@@ -153,7 +153,7 @@ pub(crate) fn map_broadcasted_transaction(
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V3(tx)) => {
             let sierra_version =
                 SierraVersion::extract_from_program(&tx.contract_class.sierra_program)?;
-            let sierra_definition = SerializedSierraDefinition::from_bytes(
+            let sierra_definition = SerializedSierraDefinition::from_vec(
                 serde_json::to_vec(&tx.contract_class)
                     .context("Serializing Sierra class definition")?,
             );
@@ -293,7 +293,7 @@ pub fn compose_executor_transaction(
                 .class_definition(tx.class_hash)?
                 .context("Fetching class definition")?;
             let class_definition: SierraContractClass =
-                serde_json::from_slice(class_definition.as_bytes())
+                serde_json::from_slice(class_definition.as_slice())
                     .context("Deserializing class definition")?;
             let sierra_version =
                 SierraVersion::extract_from_program(&class_definition.sierra_program)?;
@@ -315,7 +315,7 @@ pub fn compose_executor_transaction(
                 .class_definition(tx.class_hash)?
                 .context("Fetching class definition")?;
             let class_definition: SierraContractClass =
-                serde_json::from_slice(class_definition.as_bytes())
+                serde_json::from_slice(class_definition.as_slice())
                     .context("Deserializing class definition")?;
             let sierra_version =
                 SierraVersion::extract_from_program(&class_definition.sierra_program)?;

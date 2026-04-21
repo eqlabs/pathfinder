@@ -127,7 +127,7 @@ pub fn compile_sierra_to_casm(
     {
         let mut ch_stdin = child.stdin.take().context("opening child stdin")?;
         ch_stdin
-            .write_all(sierra_definition.as_bytes())
+            .write_all(sierra_definition.as_slice())
             .context("writing Sierra definition to child stdin")?;
         ch_stdin.flush().context("flushing child stdin")?;
     }
@@ -145,7 +145,7 @@ pub fn compile_sierra_to_casm(
         );
     }
 
-    Ok(SerializedCasmDefinition::from_bytes(output.stdout))
+    Ok(SerializedCasmDefinition::from_vec(output.stdout))
 }
 
 /// Compile a Sierra class definition into CASM using an isolated child process.
@@ -165,7 +165,7 @@ pub fn compile_sierra_to_casm_deser(
         .context("serializing Sierra definition")
         .map(|sierra_definition| {
             compile_sierra_to_casm(
-                &class_definition::SerializedSierraDefinition::from_bytes(sierra_definition),
+                &class_definition::SerializedSierraDefinition::from_vec(sierra_definition),
                 resource_limits,
                 blockifier_libfuncs,
             )
@@ -318,7 +318,7 @@ pub fn compile_sierra_to_casm_impl(
     // representation used by the feeder gateway for Sierra classes, so we have to
     // convert the JSON to something that can be parsed into the expected input
     // format for the compiler.
-    serde_json::from_slice::<class_definition::Sierra<'_>>(sierra_definition.as_bytes())
+    serde_json::from_slice::<class_definition::Sierra<'_>>(sierra_definition.as_slice())
         .context("Parsing Sierra class")
         .map(|sierra_class| {
             compile_sierra_to_casm_deser_impl(sierra_class, blockifier_libfuncs, max_bytecode_size)
@@ -389,7 +389,7 @@ fn parse_sierra_version(program: &[Felt]) -> anyhow::Result<SierraVersion> {
 ///
 /// Uses the _latest_ compiler for the parsing and starknet_api for the hashing.
 pub fn casm_class_hash_v2(casm_definition: &SerializedCasmDefinition) -> anyhow::Result<CasmHash> {
-    v2::casm_class_hash_v2(casm_definition.as_bytes())
+    v2::casm_class_hash_v2(casm_definition.as_slice())
 }
 
 mod v1_0_0_alpha6 {
@@ -435,7 +435,7 @@ mod v1_0_0_alpha6 {
 
         let casm_class = CasmContractClass::from_contract_class(sierra_class, true)
             .context("Compiling to CASM")?;
-        Ok(super::SerializedCasmDefinition::from_bytes(
+        Ok(super::SerializedCasmDefinition::from_vec(
             serde_json::to_vec(&casm_class)?,
         ))
     }
@@ -484,7 +484,7 @@ mod v1_0_0_rc0 {
 
         let casm_class = CasmContractClass::from_contract_class(sierra_class, true)
             .context("Compiling to CASM")?;
-        Ok(super::SerializedCasmDefinition::from_bytes(
+        Ok(super::SerializedCasmDefinition::from_vec(
             serde_json::to_vec(&casm_class)?,
         ))
     }
@@ -533,7 +533,7 @@ mod v1_1_1 {
 
         let casm_class = CasmContractClass::from_contract_class(sierra_class, true)
             .context("Compiling to CASM")?;
-        Ok(super::SerializedCasmDefinition::from_bytes(
+        Ok(super::SerializedCasmDefinition::from_vec(
             serde_json::to_vec(&casm_class)?,
         ))
     }
@@ -586,7 +586,7 @@ mod v2 {
             max_bytecode_size,
         )
         .context("Compiling to CASM")?;
-        Ok(super::SerializedCasmDefinition::from_bytes(
+        Ok(super::SerializedCasmDefinition::from_vec(
             serde_json::to_vec(&casm_class)?,
         ))
     }

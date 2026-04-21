@@ -1598,7 +1598,7 @@ mod tests {
                     db.casm_definition(ClassHash(SIERRA2_HASH.0))
                         .unwrap()
                         .unwrap()
-                        .as_bytes()
+                        .as_slice()
                 )
                 .unwrap()["compiler_version"]
                     .is_string());

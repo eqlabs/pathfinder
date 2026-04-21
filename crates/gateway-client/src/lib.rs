@@ -566,7 +566,7 @@ impl GatewayApi for Client {
             .retry(self.retry)
             .get_as_bytes()
             .await?;
-        Ok(SerializedOpaqueClassDefinition::from_bytes(bytes.to_vec()))
+        Ok(SerializedOpaqueClassDefinition::from_vec(bytes.to_vec()))
     }
 
     /// Gets CASM for a particular class hash.
@@ -584,7 +584,7 @@ impl GatewayApi for Client {
             .retry(self.retry)
             .get_as_bytes()
             .await?;
-        Ok(SerializedCasmDefinition::from_bytes(bytes.to_vec()))
+        Ok(SerializedCasmDefinition::from_vec(bytes.to_vec()))
     }
 
     /// Gets transaction status by transaction hash.

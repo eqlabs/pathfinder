@@ -166,12 +166,12 @@ fn get_classes_for_block(
                 .is_sierra(class_hash)?
                 .expect("Class definition exists in storage")
             {
-                SerializedClassDefinition::Sierra(SerializedSierraDefinition::from_bytes(
-                    definition.into_bytes(),
+                SerializedClassDefinition::Sierra(SerializedSierraDefinition::from_vec(
+                    definition.into_vec(),
                 ))
             } else {
-                SerializedClassDefinition::Cairo(SerializedCairoDefinition::from_bytes(
-                    definition.into_bytes(),
+                SerializedClassDefinition::Cairo(SerializedCairoDefinition::from_vec(
+                    definition.into_vec(),
                 ))
             };
 
@@ -190,7 +190,7 @@ fn get_classes_for_block(
         let class: Class = match class_definition {
             SerializedClassDefinition::Cairo(cairo) => {
                 let cairo_class =
-                    serde_json::from_slice::<class_definition::Cairo<'_>>(cairo.as_bytes())?;
+                    serde_json::from_slice::<class_definition::Cairo<'_>>(cairo.as_slice())?;
                 Class::Cairo0 {
                     class: cairo_class.to_dto(),
                     domain: 0, // TODO
@@ -199,7 +199,7 @@ fn get_classes_for_block(
             }
             SerializedClassDefinition::Sierra(sierra) => {
                 let sierra_class =
-                    serde_json::from_slice::<class_definition::Sierra<'_>>(sierra.as_bytes())?;
+                    serde_json::from_slice::<class_definition::Sierra<'_>>(sierra.as_slice())?;
 
                 Class::Cairo1 {
                     class: sierra_class.to_dto(),
