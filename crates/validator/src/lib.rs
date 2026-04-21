@@ -1130,7 +1130,7 @@ fn class_info(
                 .collect(),
         },
     };
-    let sierra_def = SerializedSierraDefinition::from_bytes(serde_json::to_vec(&definition)?);
+    let sierra_def = SerializedSierraDefinition::from_vec(serde_json::to_vec(&definition)?);
     let casm_def = pathfinder_compiler::compile_sierra_to_casm(
         &sierra_def,
         compiler_resource_limits,

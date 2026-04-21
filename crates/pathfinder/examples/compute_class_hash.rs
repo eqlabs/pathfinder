@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut s = Vec::new();
     std::io::stdin().read_to_end(&mut s).unwrap();
     let definition =
-        pathfinder_common::class_definition::SerializedOpaqueClassDefinition::from_bytes(s);
+        pathfinder_common::class_definition::SerializedOpaqueClassDefinition::from_vec(s);
     let (hash, _) = pathfinder_class_hash::compute_class_hash(definition)?;
     let class_hash = hash.hash();
     println!("{:x}", class_hash.0);

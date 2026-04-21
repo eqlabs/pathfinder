@@ -24,7 +24,7 @@ impl ContractClass {
         serialized_definition: &SerializedOpaqueClassDefinition,
     ) -> anyhow::Result<ContractClass> {
         let mut json =
-            serde_json::from_slice::<serde_json::Value>(serialized_definition.as_bytes())
+            serde_json::from_slice::<serde_json::Value>(serialized_definition.as_slice())
                 .context("Parsing json")?;
         let json_obj = json
             .as_object_mut()
@@ -234,7 +234,7 @@ pub mod cairo {
     impl CairoContractClass {
         pub fn class_hash(&self) -> anyhow::Result<ComputedClassHash> {
             let serialized = self.serialize_to_json()?;
-            let definition = SerializedOpaqueClassDefinition::from_bytes(serialized);
+            let definition = SerializedOpaqueClassDefinition::from_vec(serialized);
 
             compute_class_hash(definition)
                 .map(|(hash, _)| hash)
@@ -697,7 +697,7 @@ pub mod sierra {
     impl SierraContractClass {
         pub fn class_hash(&self) -> anyhow::Result<ComputedClassHash> {
             let definition = serde_json::to_vec(self)?;
-            let definition = SerializedOpaqueClassDefinition::from_bytes(definition);
+            let definition = SerializedOpaqueClassDefinition::from_vec(definition);
             compute_class_hash(definition).map(|(hash, _)| hash)
         }
     }
@@ -855,7 +855,7 @@ mod tests {
 
             let serialized_definition = contract_class.serialize_to_json().unwrap();
 
-            parse_deprecated_class_definition(SerializedOpaqueClassDefinition::from_bytes(
+            parse_deprecated_class_definition(SerializedOpaqueClassDefinition::from_vec(
                 serialized_definition,
             ))
             .unwrap();

@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::fmt;
 
+use bytes::Bytes;
 use fake::{Dummy, Fake, Faker};
 use pathfinder_crypto::Felt;
 use rand::Rng;
@@ -12,19 +13,19 @@ use crate::{ByteCodeOffset, EntryPoint};
 
 pub const CLASS_DEFINITION_MAX_ALLOWED_SIZE: u64 = 4 * 1024 * 1024;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Dummy)]
-pub struct SerializedSierraDefinition(Vec<u8>);
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct SerializedSierraDefinition(Bytes);
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Dummy)]
-pub struct SerializedCasmDefinition(Vec<u8>);
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct SerializedCasmDefinition(Bytes);
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Dummy)]
-pub struct SerializedCairoDefinition(Vec<u8>);
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct SerializedCairoDefinition(Bytes);
 
 /// Carries the definition of a serialized contract class, either Sierra or
 /// Cairo. The caller does not care which class definition it is.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Dummy)]
-pub struct SerializedOpaqueClassDefinition(Vec<u8>);
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct SerializedOpaqueClassDefinition(Bytes);
 
 /// Carries the definition of a serialized contract class, either Sierra or
 /// Cairo.
@@ -214,73 +215,73 @@ pub struct SelectorAndFunctionIndex {
 }
 
 impl SerializedSierraDefinition {
-    pub fn from_bytes(bytes: Vec<u8>) -> Self {
-        Self(bytes)
+    pub fn from_vec(bytes: Vec<u8>) -> Self {
+        Self(Bytes::from_owner(bytes))
     }
 
     pub fn from_slice(bytes: &[u8]) -> Self {
-        Self(bytes.to_vec())
+        Self(Bytes::copy_from_slice(bytes))
     }
 
-    pub fn into_bytes(self) -> Vec<u8> {
-        self.0
+    pub fn into_vec(self) -> Vec<u8> {
+        self.0.into()
     }
 
-    pub fn as_bytes(&self) -> &[u8] {
+    pub fn as_slice(&self) -> &[u8] {
         &self.0
     }
 }
 
 impl SerializedCasmDefinition {
-    pub fn from_bytes(bytes: Vec<u8>) -> Self {
-        Self(bytes)
+    pub fn from_vec(bytes: Vec<u8>) -> Self {
+        Self(Bytes::from_owner(bytes))
     }
 
     pub fn from_slice(bytes: &[u8]) -> Self {
-        Self(bytes.to_vec())
+        Self(Bytes::copy_from_slice(bytes))
     }
 
-    pub fn into_bytes(self) -> Vec<u8> {
-        self.0
+    pub fn into_vec(self) -> Vec<u8> {
+        self.0.into()
     }
 
-    pub fn as_bytes(&self) -> &[u8] {
+    pub fn as_slice(&self) -> &[u8] {
         &self.0
     }
 }
 
 impl SerializedCairoDefinition {
-    pub fn from_bytes(bytes: Vec<u8>) -> Self {
-        Self(bytes)
+    pub fn from_vec(bytes: Vec<u8>) -> Self {
+        Self(Bytes::from_owner(bytes))
     }
 
     pub fn from_slice(bytes: &[u8]) -> Self {
-        Self(bytes.to_vec())
+        Self(Bytes::copy_from_slice(bytes))
     }
 
-    pub fn into_bytes(self) -> Vec<u8> {
-        self.0
+    pub fn into_vec(self) -> Vec<u8> {
+        self.0.into()
     }
 
-    pub fn as_bytes(&self) -> &[u8] {
+    pub fn as_slice(&self) -> &[u8] {
         &self.0
     }
 }
 
 impl SerializedOpaqueClassDefinition {
-    pub fn from_bytes(bytes: Vec<u8>) -> Self {
-        Self(bytes)
+    pub fn from_vec(bytes: Vec<u8>) -> Self {
+        Self(Bytes::from_owner(bytes))
     }
 
     pub fn from_slice(bytes: &[u8]) -> Self {
-        Self(bytes.to_vec())
+        Self(Bytes::copy_from_slice(bytes))
     }
 
-    pub fn into_bytes(self) -> Vec<u8> {
-        self.0
+    pub fn into_vec(self) -> Vec<u8> {
+        self.0.into()
     }
 
-    pub fn as_bytes(&self) -> &[u8] {
+    pub fn as_slice(&self) -> &[u8] {
         &self.0
     }
 }
@@ -288,13 +289,37 @@ impl SerializedOpaqueClassDefinition {
 /// We can use `From` because this is always safe.
 impl From<SerializedSierraDefinition> for SerializedOpaqueClassDefinition {
     fn from(d: SerializedSierraDefinition) -> Self {
-        Self::from_bytes(d.into_bytes())
+        Self::from_vec(d.into_vec())
     }
 }
 
 /// We can use `From` because this is always safe.
 impl From<SerializedCairoDefinition> for SerializedOpaqueClassDefinition {
     fn from(d: SerializedCairoDefinition) -> Self {
-        Self::from_bytes(d.into_bytes())
+        Self::from_vec(d.into_vec())
+    }
+}
+
+impl<T> Dummy<T> for SerializedSierraDefinition {
+    fn dummy_with_rng<R: rand::prelude::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        Self(Bytes::from(Faker.fake_with_rng::<Vec<u8>, R>(rng)))
+    }
+}
+
+impl<T> Dummy<T> for SerializedCasmDefinition {
+    fn dummy_with_rng<R: rand::prelude::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        Self(Bytes::from(Faker.fake_with_rng::<Vec<u8>, R>(rng)))
+    }
+}
+
+impl<T> Dummy<T> for SerializedCairoDefinition {
+    fn dummy_with_rng<R: rand::prelude::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        Self(Bytes::from(Faker.fake_with_rng::<Vec<u8>, R>(rng)))
+    }
+}
+
+impl<T> Dummy<T> for SerializedOpaqueClassDefinition {
+    fn dummy_with_rng<R: rand::prelude::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        Self(Bytes::from(Faker.fake_with_rng::<Vec<u8>, R>(rng)))
     }
 }

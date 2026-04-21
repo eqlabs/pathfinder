@@ -27,10 +27,10 @@ impl Transaction<'_> {
     ) -> anyhow::Result<()> {
         let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
         let compressed_sierra_definition = compressor
-            .compress(sierra_definition.as_bytes())
+            .compress(sierra_definition.as_slice())
             .context("Compressing sierra definition")?;
         let compressed_casm_definition = compressor
-            .compress(casm_definition.as_bytes())
+            .compress(casm_definition.as_slice())
             .context("Compressing casm definition")?;
 
         self.inner()
@@ -82,10 +82,10 @@ impl Transaction<'_> {
     ) -> anyhow::Result<()> {
         let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
         let compressed_sierra_definition = compressor
-            .compress(sierra_definition.as_bytes())
+            .compress(sierra_definition.as_slice())
             .context("Compressing sierra definition")?;
         let compressed_casm_definition = compressor
-            .compress(casm_definition.as_bytes())
+            .compress(casm_definition.as_slice())
             .context("Compressing casm definition")?;
 
         self.inner()
@@ -128,7 +128,7 @@ impl Transaction<'_> {
     ) -> anyhow::Result<()> {
         let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
         let compressed_definition = compressor
-            .compress(definition.as_bytes())
+            .compress(definition.as_slice())
             .context("Compressing cairo definition")?;
 
         self.inner()
@@ -150,7 +150,7 @@ impl Transaction<'_> {
     ) -> anyhow::Result<()> {
         let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
         let compressed_definition = compressor
-            .compress(definition.as_bytes())
+            .compress(definition.as_slice())
             .context("Compressing cairo definition")?;
 
         self.inner()
@@ -217,7 +217,7 @@ impl Transaction<'_> {
 
         Ok(Some((
             block_number,
-            SerializedOpaqueClassDefinition::from_bytes(definition),
+            SerializedOpaqueClassDefinition::from_vec(definition),
         )))
     }
 
@@ -291,7 +291,7 @@ impl Transaction<'_> {
         };
         let definition =
             zstd::decode_all(definition.as_slice()).context("Decompressing class definition")?;
-        let definition = SerializedOpaqueClassDefinition::from_bytes(definition);
+        let definition = SerializedOpaqueClassDefinition::from_vec(definition);
 
         Ok(Some((block_number, definition)))
     }
@@ -319,7 +319,7 @@ impl Transaction<'_> {
         let definition = zstd::decode_all(definition.as_slice())
             .context("Decompressing compiled class definition")?;
 
-        Ok(Some(SerializedCasmDefinition::from_bytes(definition)))
+        Ok(Some(SerializedCasmDefinition::from_vec(definition)))
     }
 
     /// Returns the uncompressed compiled class definition, as well as the block
@@ -360,7 +360,7 @@ impl Transaction<'_> {
 
         Ok(Some((
             block_number,
-            SerializedCasmDefinition::from_bytes(definition),
+            SerializedCasmDefinition::from_vec(definition),
         )))
     }
 
@@ -448,7 +448,7 @@ impl Transaction<'_> {
 
         Ok(Some((
             block_number,
-            SerializedCasmDefinition::from_bytes(definition),
+            SerializedCasmDefinition::from_vec(definition),
         )))
     }
 

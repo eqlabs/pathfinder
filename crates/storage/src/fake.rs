@@ -343,7 +343,7 @@ pub mod generate {
                         &Faker.fake_with_rng::<class_definition::Cairo<'_>, _>(rng),
                     )
                     .unwrap();
-                    let def = SerializedOpaqueClassDefinition::from_bytes(def);
+                    let def = SerializedOpaqueClassDefinition::from_vec(def);
                     let (hash, def) = compute_class_hash(def).unwrap();
                     let SerializedClassDefinition::Cairo(def) = def else {
                         panic!("Expected a Cairo class definition");
@@ -357,13 +357,13 @@ pub mod generate {
                         &Faker.fake_with_rng::<class_definition::Sierra<'_>, _>(rng),
                     )
                     .unwrap();
-                    let def = SerializedOpaqueClassDefinition::from_bytes(def);
+                    let def = SerializedOpaqueClassDefinition::from_vec(def);
                     let (hash, sierra_def) = compute_class_hash(def).unwrap();
                     let SerializedClassDefinition::Sierra(sierra_def) = sierra_def else {
                         panic!("Expected a Sierra class definition");
                     };
                     let hash = SierraHash(hash.hash().0);
-                    let casm_def = SerializedCasmDefinition::from_bytes(
+                    let casm_def = SerializedCasmDefinition::from_vec(
                         Faker.fake_with_rng::<String, _>(rng).into_bytes(),
                     );
                     (

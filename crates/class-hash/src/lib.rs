@@ -109,8 +109,8 @@ pub fn compute_class_hash(
                     // It is safe to reinterpret the serialized definition as a Sierra definition
                     // since the parsing step succeeded and confirmed it is a
                     // Sierra definition.
-                    SerializedClassDefinition::Sierra(SerializedSierraDefinition::from_bytes(
-                        serialized_definition.into_bytes(),
+                    SerializedClassDefinition::Sierra(SerializedSierraDefinition::from_vec(
+                        serialized_definition.into_vec(),
                     )),
                 )
             }),
@@ -122,8 +122,8 @@ pub fn compute_class_hash(
                     hash,
                     // It is safe to reinterpret the serialized definition as a Cairo definition
                     // since the parsing step succeeded and confirmed it is a Cairo definition.
-                    SerializedClassDefinition::Cairo(SerializedCairoDefinition::from_bytes(
-                        serialized_definition.into_bytes(),
+                    SerializedClassDefinition::Cairo(SerializedCairoDefinition::from_vec(
+                        serialized_definition.into_vec(),
                     )),
                 )
             }),
@@ -166,11 +166,11 @@ pub fn compute_cairo_hinted_class_hash(
 fn parse_contract_definition(
     serialized_definition: &SerializedOpaqueClassDefinition,
 ) -> serde_json::Result<json::ContractDefinition<'_>> {
-    serde_json::from_slice::<json::SierraContractDefinition<'_>>(serialized_definition.as_bytes())
+    serde_json::from_slice::<json::SierraContractDefinition<'_>>(serialized_definition.as_slice())
         .map(json::ContractDefinition::Sierra)
         .or_else(|_| {
             serde_json::from_slice::<json::CairoContractDefinition<'_>>(
-                serialized_definition.as_bytes(),
+                serialized_definition.as_slice(),
             )
             .map(json::ContractDefinition::Cairo)
         })

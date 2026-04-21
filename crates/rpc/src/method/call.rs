@@ -716,7 +716,7 @@ mod tests {
             .unwrap();
             tx.insert_sierra_class_definition(
                 &caller_sierra_hash,
-                &SerializedSierraDefinition::from_bytes(caller_sierra_definition),
+                &SerializedSierraDefinition::from_vec(caller_sierra_definition),
                 &SerializedCasmDefinition::from_slice(caller_casm_definition),
                 &caller_casm_hash_v2,
             )

@@ -145,7 +145,7 @@ fn verify_layout_impl(
             hash,
         } => {
             let layout = GwClassDefinition::Cairo(
-                serde_json::from_slice::<Cairo<'_>>(definition.as_bytes()).map_err(|error| {
+                serde_json::from_slice::<Cairo<'_>>(definition.as_slice()).map_err(|error| {
                     tracing::debug!(%peer, %block_number, %error, "Bad class layout");
                     SyncError::BadClassLayout(*peer)
                 })?,
@@ -163,7 +163,7 @@ fn verify_layout_impl(
             hash,
         } => {
             let layout = GwClassDefinition::Sierra(
-                serde_json::from_slice::<Sierra<'_>>(sierra_definition.as_bytes()).map_err(
+                serde_json::from_slice::<Sierra<'_>>(sierra_definition.as_slice()).map_err(
                     |error| {
                         tracing::debug!(%peer, %block_number, %error, "Bad class layout");
                         SyncError::BadClassLayout(*peer)

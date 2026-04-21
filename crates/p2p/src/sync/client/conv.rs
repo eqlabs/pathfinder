@@ -954,7 +954,7 @@ impl TryFromDto<p2p_proto::class::Cairo0Class> for SerializedCairoDefinition {
         };
         let class_def =
             serde_json::to_vec(&class_def).context("serialize cairo class definition")?;
-        Ok(Self::from_bytes(class_def))
+        Ok(Self::from_vec(class_def))
     }
 }
 
@@ -1017,7 +1017,7 @@ impl TryFromDto<p2p_proto::class::Cairo1Class> for SerializedSierraDefinition {
 
         let sierra = serde_json::to_vec(&sierra).context("serialize sierra class definition")?;
 
-        Ok(Self::from_bytes(sierra))
+        Ok(Self::from_vec(sierra))
     }
 }
 

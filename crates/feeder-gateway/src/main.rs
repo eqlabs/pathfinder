@@ -509,7 +509,7 @@ async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyh
 
                     match class {
                         Ok(class) => {
-                            let response = warp::http::Response::builder().header("content-type", "application/json").body(class.into_bytes()).unwrap();
+                            let response = warp::http::Response::builder().header("content-type", "application/json").body(class.into_vec()).unwrap();
                             Result::<_, Infallible>::Ok(response)
                         },
                         Err(_) => {
@@ -550,7 +550,7 @@ async fn serve(cli: Cli, storage_rx: Receiver<Option<(Storage, Chain)>>) -> anyh
 
                     match compiled_class {
                         Ok(compiled_class) => {
-                            let response = warp::http::Response::builder().header("content-type", "application/json").body(compiled_class.into_bytes()).unwrap();
+                            let response = warp::http::Response::builder().header("content-type", "application/json").body(compiled_class.into_vec()).unwrap();
                             Result::<_, Infallible>::Ok(response)
                         },
                         Err(_) => {
