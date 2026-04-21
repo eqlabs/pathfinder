@@ -232,6 +232,12 @@ impl SerializedSierraDefinition {
     }
 }
 
+impl From<Bytes> for SerializedSierraDefinition {
+    fn from(bytes: Bytes) -> Self {
+        Self(bytes)
+    }
+}
+
 impl SerializedCasmDefinition {
     pub fn from_vec(bytes: Vec<u8>) -> Self {
         Self(Bytes::from_owner(bytes))
@@ -268,6 +274,12 @@ impl SerializedCairoDefinition {
     }
 }
 
+impl From<Bytes> for SerializedCairoDefinition {
+    fn from(bytes: Bytes) -> Self {
+        Self(bytes)
+    }
+}
+
 impl SerializedOpaqueClassDefinition {
     pub fn from_vec(bytes: Vec<u8>) -> Self {
         Self(Bytes::from_owner(bytes))
@@ -283,6 +295,10 @@ impl SerializedOpaqueClassDefinition {
 
     pub fn as_slice(&self) -> &[u8] {
         &self.0
+    }
+
+    pub fn into_inner(self) -> Bytes {
+        self.0
     }
 }
 
