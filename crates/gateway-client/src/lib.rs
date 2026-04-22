@@ -128,9 +128,6 @@ pub trait GatewayApi: Sync {
         unimplemented!();
     }
 
-    /// This is a **temporary** measure to keep the sync logic unchanged
-    ///
-    /// TODO remove when p2p friendly sync is implemented
     async fn head(&self) -> Result<(BlockNumber, BlockHash), SequencerError> {
         self.block_header(BlockId::Latest).await
     }
