@@ -541,18 +541,6 @@ pub fn spawn(
                     // execution needs to be finalized and the resulting block has to be committed
                     // to the main database.
                     P2PTaskEvent::MarkBlockAsDecidedAndCleanUp(height_and_round, value) => {
-                        // We do not have to commit these blocks to the main database
-                        // anymore because they are being stored by the sync task (if enabled).
-                        //
-                        // TODO: Once we are ready to get rid of fake proposals, consider storing
-                        // recently decided-upon blocks in memory (instead of a database) as
-                        // "decided".
-                        //
-                        // NOTE: The main database still gets the state updates via consensus,
-                        // which is the only reason why we still need the main database here at
-                        // all. I could get it to work with only the consensus database in all
-                        // scenarios except for when the node is chosen as a proposer and needs
-                        // to cache the proposal for later.
                         tracing::info!(
                             "🖧  💾 {validator_address} Marking block at {height_and_round} as \
                              decided and cleaning up ..."
