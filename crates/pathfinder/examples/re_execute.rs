@@ -4,7 +4,7 @@ use anyhow::Context;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockHeader, BlockId, BlockNumber, ChainId};
-use pathfinder_executor::{ExecutionState, NativeClassCache};
+use pathfinder_executor::{ExecutionState, NativeClassCache, TryIntoStarkFee as _};
 use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
 use pathfinder_storage::Storage;
 use rayon::prelude::*;
@@ -191,9 +191,11 @@ fn execute(
                     tracing::warn!(block_number=%work.header.number, transaction_hash=%receipt.transaction_hash, ?simulated_revert_reason, ?actual_revert_reason, "Revert status differs");
                 }
 
-                let actual_fee = u128::from_be_bytes(
-                    receipt.actual_fee.0.to_be_bytes()[16..].try_into().unwrap(),
-                );
+                let actual_fee = receipt
+                    .actual_fee
+                    .try_into_starkfee()
+                    .expect("Fee fits into u128")
+                    .0;
 
                 // L1 handler transactions have a fee of zero in the receipt.
                 if actual_fee == 0 {
