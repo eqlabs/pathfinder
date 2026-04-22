@@ -30,10 +30,9 @@ use starknet_api::transaction::fields::{
     ValidResourceBounds,
 };
 
-use super::felt::IntoFelt;
 use crate::execution_state::PathfinderExecutionState;
 use crate::state_reader::StorageAdapter;
-use crate::IntoStarkFelt as _;
+use crate::{IntoFee as _, IntoFelt, IntoStarkFelt as _, TryIntoStarkFee as _};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Receipt {
@@ -1017,7 +1016,7 @@ pub(crate) fn to_receipt_and_events(
     versioned_constants: &VersionedConstants,
     gas_vector_computation_mode: &GasVectorComputationMode,
 ) -> anyhow::Result<(Receipt, Vec<pathfinder_common::event::Event>)> {
-    let actual_fee = Fee(Felt::from_u128(execution_info.receipt.fee.0));
+    let actual_fee = execution_info.receipt.fee.into_fee();
     let execution_info = to_execution_info(
         transaction_type,
         execution_info,
@@ -1380,14 +1379,12 @@ pub(crate) fn to_execution_info(
 pub fn to_starknet_api_transaction(
     variant: TransactionVariant,
 ) -> anyhow::Result<starknet_api::transaction::Transaction> {
-    use starknet_api::transaction::fields::{ContractAddressSalt, Fee, Tip};
+    use starknet_api::transaction::fields::{ContractAddressSalt, Tip};
 
     match variant {
         TransactionVariant::DeclareV0(tx) => {
             let tx = starknet_api::transaction::DeclareTransactionV0V1 {
-                max_fee: Fee(u128::from_be_bytes(
-                    tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
-                )),
+                max_fee: tx.max_fee.try_into_starkfee()?,
                 signature: TransactionSignature(Arc::new(
                     tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
                 )),
@@ -1405,9 +1402,7 @@ pub fn to_starknet_api_transaction(
         }
         TransactionVariant::DeclareV1(tx) => {
             let tx = starknet_api::transaction::DeclareTransactionV0V1 {
-                max_fee: Fee(u128::from_be_bytes(
-                    tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
-                )),
+                max_fee: tx.max_fee.try_into_starkfee()?,
                 signature: TransactionSignature(Arc::new(
                     tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
                 )),
@@ -1425,9 +1420,7 @@ pub fn to_starknet_api_transaction(
         }
         TransactionVariant::DeclareV2(tx) => {
             let tx = starknet_api::transaction::DeclareTransactionV2 {
-                max_fee: Fee(u128::from_be_bytes(
-                    tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
-                )),
+                max_fee: tx.max_fee.try_into_starkfee()?,
                 signature: TransactionSignature(Arc::new(
                     tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
                 )),
@@ -1494,9 +1487,7 @@ pub fn to_starknet_api_transaction(
         TransactionVariant::DeployAccountV1(tx) => {
             let tx = starknet_api::transaction::DeployAccountTransaction::V1(
                 starknet_api::transaction::DeployAccountTransactionV1 {
-                    max_fee: Fee(u128::from_be_bytes(
-                        tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
-                    )),
+                    max_fee: tx.max_fee.try_into_starkfee()?,
                     signature: TransactionSignature(Arc::new(
                         tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
                     )),
@@ -1559,10 +1550,7 @@ pub fn to_starknet_api_transaction(
         }
         TransactionVariant::InvokeV0(tx) => {
             let tx = starknet_api::transaction::InvokeTransactionV0 {
-                // TODO: maybe we should store tx.max_fee as u128 internally?
-                max_fee: Fee(u128::from_be_bytes(
-                    tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
-                )),
+                max_fee: tx.max_fee.try_into_starkfee()?,
                 signature: TransactionSignature(Arc::new(
                     tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
                 )),
@@ -1584,10 +1572,7 @@ pub fn to_starknet_api_transaction(
         }
         TransactionVariant::InvokeV1(tx) => {
             let tx = starknet_api::transaction::InvokeTransactionV1 {
-                // TODO: maybe we should store tx.max_fee as u128 internally?
-                max_fee: Fee(u128::from_be_bytes(
-                    tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
-                )),
+                max_fee: tx.max_fee.try_into_starkfee()?,
                 signature: TransactionSignature(Arc::new(
                     tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
                 )),

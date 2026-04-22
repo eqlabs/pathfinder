@@ -5,6 +5,7 @@ pub(crate) mod error;
 pub(crate) mod error_stack;
 pub(crate) mod estimate;
 pub(crate) mod execution_state;
+pub(crate) mod fee;
 pub(crate) mod felt;
 pub(crate) mod lru_cache;
 pub(crate) mod pending;
@@ -33,6 +34,7 @@ pub use execution_state::{
     PathfinderExecutionState,
     VersionedConstantsMap,
 };
+pub use fee::{IntoFee, TryIntoStarkFee};
 pub use felt::{IntoFelt, IntoStarkFelt};
 pub use simulate::{simulate, trace, BlockTraces, TraceCache, TransactionTraces};
 pub use starknet_api::contract_class::ClassInfo;
