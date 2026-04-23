@@ -312,6 +312,7 @@ mod spawn {
 pub fn compile_sierra_to_casm_impl(
     sierra_definition: &class_definition::SerializedSierraDefinition,
     blockifier_libfuncs: BlockifierLibfuncs,
+    max_bytecode_size: usize,
 ) -> anyhow::Result<SerializedCasmDefinition> {
     // The class representation expected by the compiler doesn't match the
     // representation used by the feeder gateway for Sierra classes, so we have to
@@ -319,7 +320,9 @@ pub fn compile_sierra_to_casm_impl(
     // format for the compiler.
     serde_json::from_slice::<class_definition::Sierra<'_>>(sierra_definition.as_bytes())
         .context("Parsing Sierra class")
-        .map(|sierra_class| compile_sierra_to_casm_deser_impl(sierra_class, blockifier_libfuncs))?
+        .map(|sierra_class| {
+            compile_sierra_to_casm_deser_impl(sierra_class, blockifier_libfuncs, max_bytecode_size)
+        })?
         .context("Compiling Sierra to CASM")
 }
 
@@ -331,6 +334,7 @@ pub fn compile_sierra_to_casm_impl(
 pub fn compile_sierra_to_casm_deser_impl(
     sierra_definition: class_definition::Sierra<'_>,
     blockifier_libfuncs: BlockifierLibfuncs,
+    max_bytecode_size: usize,
 ) -> anyhow::Result<SerializedCasmDefinition> {
     let version = parse_sierra_version(&sierra_definition.sierra_program)
         .context("Parsing Sierra version")?;
@@ -340,7 +344,7 @@ pub fn compile_sierra_to_casm_deser_impl(
         SierraVersion(0, 1, 0) => v1_0_0_alpha6::compile(sierra_definition),
         SierraVersion(1, 0, 0) => v1_0_0_rc0::compile(sierra_definition),
         SierraVersion(1, 1, 0) => v1_1_1::compile(sierra_definition),
-        _ => v2::compile(sierra_definition, blockifier_libfuncs),
+        _ => v2::compile(sierra_definition, blockifier_libfuncs, max_bytecode_size),
     });
     tracing::trace!(elapsed=?started_at.elapsed(), "Sierra class compilation finished");
 
@@ -558,6 +562,7 @@ mod v2 {
     pub(super) fn compile(
         definition: crate::class_definition::Sierra<'_>,
         blockifier_libfuncs: BlockifierLibfuncs,
+        max_bytecode_size: usize,
     ) -> anyhow::Result<super::SerializedCasmDefinition> {
         let sierra_class: ContractClass = pathfinder_to_starknet_contract_class(definition)
             .context("Converting to Sierra class")?;
@@ -574,12 +579,11 @@ mod v2 {
             )
             .context("Validating Sierra class")?;
 
-        // TODO: determine `max_bytecode_size`
         let casm_class = CasmContractClass::from_contract_class(
             sierra_class,
             extracted_sierra_program,
             true,
-            usize::MAX,
+            max_bytecode_size,
         )
         .context("Compiling to CASM")?;
         Ok(super::SerializedCasmDefinition::from_bytes(
@@ -660,6 +664,8 @@ mod tests {
                     CAIRO_1_0_0_ALPHA5_SIERRA,
                 ),
                 BlockifierLibfuncs::default(),
+                // Note: max_bytecode_size is relevant only for >=v2 compiler
+                0usize,
             )
             .unwrap();
         }
@@ -688,6 +694,8 @@ mod tests {
             compile_sierra_to_casm_impl(
                 &class_definition::SerializedSierraDefinition::from_slice(CAIRO_1_0_0_RC0_SIERRA),
                 BlockifierLibfuncs::default(),
+                // Note: max_bytecode_size is relevant only for >=v2 compiler
+                0usize,
             )
             .unwrap();
         }
@@ -719,6 +727,8 @@ mod tests {
             compile_sierra_to_casm_impl(
                 &class_definition::SerializedSierraDefinition::from_slice(CAIRO_1_1_0_RC0_SIERRA),
                 BlockifierLibfuncs::default(),
+                // Note: max_bytecode_size is relevant only for >=v2 compiler
+                0,
             )
             .unwrap();
         }
@@ -731,6 +741,8 @@ mod tests {
                     CAIRO_2_0_0_STACK_OVERFLOW,
                 ),
                 BlockifierLibfuncs::default(),
+                // The default for mainnet & sepolia
+                81920,
             )
             .unwrap();
         }
