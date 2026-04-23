@@ -611,6 +611,15 @@ The default is suitable for all uses except testing.",
         env = "PATHFINDER_BLOCKIFIER_LIBFUNC_LIST"
     )]
     pub blockifier_libfuncs: BlockifierLibfuncs,
+
+    #[arg(
+        long = "max-bytecode-size",
+        long_help = "Maximum allowed bytecode size for Starknet programs.",
+        default_value = "81920",
+        value_name = "bytes",
+        env = "PATHFINDER_MAX_BYTECODE_SIZE"
+    )]
+    pub max_bytecode_size: usize,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
