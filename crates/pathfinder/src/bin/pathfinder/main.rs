@@ -591,6 +591,7 @@ fn compile_main(config: CompileConfig) -> anyhow::Result<()> {
     let casm = pathfinder_compiler::compile_sierra_to_casm_impl(
         &sierra_definition,
         config.blockifier_libfuncs.into(),
+        config.max_bytecode_size,
     )
     .context("compiling Sierra to CASM")?;
 
