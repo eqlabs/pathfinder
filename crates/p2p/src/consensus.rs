@@ -234,7 +234,6 @@ mod tests {
     use libp2p::identity::Keypair;
     use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
     use p2p_proto::consensus::{
-        BlockInfo,
         ProposalFin,
         ProposalInit,
         ProposalPart,
@@ -260,8 +259,11 @@ mod tests {
         let height_and_round: HeightAndRound = (1, 2).into();
 
         // Create a sample proposal
-        let block_info = BlockInfo {
+        let proposal_init = ProposalInit {
             height: 100,
+            round: 2,
+            valid_round: Some(1),
+            proposer: Address(Felt::from_hex_str("0x123").unwrap()),
             timestamp: 1234567890,
             builder: Address(Felt::from_hex_str("0x456").unwrap()),
             l1_da_mode: L1DataAvailabilityMode::Calldata,
@@ -270,8 +272,10 @@ mod tests {
             l1_data_gas_price_fri: 3000,
             l1_gas_price_wei: 4000,
             l1_data_gas_price_wei: 5000,
+            starknet_version: "".to_string(),
+            version_constant_commitment: Default::default(),
         };
-        let proposal = ProposalPart::BlockInfo(block_info);
+        let proposal = ProposalPart::Init(proposal_init);
 
         // Create messages
         let messages =
@@ -301,8 +305,11 @@ mod tests {
         let height_and_round: HeightAndRound = (1, 2).into();
 
         // Create a sample proposal
-        let block_info = BlockInfo {
+        let proposal_init = ProposalInit {
             height: 100,
+            round: 2,
+            valid_round: Some(1),
+            proposer: Address(Felt::from_hex_str("0x123").unwrap()),
             timestamp: 1234567890,
             builder: Address(Felt::from_hex_str("0x456").unwrap()),
             l1_da_mode: L1DataAvailabilityMode::Calldata,
@@ -311,8 +318,10 @@ mod tests {
             l1_data_gas_price_fri: 3000,
             l1_gas_price_wei: 4000,
             l1_data_gas_price_wei: 5000,
+            starknet_version: "".to_string(),
+            version_constant_commitment: Default::default(),
         };
-        let proposal = ProposalPart::BlockInfo(block_info);
+        let proposal = ProposalPart::Init(proposal_init);
 
         // Create a message
         let message = StreamMessage {
@@ -496,6 +505,7 @@ mod tests {
                 round: 1,
                 proposal_commitment: Some(Hash(Felt::from_hex_str("0x123").unwrap())),
                 voter: Address(Felt::from_hex_str("0x456").unwrap()),
+                signature: Default::default(),
             },
             Vote {
                 vote_type: VoteType::Precommit,
@@ -503,6 +513,7 @@ mod tests {
                 round: 1,
                 proposal_commitment: Some(Hash(Felt::from_hex_str("0x789").unwrap())),
                 voter: Address(Felt::from_hex_str("0xabc").unwrap()),
+                signature: Default::default(),
             },
             Vote {
                 vote_type: VoteType::Prevote,
@@ -510,6 +521,7 @@ mod tests {
                 round: 2,
                 proposal_commitment: None, // NIL vote
                 voter: Address(Felt::from_hex_str("0xdef").unwrap()),
+                signature: Default::default(),
             },
         ];
         let mut rxs = Vec::new();
@@ -584,13 +596,8 @@ mod tests {
         stream.push(ProposalPart::Init(ProposalInit {
             height,
             round,
-            proposer: p2p_proto::common::Address(Felt::from_hex_str("0x123").unwrap()),
             valid_round: None,
-        }));
-
-        // BlockInfo
-        stream.push(ProposalPart::BlockInfo(BlockInfo {
-            height,
+            proposer: p2p_proto::common::Address(Felt::from_hex_str("0x123").unwrap()),
             timestamp: 1234567890 + base,
             builder: p2p_proto::common::Address(Felt::from_hex_str("0x456").unwrap()),
             l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
@@ -599,6 +606,8 @@ mod tests {
             l1_data_gas_price_fri: 3000 + base as u128,
             l1_gas_price_wei: 4000 + base as u128,
             l1_data_gas_price_wei: 5000 + base as u128,
+            starknet_version: "".to_string(),
+            version_constant_commitment: Default::default(),
         }));
 
         // TransactionBatch (send a few)
@@ -621,6 +630,8 @@ mod tests {
         // ProposalFin
         stream.push(ProposalPart::Fin(ProposalFin {
             proposal_commitment: p2p_proto::common::Hash(Felt::from_hex_str("0x69420abc").unwrap()),
+            executed_transaction_count: 3,
+            fin_payload: None,
         }));
 
         ((height, round), stream)

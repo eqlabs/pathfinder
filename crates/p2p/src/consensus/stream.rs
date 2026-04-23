@@ -140,8 +140,11 @@ mod tests {
     #[test]
     fn test_encode_decode() {
         // Create a sample ProposalPart
-        let block_info = p2p_proto::consensus::BlockInfo {
+        let proposal_init = p2p_proto::consensus::ProposalInit {
             height: 100,
+            round: 2,
+            valid_round: Some(1),
+            proposer: Address(Felt::from_hex_str("0x123").unwrap()),
             timestamp: 1234567890,
             builder: Address(Felt::from_hex_str("0x456").unwrap()),
             l1_da_mode: L1DataAvailabilityMode::Calldata,
@@ -150,8 +153,10 @@ mod tests {
             l1_data_gas_price_fri: 3000,
             l1_gas_price_wei: 4000,
             l1_data_gas_price_wei: 5000,
+            starknet_version: "".to_string(),
+            version_constant_commitment: Default::default(),
         };
-        let proposal = p2p_proto::consensus::ProposalPart::BlockInfo(block_info);
+        let proposal = p2p_proto::consensus::ProposalPart::Init(proposal_init);
 
         // Create a StreamMessage with the ProposalPart
         let stream_message = StreamMessage {

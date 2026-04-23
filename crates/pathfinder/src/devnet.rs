@@ -12,7 +12,7 @@ use std::time::{Instant, SystemTime};
 use anyhow::{Context, Ok};
 use p2p::sync::client::conv::ToDto as _;
 use p2p_proto::common::{Address, Hash};
-use p2p_proto::consensus::{BlockInfo, ProposalInit, ProposalPart};
+use p2p_proto::consensus::{ProposalInit, ProposalPart};
 use p2p_proto::sync::transaction::DeclareV3WithoutClass;
 use pathfinder_block_commitments::compute_final_hash;
 use pathfinder_common::state_update::StateUpdateData;
@@ -374,13 +374,21 @@ pub fn init_proposal_and_validator(
         round,
         valid_round: None,
         proposer,
+        timestamp: strictly_increasing_timestamp(prev_timestamp).get(),
+        builder: proposer,
+        l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
+        l2_gas_price_fri: GAS_PRICE.0,
+        l1_gas_price_fri: GAS_PRICE.0,
+        l1_data_gas_price_fri: GAS_PRICE.0,
+        l1_gas_price_wei: GAS_PRICE.0,
+        l1_data_gas_price_wei: GAS_PRICE.0,
+        starknet_version: "".to_string(),
+        version_constant_commitment: Hash::ZERO,
     };
-    let block_info = block_info(height, proposer, prev_timestamp);
     let validator = ValidatorBlockInfoStage::new(ChainId::SEPOLIA_TESTNET, proposal_init.clone())
         .expect("valid block height");
 
     let validator = validator.validate_block_info(
-        block_info.clone(),
         storage.clone(),
         DecidedBlocks::default(),
         None,
@@ -388,33 +396,7 @@ pub fn init_proposal_and_validator(
         None,
         worker_pool.clone(),
     )?;
-    Ok((
-        validator,
-        vec![
-            ProposalPart::Init(proposal_init),
-            ProposalPart::BlockInfo(block_info),
-        ],
-    ))
-}
-
-/// Block info for devnet blocks, sufficient for execution, provided that gas
-/// prices are not validated against any oracle.
-fn block_info(
-    height: BlockNumber,
-    proposer: Address,
-    prev_timestamp: Option<BlockTimestamp>,
-) -> BlockInfo {
-    BlockInfo {
-        height: height.get(),
-        builder: proposer,
-        timestamp: strictly_increasing_timestamp(prev_timestamp).get(),
-        l1_gas_price_fri: GAS_PRICE.0,
-        l1_data_gas_price_fri: GAS_PRICE.0,
-        l2_gas_price_fri: GAS_PRICE.0,
-        l1_gas_price_wei: GAS_PRICE.0,
-        l1_data_gas_price_wei: GAS_PRICE.0,
-        l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
-    }
+    Ok((validator, vec![ProposalPart::Init(proposal_init)]))
 }
 
 #[cfg(test)]

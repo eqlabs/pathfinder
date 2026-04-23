@@ -107,18 +107,10 @@ pub fn debug_fail_on_proposal_part(
             matches!(
                 (proposal_part, trigger),
                 (ProposalPart::Init(_), InjectFailureTrigger::ProposalInitRx)
-                    | (
-                        ProposalPart::BlockInfo(_),
-                        InjectFailureTrigger::BlockInfoRx
-                    )
                     | (ProposalPart::Fin(_), InjectFailureTrigger::ProposalFinRx)
                     | (
                         ProposalPart::TransactionBatch(_),
                         InjectFailureTrigger::TransactionBatchRx
-                    )
-                    | (
-                        ProposalPart::ExecutedTransactionCount(_),
-                        InjectFailureTrigger::ExecutedTransactionCountRx
                     )
             )
         },

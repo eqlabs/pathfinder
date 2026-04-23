@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
-use p2p_proto::consensus::{BlockInfo, ProposalFin, ProposalInit, ProposalPart};
+use p2p_proto::consensus::{ProposalFin, ProposalInit, ProposalPart};
 use pathfinder_common::{
     BlockId,
     BlockNumber,
@@ -272,11 +272,10 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
     worker_pool.join();
 
     parts.extend(batches.into_iter().map(ProposalPart::TransactionBatch));
-    parts.push(ProposalPart::ExecutedTransactionCount(
-        num_executed_txns as u64,
-    ));
     parts.push(ProposalPart::Fin(ProposalFin {
         proposal_commitment: Hash(block.header.state_diff_commitment.0),
+        executed_transaction_count: num_executed_txns as u64,
+        fin_payload: None,
     }));
 
     Ok((parts, block))
@@ -345,32 +344,24 @@ pub(crate) fn create_with_invalid_l1_handler_transactions(
         round,
         valid_round: None,
         proposer: Address(proposer.0),
-    };
-
-    let mut parts = vec![ProposalPart::Init(proposal_init.clone())];
-
-    let block_info = BlockInfo {
-        height,
-        builder: Address(proposer.0),
         timestamp: strictly_increasing_timestamp(latest_timestamp).get(),
+        builder: Address(proposer.0),
+        l1_da_mode: L1DataAvailabilityMode::Calldata,
         l2_gas_price_fri: 1_000_000,
         l1_gas_price_fri: 1_000_000,
         l1_data_gas_price_fri: 1_000_000,
         l1_gas_price_wei: 1_000_000,
         l1_data_gas_price_wei: 1_000_000,
-        l1_da_mode: L1DataAvailabilityMode::Calldata,
+        starknet_version: "".to_string(),
+        version_constant_commitment: Hash::ZERO,
     };
 
-    parts.push(ProposalPart::BlockInfo(block_info.clone()));
+    let mut parts = vec![ProposalPart::Init(proposal_init.clone())];
 
     let validator = ValidatorBlockInfoStage::new(ChainId::SEPOLIA_TESTNET, proposal_init)?;
     let worker_pool = ExecutorWorkerPool::<ConcurrentStateReader>::new(1).get();
-    let mut validator = validator.skip_validation(
-        block_info.clone(),
-        main_storage,
-        worker_pool.clone(),
-        DecidedBlocks::default(),
-    )?;
+    let mut validator =
+        validator.skip_validation(main_storage, worker_pool.clone(), DecidedBlocks::default())?;
 
     let num_executed_txns = config
         .as_ref()
@@ -385,9 +376,6 @@ pub(crate) fn create_with_invalid_l1_handler_transactions(
         .collect();
 
     parts.extend(batches.into_iter().map(ProposalPart::TransactionBatch));
-    parts.push(ProposalPart::ExecutedTransactionCount(
-        num_executed_txns as u64,
-    ));
 
     validator
         .execute_batch::<ProdTransactionMapper>(
@@ -401,6 +389,8 @@ pub(crate) fn create_with_invalid_l1_handler_transactions(
 
     parts.push(ProposalPart::Fin(ProposalFin {
         proposal_commitment: Hash(block.header.state_diff_commitment.0),
+        executed_transaction_count: num_executed_txns as u64,
+        fin_payload: None,
     }));
 
     let worker_pool = Arc::into_inner(worker_pool).context("Failed join worker pool")?;
@@ -469,22 +459,18 @@ pub(crate) fn create_test_proposal_init(
     height: u64,
     round: u32,
     proposer: ContractAddress,
-) -> (ProposalInit, BlockInfo) {
+) -> ProposalInit {
     let proposer_address = Address(proposer.0);
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
 
-    let proposal_init = ProposalInit {
+    ProposalInit {
         height,
         round,
         valid_round: None,
         proposer: proposer_address,
-    };
-
-    let block_info = BlockInfo {
-        height,
         timestamp,
         builder: proposer_address,
         l1_da_mode: L1DataAvailabilityMode::default(),
@@ -493,9 +479,9 @@ pub(crate) fn create_test_proposal_init(
         l1_data_gas_price_fri: 1,
         l1_gas_price_wei: 1_000_000_000,
         l1_data_gas_price_wei: 1,
-    };
-
-    (proposal_init, block_info)
+        starknet_version: "".to_string(),
+        version_constant_commitment: Default::default(),
+    }
 }
 
 #[cfg(test)]

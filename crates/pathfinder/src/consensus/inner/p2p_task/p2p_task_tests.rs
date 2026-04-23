@@ -1,9 +1,9 @@
 //! End-to-end tests for p2p_task
 //!
-//! These tests verify the full integration flow of p2p_task, including proposal
-//! processing, deferral logic (when ExecutedTransactionCount or ProposalFin
-//! arrive out of order), rollback scenarios. They test the complete path from
-//! receiving P2P events to sending consensus commands.
+//! These tests verify the full integration flow of p2p_task,
+//! including proposal processing, deferral logic and rollback
+//! scenarios. They test the complete path from receiving P2P events
+//! to sending consensus commands.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -367,8 +367,7 @@ fn verify_proposal_event(
 /// [test_proposal_fin_deferred_until_parent_block_committed]), then
 /// finalization can proceed.
 ///
-/// **Test**: Send Init → BlockInfo → TransactionBatch →
-/// ExecutedTransactionCount → ProposalFin →
+/// **Test**: Send Init → TransactionBatch → ProposalFin →
 /// MarkBlockAsDecidedAndCleanUp(parent).
 ///
 /// Verify ProposalFin is deferred (no proposal event), then verify
@@ -424,7 +423,7 @@ async fn test_proposal_fin_deferred_until_parent_block_decided(
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
     let h2r1 = HeightAndRound::new(2, 1);
     let transactions = create_transaction_batch(0, 0, 5, chain_id);
-    let (proposal_init, block_info) =
+    let proposal_init =
         create_test_proposal_init(chain_id, h2r1.height(), h2r1.round(), proposer_address);
 
     // Step 1: Send ProposalInit
@@ -436,16 +435,7 @@ async fn test_proposal_fin_deferred_until_parent_block_decided(
         .expect("Failed to send ProposalInit");
     env.verify_task_alive().await;
 
-    // Step 2: Send BlockInfo
-    env.p2p_tx
-        .send(Event {
-            source: PeerId::random(),
-            kind: EventKind::Proposal(h2r1, ProposalPart::BlockInfo(block_info)),
-        })
-        .expect("Failed to send BlockInfo");
-    env.verify_task_alive().await;
-
-    // Step 3: Send TransactionBatch (execution should start)
+    // Step 2: Send TransactionBatch (execution should start)
     env.p2p_tx
         .send(Event {
             source: PeerId::random(),
@@ -457,16 +447,7 @@ async fn test_proposal_fin_deferred_until_parent_block_decided(
     // Verify: No proposal event yet (execution started, but not finalized)
     verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
 
-    // Step 4: Send ExecutedTransactionCount
-    env.p2p_tx
-        .send(Event {
-            source: PeerId::random(),
-            kind: EventKind::Proposal(h2r1, ProposalPart::ExecutedTransactionCount(5)),
-        })
-        .expect("Failed to send ExecutedTransactionCount");
-    env.verify_task_alive().await;
-
-    // Step 5: Send ProposalFin
+    // Step 3: Send ProposalFin
     env.p2p_tx
         .send(Event {
             source: PeerId::random(),
@@ -474,6 +455,8 @@ async fn test_proposal_fin_deferred_until_parent_block_decided(
                 h2r1,
                 ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
                     proposal_commitment: p2p_proto::common::Hash(expected_proposal_commitment2.0),
+                    executed_transaction_count: 5,
+                    fin_payload: None,
                 }),
             ),
         })
@@ -523,7 +506,7 @@ async fn test_proposal_fin_deferred_until_parent_block_decided(
         // Verify: Proposal event should be sent now
         let proposal_cmd = wait_for_proposal_event(&mut env.rx_from_p2p, Duration::from_secs(3))
             .await
-            .expect("Expected proposal event after ExecutedTransactionCount");
+            .expect("Expected proposal event after ConfirmBlockCommitted");
         verify_proposal_event(proposal_cmd, 2, expected_proposal_commitment2);
     } else {
         // Step 8: It turns out that the feeder gateway was faster to get the
@@ -539,8 +522,8 @@ async fn test_proposal_fin_deferred_until_parent_block_decided(
 /// Execution has started (TransactionBatch received), so ProposalFin must be
 /// deferred until the parent block is committed, then finalization can proceed.
 ///
-/// **Test**: Send Init → BlockInfo → TransactionBatch →
-/// ExecutedTransactionCount → ProposalFin → CommitBlock(parent).
+/// **Test**: Send Init → TransactionBatch → ProposalFin →
+/// CommitBlock(parent).
 ///
 /// Verify ProposalFin is deferred (no proposal event), then verify
 /// finalization occurs after parent block is committed.
@@ -577,7 +560,7 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
     let h2r1 = HeightAndRound::new(2, 1);
     let transactions = create_transaction_batch(0, 0, 5, chain_id);
-    let (proposal_init, block_info) =
+    let proposal_init =
         create_test_proposal_init(chain_id, h2r1.height(), h2r1.round(), proposer_address);
 
     // Focus is on batch execution and deferral logic, not commitment validation.
@@ -593,16 +576,7 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
         .expect("Failed to send ProposalInit");
     env.verify_task_alive().await;
 
-    // Step 2: Send BlockInfo
-    env.p2p_tx
-        .send(Event {
-            source: PeerId::random(),
-            kind: EventKind::Proposal(h2r1, ProposalPart::BlockInfo(block_info)),
-        })
-        .expect("Failed to send BlockInfo");
-    env.verify_task_alive().await;
-
-    // Step 3: Send TransactionBatch (execution should start)
+    // Step 2: Send TransactionBatch (execution should start)
     env.p2p_tx
         .send(Event {
             source: PeerId::random(),
@@ -614,16 +588,7 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
     // Verify: No proposal event yet (execution started, but not finalized)
     verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
 
-    // Step 4: Send ExecutedTransactionCount
-    env.p2p_tx
-        .send(Event {
-            source: PeerId::random(),
-            kind: EventKind::Proposal(h2r1, ProposalPart::ExecutedTransactionCount(5)),
-        })
-        .expect("Failed to send ExecutedTransactionCount");
-    env.verify_task_alive().await;
-
-    // Step 5: Send ProposalFin
+    // Step 3: Send ProposalFin
     env.p2p_tx
         .send(Event {
             source: PeerId::random(),
@@ -631,6 +596,8 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
                 h2r1,
                 ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
                     proposal_commitment: p2p_proto::common::Hash(proposal_commitment2.0),
+                    executed_transaction_count: 5,
+                    fin_payload: None,
                 }),
             ),
         })
@@ -682,7 +649,7 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
         // Verify: Proposal event should be sent now
         let proposal_cmd = wait_for_proposal_event(&mut env.rx_from_p2p, Duration::from_secs(3))
             .await
-            .expect("Expected proposal event after ExecutedTransactionCount");
+            .expect("Expected proposal event after ConfirmBlockCommitted");
         verify_proposal_event(proposal_cmd, 2, proposal_commitment2);
     } else {
         // Step 8: It turns out that the feeder gateway was faster to get the
@@ -695,11 +662,9 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
 /// Full proposal flow in normal order.
 ///
 /// **Scenario**: Complete proposal flow with all parts arriving in the
-/// expected order. ExecutedTransactionCount arrives before ProposalFin, so no
-/// deferral is needed.
+/// expected order, no deferral is needed.
 ///
-/// **Test**: Send Init → BlockInfo → TransactionBatch →
-/// ExecutedTransactionCount → ProposalFin.
+/// **Test**: Send Init → TransactionBatch → ProposalFin.
 ///
 /// Verify proposal event is sent immediately after ProposalFin (no
 /// deferral).
@@ -714,7 +679,7 @@ async fn test_full_proposal_flow_normal_order() {
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
     let height_and_round = HeightAndRound::new(2, 1);
     let transactions = create_transaction_batch(0, 0, 5, chain_id);
-    let (proposal_init, block_info) = create_test_proposal_init(chain_id, 2, 1, proposer_address);
+    let proposal_init = create_test_proposal_init(chain_id, 2, 1, proposer_address);
 
     // Focus is on batch execution and deferral logic, not commitment validation.
     // Using a dummy commitment...
@@ -729,16 +694,7 @@ async fn test_full_proposal_flow_normal_order() {
         .expect("Failed to send ProposalInit");
     env.verify_task_alive().await;
 
-    // Step 2: Send BlockInfo
-    env.p2p_tx
-        .send(Event {
-            source: PeerId::random(),
-            kind: EventKind::Proposal(height_and_round, ProposalPart::BlockInfo(block_info)),
-        })
-        .expect("Failed to send BlockInfo");
-    env.verify_task_alive().await;
-
-    // Step 3: Send TransactionBatch
+    // Step 2: Send TransactionBatch
     env.p2p_tx
         .send(Event {
             source: PeerId::random(),
@@ -751,23 +707,10 @@ async fn test_full_proposal_flow_normal_order() {
     env.verify_task_alive().await;
 
     // Verify: No proposal event yet (execution started, but
-    // ExecutedTransactionCount not processed)
+    // ProposalFin not processed)
     verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
 
-    // Step 4: Send ExecutedTransactionCount
-    env.p2p_tx
-        .send(Event {
-            source: PeerId::random(),
-            kind: EventKind::Proposal(height_and_round, ProposalPart::ExecutedTransactionCount(5)),
-        })
-        .expect("Failed to send ExecutedTransactionCount");
-    env.verify_task_alive().await;
-
-    // Verify: Still no proposal event (ExecutedTransactionCount processed, but
-    // ProposalFin not received)
-    verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
-
-    // Step 5: Send ProposalFin
+    // Step 3: Send ProposalFin
     env.p2p_tx
         .send(Event {
             source: PeerId::random(),
@@ -775,6 +718,8 @@ async fn test_full_proposal_flow_normal_order() {
                 height_and_round,
                 ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
                     proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
+                    executed_transaction_count: 5,
+                    fin_payload: None,
                 }),
             ),
         })
@@ -789,18 +734,16 @@ async fn test_full_proposal_flow_normal_order() {
     env.verify_task_alive().await;
 }
 
-/// ExecutedTransactionCount deferred when execution not started.
+/// TransactionBatch deferred when execution not started.
 ///
 /// **Scenario**: Parent block is not committed initially, so
-/// TransactionBatch and ExecutedTransactionCount are both deferred. After
-/// parent is committed, execution starts and deferred messages are processed.
+/// TransactionBatch is deferred. After parent is committed, execution
+/// starts and deferred messages are processed.
 ///
-/// **Test**: Send Init → BlockInfo → TransactionBatch →
-/// ExecutedTransactionCount (without committing parent).
+/// **Test**: Send Init → TransactionBatch (without committing parent).
 ///
 /// Verify no execution occurs. Then commit parent block and send another
-/// TransactionBatch. Verify deferred ExecutedTransactionCount is processed when
-/// execution starts.
+/// TransactionBatch. Verify execution starts.
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn test_executed_transaction_count_deferred_when_execution_not_started() {
     let chain_id = ChainId::SEPOLIA_TESTNET;
@@ -813,7 +756,7 @@ async fn test_executed_transaction_count_deferred_when_execution_not_started() {
     let height_and_round = HeightAndRound::new(2, 1);
     let transactions_batch1 = create_transaction_batch(0, 0, 3, chain_id);
     let transactions_batch2 = create_transaction_batch(0, 3, 2, chain_id); // Total: 5
-    let (proposal_init, block_info) = create_test_proposal_init(chain_id, 2, 1, proposer_address);
+    let proposal_init = create_test_proposal_init(chain_id, 2, 1, proposer_address);
 
     // Step 1: Send ProposalInit
     env.p2p_tx
@@ -824,16 +767,7 @@ async fn test_executed_transaction_count_deferred_when_execution_not_started() {
         .expect("Failed to send ProposalInit");
     env.verify_task_alive().await;
 
-    // Step 2: Send BlockInfo (should be deferred - parent not committed)
-    env.p2p_tx
-        .send(Event {
-            source: PeerId::random(),
-            kind: EventKind::Proposal(height_and_round, ProposalPart::BlockInfo(block_info)),
-        })
-        .expect("Failed to send BlockInfo");
-    env.verify_task_alive().await;
-
-    // Step 3: Send first TransactionBatch (should be deferred - parent not
+    // Step 2: Send first TransactionBatch (should be deferred - parent not
     // committed)
     env.p2p_tx
         .send(Event {
@@ -849,26 +783,12 @@ async fn test_executed_transaction_count_deferred_when_execution_not_started() {
     // Verify: No proposal event (execution deferred)
     verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
 
-    // Step 4: Send ExecutedTransactionCount (should be deferred - execution not
-    // started)
-    env.p2p_tx
-        .send(Event {
-            source: PeerId::random(),
-            kind: EventKind::Proposal(height_and_round, ProposalPart::ExecutedTransactionCount(5)),
-        })
-        .expect("Failed to send ExecutedTransactionCount");
-    env.verify_task_alive().await;
-
-    // Verify: Still no proposal event (ExecutedTransactionCount deferred)
-    verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
-
-    // Step 5: Now we commit the parent block
+    // Step 3: Now we commit the parent block
     env.create_committed_block(1);
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    // Step 6: Send another TransactionBatch
-    // This should trigger execution of deferred batches + process deferred
-    // ExecutedTransactionCount
+    // Step 4: Send another TransactionBatch
+    // This should trigger execution of deferred batches
     env.p2p_tx
         .send(Event {
             source: PeerId::random(),
@@ -880,17 +800,15 @@ async fn test_executed_transaction_count_deferred_when_execution_not_started() {
         .expect("Failed to send second TransactionBatch");
     env.verify_task_alive().await;
 
-    // At this point, execution should have started and ExecutedTransactionCount
-    // should be processed...
-
-    // To verify this, we send ProposalFin, then verify that a proposal event is
-    // sent (which confirms ExecutedTransactionCount was processed).
+    // At this point, execution should have started.  To verify this,
+    // we send ProposalFin, then verify that a proposal event is sent
+    // (which confirms executed transaction count was processed).
 
     // Once again, using a dummy commitment...
     let proposal_commitment = ProposalCommitment(Felt::ZERO);
 
-    // Step 7: Send ProposalFin
-    // This should trigger finalization since ExecutedTransactionCount was processed
+    // Step 5: Send ProposalFin
+    // This should trigger finalization
     env.p2p_tx
         .send(Event {
             source: PeerId::random(),
@@ -898,17 +816,18 @@ async fn test_executed_transaction_count_deferred_when_execution_not_started() {
                 height_and_round,
                 ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
                     proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
+                    executed_transaction_count: 5,
+                    fin_payload: None,
                 }),
             ),
         })
         .expect("Failed to send ProposalFin");
     env.verify_task_alive().await;
 
-    // Verify: Proposal event should be sent (confirms ExecutedTransactionCount was
-    // processed)
+    // Verify: Proposal event should be sent
     let proposal_cmd = wait_for_proposal_event(&mut env.rx_from_p2p, Duration::from_secs(2))
         .await
-        .expect("Expected proposal event after deferred ExecutedTransactionCount was processed");
+        .expect("Expected proposal event after deferred execution");
     verify_proposal_event(proposal_cmd, 2, proposal_commitment);
     env.verify_task_alive().await;
 }
@@ -917,11 +836,10 @@ async fn test_executed_transaction_count_deferred_when_execution_not_started() {
 ///
 /// **Scenario**: A proposal contains multiple TransactionBatch messages
 /// that must all be executed in order. All batches should be executed
-/// before ExecutedTransactionCount is processed.
+/// before executed transaction count is processed.
 ///
-/// **Test**: Send Init → BlockInfo → TransactionBatch 1 →
-/// TransactionBatch 2 → TransactionBatch 3 → ExecutedTransactionCount →
-/// ProposalFin.
+/// **Test**: Send Init → TransactionBatch 1 → TransactionBatch 2 →
+/// TransactionBatch 3 → ProposalFin.
 ///
 /// Verify proposal event is sent after ProposalFin.
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
@@ -937,7 +855,7 @@ async fn test_multiple_batches_execution() {
     let transactions_batch1 = create_transaction_batch(0, 0, 2, chain_id);
     let transactions_batch2 = create_transaction_batch(0, 2, 3, chain_id);
     let transactions_batch3 = create_transaction_batch(0, 5, 2, chain_id); // Total: 7
-    let (proposal_init, block_info) = create_test_proposal_init(chain_id, 2, 1, proposer_address);
+    let proposal_init = create_test_proposal_init(chain_id, 2, 1, proposer_address);
 
     // Focus is on batch execution and deferral logic, not commitment validation.
     // Using a dummy commitment...
@@ -952,16 +870,7 @@ async fn test_multiple_batches_execution() {
         .expect("Failed to send ProposalInit");
     env.verify_task_alive().await;
 
-    // Step 2: Send BlockInfo
-    env.p2p_tx
-        .send(Event {
-            source: PeerId::random(),
-            kind: EventKind::Proposal(height_and_round, ProposalPart::BlockInfo(block_info)),
-        })
-        .expect("Failed to send BlockInfo");
-    env.verify_task_alive().await;
-
-    // Step 3: Send multiple TransactionBatches
+    // Step 2: Send multiple TransactionBatches
     env.p2p_tx
         .send(Event {
             source: PeerId::random(),
@@ -995,16 +904,7 @@ async fn test_multiple_batches_execution() {
         .expect("Failed to send TransactionBatch3");
     env.verify_task_alive().await;
 
-    // Step 4: Send ExecutedTransactionCount (total count = 7)
-    env.p2p_tx
-        .send(Event {
-            source: PeerId::random(),
-            kind: EventKind::Proposal(height_and_round, ProposalPart::ExecutedTransactionCount(7)),
-        })
-        .expect("Failed to send ExecutedTransactionCount");
-    env.verify_task_alive().await;
-
-    // Step 5: Send ProposalFin
+    // Step 3: Send ProposalFin
     env.p2p_tx
         .send(Event {
             source: PeerId::random(),
@@ -1012,6 +912,8 @@ async fn test_multiple_batches_execution() {
                 height_and_round,
                 ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
                     proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
+                    executed_transaction_count: 7,
+                    fin_payload: None,
                 }),
             ),
         })
@@ -1026,16 +928,17 @@ async fn test_multiple_batches_execution() {
     env.verify_task_alive().await;
 }
 
-/// ExecutedTransactionCount triggers rollback when count is less than executed.
+/// Executed transaction count triggers rollback when count is less than
+/// executed.
 ///
 /// **Scenario**: We execute 10 transactions (2 batches of 5), but
-/// ExecutedTransactionCount indicates only 7 transactions were executed by the
-/// proposer. The validator must rollback from 10 to 7 transactions to
-/// match the proposer's state.
+/// executed transaction count indicates only 7 transactions were
+/// executed by the proposer. The validator must rollback from 10 to 7
+/// transactions to match the proposer's state.
 ///
-/// **Test**: Send Init → BlockInfo → TransactionBatch1 (5 txs) →
-/// TransactionBatch2 (5 txs) → ExecutedTransactionCount (count=7) →
-/// ProposalFin.
+/// **Test**: Send Init → TransactionBatch1 (5 txs) →
+/// TransactionBatch2 (5 txs) → ProposalFin (executed transaction
+/// count=7).
 ///
 /// Verify proposal event is sent successfully after rollback, confirming
 /// the rollback mechanism works correctly.
@@ -1051,7 +954,7 @@ async fn test_executed_transaction_count_rollback() {
     let height_and_round = HeightAndRound::new(2, 1);
     let transactions_batch1 = create_transaction_batch(0, 0, 5, chain_id);
     let transactions_batch2 = create_transaction_batch(0, 5, 5, chain_id); // Total: 10
-    let (proposal_init, block_info) = create_test_proposal_init(chain_id, 2, 1, proposer_address);
+    let proposal_init = create_test_proposal_init(chain_id, 2, 1, proposer_address);
 
     // Focus is on batch execution and deferral logic, not commitment validation.
     // Using a dummy commitment...
@@ -1066,16 +969,7 @@ async fn test_executed_transaction_count_rollback() {
         .expect("Failed to send ProposalInit");
     env.verify_task_alive().await;
 
-    // Step 2: Send BlockInfo
-    env.p2p_tx
-        .send(Event {
-            source: PeerId::random(),
-            kind: EventKind::Proposal(height_and_round, ProposalPart::BlockInfo(block_info)),
-        })
-        .expect("Failed to send BlockInfo");
-    env.verify_task_alive().await;
-
-    // Step 3: Send TransactionBatch 1 (5 transactions)
+    // Step 2: Send TransactionBatch 1 (5 transactions)
     env.p2p_tx
         .send(Event {
             source: PeerId::random(),
@@ -1087,7 +981,7 @@ async fn test_executed_transaction_count_rollback() {
         .expect("Failed to send TransactionBatch1");
     env.verify_task_alive().await;
 
-    // Step 4: Send TransactionBatch 2 (5 more transactions, total = 10)
+    // Step 3: Send TransactionBatch 2 (5 more transactions, total = 10)
     env.p2p_tx
         .send(Event {
             source: PeerId::random(),
@@ -1099,17 +993,7 @@ async fn test_executed_transaction_count_rollback() {
         .expect("Failed to send TransactionBatch2");
     env.verify_task_alive().await;
 
-    // Step 5: Send ExecutedTransactionCount with count=7 (should trigger rollback
-    // from 10 to 7)
-    env.p2p_tx
-        .send(Event {
-            source: PeerId::random(),
-            kind: EventKind::Proposal(height_and_round, ProposalPart::ExecutedTransactionCount(7)),
-        })
-        .expect("Failed to send ExecutedTransactionCount");
-    env.verify_task_alive().await;
-
-    // Step 6: Send ProposalFin
+    // Step 4: Send ProposalFin
     env.p2p_tx
         .send(Event {
             source: PeerId::random(),
@@ -1117,6 +1001,8 @@ async fn test_executed_transaction_count_rollback() {
                 height_and_round,
                 ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
                     proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
+                    executed_transaction_count: 7, // should trigger rollback from 10 to 7
+                    fin_payload: None,
                 }),
             ),
         })
@@ -1141,16 +1027,17 @@ async fn test_executed_transaction_count_rollback() {
 
 /// Empty TransactionBatch execution (non-spec edge case).
 ///
-/// **Scenario**: A proposal contains an empty TransactionBatch. Per the
-/// [Starknet consensus spec](https://raw.githubusercontent.com/starknet-io/starknet-p2p-specs/refs/heads/main/p2p/proto/consensus/consensus.md),
-/// if a proposer has no transactions, they should send an empty proposal
-/// (skipping BlockInfo, TransactionBatch and ExecutedTransactionCount
-/// entirely). However, this test covers the case where a non-empty proposal
-/// includes an empty TransactionBatch. Such a proposal is invalid per the spec,
-/// so we reject it.
+/// **Scenario**: A proposal contains an empty TransactionBatch. Per
+/// the [Starknet consensus
+/// spec](https://raw.githubusercontent.com/starknet-io/starknet-p2p-specs/refs/heads/main/p2p/proto/consensus/consensus.md),
+/// if a proposer has no transactions, they should send an empty
+/// proposal (skipping TransactionBatch entirely). However, this test
+/// covers the case where a non-empty proposal includes an empty
+/// TransactionBatch. Such a proposal is invalid per the spec, so we
+/// reject it.
 ///
-/// **Test**: Send Init → BlockInfo → TransactionBatch (empty) →
-/// ExecutedTransactionCount (count=0) → ProposalFin.
+/// **Test**: Send Init → TransactionBatch (empty) → ProposalFin
+/// (executed transaction count=0).
 ///
 /// Verify that the proposal is rejected and no proposal event is sent.
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
@@ -1164,7 +1051,7 @@ async fn test_empty_batch_is_rejected() {
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
     let height_and_round = HeightAndRound::new(2, 1);
     let empty_transactions = create_transaction_batch(0, 0, 0, chain_id);
-    let (proposal_init, block_info) = create_test_proposal_init(chain_id, 2, 1, proposer_address);
+    let proposal_init = create_test_proposal_init(chain_id, 2, 1, proposer_address);
 
     env.p2p_tx
         .send(Event {
@@ -1172,14 +1059,6 @@ async fn test_empty_batch_is_rejected() {
             kind: EventKind::Proposal(height_and_round, ProposalPart::Init(proposal_init)),
         })
         .expect("Failed to send ProposalInit");
-    env.verify_task_alive().await;
-
-    env.p2p_tx
-        .send(Event {
-            source: PeerId::random(),
-            kind: EventKind::Proposal(height_and_round, ProposalPart::BlockInfo(block_info)),
-        })
-        .expect("Failed to send BlockInfo");
     env.verify_task_alive().await;
 
     env.p2p_tx
@@ -1197,15 +1076,16 @@ async fn test_empty_batch_is_rejected() {
     env.verify_task_alive().await;
 }
 
-/// ExecutedTransactionCount indicates more transactions than actually executed.
+/// Executed transaction count indicates more transactions than actually
+/// executed.
 ///
-/// **Scenario**: We execute 5 transactions, but ExecutedTransactionCount
-/// indicates
-/// 10. This shouldn't happen with proper message ordering, but the code
-/// handles it by logging a warning and continuing.
+/// **Scenario**: We execute 5 transactions, but executed transaction
+/// count indicates 10. This shouldn't happen with proper message
+/// ordering, but the code handles it by logging a warning and
+/// continuing.
 ///
-/// **Test**: Send Init → BlockInfo → TransactionBatch (5 txs) →
-/// ExecutedTransactionCount (count=10) → ProposalFin.
+/// **Test**: Send Init → TransactionBatch (5 txs) → ProposalFin
+/// (executed transaction count=10).
 ///
 /// Verify processing continues and proposal event is sent (with 5 transactions,
 /// not 10).
@@ -1224,7 +1104,7 @@ async fn test_executed_transaction_count_exceeds_actually_executed() {
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
     let height_and_round = HeightAndRound::new(2, 1);
     let transactions = create_transaction_batch(0, 0, 5, chain_id);
-    let (proposal_init, block_info) = create_test_proposal_init(chain_id, 2, 1, proposer_address);
+    let proposal_init = create_test_proposal_init(chain_id, 2, 1, proposer_address);
 
     let proposal_commitment = ProposalCommitment(Felt::ZERO);
 
@@ -1234,14 +1114,6 @@ async fn test_executed_transaction_count_exceeds_actually_executed() {
             kind: EventKind::Proposal(height_and_round, ProposalPart::Init(proposal_init)),
         })
         .expect("Failed to send ProposalInit");
-    env.verify_task_alive().await;
-
-    env.p2p_tx
-        .send(Event {
-            source: PeerId::random(),
-            kind: EventKind::Proposal(height_and_round, ProposalPart::BlockInfo(block_info)),
-        })
-        .expect("Failed to send BlockInfo");
     env.verify_task_alive().await;
 
     env.p2p_tx
@@ -1260,20 +1132,12 @@ async fn test_executed_transaction_count_exceeds_actually_executed() {
     env.p2p_tx
         .send(Event {
             source: PeerId::random(),
-            kind: EventKind::Proposal(height_and_round, ProposalPart::ExecutedTransactionCount(10)),
-        })
-        .expect("Failed to send ExecutedTransactionCount");
-    env.verify_task_alive().await;
-
-    verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
-
-    env.p2p_tx
-        .send(Event {
-            source: PeerId::random(),
             kind: EventKind::Proposal(
                 height_and_round,
                 ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
                     proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
+                    executed_transaction_count: 10,
+                    fin_payload: None,
                 }),
             ),
         })
@@ -1287,108 +1151,14 @@ async fn test_executed_transaction_count_exceeds_actually_executed() {
     env.verify_task_alive().await;
 }
 
-/// ExecutedTransactionCount arrives before any TransactionBatch.
-///
-/// **Scenario**: ExecutedTransactionCount arrives before execution starts (no
-/// batches received yet). It should be deferred until execution starts,
-/// then processed.
-///
-/// **Test**: Send Init → BlockInfo → ExecutedTransactionCount →
-/// TransactionBatch → ProposalFin.
-///
-/// Verify ExecutedTransactionCount is deferred, then processed when execution
-/// starts, and proposal event is sent.
-#[test_log::test(tokio::test(flavor = "multi_thread"))]
-async fn test_executed_transaction_count_before_any_batch() {
-    let chain_id = ChainId::SEPOLIA_TESTNET;
-    let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
-    let mut env = TestEnvironment::new(chain_id, validator_address);
-    env.create_committed_block(1);
-    env.wait_for_task_initialization().await;
-
-    let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
-    let height_and_round = HeightAndRound::new(2, 1);
-    let transactions = create_transaction_batch(0, 0, 5, chain_id);
-    let (proposal_init, block_info) = create_test_proposal_init(chain_id, 2, 1, proposer_address);
-
-    let proposal_commitment = ProposalCommitment(Felt::ZERO);
-
-    env.p2p_tx
-        .send(Event {
-            source: PeerId::random(),
-            kind: EventKind::Proposal(height_and_round, ProposalPart::Init(proposal_init)),
-        })
-        .expect("Failed to send ProposalInit");
-    env.verify_task_alive().await;
-
-    env.p2p_tx
-        .send(Event {
-            source: PeerId::random(),
-            kind: EventKind::Proposal(height_and_round, ProposalPart::BlockInfo(block_info)),
-        })
-        .expect("Failed to send BlockInfo");
-    env.verify_task_alive().await;
-
-    env.p2p_tx
-        .send(Event {
-            source: PeerId::random(),
-            kind: EventKind::Proposal(height_and_round, ProposalPart::ExecutedTransactionCount(5)),
-        })
-        .expect("Failed to send ExecutedTransactionCount");
-    env.verify_task_alive().await;
-
-    verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
-
-    // Step 4: Send TransactionBatch
-    // This should trigger execution start and process the deferred
-    // ExecutedTransactionCount
-    env.p2p_tx
-        .send(Event {
-            source: PeerId::random(),
-            kind: EventKind::Proposal(
-                height_and_round,
-                ProposalPart::TransactionBatch(transactions),
-            ),
-        })
-        .expect("Failed to send TransactionBatch");
-    env.verify_task_alive().await;
-
-    // Verify: Still no proposal event (ExecutedTransactionCount processed, but
-    // ProposalFin not received)
-    // Note: We verify that deferred ExecutedTransactionCount was processed
-    // indirectly by sending ProposalFin below and confirming the proposal event
-    // is sent (which requires ExecutedTransactionCount to be processed first).
-    verify_no_proposal_event(&mut env.rx_from_p2p, Duration::from_millis(200)).await;
-
-    env.p2p_tx
-        .send(Event {
-            source: PeerId::random(),
-            kind: EventKind::Proposal(
-                height_and_round,
-                ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
-                    proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
-                }),
-            ),
-        })
-        .expect("Failed to send ProposalFin");
-    tokio::time::sleep(Duration::from_millis(500)).await;
-
-    let proposal_cmd = wait_for_proposal_event(&mut env.rx_from_p2p, Duration::from_secs(2))
-        .await
-        .expect("Expected proposal event after ProposalFin");
-    verify_proposal_event(proposal_cmd, 2, proposal_commitment);
-    env.verify_task_alive().await;
-}
-
-/// Empty proposal per spec (no TransactionBatch, no ExecutedTransactionCount).
+/// Empty proposal per spec (no TransactionBatch).
 ///
 /// **Scenario**: A proposer cannot offer a valid proposal, so the height is
-/// agreed to be empty. Per the spec, empty proposals skip
-/// TransactionBatch and ExecutedTransactionCount entirely. The order is:
+/// agreed to be empty. Per the spec, empty proposals skip TransactionBatch
+/// entirely. The order is:
 /// ProposalInit → ProposalFin.
 ///
-/// **Test**: Send ProposalInit → ProposalFin (no TransactionBatch, no
-/// ExecutedTransactionCount).
+/// **Test**: Send ProposalInit → ProposalFin (no TransactionBatch).
 ///
 /// Verify ProposalFin proceeds immediately (not deferred, since execution
 /// never started), proposal event is sent.
@@ -1403,10 +1173,7 @@ async fn test_empty_proposal_per_spec() {
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
     let height_and_round = HeightAndRound::new(2, 1);
 
-    // For empty proposals, we still need BlockInfo to transition to
-    // TransactionBatch stage, but we don't send any TransactionBatch or
-    // ExecutedTransactionCount
-    let (proposal_init, _block_info) = create_test_proposal_init(chain_id, 2, 1, proposer_address);
+    let proposal_init = create_test_proposal_init(chain_id, 2, 1, proposer_address);
 
     // Using a dummy commitment...
     let proposal_commitment = ProposalCommitment(Felt::ZERO);
@@ -1425,8 +1192,7 @@ async fn test_empty_proposal_per_spec() {
 
     // Step 2: Send ProposalFin
     // Since execution never started (no TransactionBatch), ProposalFin should
-    // proceed immediately without deferral. This is different from first test
-    // where execution started but ExecutedTransactionCount wasn't processed yet.
+    // proceed immediately without deferral.
     env.p2p_tx
         .send(Event {
             source: PeerId::random(),
@@ -1434,6 +1200,8 @@ async fn test_empty_proposal_per_spec() {
                 height_and_round,
                 ProposalPart::Fin(p2p_proto::consensus::ProposalFin {
                     proposal_commitment: p2p_proto::common::Hash(proposal_commitment.0),
+                    executed_transaction_count: 0,
+                    fin_payload: None,
                 }),
             ),
         })
@@ -1467,7 +1235,7 @@ async fn recv_outdated_event_changes_peer_score() {
     let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
 
     // We'll use an empty proposal, the content isn't important.
-    let (proposal_init, _) = create_test_proposal_init(
+    let proposal_init = create_test_proposal_init(
         chain_id,
         proposal_height_and_round.height(),
         proposal_height_and_round.round(),

@@ -7,7 +7,7 @@ use anyhow::Context;
 use p2p::sync::client::conv::TryFromDto;
 use p2p_proto::class::Cairo1Class;
 use p2p_proto::common::Hash;
-use p2p_proto::consensus::{BlockInfo, ProposalInit, TransactionVariant as ConsensusVariant};
+use p2p_proto::consensus::{ProposalInit, TransactionVariant as ConsensusVariant};
 use p2p_proto::sync::transaction::{DeclareV3WithoutClass, TransactionVariant as SyncVariant};
 use p2p_proto::transaction::DeclareV3WithClass;
 use pathfinder_class_hash::compute_sierra_class_hash;
@@ -139,7 +139,7 @@ pub fn new(
 #[derive(Debug)]
 pub struct ValidatorBlockInfoStage {
     chain_id: ChainId,
-    proposal_height: BlockNumber,
+    proposal_init: ProposalInit,
 }
 
 impl ValidatorBlockInfoStage {
@@ -148,11 +148,12 @@ impl ValidatorBlockInfoStage {
         proposal_init: ProposalInit,
     ) -> Result<ValidatorBlockInfoStage, ProposalHandlingError> {
         // TODO(validator) how can we validate the proposal init?
+        let _proposal_height = BlockNumber::new(proposal_init.height)
+            .context("ProposalInit height exceeds i64::MAX")
+            .map_err(ProposalHandlingError::recoverable)?;
         Ok(ValidatorBlockInfoStage {
             chain_id,
-            proposal_height: BlockNumber::new(proposal_init.height)
-                .context("ProposalInit height exceeds i64::MAX")
-                .map_err(ProposalHandlingError::recoverable)?,
+            proposal_init,
         })
     }
 
@@ -161,7 +162,7 @@ impl ValidatorBlockInfoStage {
     }
 
     pub fn proposal_height(&self) -> u64 {
-        self.proposal_height.get()
+        self.proposal_init.height
     }
 
     /// Validate the block info against the parent block and L1 gas price data,
@@ -169,7 +170,6 @@ impl ValidatorBlockInfoStage {
     #[allow(clippy::too_many_arguments)]
     pub fn validate_block_info(
         self,
-        block_info: BlockInfo,
         main_storage: Storage,
         decided_blocks: DecidedBlocks,
         gas_price_provider: Option<L1GasPriceProvider>,
@@ -177,59 +177,15 @@ impl ValidatorBlockInfoStage {
         l2_gas_price_provider: Option<&L2GasPriceProvider>,
         worker_pool: ValidatorWorkerPool,
     ) -> Result<ValidatorTransactionBatchStage, ProposalHandlingError> {
-        let _span = tracing::debug_span!(
-            "Validator::validate_block_info",
-            height = %block_info.height,
-            timestamp = %block_info.timestamp,
-            builder = %block_info.builder.0,
-        )
-        .entered();
-
         let Self {
             chain_id,
-            proposal_height,
+            proposal_init,
         } = self;
-
-        if proposal_height != block_info.height {
-            return Err(ProposalHandlingError::recoverable_msg(format!(
-                "ProposalInit height does not match BlockInfo height: {} != {}",
-                proposal_height, block_info.height,
-            )));
-        }
-
-        validate_block_info_timestamp(
-            block_info.height,
-            block_info.timestamp,
-            &main_storage,
-            decided_blocks.clone(),
-        )?;
-
-        // Validate L1 gas prices if a provider is available
-        if let Some(ref provider) = gas_price_provider {
-            validate_l1_gas_prices(
-                block_info.timestamp,
-                block_info.l1_gas_price_wei,
-                block_info.l1_data_gas_price_wei,
-                provider,
-            )?;
-        }
-
-        // Validate L1 gas prices in FRI terms
-        if let Some(validator) = l1_to_fri_validator {
-            validate_l1_to_fri_prices(
-                block_info.timestamp,
-                block_info.l1_gas_price_fri,
-                block_info.l1_data_gas_price_fri,
-                validator,
-            )?;
-        }
-
-        if let Some(provider) = l2_gas_price_provider {
-            validate_l2_gas_price(block_info.l2_gas_price_fri, provider)?;
-        }
-
-        let BlockInfo {
+        let ProposalInit {
             height,
+            round: _,
+            valid_round: _,
+            proposer: _,
             timestamp,
             builder,
             l1_da_mode,
@@ -238,7 +194,37 @@ impl ValidatorBlockInfoStage {
             l1_data_gas_price_fri,
             l1_gas_price_wei,
             l1_data_gas_price_wei,
-        } = block_info;
+            starknet_version: _,
+            version_constant_commitment: _,
+        } = proposal_init;
+        let _span = tracing::debug_span!(
+            "Validator::validate_block_info",
+            %height,
+            %timestamp,
+            builder = %builder.0,
+        )
+        .entered();
+
+        validate_block_info_timestamp(height, timestamp, &main_storage, decided_blocks.clone())?;
+
+        // Validate L1 gas prices if a provider is available
+        if let Some(ref provider) = gas_price_provider {
+            validate_l1_gas_prices(timestamp, l1_gas_price_wei, l1_data_gas_price_wei, provider)?;
+        }
+
+        // Validate L1 gas prices in FRI terms
+        if let Some(validator) = l1_to_fri_validator {
+            validate_l1_to_fri_prices(
+                timestamp,
+                l1_gas_price_fri,
+                l1_data_gas_price_fri,
+                validator,
+            )?;
+        }
+
+        if let Some(provider) = l2_gas_price_provider {
+            validate_l2_gas_price(l2_gas_price_fri, provider)?;
+        }
 
         let block_info = pathfinder_executor::types::BlockInfo::try_from_proposal(
             height,
@@ -282,45 +268,56 @@ impl ValidatorBlockInfoStage {
     /// Used only for testing and dummy proposal creation.
     pub fn skip_validation(
         self,
-        block_info: BlockInfo,
         main_storage: Storage,
         worker_pool: ValidatorWorkerPool,
         decided_blocks: DecidedBlocks,
     ) -> Result<ValidatorTransactionBatchStage, ProposalHandlingError> {
+        let Self {
+            chain_id,
+            proposal_init,
+        } = self;
+        let ProposalInit {
+            height,
+            round: _,
+            valid_round: _,
+            proposer: _,
+            timestamp,
+            builder,
+            l1_da_mode,
+            l2_gas_price_fri,
+            l1_gas_price_fri,
+            l1_data_gas_price_fri,
+            l1_gas_price_wei,
+            l1_data_gas_price_wei,
+            starknet_version: _,
+            version_constant_commitment: _,
+        } = proposal_init;
         let _span = tracing::debug_span!(
             "Validator::skip_block_info_validation",
-            height = %block_info.height,
-            timestamp = %block_info.timestamp,
-            builder = %block_info.builder.0,
+            height = %height,
+            timestamp = %timestamp,
+            builder = %builder.0,
         )
         .entered();
 
-        let Self {
-            chain_id,
-            proposal_height,
-        } = self;
+        tracing::debug!("Skipping block info validation for height {}", height);
 
-        tracing::debug!(
-            "Skipping block info validation for height {}",
-            proposal_height
-        );
-
-        let builder = SequencerAddress(block_info.builder.0);
-        let l1_da_mode = match block_info.l1_da_mode {
+        let builder = SequencerAddress(builder.0);
+        let l1_da_mode = match l1_da_mode {
             p2p_proto::common::L1DataAvailabilityMode::Blob => L1DataAvailabilityMode::Blob,
             p2p_proto::common::L1DataAvailabilityMode::Calldata => L1DataAvailabilityMode::Calldata,
         };
         let price_converter = BlockInfoPriceConverter::consensus(
-            block_info.l2_gas_price_fri,
-            block_info.l1_gas_price_fri,
-            block_info.l1_data_gas_price_fri,
-            block_info.l1_gas_price_wei,
-            block_info.l1_data_gas_price_wei,
+            l2_gas_price_fri,
+            l1_gas_price_fri,
+            l1_data_gas_price_fri,
+            l1_gas_price_wei,
+            l1_data_gas_price_wei,
         );
 
         let block_info = pathfinder_executor::types::BlockInfo::try_from_proposal(
-            block_info.height,
-            block_info.timestamp,
+            height,
+            timestamp,
             builder,
             l1_da_mode,
             price_converter,
@@ -902,7 +899,7 @@ impl std::fmt::Debug for ValidatorTransactionBatchStage {
 
 pub enum ValidatorStage {
     BlockInfo(ValidatorBlockInfoStage),
-    TransactionBatch(Box<ValidatorTransactionBatchStage>),
+    TransactionBatch(ValidatorTransactionBatchStage),
 }
 
 /// Error indicating that a validator stage conversion failed because the stage
@@ -929,7 +926,7 @@ impl ValidatorStage {
 
     pub fn try_into_transaction_batch_stage(
         self,
-    ) -> Result<Box<ValidatorTransactionBatchStage>, WrongValidatorStageError> {
+    ) -> Result<ValidatorTransactionBatchStage, WrongValidatorStageError> {
         match self {
             ValidatorStage::TransactionBatch(stage) => Ok(stage),
             _ => Err(WrongValidatorStageError {
@@ -1206,20 +1203,12 @@ mod tests {
         ExecutorWorkerPool::<ConcurrentStateReader>::new(1).get()
     }
 
-    fn create_test_proposal(
-        height: u64,
-    ) -> (
-        p2p_proto::consensus::ProposalInit,
-        p2p_proto::consensus::BlockInfo,
-    ) {
-        let init = p2p_proto::consensus::ProposalInit {
+    fn create_test_proposal(height: u64) -> p2p_proto::consensus::ProposalInit {
+        p2p_proto::consensus::ProposalInit {
             height,
             round: 1,
             valid_round: None,
             proposer: p2p_proto::common::Address::default(),
-        };
-        let block_info = p2p_proto::consensus::BlockInfo {
-            height,
             timestamp: 1000,
             builder: p2p_proto::common::Address::default(),
             l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
@@ -1228,8 +1217,9 @@ mod tests {
             l1_data_gas_price_wei: 0,
             l1_gas_price_fri: 0,
             l1_data_gas_price_fri: 0,
-        };
-        (init, block_info)
+            starknet_version: "".to_string(),
+            version_constant_commitment: Default::default(),
+        }
     }
 
     fn create_test_transaction(index: usize) -> p2p_proto::consensus::Transaction {
@@ -1276,16 +1266,11 @@ mod tests {
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
-        let (proposal_init, block_info) = create_test_proposal(1);
+        let proposal_init = create_test_proposal(1);
 
         let mut validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
             .and_then(|validator| {
-                validator.skip_validation(
-                    block_info,
-                    storage,
-                    worker_pool,
-                    DecidedBlocks::default(),
-                )
+                validator.skip_validation(storage, worker_pool, DecidedBlocks::default())
             })
             .expect("Failed to create validator stage");
 
@@ -1373,16 +1358,11 @@ mod tests {
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
-        let (proposal_init, block_info) = create_test_proposal(1);
+        let proposal_init = create_test_proposal(1);
 
         let mut validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
             .and_then(|validator| {
-                validator.skip_validation(
-                    block_info,
-                    storage,
-                    worker_pool,
-                    DecidedBlocks::default(),
-                )
+                validator.skip_validation(storage, worker_pool, DecidedBlocks::default())
             })
             .expect("Failed to create validator stage");
 
@@ -1505,11 +1485,6 @@ mod tests {
             round: hnr.round(),
             valid_round: None,
             proposer: p2p_proto::common::Address(Felt::from_hex_str("0x1").unwrap()),
-        };
-
-        // Create block info
-        let block_info = p2p_proto::consensus::BlockInfo {
-            height: hnr.height(),
             timestamp: 1000,
             builder: p2p_proto::common::Address(Felt::from_hex_str("0x1").unwrap()),
             l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
@@ -1518,6 +1493,8 @@ mod tests {
             l1_data_gas_price_fri: 1,
             l1_gas_price_wei: 1_000_000_000,
             l1_data_gas_price_wei: 1,
+            starknet_version: "".to_string(),
+            version_constant_commitment: Default::default(),
         };
 
         // Create validator stages (empty proposal path)
@@ -1526,7 +1503,6 @@ mod tests {
 
         let validator_transaction_batch = validator_block_info
             .validate_block_info(
-                block_info,
                 main_storage.clone(),
                 DecidedBlocks::default(),
                 None,
@@ -1633,13 +1609,6 @@ mod tests {
             round: 0,
             valid_round: None,
             proposer: p2p_proto::common::Address(Felt::from_hex_str("0x1").unwrap()),
-        };
-
-        let validator_block_info1 = ValidatorBlockInfoStage::new(chain_id, proposal_init1)
-            .expect("Failed to create ValidatorBlockInfoStage");
-
-        let block_info1 = p2p_proto::consensus::BlockInfo {
-            height: 1,
             timestamp: proposal_timestamp,
             builder: p2p_proto::common::Address(Felt::from_hex_str("0x1").unwrap()),
             l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
@@ -1648,9 +1617,14 @@ mod tests {
             l1_data_gas_price_fri: 1,
             l1_gas_price_wei: 1_000_000_000,
             l1_data_gas_price_wei: 1,
+            starknet_version: "".to_string(),
+            version_constant_commitment: Default::default(),
         };
+
+        let validator_block_info1 = ValidatorBlockInfoStage::new(chain_id, proposal_init1)
+            .expect("Failed to create ValidatorBlockInfoStage");
+
         let result = validator_block_info1.validate_block_info(
-            block_info1,
             storage,
             DecidedBlocks::default(),
             None,
@@ -1690,13 +1664,6 @@ mod tests {
             round: 0,
             valid_round: None,
             proposer: p2p_proto::common::Address(Felt::from_hex_str("0x1").unwrap()),
-        };
-
-        let validator_block_info = ValidatorBlockInfoStage::new(chain_id, proposal_init)
-            .expect("Failed to create ValidatorBlockInfoStage");
-
-        let block_info = p2p_proto::consensus::BlockInfo {
-            height: proposal_height.get(),
             timestamp: 1000,
             builder: p2p_proto::common::Address(Felt::from_hex_str("0x1").unwrap()),
             l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
@@ -1705,7 +1672,12 @@ mod tests {
             l1_data_gas_price_fri: 1,
             l1_gas_price_wei: 1_000_000_000,
             l1_data_gas_price_wei: 1,
+            starknet_version: "".to_string(),
+            version_constant_commitment: Default::default(),
         };
+
+        let validator_block_info = ValidatorBlockInfoStage::new(chain_id, proposal_init)
+            .expect("Failed to create ValidatorBlockInfoStage");
 
         if proposal_height == BlockNumber::GENESIS {
             // Genesis block should pass timestamp validation even though it does not have a
@@ -1713,7 +1685,6 @@ mod tests {
             assert!(
                 validator_block_info
                     .validate_block_info(
-                        block_info,
                         storage,
                         DecidedBlocks::default(),
                         None,
@@ -1727,7 +1698,6 @@ mod tests {
         } else {
             let err = validator_block_info
                 .validate_block_info(
-                    block_info,
                     storage,
                     DecidedBlocks::default(),
                     None,

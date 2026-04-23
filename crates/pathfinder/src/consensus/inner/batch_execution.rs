@@ -1,9 +1,9 @@
-//! Batch execution manager with rollback support for ExecutedTransactionCount
+//! Batch execution manager with rollback support for executed transaction count
 //!
-//! This module provides functionality to handle optimistic execution of
-//! transaction batches with the ability to rollback when
-//! ExecutedTransactionCount indicates fewer transactions were actually executed
-//! by the proposer.
+//! This module provides functionality to handle optimistic execution
+//! of transaction batches with the ability to rollback when the
+//! executed transaction count indicates fewer transactions were
+//! actually executed by the proposer.
 
 use std::collections::{HashMap, HashSet};
 
@@ -22,17 +22,13 @@ use pathfinder_validator::{
     ValidatorWorkerPool,
 };
 
-/// Manages batch execution with rollback support for ExecutedTransactionCount
+/// Manages batch execution with rollback support for executed transaction count
 #[derive(Clone)]
 pub struct BatchExecutionManager {
     /// Tracks which proposals (height/round) have started execution.
     /// An entry exists here if at least one batch has been executed (not
     /// deferred).
     executing: HashSet<HeightAndRound>,
-    /// Tracks which proposals (height/round) have had ExecutedTransactionCount
-    /// processed. An entry exists here if ExecutedTransactionCount has been
-    /// successfully processed for this height/round.
-    executed_transaction_count_processed: HashSet<HeightAndRound>,
     /// Gas price provider for block info validation.
     gas_price_provider: Option<L1GasPriceProvider>,
     l2_gas_price_provider: Option<L2GasPriceProvider>,
@@ -53,7 +49,6 @@ impl BatchExecutionManager {
     ) -> Self {
         Self {
             executing: HashSet::new(),
-            executed_transaction_count_processed: HashSet::new(),
             gas_price_provider,
             l2_gas_price_provider,
             worker_pool,
@@ -66,33 +61,9 @@ impl BatchExecutionManager {
     ///
     /// Returns `true` if at least one batch has been executed (not deferred)
     /// for this height/round.
+    #[cfg(test)]
     pub fn is_executing(&self, height_and_round: &HeightAndRound) -> bool {
         self.executing.contains(height_and_round)
-    }
-
-    /// Check if ExecutedTransactionCount has been processed for the given
-    /// height and round
-    ///
-    /// Returns `true` if ExecutedTransactionCount has been successfully
-    /// processed for this height/round.
-    pub fn is_executed_transaction_count_processed(
-        &self,
-        height_and_round: &HeightAndRound,
-    ) -> bool {
-        self.executed_transaction_count_processed
-            .contains(height_and_round)
-    }
-
-    /// Check if ProposalFin should be deferred for the given height and round
-    ///
-    /// ProposalFin should be deferred if execution has started but
-    /// ExecutedTransactionCount hasn't been processed yet. This ensures that we
-    /// don't finalize a proposal before we know the final transaction count.
-    ///
-    /// Note: This is in its own method to prevent drift with tests.
-    pub fn should_defer_proposal_fin(&self, height_and_round: &HeightAndRound) -> bool {
-        self.is_executing(height_and_round)
-            && !self.is_executed_transaction_count_processed(height_and_round)
     }
 
     /// Process a transaction batch with deferral support
@@ -125,13 +96,6 @@ impl BatchExecutionManager {
                 "🖧  ⚙️ transaction batch execution for height and round {height_and_round} is \
                  deferred"
             );
-            assert!(
-                deferred_executions
-                    .get(&height_and_round)
-                    .is_some_and(|dex| dex.block_info.is_some()),
-                "If TransactionBatch execution is deferred, a BlockInfo must have been added too \
-                 (because it arrives first according to message order)"
-            );
 
             // Defer execution - add to deferred_executions
             deferred_executions
@@ -152,7 +116,6 @@ impl BatchExecutionManager {
         let mut all_transactions = transactions;
         let mut validator = if let Some(DeferredExecution {
             transactions: mut deferred_txns,
-            block_info: deferred_block_info,
             ..
         }) = deferred
         {
@@ -160,24 +123,18 @@ impl BatchExecutionManager {
             // Prepend them to the new transactions.
             deferred_txns.extend(all_transactions);
             all_transactions = deferred_txns;
-            if let Some(block_info) = deferred_block_info {
-                validator_stage
-                    .try_into_block_info_stage()
-                    .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?
-                    .validate_block_info(
-                        block_info,
+            match validator_stage {
+                ValidatorStage::BlockInfo(stage) => {
+                    stage.validate_block_info(
                         main_db.clone(),
                         decided_blocks,
                         self.gas_price_provider.clone(),
                         None, // TODO: Add L1ToFriValidator when oracle is available
                         self.l2_gas_price_provider.as_ref(),
                         self.worker_pool.clone(),
-                    )
-                    .map(Box::new)?
-            } else {
-                validator_stage
-                    .try_into_transaction_batch_stage()
-                    .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?
+                    )?
+                }
+                ValidatorStage::TransactionBatch(stage) => stage,
             }
         } else {
             validator_stage
@@ -200,18 +157,19 @@ impl BatchExecutionManager {
              additionally {deferred_txns_len} previously deferred transactions were executed",
         );
 
-        // If ExecutedTransactionCount was deferred (arrived before execution started,
-        // e.g., because batches were deferred), process it now that execution
-        // has started.
-        // Assuming message ordering is guaranteed...
-        //   (see p2p::consensus::handle_incoming_proposal_message)
-        // ...if ExecutedTransactionCount is deferred, all batches are also in the
-        // deferred entry, so we can safely process ExecutedTransactionCount
-        // here.
+        // If executed transaction count was deferred (execution could
+        // not start before ProposalFin arrived, because the parent
+        // block wasn't finished yet), process it now that execution
+        // has started.  Assuming message ordering is guaranteed...
+        // (see p2p::consensus::handle_incoming_proposal_message)
+        // ...if executed transaction count is set (by ProposalFin
+        // processing), all transaction batches are also in the
+        // deferred entry, so we can safely process executed
+        // transaction count here.
         if let Some(executed_txn_count) = deferred_executed_transaction_count {
             tracing::debug!(
-                "Processing deferred ExecutedTransactionCount for {height_and_round} after batch \
-                 execution started"
+                "Processing deferred executed transaction count for {height_and_round} after \
+                 batch execution started"
             );
             self.process_executed_transaction_count::<T>(
                 height_and_round,
@@ -235,9 +193,8 @@ impl BatchExecutionManager {
         transactions: Vec<proto_consensus::Transaction>,
         validator: &mut ValidatorTransactionBatchStage,
     ) -> Result<(), ProposalHandlingError> {
-        // Mark that execution has started for this height/round, even if batch is
-        // empty. This is necessary because ExecutedTransactionCount may arrive later
-        // and requires execution to have started.
+        // Mark that execution has started for this height/round, even
+        // if batch is empty.
         self.executing.insert(height_and_round);
 
         if transactions.is_empty() {
@@ -262,9 +219,8 @@ impl BatchExecutionManager {
         Ok(())
     }
 
-    /// Process ExecutedTransactionCount message
+    /// Processes executed transaction count immediately with rollback support.
     ///
-    /// Processes ExecutedTransactionCount immediately with rollback support.
     /// Assumes execution has already started (at least one batch executed).
     /// If transactions are deferred, deferral should be handled by the
     /// caller before calling this function.
@@ -279,7 +235,7 @@ impl BatchExecutionManager {
         if !self.executing.contains(&height_and_round) {
             return Err(ProposalHandlingError::Fatal(anyhow::anyhow!(
                 "No execution state found for {height_and_round}. Execution should have started \
-                 before processing ExecutedTransactionCount."
+                 before processing executed transaction count."
             )));
         }
 
@@ -287,8 +243,10 @@ impl BatchExecutionManager {
         let current_transaction_count = validator.transaction_count();
 
         tracing::debug!(
-            "Processing ExecutedTransactionCount for {height_and_round}: \
-             target={target_transaction_count}, current={current_transaction_count}"
+            height_and_round = ?height_and_round,
+            target = target_transaction_count,
+            current = current_transaction_count,
+            "Processing executed transaction count"
         );
 
         if target_transaction_count < current_transaction_count {
@@ -301,11 +259,11 @@ impl BatchExecutionManager {
         } else if target_transaction_count > current_transaction_count {
             // This shouldn't happen with proper message ordering and no protocol errors.
             // Ordering is guaranteed by p2p::consensus::handle_incoming_proposal_message.
-            // ExecutedTransactionCount should arrive after all TransactionBatches, so we
-            // should have at least as many transactions as
-            // ExecutedTransactionCount indicates.
+            // ProposalFin should arrive after all TransactionBatches, so we
+            // should have at least as many transactions as its
+            // executed transaction count indicates.
             tracing::warn!(
-                "ExecutedTransactionCount for {height_and_round} indicates {} transactions, but \
+                "Executed transaction count for {height_and_round} indicates {} transactions, but \
                  we only have {} transactions. This may indicate a protocol violation or missing \
                  batches.",
                 target_transaction_count,
@@ -318,33 +276,25 @@ impl BatchExecutionManager {
             "Finalized {height_and_round} with {final_transaction_count} executed transactions"
         );
 
-        // Mark ExecutedTransactionCount as processed for this height/round
-        self.executed_transaction_count_processed
-            .insert(height_and_round);
-
         Ok(())
     }
 
     /// Clean up completed executions
     pub fn cleanup(&mut self, height_and_round: &HeightAndRound) {
         let had_execution = self.executing.remove(height_and_round);
-        let had_transactions_fin = self
-            .executed_transaction_count_processed
-            .remove(height_and_round);
-        if had_execution || had_transactions_fin {
+        if had_execution {
             tracing::debug!("Cleaned up execution state for {height_and_round}");
         }
     }
 }
 
-/// Represents transactions received from the network that are waiting for
-/// previous block to be committed before they can be executed. Also holds
-/// optional proposal commitment and proposer address in case that the entire
-/// proposal has been received. May also store ExecutedTransactionCount if it
-/// arrives while transactions are deferred.
+/// Represents transactions received from the network that are waiting
+/// for previous block to be committed before they can be
+/// executed. Also holds optional proposal commitment and executed
+/// transaction count in case ProposalFin arrives while transactions
+/// are deferred.
 #[derive(Debug, Clone, Default)]
 pub struct DeferredExecution {
-    pub block_info: Option<proto_consensus::BlockInfo>,
     pub transactions: Vec<proto_consensus::Transaction>,
     pub commitment: Option<ProposalCommitmentWithOrigin>,
     pub executed_transaction_count: Option<u64>,
@@ -418,20 +368,12 @@ mod tests {
         Ok(())
     }
 
-    fn create_test_proposal(
-        height: u64,
-    ) -> (
-        p2p_proto::consensus::ProposalInit,
-        p2p_proto::consensus::BlockInfo,
-    ) {
-        let init = p2p_proto::consensus::ProposalInit {
+    fn create_test_proposal(height: u64) -> p2p_proto::consensus::ProposalInit {
+        p2p_proto::consensus::ProposalInit {
             height,
             round: 1,
             valid_round: None,
             proposer: p2p_proto::common::Address::default(),
-        };
-        let block_info = p2p_proto::consensus::BlockInfo {
-            height,
             timestamp: 1000,
             builder: p2p_proto::common::Address::default(),
             l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
@@ -440,29 +382,23 @@ mod tests {
             l1_data_gas_price_wei: 0,
             l1_gas_price_fri: 0,
             l1_data_gas_price_fri: 0,
-        };
-        (init, block_info)
+            starknet_version: "".to_string(),
+            version_constant_commitment: Default::default(),
+        }
     }
 
-    /// Test that BatchExecutionManager correctly tracks execution state and
-    /// ExecutedTransactionCount processing. This verifies the tracking methods
-    /// that are used by defer_or_execute_proposal_fin to determine whether
-    /// ProposalFin should be deferred.
+    /// Test that BatchExecutionManager correctly tracks execution
+    /// state.
     #[tokio::test]
     async fn test_execution_state_tracking() {
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
-        let (proposal_init, block_info) = create_test_proposal(1);
+        let proposal_init = create_test_proposal(1);
 
         let mut validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
             .and_then(|v| {
-                v.skip_validation(
-                    block_info,
-                    storage,
-                    Arc::clone(&worker_pool),
-                    DecidedBlocks::default(),
-                )
+                v.skip_validation(storage, Arc::clone(&worker_pool), DecidedBlocks::default())
             })
             .expect("Failed to create validator stage");
         let mut batch_execution_manager = BatchExecutionManager::new(
@@ -478,10 +414,6 @@ mod tests {
         assert!(
             !batch_execution_manager.is_executing(&height_and_round),
             "Execution should not have started initially"
-        );
-        assert!(
-            !batch_execution_manager.is_executed_transaction_count_processed(&height_and_round),
-            "ExecutedTransactionCount should not be processed initially"
         );
 
         // Execute a batch to start execution
@@ -500,20 +432,7 @@ mod tests {
             "Execution should have started after execute_batch"
         );
 
-        // Verify ExecutedTransactionCount has NOT been processed yet
-        assert!(
-            !batch_execution_manager.is_executed_transaction_count_processed(&height_and_round),
-            "ExecutedTransactionCount should not be processed yet"
-        );
-
-        // Verify that ProposalFin should be deferred
-        assert!(
-            batch_execution_manager.should_defer_proposal_fin(&height_and_round),
-            "ProposalFin should be deferred when execution started but ExecutedTransactionCount \
-             not processed"
-        );
-
-        // Now process ExecutedTransactionCount
+        // Now process executed transaction count
         let executed_transaction_count = 5;
         batch_execution_manager
             .process_executed_transaction_count::<ProdTransactionMapper>(
@@ -521,24 +440,9 @@ mod tests {
                 executed_transaction_count,
                 &mut validator_stage,
             )
-            .expect("Failed to process ExecutedTransactionCount");
-
-        // Verify ExecutedTransactionCount is now marked as processed
-        assert!(
-            batch_execution_manager.is_executed_transaction_count_processed(&height_and_round),
-            "ExecutedTransactionCount should be marked as processed after process_transactions_fin"
-        );
-
-        // Now ProposalFin should NOT be deferred
-        assert!(
-            !batch_execution_manager.should_defer_proposal_fin(&height_and_round),
-            "ProposalFin should NOT be deferred after ExecutedTransactionCount is processed"
-        );
+            .expect("Failed to process executed transaction count");
     }
 
-    /// Test that ExecutedTransactionCount arriving before any TransactionBatch
-    /// is handled gracefully. ExecutedTransactionCount should be stored in
-    /// deferred entry even if no batches have been deferred yet.
     #[tokio::test]
     async fn test_executed_transaction_count_before_any_batch() {
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
@@ -568,9 +472,6 @@ mod tests {
             round: height_and_round.round(),
             valid_round: None,
             proposer: proposer_address,
-        };
-        let proposal_block_info = proto_consensus::BlockInfo {
-            height: height_and_round.height(),
             timestamp: 2000,
             builder: proposer_address,
             l1_da_mode: p2p_proto::common::L1DataAvailabilityMode::Calldata,
@@ -579,6 +480,8 @@ mod tests {
             l1_data_gas_price_fri: 0,
             l1_gas_price_wei: 0,
             l1_data_gas_price_wei: 0,
+            starknet_version: "".to_string(),
+            version_constant_commitment: Default::default(),
         };
 
         let worker_pool = create_test_worker_pool();
@@ -603,35 +506,24 @@ mod tests {
             "No deferred entry should exist initially"
         );
 
-        // Step 1: ExecutedTransactionCount arrives when execution hasn't started yet
-        // (Note: With P2P message ordering guarantees, ExecutedTransactionCount will
-        // always arrive after all TransactionBatches, but execution may not have
-        // started if batches were deferred. This test simulates the case where
-        // ExecutedTransactionCount arrives before execution starts, e.g., because
-        // batches were deferred).
+        // Step 1: executed transaction count arrives when execution
+        // hasn't started yet (Note: With P2P message ordering
+        // guarantees, ProposalFin will always arrive after all
+        // TransactionBatches, but execution would not have started if
+        // batches were deferred.)
         let executed_transaction_count = 5;
 
-        // Simulate the fix: create deferred entry and store ExecutedTransactionCount.
-        // Also store BlockInfo because it should have arrived before any
-        // batches or ExecutedTransactionCount (according to message ordering).
+        // Simulate the fix: create deferred entry and store executed
+        // transaction count.
         let deferred = deferred_executions.entry(height_and_round).or_default();
-        deferred.block_info = Some(proposal_block_info);
         deferred.executed_transaction_count = Some(executed_transaction_count);
-
-        // Verify BlockInfo was stored
-        assert!(
-            deferred_executions
-                .get(&height_and_round)
-                .is_some_and(|d| d.block_info.is_some()),
-            "BlockInfo should be stored in deferred entry"
-        );
-        // Verify ExecutedTransactionCount was stored
+        // Verify executed transaction count was stored
         assert!(
             deferred_executions
                 .get(&height_and_round)
                 .and_then(|d| d.executed_transaction_count.as_ref())
                 .is_some(),
-            "ExecutedTransactionCount should be stored in deferred entry"
+            "Executed transaction count should be stored in deferred entry"
         );
 
         let validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
@@ -657,19 +549,13 @@ mod tests {
             "Execution should have started after batch execution"
         );
 
-        // Verify ExecutedTransactionCount was processed (marked as processed)
-        assert!(
-            batch_execution_manager.is_executed_transaction_count_processed(&height_and_round),
-            "ExecutedTransactionCount should be processed after batch execution"
-        );
-
-        // Verify validator state matches ExecutedTransactionCount count
+        // Verify validator state matches executed transaction count
         assert!(
             matches!(
                 next_stage,
                 ValidatorStage::TransactionBatch(stage) if stage.transaction_count() == 5
             ),
-            "Validator should have 5 transactions matching ExecutedTransactionCount"
+            "Validator should have 5 transactions matching executed transaction count"
         );
     }
 
@@ -687,7 +573,7 @@ mod tests {
 
         let height_and_round = HeightAndRound::new(2, 1);
         let proposer_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x456").unwrap());
-        let (proposal_init, proposal_block_info) = create_test_proposal_init(
+        let proposal_init = create_test_proposal_init(
             chain_id,
             height_and_round.height(),
             height_and_round.round(),
@@ -707,10 +593,7 @@ mod tests {
 
         let mut deferred_executions: std::collections::HashMap<HeightAndRound, DeferredExecution> =
             std::collections::HashMap::new();
-        deferred_executions
-            .entry(height_and_round)
-            .or_default()
-            .block_info = Some(proposal_block_info);
+        deferred_executions.insert(height_and_round, DeferredExecution::default());
 
         // Test 1: Deferral when parent not committed
         let next_stage = {
@@ -790,17 +673,15 @@ mod tests {
         // with the blockifier's ConcurrentTransactionExecutor and shared worker pools.
         let worker_pool_2 = create_test_worker_pool();
         let height_and_round_2 = HeightAndRound::new(3, 1);
-        let (proposal_init, block_info) = create_test_proposal(height_and_round_2.height());
+        let proposal_init = create_test_proposal(height_and_round_2.height());
         let validator_stage_2 = ValidatorBlockInfoStage::new(chain_id, proposal_init)
             .and_then(|validator| {
                 validator.skip_validation(
-                    block_info,
                     storage.clone(),
                     worker_pool_2.clone(),
                     DecidedBlocks::default(),
                 )
             })
-            .map(Box::new)
             .map(ValidatorStage::TransactionBatch)
             .expect("Failed to create validator stage");
 
@@ -834,22 +715,17 @@ mod tests {
         }
     }
 
-    /// Test ExecutedTransactionCount processing with rollback support.
+    /// Test executed transaction count processing with rollback support.
     #[tokio::test]
     async fn test_executed_transaction_count_rollback() {
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
-        let (proposal_init, block_info) = create_test_proposal(1);
+        let proposal_init = create_test_proposal(1);
 
         let mut validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
             .and_then(|v| {
-                v.skip_validation(
-                    block_info,
-                    storage,
-                    Arc::clone(&worker_pool),
-                    DecidedBlocks::default(),
-                )
+                v.skip_validation(storage, Arc::clone(&worker_pool), DecidedBlocks::default())
             })
             .expect("Failed to create validator stage");
 
@@ -880,11 +756,11 @@ mod tests {
         assert_eq!(
             validator_stage.transaction_count(),
             14,
-            "Should have 14 transactions before ExecutedTransactionCount"
+            "Should have 14 transactions total"
         );
 
-        // Test 1: Normal case - no rollback (ExecutedTransactionCount matches current
-        // count)
+        // Test 1: Normal case - no rollback (executed transaction
+        // count matches current count)
         {
             let executed_transaction_count = 14;
 
@@ -894,12 +770,8 @@ mod tests {
                     executed_transaction_count,
                     &mut validator_stage,
                 )
-                .expect("Failed to process ExecutedTransactionCount");
+                .expect("Failed to process executed transaction count");
 
-            assert!(
-                batch_execution_manager.is_executed_transaction_count_processed(&height_and_round),
-                "ExecutedTransactionCount should be marked as processed"
-            );
             assert_eq!(
                 validator_stage.transaction_count(),
                 14,
@@ -907,22 +779,18 @@ mod tests {
             );
         }
 
-        // Test 2: Rollback case - ExecutedTransactionCount indicates fewer transactions
-        // Create a new worker pool for the second validator to avoid issues with
-        // blockifier's ConcurrentTransactionExecutor and shared worker pools.
+        // Test 2: Rollback case - executed transaction count
+        // indicates fewer transactions. Create a new worker pool for
+        // the second validator to avoid issues with blockifier's
+        // ConcurrentTransactionExecutor and shared worker pools.
         let worker_pool_2 = create_test_worker_pool();
 
         // Re-execute batches to get back to 14 transactions
         let storage_2 = StorageBuilder::in_tempdir().expect("Failed to create temp database");
-        let (proposal_init, block_info) = create_test_proposal(1);
+        let proposal_init = create_test_proposal(1);
         let mut validator_stage_2 = ValidatorBlockInfoStage::new(chain_id, proposal_init)
             .and_then(|validator| {
-                validator.skip_validation(
-                    block_info,
-                    storage_2,
-                    worker_pool_2,
-                    DecidedBlocks::default(),
-                )
+                validator.skip_validation(storage_2, worker_pool_2, DecidedBlocks::default())
             })
             .expect("Failed to create validator stage");
 
@@ -961,16 +829,12 @@ mod tests {
                 executed_transaction_count,
                 &mut validator_stage_2,
             )
-            .expect("Failed to process ExecutedTransactionCount with rollback");
+            .expect("Failed to process executed transaction count with rollback");
 
-        assert!(
-            batch_execution_manager.is_executed_transaction_count_processed(&height_and_round_2),
-            "ExecutedTransactionCount should be marked as processed after rollback"
-        );
         assert_eq!(
             validator_stage_2.transaction_count(),
             7,
-            "Transaction count should be rolled back to 7 (matching ExecutedTransactionCount)"
+            "Transaction count should be rolled back to 7 (matching executed transaction count)"
         );
     }
 
@@ -980,16 +844,11 @@ mod tests {
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
-        let (proposal_init, block_info) = create_test_proposal(1);
+        let proposal_init = create_test_proposal(1);
 
         let mut validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
             .and_then(|v| {
-                v.skip_validation(
-                    block_info,
-                    storage,
-                    Arc::clone(&worker_pool),
-                    DecidedBlocks::default(),
-                )
+                v.skip_validation(storage, Arc::clone(&worker_pool), DecidedBlocks::default())
             })
             .expect("Failed to create validator stage");
 
@@ -1017,7 +876,7 @@ mod tests {
             "No transactions should be executed"
         );
 
-        // ExecutedTransactionCount can be processed after empty batch
+        // executed transaction count can be processed after empty batch
         let executed_transaction_count = 0;
 
         batch_execution_manager
@@ -1026,32 +885,23 @@ mod tests {
                 executed_transaction_count,
                 &mut validator_stage,
             )
-            .expect("Failed to process ExecutedTransactionCount after empty batch");
-
-        assert!(
-            batch_execution_manager.is_executed_transaction_count_processed(&height_and_round),
-            "ExecutedTransactionCount should be processed after empty batch"
-        );
+            .expect("Failed to process executed transaction count after empty batch");
     }
 
-    /// Test that ExecutedTransactionCount == 0 rolls back all transactions to
-    /// zero. This covers the edge case where the proposer executed no
-    /// transactions but the validator optimistically executed some.
+    /// Test that executed transaction count == 0 rolls back all
+    /// transactions to zero. This covers the edge case where the
+    /// proposer executed no transactions but the validator
+    /// optimistically executed some.
     #[tokio::test]
     async fn test_executed_transaction_count_zero_rollback() {
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
-        let (proposal_init, block_info) = create_test_proposal(1);
+        let proposal_init = create_test_proposal(1);
 
         let mut validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
             .and_then(|v| {
-                v.skip_validation(
-                    block_info,
-                    storage,
-                    Arc::clone(&worker_pool),
-                    DecidedBlocks::default(),
-                )
+                v.skip_validation(storage, Arc::clone(&worker_pool), DecidedBlocks::default())
             })
             .expect("Failed to create validator stage");
 
@@ -1077,7 +927,7 @@ mod tests {
         assert_eq!(
             validator_stage.transaction_count(),
             5,
-            "Should have 5 transactions before ExecutedTransactionCount"
+            "Should have 5 transactions before executed transaction count"
         );
 
         // ETC == 0 should roll back all transactions
@@ -1087,37 +937,28 @@ mod tests {
                 0,
                 &mut validator_stage,
             )
-            .expect("Failed to process ExecutedTransactionCount with zero rollback");
+            .expect("Failed to process executed transaction count with zero rollback");
 
         assert_eq!(
             validator_stage.transaction_count(),
             0,
             "All transactions should be rolled back when ETC is 0"
         );
-        assert!(
-            batch_execution_manager.is_executed_transaction_count_processed(&height_and_round),
-            "ExecutedTransactionCount should be marked as processed"
-        );
     }
 
-    /// Test that ExecutedTransactionCount > actual transaction count does not
-    /// error or inflate the count. The validator continues with the
-    /// transactions it has.
+    /// Test that executed transaction count > actual transaction
+    /// count does not error or inflate the count. The validator
+    /// continues with the transactions it has.
     #[tokio::test]
     async fn test_executed_transaction_count_exceeds_actual() {
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
         let worker_pool = create_test_worker_pool();
-        let (proposal_init, block_info) = create_test_proposal(1);
+        let proposal_init = create_test_proposal(1);
 
         let mut validator_stage = ValidatorBlockInfoStage::new(chain_id, proposal_init)
             .and_then(|v| {
-                v.skip_validation(
-                    block_info,
-                    storage,
-                    Arc::clone(&worker_pool),
-                    DecidedBlocks::default(),
-                )
+                v.skip_validation(storage, Arc::clone(&worker_pool), DecidedBlocks::default())
             })
             .expect("Failed to create validator stage");
 
@@ -1143,7 +984,7 @@ mod tests {
         assert_eq!(
             validator_stage.transaction_count(),
             5,
-            "Should have 5 transactions before ExecutedTransactionCount"
+            "Should have 5 transactions before executed transaction count"
         );
 
         // ETC == 10 exceeds the 5 we have; should warn but not error
@@ -1159,10 +1000,6 @@ mod tests {
             validator_stage.transaction_count(),
             5,
             "Transaction count should remain unchanged when ETC exceeds actual"
-        );
-        assert!(
-            batch_execution_manager.is_executed_transaction_count_processed(&height_and_round),
-            "ExecutedTransactionCount should be marked as processed"
         );
     }
 }

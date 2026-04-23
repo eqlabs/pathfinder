@@ -65,9 +65,7 @@ mod test {
     #[case::happy_path(None)]
     // Bootstrap DB, none of the transactions should get reverted
     #[case::fail_on_proposal_init_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalInitRx }))]
-    #[case::fail_on_block_info_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::BlockInfoRx }))]
     #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::TransactionBatchRx }))]
-    #[case::fail_on_executed_transaction_count_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ExecutedTransactionCountRx }))]
     #[case::fail_on_proposal_fin_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalFinRx }))]
     #[case::fail_on_proposal_finalized(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalFinalized }))]
     #[case::fail_on_prevote_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::PrevoteRx }))]

@@ -165,6 +165,8 @@ pub fn spawn(
                                 Ok((wire_proposal, finalized_block)) => {
                                     let ProposalFin {
                                         proposal_commitment,
+                                        executed_transaction_count: _,
+                                        fin_payload: _,
                                     } = wire_proposal
                                         .last()
                                         .and_then(ProposalPart::as_fin)
