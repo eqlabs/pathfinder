@@ -17,9 +17,7 @@ pub use enabled::*;
 pub enum InjectFailureTrigger {
     ProposalInitRx,
     ProposalFinRx,
-    BlockInfoRx,
     TransactionBatchRx,
-    ExecutedTransactionCountRx,
     ProposalFinalized,
     PrevoteRx,
     PrecommitRx,
@@ -34,9 +32,7 @@ impl InjectFailureTrigger {
         match self {
             InjectFailureTrigger::ProposalInitRx => "proposal_init_rx",
             InjectFailureTrigger::ProposalFinRx => "proposal_fin_rx",
-            InjectFailureTrigger::BlockInfoRx => "block_info_rx",
             InjectFailureTrigger::TransactionBatchRx => "txn_batch_rx",
-            InjectFailureTrigger::ExecutedTransactionCountRx => "executed_txn_count_rx",
             InjectFailureTrigger::ProposalFinalized => "proposal_finalized",
             InjectFailureTrigger::PrevoteRx => "prevote_rx",
             InjectFailureTrigger::PrecommitRx => "precommit_rx",
@@ -55,9 +51,7 @@ impl FromStr for InjectFailureTrigger {
         match s {
             "proposal_init_rx" => Ok(InjectFailureTrigger::ProposalInitRx),
             "proposal_fin_rx" => Ok(InjectFailureTrigger::ProposalFinRx),
-            "block_info_rx" => Ok(InjectFailureTrigger::BlockInfoRx),
             "txn_batch_rx" => Ok(InjectFailureTrigger::TransactionBatchRx),
-            "executed_txn_count_rx" => Ok(InjectFailureTrigger::ExecutedTransactionCountRx),
             "proposal_finalized" => Ok(InjectFailureTrigger::ProposalFinalized),
             "prevote_rx" => Ok(InjectFailureTrigger::PrevoteRx),
             "precommit_rx" => Ok(InjectFailureTrigger::PrecommitRx),

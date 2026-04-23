@@ -44,7 +44,9 @@ impl<T> Dummy<T> for Hash256 {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[derive(
+    Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, ToProtobuf, TryFromProtobuf, Dummy,
+)]
 #[protobuf(name = "crate::proto::common::Hashes")]
 pub struct Hashes {
     pub items: Vec<Hash>,

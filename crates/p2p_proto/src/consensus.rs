@@ -1,8 +1,9 @@
-use fake::{Dummy, Fake as _};
+use fake::Dummy;
+use pathfinder_crypto::Felt;
 use prost::Message;
 use proto::consensus::consensus as consensus_proto;
 
-use crate::common::{Address, Hash, L1DataAvailabilityMode};
+use crate::common::{Address, Hash, Hashes, L1DataAvailabilityMode};
 use crate::transaction::{DeclareV3WithClass, DeployAccountV3, InvokeV3WithProof, L1HandlerV0};
 use crate::{proto, proto_field, ProtobufSerializable, ToProtobuf, TryFromProtobuf};
 
@@ -39,6 +40,7 @@ pub struct Vote {
     #[optional]
     pub proposal_commitment: Option<Hash>,
     pub voter: Address,
+    pub signature: Hashes,
 }
 
 impl ProtobufSerializable for Vote {
@@ -57,9 +59,7 @@ impl ProtobufSerializable for Vote {
 pub enum ProposalPart {
     Init(ProposalInit),
     Fin(ProposalFin),
-    BlockInfo(BlockInfo),
     TransactionBatch(Vec<Transaction>),
-    ExecutedTransactionCount(u64),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -70,43 +70,50 @@ pub struct ProposalInit {
     #[optional]
     pub valid_round: Option<u32>,
     pub proposer: Address,
+    pub timestamp: u64,
+    pub builder: Address,
+    pub l1_da_mode: L1DataAvailabilityMode,
+    pub l2_gas_price_fri: u128,
+    pub l1_gas_price_fri: u128,
+    pub l1_data_gas_price_fri: u128,
+    pub l1_gas_price_wei: u128,
+    pub l1_data_gas_price_wei: u128,
+    pub starknet_version: String,
+    pub version_constant_commitment: Hash,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "consensus_proto::CommitmentParts")]
+pub struct CommitmentParts {
+    pub concatenated_counts: Felt,
+    #[optional]
+    pub parent_commitment: Option<Hash>,
+    pub transaction_commitment: Hash,
+    pub event_commitment: Hash,
+    pub receipt_commitment: Hash,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "consensus_proto::L2GasInfo")]
+pub struct L2GasInfo {
+    pub next_l2_gas_price_fri: u128,
+    pub l2_gas_used: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "consensus_proto::ProposalFinPayload")]
+pub struct ProposalFinPayload {
+    pub commitment_parts: CommitmentParts,
+    pub l2_gas_info: L2GasInfo,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "consensus_proto::ProposalFin")]
 pub struct ProposalFin {
     pub proposal_commitment: Hash,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[protobuf(name = "consensus_proto::BlockInfo")]
-pub struct BlockInfo {
-    pub height: u64,
-    pub builder: Address,
-    pub timestamp: u64,
-    pub l2_gas_price_fri: u128,
-    pub l1_gas_price_fri: u128,
-    pub l1_data_gas_price_fri: u128,
-    pub l1_gas_price_wei: u128,
-    pub l1_data_gas_price_wei: u128,
-    pub l1_da_mode: L1DataAvailabilityMode,
-}
-
-impl<T> Dummy<T> for BlockInfo {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-        Self {
-            height: rng.gen_range(0..i64::MAX) as u64,
-            builder: fake::Faker.fake_with_rng(rng),
-            timestamp: rng.gen_range(0..i64::MAX) as u64,
-            // Keep the prices low enough to avoid overflow when converting between fri and wei
-            l2_gas_price_fri: rng.gen_range(1..i64::MAX) as u128,
-            l1_gas_price_fri: rng.gen_range(1..i64::MAX) as u128,
-            l1_data_gas_price_fri: rng.gen_range(1..i64::MAX) as u128,
-            l1_gas_price_wei: rng.gen_range(1..i64::MAX) as u128,
-            l1_data_gas_price_wei: rng.gen_range(1..i64::MAX) as u128,
-            l1_da_mode: fake::Faker.fake_with_rng(rng),
-        }
-    }
+    pub executed_transaction_count: u64,
+    #[optional]
+    pub fin_payload: Option<ProposalFinPayload>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -159,17 +166,10 @@ pub enum StreamMessageVariant {
 
 impl ToProtobuf<consensus_proto::ProposalPart> for ProposalPart {
     fn to_protobuf(self) -> consensus_proto::ProposalPart {
-        use consensus_proto::proposal_part::Message::{
-            BlockInfo,
-            ExecutedTransactionCount,
-            Fin,
-            Init,
-            Transactions,
-        };
+        use consensus_proto::proposal_part::Message::{Fin, Init, Transactions};
         let msg = match self {
             ProposalPart::Init(proposal_init) => Init(proposal_init.to_protobuf()),
             ProposalPart::Fin(proposal_fin) => Fin(proposal_fin.to_protobuf()),
-            ProposalPart::BlockInfo(block_info) => BlockInfo(block_info.to_protobuf()),
             ProposalPart::TransactionBatch(transactions) => {
                 Transactions(consensus_proto::TransactionBatch {
                     transactions: transactions
@@ -177,9 +177,6 @@ impl ToProtobuf<consensus_proto::ProposalPart> for ProposalPart {
                         .map(|txn| txn.to_protobuf())
                         .collect(),
                 })
-            }
-            ProposalPart::ExecutedTransactionCount(count) => {
-                ExecutedTransactionCount(count.to_protobuf())
             }
         };
         consensus_proto::ProposalPart { message: Some(msg) }
@@ -191,29 +188,16 @@ impl TryFromProtobuf<consensus_proto::ProposalPart> for ProposalPart {
         input: consensus_proto::ProposalPart,
         field_name: &'static str,
     ) -> Result<Self, std::io::Error> {
-        use consensus_proto::proposal_part::Message::{
-            BlockInfo,
-            ExecutedTransactionCount,
-            Fin,
-            Init,
-            Transactions,
-        };
+        use consensus_proto::proposal_part::Message::{Fin, Init, Transactions};
         match proto_field(input.message, field_name)? {
             Init(init) => TryFromProtobuf::try_from_protobuf(init, field_name).map(Self::Init),
             Fin(fin) => TryFromProtobuf::try_from_protobuf(fin, field_name).map(Self::Fin),
-            BlockInfo(bi) => {
-                TryFromProtobuf::try_from_protobuf(bi, field_name).map(Self::BlockInfo)
-            }
             Transactions(transactions) => transactions
                 .transactions
                 .into_iter()
                 .map(|txn| TryFromProtobuf::try_from_protobuf(txn, field_name))
                 .collect::<Result<Vec<_>, _>>()
                 .map(Self::TransactionBatch),
-            ExecutedTransactionCount(count) => {
-                TryFromProtobuf::try_from_protobuf(count, field_name)
-                    .map(Self::ExecutedTransactionCount)
-            }
         }
     }
 }
@@ -262,16 +246,8 @@ impl ProposalPart {
         matches!(self, Self::Fin(_))
     }
 
-    pub fn is_block_info(&self) -> bool {
-        matches!(self, Self::BlockInfo(_))
-    }
-
     pub fn is_transaction_batch(&self) -> bool {
         matches!(self, Self::TransactionBatch(_))
-    }
-
-    pub fn is_executed_transaction_count(&self) -> bool {
-        matches!(self, Self::ExecutedTransactionCount(_))
     }
 }
 

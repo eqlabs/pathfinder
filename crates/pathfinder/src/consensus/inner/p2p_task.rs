@@ -473,6 +473,8 @@ pub fn spawn(
                     ) => {
                         let ProposalFin {
                             proposal_commitment,
+                            executed_transaction_count: _,
+                            fin_payload: _,
                         } = proposal_parts.last().and_then(ProposalPart::as_fin).expect(
                             "Proposals produced by our node are always coherent and complete",
                         );
@@ -851,23 +853,18 @@ fn execute_deferred_for_next_height<T: TransactionExt>(
     if let Some((hnr, deferred)) = deferred.into_iter().next_back() {
         tracing::debug!("🖧  ⚙️ executing deferred proposal for height and round {hnr}");
 
-        let block_info = deferred.block_info.expect(
-            "BlockInfo must be present if a deferred execution exists for height and round",
-        );
         let validator_stage = validator_cache.remove(&hnr)?;
         let mut validator = validator_stage
             .try_into_block_info_stage()
             .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?
             .validate_block_info(
-                block_info,
                 main_db,
                 decided_blocks,
                 gas_price_provider,
                 None, // TODO: Add L1ToFriValidator when oracle is available
                 l2_gas_price_provider.as_ref(),
                 worker_pool,
-            )
-            .map(Box::new)?;
+            )?;
 
         // Execute deferred transactions first.
         let opt_commitment = {
@@ -881,15 +878,16 @@ fn execute_deferred_for_next_height<T: TransactionExt>(
                 )?;
             }
 
-            // Process deferred ExecutedTransactionCount
+            // Process deferred executed transaction count
             if let Some(executed_transaction_count) = deferred.executed_transaction_count {
                 tracing::debug!(
-                    "🖧  ⚙️ processing deferred ExecutedTransactionCount for height and round {hnr}"
+                    "🖧  ⚙️ processing deferred executed transaction count for height and round \
+                     {hnr}"
                 );
                 // Execution has started at this point (from execute_batch above, if
                 // transactions were non-empty). If transactions were empty,
                 // execute_batch handles marking execution as started, so we can
-                // process ExecutedTransactionCount immediately.
+                // process executed transactioncount immediately.
                 batch_execution_manager.process_executed_transaction_count::<T>(
                     hnr,
                     executed_transaction_count,
@@ -1033,11 +1031,10 @@ async fn send_proposal_to_consensus(
 /// We enforce the following order of proposal parts via
 /// [ProposalPartsValidator]
 /// 1. Proposal Init
-/// 2. Block Info for non-empty proposals (or Proposal Fin for empty proposals)
-/// 3. In random order: at least one Transaction Batch, ExecutedTransactionCount
-/// 4. Proposal Fin
+/// 2. Transaction Batch (zero or more times)
+/// 3. Proposal Fin
 ///
-/// The [spec](https://github.com/starknet-io/starknet-p2p-specs/blob/main/p2p/proto/consensus/consensus.md#order-of-messages) is more restrictive.
+/// according to the [spec](https://github.com/starknet-io/starknet-p2p-specs/blob/main/p2p/proto/consensus/consensus.md#order-of-messages).
 #[allow(clippy::too_many_arguments)]
 fn handle_incoming_proposal_part<T: TransactionExt>(
     chain_id: ChainId,
@@ -1073,16 +1070,6 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
     match (result, proposal_part) {
         (ValidationResult::Accepted, ProposalPart::Init(init)) => {
             let validator = ValidatorBlockInfoStage::new(chain_id, init)?;
-            validator_cache.insert(height_and_round, ValidatorStage::BlockInfo(validator));
-            Ok(None)
-        }
-        (ValidationResult::Accepted, ProposalPart::BlockInfo(block_info)) => {
-            let validator_stage = validator_cache.remove(&height_and_round)?;
-
-            let validator = validator_stage
-                .try_into_block_info_stage()
-                .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
-
             let defer = {
                 let mut db_conn = main_readonly_storage.connection().context(
                     "Creating database connection for deferral check in block info validation",
@@ -1090,22 +1077,22 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
                 let db_tx = db_conn.transaction().context(
                     "Creating DB transaction for deferral check in block info validation",
                 )?;
-                should_defer_validation(block_info.height, decided_blocks.clone(), &db_tx)?
+                should_defer_validation(
+                    validator.proposal_height(),
+                    decided_blocks.clone(),
+                    &db_tx,
+                )?
             };
             if defer {
                 tracing::debug!(
                     "🖧  ⚙️ deferring block info validation for height and round \
                      {height_and_round}..."
                 );
-                let mut dex = deferred_executions.lock().unwrap();
-                let deferred = dex.entry(height_and_round).or_default();
-                deferred.block_info = Some(block_info);
                 validator_cache.insert(height_and_round, ValidatorStage::BlockInfo(validator));
                 return Ok(None);
             }
 
             let new_validator = validator.validate_block_info(
-                block_info,
                 main_readonly_storage,
                 decided_blocks,
                 gas_price_provider,
@@ -1115,7 +1102,7 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
             )?;
             validator_cache.insert(
                 height_and_round,
-                ValidatorStage::TransactionBatch(Box::new(new_validator)),
+                ValidatorStage::TransactionBatch(new_validator),
             );
             Ok(None)
         }
@@ -1139,71 +1126,11 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
             Ok(None)
         }
         (
-            ValidationResult::Accepted,
-            ProposalPart::ExecutedTransactionCount(executed_txn_count),
-        ) => {
-            tracing::debug!(
-                "🖧  ⚙️ handling ExecutedTransactionCount for height and round \
-                 {height_and_round}..."
-            );
-
-            let execution_started = batch_execution_manager.is_executing(&height_and_round);
-
-            if !execution_started {
-                // Execution hasn't started - store ExecutedTransactionCount for later
-                // processing. This can happen if:
-                // - Transactions are deferred (deferred entry already exists)
-                // - ExecutedTransactionCount arrives before execution starts
-                let mut dex = deferred_executions.lock().unwrap();
-
-                let deferred = dex.entry(height_and_round).or_default();
-                deferred.executed_transaction_count = Some(executed_txn_count);
-                tracing::debug!(
-                    "ExecutedTransactionCount for {height_and_round} is deferred - storing for \
-                     later processing (execution not started yet)"
-                );
-            } else {
-                let validator_stage = validator_cache.remove(&height_and_round)?;
-                let mut validator = validator_stage
-                    .try_into_transaction_batch_stage()
-                    .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
-
-                batch_execution_manager.process_executed_transaction_count::<T>(
-                    height_and_round,
-                    executed_txn_count,
-                    &mut validator,
-                )?;
-
-                // Check if ProposalFin was deferred and should now be finalized
-                let mut dex = deferred_executions.lock().unwrap();
-                if let Some(deferred) = dex.get_mut(&height_and_round) {
-                    if let Some(deferred_commitment) = deferred.commitment.take() {
-                        drop(dex);
-                        let block = validator
-                            .consensus_finalize(deferred_commitment.proposal_commitment)?;
-                        tracing::debug!(
-                            "🖧  ⚙️ finalizing deferred ProposalFin for height and round \
-                             {height_and_round} after ExecutedTransactionCount was processed"
-                        );
-
-                        finalized_blocks.insert(height_and_round, block);
-
-                        return Ok(Some(deferred_commitment));
-                    }
-                }
-
-                validator_cache.insert(
-                    height_and_round,
-                    ValidatorStage::TransactionBatch(validator),
-                );
-            }
-
-            Ok(None)
-        }
-        (
             ValidationResult::EmptyProposal,
             ProposalPart::Fin(ProposalFin {
                 proposal_commitment,
+                executed_transaction_count: _,
+                fin_payload: _,
             }),
         ) => {
             tracing::debug!(
@@ -1236,6 +1163,8 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
             ValidationResult::NonEmptyProposal,
             ProposalPart::Fin(ProposalFin {
                 proposal_commitment,
+                executed_transaction_count,
+                fin_payload: _,
             }),
         ) => {
             tracing::debug!(
@@ -1254,6 +1183,7 @@ fn handle_incoming_proposal_part<T: TransactionExt>(
                 proposal_commitment,
                 proposer_address,
                 valid_round,
+                executed_transaction_count,
                 main_readonly_storage.clone(),
                 deferred_executions,
                 batch_execution_manager,
@@ -1283,6 +1213,7 @@ fn defer_or_execute_proposal_fin<T: TransactionExt>(
     proposal_commitment: Hash,
     proposer_address: ContractAddress,
     valid_round: Option<u32>,
+    executed_transaction_count: u64,
     main_db: Storage,
     deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     batch_execution_manager: &mut BatchExecutionManager,
@@ -1314,10 +1245,9 @@ fn defer_or_execute_proposal_fin<T: TransactionExt>(
         );
 
         let mut deferred_executions = deferred_executions.lock().unwrap();
-        deferred_executions
-            .entry(height_and_round)
-            .or_default()
-            .commitment = Some(commitment);
+        let deferred = deferred_executions.entry(height_and_round).or_default();
+        deferred.commitment = Some(commitment);
+        deferred.executed_transaction_count = Some(executed_transaction_count);
         Ok(None)
     } else {
         // The proposal can be finalized now, because the previous
@@ -1330,26 +1260,19 @@ fn defer_or_execute_proposal_fin<T: TransactionExt>(
         let deferred_txns_len = deferred.as_ref().map_or(0, |d| d.transactions.len());
 
         let validator = if let Some(deferred) = deferred {
-            let mut validator = if let Some(block_info) = deferred.block_info {
-                validator_cache
-                    .remove(&height_and_round)?
-                    .try_into_block_info_stage()
-                    .expect("ValidatorStage to be BlockInfo if BlockInfo is deferred")
-                    .validate_block_info(
-                        block_info,
+            let validator_stage = validator_cache.remove(&height_and_round)?;
+            let mut validator = match validator_stage {
+                ValidatorStage::BlockInfo(stage) => {
+                    stage.validate_block_info(
                         main_db.clone(),
                         decided_blocks,
                         gas_price_provider,
                         None, // TODO: Add L1ToFriValidator when oracle is available
                         l2_gas_price_provider.as_ref(),
                         worker_pool,
-                    )
-                    .map(Box::new)?
-            } else {
-                validator_cache
-                    .remove(&height_and_round)?
-                    .try_into_transaction_batch_stage()
-                    .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?
+                    )?
+                }
+                ValidatorStage::TransactionBatch(stage) => stage,
             };
 
             // Execute deferred transactions first.
@@ -1358,9 +1281,7 @@ fn defer_or_execute_proposal_fin<T: TransactionExt>(
                     "🖧  ⚙️ executing {deferred_txns_len} deferred transactions for height and \
                      round {height_and_round} before finalizing proposal..."
                 );
-            }
 
-            if !deferred.transactions.is_empty() {
                 batch_execution_manager.execute_batch::<T>(
                     height_and_round,
                     deferred.transactions,
@@ -1368,20 +1289,18 @@ fn defer_or_execute_proposal_fin<T: TransactionExt>(
                 )?;
             }
 
-            // Process deferred ExecutedTransactionCount if it was stored
-            if let Some(executed_transaction_count) = deferred.executed_transaction_count {
-                tracing::debug!(
-                    "🖧  ⚙️ processing deferred ExecutedTransactionCount for height and round \
-                     {height_and_round}"
-                );
-                // Execution has started at this point (from execute_batch),
-                // so we can process ExecutedTransactionCount immediately
-                batch_execution_manager.process_executed_transaction_count::<T>(
-                    height_and_round,
-                    executed_transaction_count,
-                    &mut validator,
-                )?;
-            }
+            // Process deferred executed transaction count
+            tracing::debug!(
+                "🖧  ⚙️ processing executed transaction count for height and round \
+                 {height_and_round}"
+            );
+            // Execution has started at this point (from execute_batch),
+            // so we can proceed immediately
+            batch_execution_manager.process_executed_transaction_count::<T>(
+                height_and_round,
+                executed_transaction_count,
+                &mut validator,
+            )?;
 
             // Process deferred commitment if it was stored (use it instead of the new one)
             // (they should match, but the deferred one was received earlier)
@@ -1404,32 +1323,17 @@ fn defer_or_execute_proposal_fin<T: TransactionExt>(
 
             validator
         } else {
-            validator_cache
+            let mut validator = validator_cache
                 .remove(&height_and_round)?
                 .try_into_transaction_batch_stage()
-                .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?
-        };
-
-        // Check if execution has started but ExecutedTransactionCount hasn't been
-        // processed yet If so, defer ProposalFin until ExecutedTransactionCount
-        // arrives
-        if batch_execution_manager.should_defer_proposal_fin(&height_and_round) {
-            tracing::debug!(
-                "🖧  ⚙️ consensus finalize for height and round {height_and_round} is deferred \
-                 because ExecutedTransactionCount hasn't been processed yet"
-            );
-
-            let mut deferred_executions = deferred_executions.lock().unwrap();
-            deferred_executions
-                .entry(height_and_round)
-                .or_default()
-                .commitment = Some(commitment);
-            validator_cache.insert(
+                .map_err(|e| ProposalHandlingError::Recoverable(e.into()))?;
+            batch_execution_manager.process_executed_transaction_count::<T>(
                 height_and_round,
-                ValidatorStage::TransactionBatch(validator),
-            );
-            return Ok(None);
-        }
+                executed_transaction_count,
+                &mut validator,
+            )?;
+            validator
+        };
 
         let block = validator.consensus_finalize(commitment.proposal_commitment)?;
 
@@ -1475,6 +1379,7 @@ fn consensus_vote_to_p2p_vote(
         round: vote.round.as_u32().expect("Round not to be Nil"),
         proposal_commitment: vote.value.map(|v| Hash(v.0 .0)),
         voter: Address(vote.validator_address.0),
+        signature: Default::default(),
     }
 }
 

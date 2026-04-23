@@ -33,6 +33,7 @@ message Vote {
     // This is optional since a vote can be NIL.
     optional starknet.common.Hash proposal_commitment = 5;
     starknet.common.Address       voter               = 6;
+    starknet.common.Hashes        signature           = 7;
 }
 
 message StreamMessage {
@@ -45,49 +46,62 @@ message StreamMessage {
 }
 
 message ProposalInit {
-    uint64 height               = 1;
-    uint32 round                = 2;
-    optional uint32 valid_round = 3;
-    starknet.common.Address proposer            = 4;
-}
-
-message BlockInfo {
     uint64 height                     = 1;
-    uint64 timestamp                  = 2;
-    starknet.common.Address builder                   = 3;
-    starknet.common.L1DataAvailabilityMode l1_da_mode = 4;
-    starknet.common.Uint128 l2_gas_price_fri          = 5;
-    starknet.common.Uint128 l1_gas_price_fri          = 6;
-    starknet.common.Uint128 l1_data_gas_price_fri     = 7;
-    starknet.common.Uint128 l1_gas_price_wei          = 8;
-    starknet.common.Uint128 l1_data_gas_price_wei     = 9;
+    uint32 round                      = 2;
+    optional uint32 valid_round       = 3;
+    starknet.common.Address proposer                  = 4;
+    uint64 timestamp                  = 5;
+    starknet.common.Address builder                   = 6;
+    starknet.common.L1DataAvailabilityMode l1_da_mode = 7;
+    starknet.common.Uint128 l2_gas_price_fri          = 8;
+    starknet.common.Uint128 l1_gas_price_fri          = 9;
+    starknet.common.Uint128 l1_data_gas_price_fri     = 10;
+    starknet.common.Uint128 l1_gas_price_wei          = 11;
+    starknet.common.Uint128 l1_data_gas_price_wei     = 12;
+    string starknet_version           = 13;
+    starknet.common.Hash version_constant_commitment   = 14;
 }
 
 message TransactionBatch {
     repeated ConsensusTransaction transactions = 1;
 }
 
+message CommitmentParts {
+    starknet.common.Felt252 concatenated_counts = 1;
+    optional starknet.common.Hash parent_commitment = 2;
+    starknet.common.Hash transaction_commitment = 3;
+    starknet.common.Hash event_commitment = 4;
+    starknet.common.Hash receipt_commitment = 5;
+}
+
+// L2 gas info for the block (next price and gas used).
+message L2GasInfo {
+    starknet.common.Uint128 next_l2_gas_price_fri = 1;
+    uint64 l2_gas_used = 2;
+}
+
+// Optional payload carried in ProposalFin: commitment parts and L2 gas.
+message ProposalFinPayload {
+    CommitmentParts commitment_parts = 1;
+    optional L2GasInfo l2_gas_info = 2;
+}
+
 message ProposalFin {
     // Identifies a Starknet block based on the content streamed in the proposal.
     starknet.common.Hash proposal_commitment = 1;
+    // Number of executed transactions in the proposal.
+    uint64 executed_transaction_count = 2;
+    optional ProposalFinPayload fin_payload = 3;
 }
 
 // Network format:
-// 1. First message is ProposalInit
-// 2. Last message is ProposalFin
-//
-// Empty block - no other messages sent.
-//
-// Block with transactions:
-// 3. block_info is sent once
-// 4. transactions is sent repeatedly
-// 5. executed_transaction_count is sent once
+// 1. First message is ProposalInit (init, includes all block metadata)
+// 2. transactions is sent repeatedly (for non-empty blocks)
+// 3. Last message is ProposalFin
 message ProposalPart {
     oneof message {
-        ProposalInit init                 = 1;
-        ProposalFin fin                   = 2;
-        BlockInfo block_info              = 3;
-        TransactionBatch transactions     = 4;
-        uint64 executed_transaction_count = 5;
+        ProposalInit init             = 1;
+        ProposalFin fin               = 2;
+        TransactionBatch transactions = 3;
     }
 }
