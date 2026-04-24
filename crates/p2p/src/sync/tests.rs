@@ -11,10 +11,10 @@ use crate::sync::behaviour::Behaviour;
 use crate::sync::client::Client;
 use crate::sync::protocol::codec;
 use crate::sync::{Config, Event};
-use crate::test_utils::peer::TestPeerBuilder;
+use crate::test_utils::peer::{TestPeer, TestPeerBuilder};
 use crate::test_utils::{consume_all_events_forever, filter_events};
 
-type SyncTestPeer = crate::test_utils::peer::TestPeer<Behaviour>;
+type SyncTestPeer = TestPeer<Behaviour>;
 
 fn create_peer() -> SyncTestPeer {
     TestPeerBuilder::new()
