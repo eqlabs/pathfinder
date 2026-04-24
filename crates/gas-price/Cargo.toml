@@ -13,13 +13,6 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-anyhow = { workspace = true }
-cargo_toml = "0.22.3"
+apollo_versioned_constants = { workspace = true }
 mockall = { workspace = true }
-pathfinder-common = { path = "../common" }
-pathfinder-ethereum = { path = "../ethereum" }
-reqwest = { workspace = true }
 rstest = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
-starknet_api = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
