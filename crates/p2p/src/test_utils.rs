@@ -33,20 +33,3 @@ where
 
     rx
 }
-
-/// Wait for a specific event to happen.
-pub(crate) async fn wait_for_event<Event, Data>(
-    event_receiver: &mut mpsc::UnboundedReceiver<Event>,
-    mut f: impl FnMut(Event) -> Option<Data>,
-) -> Option<Data>
-where
-    Event: Send + 'static,
-    Data: Debug + Send + 'static,
-{
-    while let Some(event) = event_receiver.recv().await {
-        if let Some(data) = f(event) {
-            return Some(data);
-        }
-    }
-    None
-}
