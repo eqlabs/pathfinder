@@ -1,10 +1,12 @@
 use std::borrow::Cow;
 use std::error::Error;
+use std::str::FromStr;
 
 use bitvec::order::Msb0;
 use bitvec::slice::BitSlice;
 use bitvec::view::BitView;
 use fake::Dummy;
+use num_bigint::{BigUint, ParseBigIntError};
 
 use crate::algebra::field::montfelt::MontFelt;
 
@@ -451,6 +453,41 @@ impl Felt {
         // Unwrap is safe as the buffer contains valid utf8
         String::from_utf8(buf).unwrap().into()
     }
+
+    /// Creates a [Felt] from a [BigUint].
+    ///
+    /// A helper conversion function. Only use with __sequencer API related
+    /// types__.
+    pub fn from_biguint(b: BigUint) -> Result<Self, OverflowError> {
+        Self::from_be_slice(&b.to_bytes_be())
+    }
+
+    /// Parses a decimal string into a [Felt].
+    ///
+    /// A helper conversion function. Only use with __sequencer API related
+    /// types__.
+    pub fn from_dec_str(s: &str) -> Result<Self, DecParseError> {
+        // The order here matters because `Felt::from_hex_str` requires the '0x'
+        // prefix, so we'll never parse a hex string as a decimal string by mistake.
+        match Felt::from_hex_str(s) {
+            Ok(h) => Ok(h),
+            Err(_) => {
+                let b = BigUint::from_str(s)?;
+                let h = Self::from_biguint(b)?;
+                Ok(h)
+            }
+        }
+    }
+
+    /// Converts this [Felt] into a decimal string.
+    ///
+    /// A helper conversion function. Only use with __sequencer API related
+    /// types__.
+    pub fn to_dec_str(&self) -> String {
+        let b = self.to_be_bytes();
+        let b = BigUint::from_bytes_be(&b);
+        b.to_str_radix(10)
+    }
 }
 
 /// Error returned by [Felt::from_hex_str] indicating an invalid hex string.
@@ -478,6 +515,39 @@ impl std::fmt::Display for HexParseError {
                 f.write_fmt(format_args!("More than {} digits found: {}", *max, *actual))
             }
             Self::MissingPrefix => f.write_str("Missing '0x' prefix"),
+            Self::Overflow => f.write_str(OVERFLOW_MSG),
+        }
+    }
+}
+
+/// An error type for [`Felt::from_dec_str`] indicating an invalid decimal
+/// string or an overflow.
+#[derive(Debug)]
+pub enum DecParseError {
+    ParseBigInt(ParseBigIntError),
+    Overflow,
+}
+
+impl Error for DecParseError {}
+
+impl From<ParseBigIntError> for DecParseError {
+    fn from(e: ParseBigIntError) -> Self {
+        Self::ParseBigInt(e)
+    }
+}
+
+impl From<OverflowError> for DecParseError {
+    fn from(_: OverflowError) -> Self {
+        Self::Overflow
+    }
+}
+
+impl std::fmt::Display for DecParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ParseBigInt(e) => {
+                f.write_fmt(format_args!("Failed to parse decimal string: {e}"))
+            }
             Self::Overflow => f.write_str(OVERFLOW_MSG),
         }
     }

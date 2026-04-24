@@ -13,6 +13,7 @@ pub mod signature;
 pub use algebra::{
     AffinePoint,
     CurveOrderMontFelt,
+    DecParseError,
     Felt,
     HexParseError,
     MontFelt,

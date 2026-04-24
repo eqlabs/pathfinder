@@ -5,4 +5,4 @@ pub mod curve;
 pub mod field;
 
 pub use curve::{AffinePoint, ProjectivePoint};
-pub use field::{CurveOrderMontFelt, Felt, HexParseError, MontFelt, OverflowError};
+pub use field::{CurveOrderMontFelt, DecParseError, Felt, HexParseError, MontFelt, OverflowError};

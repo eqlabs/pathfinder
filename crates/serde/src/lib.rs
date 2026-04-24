@@ -2,11 +2,9 @@
 //! data.
 
 use std::borrow::Cow;
-use std::str::FromStr;
 
-use num_bigint::BigUint;
 use pathfinder_common::prelude::*;
-use pathfinder_crypto::{Felt, HexParseError, OverflowError};
+use pathfinder_crypto::{Felt, HexParseError};
 use primitive_types::{H160, H256, U256};
 use serde::de::Visitor;
 use serde_with::{serde_conv, DeserializeAs, SerializeAs};
@@ -14,36 +12,36 @@ use serde_with::{serde_conv, DeserializeAs, SerializeAs};
 serde_conv!(
     pub CallParamAsDecimalStr,
     CallParam,
-    |serialize_me: &CallParam| starkhash_to_dec_str(&serialize_me.0),
-    |s: &str| starkhash_from_dec_str(s).map(CallParam)
+    |serialize_me: &CallParam| serialize_me.0.to_dec_str(),
+    |s: &str| Felt::from_dec_str(s).map(CallParam)
 );
 
 serde_conv!(
     pub ConstructorParamAsDecimalStr,
     ConstructorParam,
-    |serialize_me: &ConstructorParam| starkhash_to_dec_str(&serialize_me.0),
-    |s: &str| starkhash_from_dec_str(s).map(ConstructorParam)
+    |serialize_me: &ConstructorParam| serialize_me.0.to_dec_str(),
+    |s: &str| Felt::from_dec_str(s).map(ConstructorParam)
 );
 
 serde_conv!(
     pub L1ToL2MessagePayloadElemAsDecimalStr,
     L1ToL2MessagePayloadElem,
-    |serialize_me: &L1ToL2MessagePayloadElem| starkhash_to_dec_str(&serialize_me.0),
-    |s: &str| starkhash_from_dec_str(s).map(L1ToL2MessagePayloadElem)
+    |serialize_me: &L1ToL2MessagePayloadElem| serialize_me.0.to_dec_str(),
+    |s: &str| Felt::from_dec_str(s).map(L1ToL2MessagePayloadElem)
 );
 
 serde_conv!(
     pub L2ToL1MessagePayloadElemAsDecimalStr,
     L2ToL1MessagePayloadElem,
-    |serialize_me: &L2ToL1MessagePayloadElem| starkhash_to_dec_str(&serialize_me.0),
-    |s: &str| starkhash_from_dec_str(s).map(L2ToL1MessagePayloadElem)
+    |serialize_me: &L2ToL1MessagePayloadElem| serialize_me.0.to_dec_str(),
+    |s: &str| Felt::from_dec_str(s).map(L2ToL1MessagePayloadElem)
 );
 
 serde_conv!(
     pub TransactionSignatureElemAsDecimalStr,
     TransactionSignatureElem,
-    |serialize_me: &TransactionSignatureElem| starkhash_to_dec_str(&serialize_me.0),
-    |s: &str| starkhash_from_dec_str(s).map(TransactionSignatureElem)
+    |serialize_me: &TransactionSignatureElem| serialize_me.0.to_dec_str(),
+    |s: &str| Felt::from_dec_str(s).map(TransactionSignatureElem)
 );
 
 pub struct EthereumAddressAsHexStr;
@@ -309,32 +307,6 @@ pub mod u64_as_hex_str {
     }
 }
 
-/// A helper conversion function. Only use with __sequencer API related types__.
-fn starkhash_from_biguint(b: BigUint) -> Result<Felt, OverflowError> {
-    Felt::from_be_slice(&b.to_bytes_be())
-}
-
-/// A helper conversion function. Only use with __sequencer API related types__.
-pub fn starkhash_to_dec_str(h: &Felt) -> String {
-    let b = h.to_be_bytes();
-    let b = BigUint::from_bytes_be(&b);
-    b.to_str_radix(10)
-}
-
-/// A helper conversion function. Only use with __sequencer API related types__.
-fn starkhash_from_dec_str(s: &str) -> Result<Felt, anyhow::Error> {
-    // The order here matters because `Felt::from_hex_str` requires the '0x'
-    // prefix, so we'll never parse a hex string as a decimal string by mistake.
-    match Felt::from_hex_str(s) {
-        Ok(h) => Ok(h),
-        Err(_) => {
-            let b = BigUint::from_str(s)?;
-            let h = starkhash_from_biguint(b)?;
-            Ok(h)
-        }
-    }
-}
-
 /// A convenience function which parses a hex string into a byte array.
 ///
 /// Supports both upper and lower case hex strings. The '0x' prefix is
@@ -490,7 +462,9 @@ pub fn extract_program_and_entry_points_by_type(
 
 #[cfg(test)]
 mod tests {
-    use num_bigint::ParseBigIntError;
+    use assert_matches::assert_matches;
+    use num_bigint::BigUint;
+    use pathfinder_crypto::{DecParseError, OverflowError};
     use pretty_assertions_sorted::assert_eq;
 
     use super::*;
@@ -501,12 +475,12 @@ mod tests {
         const ZERO_DEC_STR: &str = "0";
         const ZERO_BYTES: [u8; 1] = [0];
 
-        let a = starkhash_from_biguint(BigUint::from_bytes_be(&ZERO_BYTES)).unwrap();
-        let b = starkhash_from_dec_str(ZERO_DEC_STR).unwrap();
+        let a = Felt::from_biguint(BigUint::from_bytes_be(&ZERO_BYTES)).unwrap();
+        let b = Felt::from_dec_str(ZERO_DEC_STR).unwrap();
         let expected = Felt::ZERO;
         assert_eq!(expected, a);
         assert_eq!(expected, b);
-        assert_eq!(starkhash_to_dec_str(&expected), ZERO_DEC_STR);
+        assert_eq!(expected.to_dec_str(), ZERO_DEC_STR);
 
         let c: [u8; 1] = bytes_from_hex_str(ZERO_HEX_STR).unwrap();
         assert!(c.iter().all(|x| *x == 0));
@@ -521,12 +495,12 @@ mod tests {
         const ODD_DEC_STR: &str = "81985529205931230";
         const ODD_BYTES: [u8; 8] = [1, 0x23, 0x45, 0x67, 0x89, 0x0a, 0xbc, 0xde];
 
-        let a = starkhash_from_biguint(BigUint::from_bytes_be(&ODD_BYTES)).unwrap();
-        let b = starkhash_from_dec_str(ODD_DEC_STR).unwrap();
+        let a = Felt::from_biguint(BigUint::from_bytes_be(&ODD_BYTES)).unwrap();
+        let b = Felt::from_dec_str(ODD_DEC_STR).unwrap();
         let expected = Felt::from_hex_str(ODD_HEX_STR).unwrap();
         assert_eq!(expected, a);
         assert_eq!(expected, b);
-        assert_eq!(starkhash_to_dec_str(&expected), ODD_DEC_STR);
+        assert_eq!(expected.to_dec_str(), ODD_DEC_STR);
 
         let c: [u8; 8] = bytes_from_hex_str(ODD_HEX_STR).unwrap();
         assert_eq!(c, ODD_BYTES);
@@ -541,12 +515,12 @@ mod tests {
         const EVEN_DEC_STR: &str = "1311768467294899695";
         const EVEN_BYTES: [u8; 8] = [0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef];
 
-        let a = starkhash_from_biguint(BigUint::from_bytes_be(&EVEN_BYTES)).unwrap();
-        let b = starkhash_from_dec_str(EVEN_DEC_STR).unwrap();
+        let a = Felt::from_biguint(BigUint::from_bytes_be(&EVEN_BYTES)).unwrap();
+        let b = Felt::from_dec_str(EVEN_DEC_STR).unwrap();
         let expected = Felt::from_hex_str(EVEN_HEX_STR).unwrap();
         assert_eq!(expected, a);
         assert_eq!(expected, b);
-        assert_eq!(starkhash_to_dec_str(&expected), EVEN_DEC_STR);
+        assert_eq!(expected.to_dec_str(), EVEN_DEC_STR);
 
         let c: [u8; 8] = bytes_from_hex_str(EVEN_HEX_STR).unwrap();
         assert_eq!(c, EVEN_BYTES);
@@ -566,12 +540,12 @@ mod tests {
             0, 0, 0,
         ];
 
-        let a = starkhash_from_biguint(BigUint::from_bytes_be(&MAX_BYTES)).unwrap();
-        let b = starkhash_from_dec_str(MAX_DEC_STR).unwrap();
+        let a = Felt::from_biguint(BigUint::from_bytes_be(&MAX_BYTES)).unwrap();
+        let b = Felt::from_dec_str(MAX_DEC_STR).unwrap();
         let expected = Felt::from_hex_str(MAX_HEX_STR).unwrap();
         assert_eq!(expected, a);
         assert_eq!(expected, b);
-        assert_eq!(starkhash_to_dec_str(&expected), MAX_DEC_STR);
+        assert_eq!(expected.to_dec_str(), MAX_DEC_STR);
 
         let c: [u8; 32] = bytes_from_hex_str(MAX_HEX_STR).unwrap();
         assert_eq!(c, MAX_BYTES);
@@ -597,15 +571,12 @@ mod tests {
         ];
 
         assert_eq!(
-            starkhash_from_biguint(BigUint::from_bytes_be(&OVERFLOW_BYTES)),
+            Felt::from_biguint(BigUint::from_bytes_be(&OVERFLOW_BYTES)),
             Err(OverflowError)
         );
-        assert_eq!(
-            starkhash_from_dec_str(OVERFLOW_DEC_STR)
-                .unwrap_err()
-                .downcast::<OverflowError>()
-                .unwrap(),
-            OverflowError,
+        assert_matches!(
+            Felt::from_dec_str(OVERFLOW_DEC_STR),
+            Err(DecParseError::Overflow)
         );
     }
 
@@ -622,15 +593,12 @@ mod tests {
 
         use pathfinder_crypto::HexParseError;
         assert_eq!(
-            starkhash_from_biguint(BigUint::from_bytes_be(&TOO_LONG_BYTES)),
+            Felt::from_biguint(BigUint::from_bytes_be(&TOO_LONG_BYTES)),
             Err(OverflowError)
         );
-        assert_eq!(
-            starkhash_from_dec_str(TOO_LONG_DEC_STR)
-                .unwrap_err()
-                .downcast::<OverflowError>()
-                .unwrap(),
-            OverflowError
+        assert_matches!(
+            Felt::from_dec_str(TOO_LONG_DEC_STR),
+            Err(DecParseError::Overflow)
         );
         assert_eq!(
             bytes_from_hex_str::<32>(TOO_LONG_HEX_STR),
@@ -649,14 +617,10 @@ mod tests {
 
     #[test]
     fn invalid_digit() {
-        starkhash_from_dec_str("0x123a").unwrap();
-        assert_eq!(
-            starkhash_from_dec_str("123z")
-                .unwrap_err()
-                .downcast::<ParseBigIntError>()
-                .unwrap()
-                .to_string(),
-            "invalid digit found in string"
+        Felt::from_dec_str("0x123a").unwrap();
+        assert_matches!(
+            Felt::from_dec_str("123z"),
+            Err(DecParseError::ParseBigInt(e)) if e.to_string() == "invalid digit found in string"
         );
         assert_eq!(
             bytes_from_hex_str::<32>("0x123z"),
