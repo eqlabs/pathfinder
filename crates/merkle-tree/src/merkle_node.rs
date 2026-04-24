@@ -274,7 +274,7 @@ mod tests {
             // Note that the hash function must be exchanged for `async_stark_hash_func`,
             // otherwise it just uses some other test hash function.
             let expected = Felt::from_hex_str(
-                "0615bb8d47888d2987ad0c63fc06e9e771930986a4dd8adc55617febfcf3639e",
+                "0x0615bb8d47888d2987ad0c63fc06e9e771930986a4dd8adc55617febfcf3639e",
             )
             .unwrap();
             let left = felt!("0x1234");
@@ -300,7 +300,7 @@ mod tests {
             // Note that the hash function must be exchanged for `async_stark_hash_func`,
             // otherwise it just uses some other test hash function.
             let expected = Felt::from_hex_str(
-                "1d937094c09b5f8e26a662d21911871e3cbc6858d55cc49af9848ea6fed4e9",
+                "0x1d937094c09b5f8e26a662d21911871e3cbc6858d55cc49af9848ea6fed4e9",
             )
             .unwrap();
             let child = felt!("0x1234ABCD");

@@ -1277,14 +1277,14 @@ mod tests {
             &TrieUpdate {
                 nodes_added: vec![
                     (
-                        felt!("0"),
+                        felt!("0x0"),
                         Node::Binary {
                             left: NodeRef::Index(1),
                             right: NodeRef::Index(2),
                         },
                     ),
-                    (felt!("1"), Node::LeafBinary),
-                    (felt!("2"), Node::LeafBinary),
+                    (felt!("0x1"), Node::LeafBinary),
+                    (felt!("0x2"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
                 root_commitment: Felt::ZERO,
@@ -1296,14 +1296,14 @@ mod tests {
             &TrieUpdate {
                 nodes_added: vec![
                     (
-                        felt!("3"),
+                        felt!("0x3"),
                         Node::Binary {
                             left: NodeRef::Index(1),
                             right: NodeRef::Index(2),
                         },
                     ),
-                    (felt!("4"), Node::LeafBinary),
-                    (felt!("5"), Node::LeafBinary),
+                    (felt!("0x4"), Node::LeafBinary),
+                    (felt!("0x5"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![TrieStorageIndex(1)],
                 root_commitment: Felt::ZERO,
@@ -1315,14 +1315,14 @@ mod tests {
             &TrieUpdate {
                 nodes_added: vec![
                     (
-                        felt!("6"),
+                        felt!("0x6"),
                         Node::Binary {
                             left: NodeRef::Index(1),
                             right: NodeRef::Index(2),
                         },
                     ),
-                    (felt!("7"), Node::LeafBinary),
-                    (felt!("8"), Node::LeafBinary),
+                    (felt!("0x7"), Node::LeafBinary),
+                    (felt!("0x8"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
                 root_commitment: Felt::ZERO,
@@ -1334,14 +1334,14 @@ mod tests {
             &TrieUpdate {
                 nodes_added: vec![
                     (
-                        felt!("9"),
+                        felt!("0x9"),
                         Node::Binary {
                             left: NodeRef::Index(1),
                             right: NodeRef::Index(2),
                         },
                     ),
-                    (felt!("10"), Node::LeafBinary),
-                    (felt!("11"), Node::LeafBinary),
+                    (felt!("0x10"), Node::LeafBinary),
+                    (felt!("0x11"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
                 root_commitment: Felt::ZERO,
@@ -1357,14 +1357,14 @@ mod tests {
             &TrieUpdate {
                 nodes_added: vec![
                     (
-                        felt!("12"),
+                        felt!("0x12"),
                         Node::Binary {
                             left: NodeRef::Index(1),
                             right: NodeRef::Index(2),
                         },
                     ),
-                    (felt!("13"), Node::LeafBinary),
-                    (felt!("14"), Node::LeafBinary),
+                    (felt!("0x13"), Node::LeafBinary),
+                    (felt!("0x14"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
                 root_commitment: Felt::ZERO,
@@ -1391,14 +1391,14 @@ mod tests {
             &TrieUpdate {
                 nodes_added: vec![
                     (
-                        felt!("0"),
+                        felt!("0x0"),
                         Node::Binary {
                             left: NodeRef::Index(1),
                             right: NodeRef::Index(2),
                         },
                     ),
-                    (felt!("1"), Node::LeafBinary),
-                    (felt!("2"), Node::LeafBinary),
+                    (felt!("0x1"), Node::LeafBinary),
+                    (felt!("0x2"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
                 root_commitment: Felt::ZERO,
@@ -1410,14 +1410,14 @@ mod tests {
             &TrieUpdate {
                 nodes_added: vec![
                     (
-                        felt!("3"),
+                        felt!("0x3"),
                         Node::Binary {
                             left: NodeRef::Index(1),
                             right: NodeRef::Index(2),
                         },
                     ),
-                    (felt!("4"), Node::LeafBinary),
-                    (felt!("5"), Node::LeafBinary),
+                    (felt!("0x4"), Node::LeafBinary),
+                    (felt!("0x5"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![TrieStorageIndex(1)],
                 root_commitment: Felt::ZERO,
@@ -1429,14 +1429,14 @@ mod tests {
             &TrieUpdate {
                 nodes_added: vec![
                     (
-                        felt!("6"),
+                        felt!("0x6"),
                         Node::Binary {
                             left: NodeRef::Index(1),
                             right: NodeRef::Index(2),
                         },
                     ),
-                    (felt!("7"), Node::LeafBinary),
-                    (felt!("8"), Node::LeafBinary),
+                    (felt!("0x7"), Node::LeafBinary),
+                    (felt!("0x8"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
                 root_commitment: Felt::ZERO,
@@ -1448,14 +1448,14 @@ mod tests {
             &TrieUpdate {
                 nodes_added: vec![
                     (
-                        felt!("9"),
+                        felt!("0x9"),
                         Node::Binary {
                             left: NodeRef::Index(1),
                             right: NodeRef::Index(2),
                         },
                     ),
-                    (felt!("10"), Node::LeafBinary),
-                    (felt!("11"), Node::LeafBinary),
+                    (felt!("0x10"), Node::LeafBinary),
+                    (felt!("0x11"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
                 root_commitment: Felt::ZERO,
@@ -1468,14 +1468,14 @@ mod tests {
             &TrieUpdate {
                 nodes_added: vec![
                     (
-                        felt!("12"),
+                        felt!("0x12"),
                         Node::Binary {
                             left: NodeRef::Index(1),
                             right: NodeRef::Index(2),
                         },
                     ),
-                    (felt!("13"), Node::LeafBinary),
-                    (felt!("14"), Node::LeafBinary),
+                    (felt!("0x13"), Node::LeafBinary),
+                    (felt!("0x14"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
                 root_commitment: Felt::ZERO,
@@ -1514,14 +1514,14 @@ mod tests {
             &TrieUpdate {
                 nodes_added: vec![
                     (
-                        felt!("0"),
+                        felt!("0x0"),
                         Node::Binary {
                             left: NodeRef::Index(1),
                             right: NodeRef::Index(2),
                         },
                     ),
-                    (felt!("1"), Node::LeafBinary),
-                    (felt!("2"), Node::LeafBinary),
+                    (felt!("0x1"), Node::LeafBinary),
+                    (felt!("0x2"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
                 root_commitment: Felt::ZERO,
@@ -1533,14 +1533,14 @@ mod tests {
             &TrieUpdate {
                 nodes_added: vec![
                     (
-                        felt!("3"),
+                        felt!("0x3"),
                         Node::Binary {
                             left: NodeRef::Index(1),
                             right: NodeRef::Index(2),
                         },
                     ),
-                    (felt!("4"), Node::LeafBinary),
-                    (felt!("5"), Node::LeafBinary),
+                    (felt!("0x4"), Node::LeafBinary),
+                    (felt!("0x5"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
                 root_commitment: Felt::ZERO,
@@ -1552,14 +1552,14 @@ mod tests {
             &TrieUpdate {
                 nodes_added: vec![
                     (
-                        felt!("6"),
+                        felt!("0x6"),
                         Node::Binary {
                             left: NodeRef::Index(1),
                             right: NodeRef::Index(2),
                         },
                     ),
-                    (felt!("7"), Node::LeafBinary),
-                    (felt!("8"), Node::LeafBinary),
+                    (felt!("0x7"), Node::LeafBinary),
+                    (felt!("0x8"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
                 root_commitment: Felt::ZERO,
@@ -1577,14 +1577,14 @@ mod tests {
             &TrieUpdate {
                 nodes_added: vec![
                     (
-                        felt!("3"),
+                        felt!("0x3"),
                         Node::Binary {
                             left: NodeRef::Index(1),
                             right: NodeRef::Index(2),
                         },
                     ),
-                    (felt!("4"), Node::LeafBinary),
-                    (felt!("5"), Node::LeafBinary),
+                    (felt!("0x4"), Node::LeafBinary),
+                    (felt!("0x5"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![1, 2, 3].into_iter().map(TrieStorageIndex).collect(),
                 root_commitment: Felt::ZERO,
@@ -1596,14 +1596,14 @@ mod tests {
             &TrieUpdate {
                 nodes_added: vec![
                     (
-                        felt!("6"),
+                        felt!("0x6"),
                         Node::Binary {
                             left: NodeRef::Index(1),
                             right: NodeRef::Index(2),
                         },
                     ),
-                    (felt!("7"), Node::LeafBinary),
-                    (felt!("8"), Node::LeafBinary),
+                    (felt!("0x7"), Node::LeafBinary),
+                    (felt!("0x8"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
                 root_commitment: Felt::ZERO,
@@ -1633,14 +1633,14 @@ mod tests {
                 &TrieUpdate {
                     nodes_added: vec![
                         (
-                            felt!("0"),
+                            felt!("0x0"),
                             Node::Binary {
                                 left: NodeRef::Index(1),
                                 right: NodeRef::Index(2),
                             },
                         ),
-                        (felt!("1"), Node::LeafBinary),
-                        (felt!("2"), Node::LeafBinary),
+                        (felt!("0x1"), Node::LeafBinary),
+                        (felt!("0x2"), Node::LeafBinary),
                     ],
                     nodes_removed: vec![],
                     root_commitment: Felt::ZERO,

@@ -756,7 +756,7 @@ mod tests {
                         // Entry point selector for the called contract
                         CallParam(EntryPoint::hashed(b"call").0),
                         // Length of the call data for the called contract
-                        call_param!("1"),
+                        call_param!("0x1"),
                         // Number of calls, but then no more data; leads to deserialization error
                         call_param!("0x1"),
                     ],
@@ -802,8 +802,8 @@ mod tests {
                     // Calldata length over the limit, the rest of the fields should not matter.
                     calldata: vec![call_param!("0x123"); CALLDATA_LIMIT + 5],
 
-                    contract_address: contract_address!("deadbeef"),
-                    entry_point_selector: entry_point!("deadbeef"),
+                    contract_address: contract_address!("0xdeadbeef"),
+                    entry_point_selector: entry_point!("0xdeadbeef"),
                 },
                 block_id: BlockId::Latest,
             };
@@ -825,7 +825,7 @@ mod tests {
 
         // Mainnet block number 5
         const BLOCK_5: BlockId = BlockId::Hash(block_hash!(
-            "00dcbd2a4b597d051073f40a0329e585bb94b26d73df69f8d72798924fd097d3"
+            "0x00dcbd2a4b597d051073f40a0329e585bb94b26d73df69f8d72798924fd097d3"
         ));
 
         // Data from transaction
@@ -833,14 +833,16 @@ mod tests {
         fn valid_mainnet_call() -> FunctionCall {
             FunctionCall {
                 contract_address: contract_address!(
-                    "020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6"
+                    "0x020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6"
                 ),
                 entry_point_selector: entry_point!(
-                    "03d7905601c217734671143d457f0db37f7f8883112abd34b92c4abfeafde0c3"
+                    "0x03d7905601c217734671143d457f0db37f7f8883112abd34b92c4abfeafde0c3"
                 ),
                 calldata: vec![
-                    call_param!("e150b6c2db6ed644483b01685571de46d2045f267d437632b508c19f3eb877"),
-                    call_param!("0494196e88ce16bff11180d59f3c75e4ba3475d9fba76249ab5f044bcd25add6"),
+                    call_param!("0xe150b6c2db6ed644483b01685571de46d2045f267d437632b508c19f3eb877"),
+                    call_param!(
+                        "0x0494196e88ce16bff11180d59f3c75e4ba3475d9fba76249ab5f044bcd25add6"
+                    ),
                 ],
             }
         }

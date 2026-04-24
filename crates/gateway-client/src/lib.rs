@@ -877,7 +877,7 @@ mod tests {
             ) {
                 (
                     TransactionVersion::ONE,
-                    fee!("4F388496839"),
+                    fee!("0x4F388496839"),
                     vec![
                         transaction_signature_elem!(
                             "0x07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
@@ -893,10 +893,10 @@ mod tests {
                     vec![
                         call_param!("0x1"),
                         call_param!(
-                            "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
+                            "0x0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
                         ),
                         call_param!(
-                            "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
+                            "0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
                         ),
                         CallParam(Felt::ZERO),
                         call_param!("0x1"),
@@ -1137,11 +1137,11 @@ mod tests {
                         vec![
                             SelectorAndOffset {
                                 offset: byte_code_offset!("0x3a"),
-                                selector: entry_point!("0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"),
+                                selector: entry_point!("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"),
                             },
                             SelectorAndOffset {
                                 offset: byte_code_offset!("0x5b"),
-                                selector: entry_point!("039e11d48192e4333233c7eb19d10ad67c362bb28580c604d67884c85da39695"),
+                                selector: entry_point!("0x039e11d48192e4333233c7eb19d10ad67c362bb28580c604d67884c85da39695"),
                             },
                         ],
                     ),

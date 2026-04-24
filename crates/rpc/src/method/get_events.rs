@@ -1006,7 +1006,7 @@ mod tests {
 
         let limit = EVENT_KEY_FILTER_LIMIT;
 
-        let keys = [vec![event_key!("01")]]
+        let keys = [vec![event_key!("0x01")]]
             .iter()
             .cloned()
             .cycle()

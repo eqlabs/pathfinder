@@ -101,9 +101,13 @@ mod tests {
     fn create_updates() -> [EthereumStateUpdate; 3] {
         (0..3usize)
             .map(|i| EthereumStateUpdate {
-                state_root: StateCommitment(Felt::from_hex_str(&"3".repeat(i + 1)).unwrap()),
+                state_root: Felt::from_hex_str(&format!("0x{}", &"3".repeat(i + 1)))
+                    .map(StateCommitment)
+                    .unwrap(),
                 block_number: BlockNumber::GENESIS + i as u64,
-                block_hash: BlockHash(Felt::from_hex_str(&"F".repeat(i + 1)).unwrap()),
+                block_hash: Felt::from_hex_str(&format!("0x{}", &"F".repeat(i + 1)))
+                    .map(BlockHash)
+                    .unwrap(),
             })
             .collect::<Vec<_>>()
             .try_into()

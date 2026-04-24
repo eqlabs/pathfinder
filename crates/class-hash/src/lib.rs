@@ -882,7 +882,7 @@ pub mod json {
                 // Known contract which triggered a hash mismatch failure.
                 hash(CAIRO_0_8_NEW_ATTRIBUTES),
                 ComputedClassHash::Cairo(class_hash!(
-                    "056b96c1d1bbfa01af44b465763d1b71150fa00c6c9d54c3947f57e979ff68c3"
+                    "0x056b96c1d1bbfa01af44b465763d1b71150fa00c6c9d54c3947f57e979ff68c3"
                 ))
             );
         }

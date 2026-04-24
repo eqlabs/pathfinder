@@ -53,7 +53,11 @@ mod tests {
 
     #[test]
     fn empty() {
-        assert_eq!(serde_json::from_str::<Felt>(r#""""#).unwrap(), Felt::ZERO);
+        assert!(serde_json::from_str::<Felt>(r#""""#)
+            .unwrap_err()
+            .to_string()
+            // Serde errors also include the line/column.
+            .starts_with("Missing '0x' prefix"));
         assert_eq!(serde_json::from_str::<Felt>(r#""0x""#).unwrap(), Felt::ZERO);
     }
 

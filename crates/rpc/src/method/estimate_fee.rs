@@ -262,7 +262,7 @@ mod tests {
     fn declare_transaction(account_contract_address: ContractAddress) -> BroadcastedTransaction {
         let sierra_definition = include_bytes!("../../fixtures/contracts/storage_access.json");
         let sierra_hash =
-            class_hash!("0544b92d358447cb9e50b65092b7169f931d29e05c1404a2cd08c6fd7e32ba90");
+            class_hash!("0x0544b92d358447cb9e50b65092b7169f931d29e05c1404a2cd08c6fd7e32ba90");
         let casm_hash =
             casm_hash!("0x069032ff71f77284e1a0864a573007108ca5cc08089416af50f03260f5d6d4d8");
 
@@ -296,7 +296,7 @@ mod tests {
     ) -> BroadcastedTransaction {
         let max_fee = Fee::default();
         let sierra_hash =
-            class_hash!("0544b92d358447cb9e50b65092b7169f931d29e05c1404a2cd08c6fd7e32ba90");
+            class_hash!("0x0544b92d358447cb9e50b65092b7169f931d29e05c1404a2cd08c6fd7e32ba90");
 
         BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
             BroadcastedInvokeTransactionV1 {
@@ -314,7 +314,7 @@ mod tests {
                     CallParam(EntryPoint::hashed(b"deployContract").0),
                     // Length of the call data for the called contract, i.e.
                     // AccountCallArray::data_len
-                    call_param!("4"),
+                    call_param!("0x4"),
                     // classHash
                     CallParam(sierra_hash.0),
                     // salt
@@ -350,7 +350,7 @@ mod tests {
                     CallParam(EntryPoint::hashed(b"get_data").0),
                     // Length of the call data for the called contract, i.e.
                     // AccountCallArray::data_len
-                    call_param!("0"),
+                    call_param!("0x0"),
                 ],
             },
         ))
@@ -391,7 +391,7 @@ mod tests {
                     CallParam(EntryPoint::hashed(b"get_data").0),
                     // Length of the call data for the called contract, i.e.
                     // AccountCallArray::data_len
-                    call_param!("0"),
+                    call_param!("0x0"),
                 ],
                 nonce: transaction_nonce!("0x3"),
                 resource_bounds: ResourceBounds::default(),
@@ -698,7 +698,7 @@ mod tests {
                     CallParam(EntryPoint::hashed(b"deployContract").0),
                     // Length of the call data for the called contract, i.e.
                     // AccountCallArray::data_len
-                    call_param!("4"),
+                    call_param!("0x4"),
                     // classHash
                     CallParam(sierra_hash.0),
                     // salt
@@ -736,7 +736,7 @@ mod tests {
                     // Entry point selector for the called contract, i.e.
                     CallParam(EntryPoint::hashed(b"test_redeposits").0),
                     // Length of the call data for the called contract, i.e.
-                    call_param!("1"),
+                    call_param!("0x1"),
                     depth,
                 ],
                 nonce,
@@ -788,14 +788,14 @@ mod tests {
         let invoke_transaction = invoke_v3_transaction_with_data_gas(
             account_contract_address,
             transaction_nonce!("0x2"),
-            call_param!("7"),
+            call_param!("0x7"),
         );
         // Invoke once more to test that the execution state updates properly with L2
         // gas accounting aware code.
         let invoke_transaction2 = invoke_v3_transaction_with_data_gas(
             account_contract_address,
             transaction_nonce!("0x3"),
-            call_param!("7"),
+            call_param!("0x7"),
         );
 
         let input = Input {
@@ -843,14 +843,14 @@ mod tests {
         let invoke_transaction = invoke_v3_transaction_with_data_gas(
             account_contract_address,
             transaction_nonce!("0x2"),
-            call_param!("7"),
+            call_param!("0x7"),
         );
         // Invoke once more to test that the execution state updates properly with L2
         // gas accounting aware code.
         let invoke_transaction2 = invoke_v3_transaction_with_data_gas(
             account_contract_address,
             transaction_nonce!("0x3"),
-            call_param!("7"),
+            call_param!("0x7"),
         );
 
         let input = Input {
@@ -899,14 +899,14 @@ mod tests {
         let invoke_transaction = invoke_v3_transaction_with_data_gas(
             account_contract_address,
             transaction_nonce!("0x2"),
-            call_param!("7"),
+            call_param!("0x7"),
         );
         // Invoke once more to test that the execution state updates properly with L2
         // gas accounting aware code.
         let invoke_transaction2 = invoke_v3_transaction_with_data_gas(
             account_contract_address,
             transaction_nonce!("0x3"),
-            call_param!("7"),
+            call_param!("0x7"),
         );
 
         let input = Input {
@@ -953,7 +953,7 @@ mod tests {
                     // Entry point selector for the called contract, i.e.
                     CallParam(EntryPoint::hashed(b"bogus").0),
                     // Length of the call data for the called contract, i.e.
-                    call_param!("1"),
+                    call_param!("0x1"),
                     depth,
                 ],
                 nonce,
@@ -999,7 +999,7 @@ mod tests {
         let invoke_transaction = invoke_v3_transaction_with_invalid_entry_point(
             account_contract_address,
             transaction_nonce!("0x2"),
-            call_param!("7"),
+            call_param!("0x7"),
         );
 
         let input = Input {
@@ -1060,7 +1060,7 @@ mod tests {
         let invoke_transaction = invoke_v3_transaction_with_data_gas(
             account_contract_address,
             transaction_nonce!("0x2"),
-            call_param!("100000"),
+            call_param!("0x100000"),
         );
 
         let input = Input {
@@ -1091,7 +1091,7 @@ mod tests {
         let invoke_transaction = invoke_v3_transaction_with_data_gas(
             account_contract_address,
             transaction_nonce!("0x2"),
-            call_param!("100"),
+            call_param!("0x100"),
         );
 
         let input = Input {

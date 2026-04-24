@@ -323,8 +323,8 @@ impl From<CurveOrderMontFelt> for Felt {
 impl Felt {
     /// A convenience function which parses a hex string into a [Felt].
     ///
-    /// Supports both upper and lower case hex strings, as well as an optional
-    /// "0x" prefix.
+    /// Supports both upper and lower case hex strings. The '0x' prefix is
+    /// mandatory.
     pub const fn from_hex_str(hex_str: &str) -> Result<Self, HexParseError> {
         const fn parse_hex_digit(digit: u8) -> Result<u8, HexParseError> {
             match digit {
@@ -336,19 +336,16 @@ impl Felt {
         }
 
         let bytes = hex_str.as_bytes();
-        let start = if bytes.len() >= 2 && bytes[0] == b'0' && bytes[1] == b'x' {
-            2
-        } else {
-            0
+        let len = match bytes {
+            [b'0', b'x', rest @ ..] if rest.len() > 64 => {
+                return Err(HexParseError::InvalidLength {
+                    max: 64,
+                    actual: rest.len(),
+                })
+            }
+            [b'0', b'x', rest @ ..] => rest.len(),
+            _ => return Err(HexParseError::MissingPrefix),
         };
-        let len = bytes.len() - start;
-
-        if len > 64 {
-            return Err(HexParseError::InvalidLength {
-                max: 64,
-                actual: bytes.len(),
-            });
-        }
 
         let mut buf = [0u8; 32];
 
@@ -358,7 +355,7 @@ impl Felt {
         // Handle a possible odd nibble remaining nibble.
         if len % 2 == 1 {
             let idx = len / 2;
-            buf[31 - idx] = match parse_hex_digit(bytes[start]) {
+            buf[31 - idx] = match parse_hex_digit(bytes[2]) {
                 Ok(b) => b,
                 Err(e) => return Err(e),
             };
@@ -461,6 +458,7 @@ impl Felt {
 pub enum HexParseError {
     InvalidNibble(u8),
     InvalidLength { max: usize, actual: usize },
+    MissingPrefix,
     Overflow,
 }
 
@@ -479,6 +477,7 @@ impl std::fmt::Display for HexParseError {
             Self::InvalidLength { max, actual } => {
                 f.write_fmt(format_args!("More than {} digits found: {}", *max, *actual))
             }
+            Self::MissingPrefix => f.write_str("Missing '0x' prefix"),
             Self::Overflow => f.write_str(OVERFLOW_MSG),
         }
     }
@@ -498,7 +497,7 @@ mod tests {
 
     #[test]
     fn view_bits() {
-        let one = Felt::from_hex_str("1").unwrap();
+        let one = Felt::from_hex_str("0x1").unwrap();
 
         let one = one.view_bits().to_bitvec();
 
@@ -566,7 +565,7 @@ mod tests {
 
         #[test]
         fn round_trip() {
-            let original = Felt::from_hex_str("abcdef0123456789").unwrap();
+            let original = Felt::from_hex_str("0xabcdef0123456789").unwrap();
             let bytes = original.to_be_bytes();
             let result = Felt::from_be_slice(&bytes[..]).unwrap();
 
@@ -575,7 +574,7 @@ mod tests {
 
         #[test]
         fn too_long() {
-            let original = Felt::from_hex_str("abcdef0123456789").unwrap();
+            let original = Felt::from_hex_str("0xabcdef0123456789").unwrap();
             let mut bytes = original.to_be_bytes().to_vec();
             bytes.push(0);
             Felt::from_be_slice(&bytes[..]).unwrap_err();
@@ -583,7 +582,7 @@ mod tests {
 
         #[test]
         fn short_slice() {
-            let original = Felt::from_hex_str("abcdef0123456789").unwrap();
+            let original = Felt::from_hex_str("0xabcdef0123456789").unwrap();
             let bytes = original.to_be_bytes();
             let result = Felt::from_be_slice(&bytes[24..]);
 
@@ -610,25 +609,25 @@ mod tests {
 
         #[test]
         fn debug() {
-            let hex_str = "1234567890abcdef000edcba0987654321";
+            let hex_str = "0x1234567890abcdef000edcba0987654321";
             let felt = Felt::from_hex_str(hex_str).unwrap();
             let result = format!("{felt:?}");
 
-            let mut expected = "0".repeat(64 - hex_str.len());
-            expected.push_str(hex_str);
-            let expected = format!("Felt({felt})");
+            let leading_zeros = "0".repeat(64 + 2 - hex_str.len());
+            let hex_upper_stripped = hex_str.strip_prefix("0x").unwrap().to_uppercase();
+            let expected = format!("Felt(0x{leading_zeros}{hex_upper_stripped})");
 
             assert_eq!(result, expected);
         }
 
         #[test]
         fn fmt() {
-            let hex_str = "1234567890abcdef000edcba0987654321";
+            let hex_str = "0x1234567890abcdef000edcba0987654321";
             let starkhash = Felt::from_hex_str(hex_str).unwrap();
             let result = format!("{starkhash:x}");
 
-            let mut expected = "0".repeat(64 - hex_str.len());
-            expected.push_str(hex_str);
+            let mut expected = "0".repeat(64 - hex_str.len() + 2);
+            expected.push_str(&hex_str[2..]);
 
             // We don't really care which casing is used by fmt.
             assert_eq!(result.to_lowercase(), expected.to_lowercase());
@@ -636,24 +635,24 @@ mod tests {
 
         #[test]
         fn lower_hex() {
-            let hex_str = "1234567890abcdef000edcba0987654321";
+            let hex_str = "0x1234567890abcdef000edcba0987654321";
             let starkhash = Felt::from_hex_str(hex_str).unwrap();
             let result = format!("{starkhash:x}");
 
-            let mut expected = "0".repeat(64 - hex_str.len());
-            expected.push_str(hex_str);
+            let mut expected = "0".repeat(64 - hex_str.len() + 2);
+            expected.push_str(&hex_str[2..]);
 
             assert_eq!(result, expected.to_lowercase());
         }
 
         #[test]
         fn upper_hex() {
-            let hex_str = "1234567890abcdef000edcba0987654321";
+            let hex_str = "0x1234567890abcdef000edcba0987654321";
             let starkhash = Felt::from_hex_str(hex_str).unwrap();
             let result = format!("{starkhash:X}");
 
-            let mut expected = "0".repeat(64 - hex_str.len());
-            expected.push_str(hex_str);
+            let mut expected = "0".repeat(64 - hex_str.len() + 2);
+            expected.push_str(&hex_str[2..]);
 
             assert_eq!(result, expected.to_uppercase());
         }
@@ -687,26 +686,12 @@ mod tests {
         #[test]
         fn simple() {
             let (test_str, expected) = test_data();
-            let uut = Felt::from_hex_str(test_str).unwrap();
-            assert_eq!(uut, expected);
-        }
-
-        #[test]
-        fn prefix() {
-            let (test_str, expected) = test_data();
             let uut = Felt::from_hex_str(&format!("0x{test_str}")).unwrap();
             assert_eq!(uut, expected);
         }
 
         #[test]
         fn leading_zeros() {
-            let (test_str, expected) = test_data();
-            let uut = Felt::from_hex_str(&format!("000000000{test_str}")).unwrap();
-            assert_eq!(uut, expected);
-        }
-
-        #[test]
-        fn prefix_and_leading_zeros() {
             let (test_str, expected) = test_data();
             let uut = Felt::from_hex_str(&format!("0x000000000{test_str}")).unwrap();
             assert_eq!(uut, expected);
@@ -718,8 +703,23 @@ mod tests {
         }
 
         #[test]
+        fn missing_prefix() {
+            assert_matches!(
+                Felt::from_hex_str("123").unwrap_err(),
+                HexParseError::MissingPrefix
+            )
+        }
+
+        #[test]
         fn invalid_len() {
-            assert_matches!(Felt::from_hex_str(&"1".repeat(65)).unwrap_err(), HexParseError::InvalidLength{max: 64, actual: n} => assert_eq!(n, 65))
+            let invalid_str = "0".repeat(65);
+            assert_matches!(
+                Felt::from_hex_str(&format!("0x{invalid_str}")).unwrap_err(),
+                HexParseError::InvalidLength {
+                    max: 64,
+                    actual: 65
+                }
+            );
         }
 
         #[test]

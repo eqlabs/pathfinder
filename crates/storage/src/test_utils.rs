@@ -29,9 +29,13 @@ pub(crate) fn create_blocks(n_blocks: usize) -> Vec<BlockHeader> {
     (0..n_blocks)
         .map(|block_number| {
             let storage_commitment =
-                StorageCommitment(Felt::from_hex_str(&"b".repeat(block_number + 3)).unwrap());
+                Felt::from_hex_str(&format!("0x{}", "b".repeat(block_number + 3)))
+                    .map(StorageCommitment)
+                    .unwrap();
             let class_commitment =
-                ClassCommitment(Felt::from_hex_str(&"c".repeat(block_number + 3)).unwrap());
+                Felt::from_hex_str(&format!("0x{}", "c".repeat(block_number + 3)))
+                    .map(ClassCommitment)
+                    .unwrap();
             let index_as_felt = Felt::from_be_slice(&[block_number as u8]).unwrap();
 
             BlockHeader::builder()
@@ -42,9 +46,11 @@ pub(crate) fn create_blocks(n_blocks: usize) -> Vec<BlockHeader> {
                 .sequencer_address(SequencerAddress(index_as_felt))
                 .transaction_commitment(TransactionCommitment(index_as_felt))
                 .event_commitment(EventCommitment(index_as_felt))
-                .finalize_with_hash(BlockHash(
-                    Felt::from_hex_str(&"a".repeat(block_number + 3)).unwrap(),
-                ))
+                .finalize_with_hash(
+                    Felt::from_hex_str(&format!("0x{}", "a".repeat(block_number + 3)))
+                        .map(BlockHash)
+                        .unwrap(),
+                )
         })
         .collect::<Vec<_>>()
 }
@@ -63,22 +69,28 @@ pub(crate) fn create_transactions_and_receipts(
     );
     let transactions = (0..n_transactions).map(|i| match i % transactions_per_block {
         x if x < INVOKE_TRANSACTIONS_PER_BLOCK => Transaction {
-            hash: TransactionHash(Felt::from_hex_str(&"4".repeat(i + 3)).unwrap()),
+            hash: Felt::from_hex_str(&format!("0x{}", "4".repeat(i + 3)))
+                .map(TransactionHash)
+                .unwrap(),
             variant: TransactionVariant::InvokeV0(InvokeTransactionV0 {
-                calldata: vec![CallParam(Felt::from_hex_str(&"0".repeat(i + 3)).unwrap())],
-                sender_address: ContractAddress::new_or_panic(
-                    Felt::from_hex_str(&"1".repeat(i + 3)).unwrap(),
-                ),
-                entry_point_selector: EntryPoint(Felt::from_hex_str(&"2".repeat(i + 3)).unwrap()),
+                calldata: vec![Felt::from_hex_str(&format!("0x{}", "0".repeat(i + 3)))
+                    .map(CallParam)
+                    .unwrap()],
+                sender_address: Felt::from_hex_str(&format!("0x{}", "1".repeat(i + 3)))
+                    .map(ContractAddress::new_or_panic)
+                    .unwrap(),
+                entry_point_selector: Felt::from_hex_str(&format!("0x{}", "2".repeat(i + 3)))
+                    .map(EntryPoint)
+                    .unwrap(),
                 entry_point_type: Some(if i & 1 == 0 {
                     EntryPointType::External
                 } else {
                     EntryPointType::L1Handler
                 }),
                 max_fee: Fee::ZERO,
-                signature: vec![TransactionSignatureElem(
-                    Felt::from_hex_str(&"3".repeat(i + 3)).unwrap(),
-                )],
+                signature: vec![Felt::from_hex_str(&format!("0x{}", "3".repeat(i + 3)))
+                    .map(TransactionSignatureElem)
+                    .unwrap()],
             }),
         },
         x if (INVOKE_TRANSACTIONS_PER_BLOCK
@@ -86,33 +98,46 @@ pub(crate) fn create_transactions_and_receipts(
             .contains(&x) =>
         {
             Transaction {
-                hash: TransactionHash(Felt::from_hex_str(&"9".repeat(i + 3)).unwrap()),
+                hash: Felt::from_hex_str(&format!("0x{}", "9".repeat(i + 3)))
+                    .map(TransactionHash)
+                    .unwrap(),
                 variant: TransactionVariant::DeployV0(DeployTransactionV0 {
-                    contract_address: ContractAddress::new_or_panic(
-                        Felt::from_hex_str(&"5".repeat(i + 3)).unwrap(),
-                    ),
-                    contract_address_salt: ContractAddressSalt(
-                        Felt::from_hex_str(&"6".repeat(i + 3)).unwrap(),
-                    ),
-                    class_hash: ClassHash(Felt::from_hex_str(&"7".repeat(i + 3)).unwrap()),
-                    constructor_calldata: vec![ConstructorParam(
-                        Felt::from_hex_str(&"8".repeat(i + 3)).unwrap(),
-                    )],
+                    contract_address: Felt::from_hex_str(&format!("0x{}", "5".repeat(i + 3)))
+                        .map(ContractAddress::new_or_panic)
+                        .unwrap(),
+                    contract_address_salt: Felt::from_hex_str(&format!("0x{}", "6".repeat(i + 3)))
+                        .map(ContractAddressSalt)
+                        .unwrap(),
+                    class_hash: Felt::from_hex_str(&format!("0x{}", "7".repeat(i + 3)))
+                        .map(ClassHash)
+                        .unwrap(),
+                    constructor_calldata: vec![Felt::from_hex_str(&format!(
+                        "0x{}",
+                        "8".repeat(i + 3)
+                    ))
+                    .map(ConstructorParam)
+                    .unwrap()],
                 }),
             }
         }
         _ => Transaction {
-            hash: TransactionHash(Felt::from_hex_str(&"e".repeat(i + 3)).unwrap()),
+            hash: Felt::from_hex_str(&format!("0x{}", "e".repeat(i + 3)))
+                .map(TransactionHash)
+                .unwrap(),
             variant: TransactionVariant::DeclareV0(DeclareTransactionV0V1 {
-                class_hash: ClassHash(Felt::from_hex_str(&"a".repeat(i + 3)).unwrap()),
+                class_hash: Felt::from_hex_str(&format!("0x{}", "a".repeat(i + 3)))
+                    .map(ClassHash)
+                    .unwrap(),
                 max_fee: Fee::ZERO,
-                nonce: TransactionNonce(Felt::from_hex_str(&"b".repeat(i + 3)).unwrap()),
-                sender_address: ContractAddress::new_or_panic(
-                    Felt::from_hex_str(&"c".repeat(i + 3)).unwrap(),
-                ),
-                signature: vec![TransactionSignatureElem(
-                    Felt::from_hex_str(&"d".repeat(i + 3)).unwrap(),
-                )],
+                nonce: Felt::from_hex_str(&format!("0x{}", "b".repeat(i + 3)))
+                    .map(TransactionNonce)
+                    .unwrap(),
+                sender_address: Felt::from_hex_str(&format!("0x{}", "c".repeat(i + 3)))
+                    .map(ContractAddress::new_or_panic)
+                    .unwrap(),
+                signature: vec![Felt::from_hex_str(&format!("0x{}", "d".repeat(i + 3)))
+                    .map(TransactionSignatureElem)
+                    .unwrap()],
             }),
         },
     });
@@ -144,12 +169,16 @@ pub(crate) fn create_transactions_and_receipts(
             };
             let events = if i % transactions_per_block < EVENTS_PER_BLOCK {
                 vec![pathfinder_common::event::Event {
-                    from_address: ContractAddress::new_or_panic(
-                        Felt::from_hex_str(&"2".repeat(i + 3)).unwrap(),
-                    ),
-                    data: vec![EventData(Felt::from_hex_str(&"c".repeat(i + 3)).unwrap())],
+                    from_address: Felt::from_hex_str(&format!("0x{}", "2".repeat(i + 3)))
+                        .map(ContractAddress::new_or_panic)
+                        .unwrap(),
+                    data: vec![Felt::from_hex_str(&format!("0x{}", "c".repeat(i + 3)))
+                        .map(EventData)
+                        .unwrap()],
                     keys: vec![
-                        EventKey(Felt::from_hex_str(&"d".repeat(i + 3)).unwrap()),
+                        Felt::from_hex_str(&format!("0x{}", "d".repeat(i + 3)))
+                            .map(EventKey)
+                            .unwrap(),
                         event_key!("0xdeadbeef"),
                     ],
                 }]

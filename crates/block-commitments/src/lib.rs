@@ -221,7 +221,7 @@ mod meta {
     const MAINNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: BlockNumber::new_or_panic(833),
         fallback_sequencer_address: Some(sequencer_address!(
-            "021f4b90b0377c82bf330b7b5295820769e72d79d8acd0effa0ebde6e9988bc5"
+            "0x021f4b90b0377c82bf330b7b5295820769e72d79d8acd0effa0ebde6e9988bc5"
         )),
     };
 
