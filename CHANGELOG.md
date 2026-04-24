@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `starknet_getEvents` now returns `block_number` for events from pre-confirmed and pre-latest blocks.
-- BREAKING: JSON-RPC input no longer accepts hex strings that are missing the `0x` prefix, in line with the Starknet API spec.
+- JSON-RPC input no longer accepts hex strings that are missing the `0x` prefix, in line with the Starknet API spec.
 
 ### Fixed
 
