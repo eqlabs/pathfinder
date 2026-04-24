@@ -8,20 +8,18 @@ use super::TestEvent;
 use crate::core::config::RateLimit;
 use crate::core::Config;
 use crate::test_utils::peer::TestPeer;
-use crate::test_utils::{consume_accumulated_events, consume_all_events_forever, wait_for_event};
+use crate::test_utils::wait_for_event;
 
 #[test_log::test(tokio::test)]
 async fn dial() {
     // tokio::time::pause() does not make a difference
-    let mut peer1 = TestPeer::default();
+    let peer1 = TestPeer::default();
     let mut peer2 = TestPeer::default();
 
     let addr2 = peer2.start_listening().await.unwrap();
     tracing::info!(%peer2.peer_id, %addr2);
 
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
-
-    consume_accumulated_events(&mut peer1.test_event_receiver).await;
 
     let peers_of1: Vec<_> = peer1.connected().await.into_keys().collect();
     let peers_of2: Vec<_> = peer2.connected().await.into_keys().collect();
@@ -39,8 +37,6 @@ async fn disconnect() {
     tracing::info!(%peer2.peer_id, %addr2);
 
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
-
-    consume_accumulated_events(&mut peer1.test_event_receiver).await;
 
     let peers_of1: Vec<_> = peer1.connected().await.into_keys().collect();
     let peers_of2: Vec<_> = peer2.connected().await.into_keys().collect();
@@ -103,8 +99,6 @@ async fn periodic_bootstrap() {
         _ => None,
     };
 
-    consume_all_events_forever(boot.test_event_receiver);
-
     let peer_id2 = peer2.peer_id;
 
     let peer2_added_to_dht_of_peer1 =
@@ -126,8 +120,6 @@ async fn periodic_bootstrap() {
         .await;
     })
     .await;
-
-    consume_all_events_forever(peer1.test_event_receiver);
 
     assert_eq!(
         boot.client.for_test().get_peers_from_dht().await,
@@ -316,12 +308,6 @@ async fn outbound_peer_eviction() {
     let outbound_addr4 = outbound4.start_listening().await.unwrap();
     tracing::info!(%outbound4.peer_id, %outbound_addr4);
 
-    consume_all_events_forever(outbound1.test_event_receiver);
-    consume_all_events_forever(outbound2.test_event_receiver);
-    consume_all_events_forever(outbound3.test_event_receiver);
-    consume_all_events_forever(outbound4.test_event_receiver);
-    consume_all_events_forever(inbound1.test_event_receiver);
-
     // Open one inbound connection. This connection is never touched.
     inbound1
         .client
@@ -338,8 +324,6 @@ async fn outbound_peer_eviction() {
         .dial(outbound2.peer_id, outbound_addr2.clone())
         .await
         .unwrap();
-
-    consume_accumulated_events(&mut peer.test_event_receiver).await;
 
     // Trying to open another one fails, because no peers are marked as not useful,
     // and hence no peer can be evicted.
@@ -442,8 +426,6 @@ async fn inbound_peer_eviction() {
     assert_eq!(connected.len(), 26);
     assert!(connected.contains_key(&outbound1.peer_id));
 
-    consume_accumulated_events(&mut peer.test_event_receiver).await;
-
     // Trying to open another one causes an eviction.
     inbound_peers
         .last()
@@ -519,8 +501,6 @@ async fn evicted_peer_reconnection() {
     let result = peer1.client.dial(peer2.peer_id, addr2.clone()).await;
     assert!(result.is_err());
 
-    consume_accumulated_events(&mut peer2.test_event_receiver).await;
-
     // In this case there is no peer ID when connecting, so the connection gets
     // closed after being established.
     peer2
@@ -558,8 +538,6 @@ async fn ip_whitelist() {
 
     let addr1 = peer1.start_listening().await.unwrap();
     tracing::info!(%peer1.peer_id, %addr1);
-
-    consume_all_events_forever(peer2.test_event_receiver);
 
     // Can't open the connection because peer2 is bound to 127.0.0.1 and peer1 only
     // allows 127.0.0.2.
@@ -601,11 +579,6 @@ async fn rate_limit() {
 
     let addr1 = peer1.start_listening().await.unwrap();
     tracing::info!(%peer1.peer_id, %addr1);
-
-    consume_all_events_forever(peer1.test_event_receiver);
-    consume_all_events_forever(peer2.test_event_receiver);
-    consume_all_events_forever(peer3.test_event_receiver);
-    consume_all_events_forever(peer4.test_event_receiver);
 
     // Two connections can be opened, but the third one is rate limited.
 
