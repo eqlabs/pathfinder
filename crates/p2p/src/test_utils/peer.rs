@@ -132,6 +132,23 @@ impl TestPeer<dummy::Behaviour> {
     pub fn with_keypair(keypair: Keypair, cfg: Config) -> Self {
         Self::builder().keypair(keypair).build(cfg)
     }
+
+    /// Wait for a specific test event to happen. Extract data from the event
+    /// using the provided function `f`.
+    pub async fn wait_for_test_event<Data>(
+        &mut self,
+        mut f: impl FnMut(TestEvent) -> Option<Data>,
+    ) -> Option<Data>
+    where
+        Data: Debug + Send + 'static,
+    {
+        while let Some(event) = self.test_event_receiver.recv().await {
+            if let Some(data) = f(event) {
+                return Some(data);
+            }
+        }
+        None
+    }
 }
 
 impl<B> TestPeer<B>
