@@ -11,7 +11,6 @@ use crate::sync::behaviour::Behaviour;
 use crate::sync::client::Client;
 use crate::sync::protocol::codec;
 use crate::sync::{Config, Event};
-use crate::test_utils::filter_events;
 use crate::test_utils::peer::{TestPeer, TestPeerBuilder};
 
 type SyncTestPeer = TestPeer<Behaviour>;
@@ -66,15 +65,24 @@ mod successful_sync {
             #[case::client_to_server(client_to_server().await)]
             #[test_log::test(tokio::test)]
             async fn $test_name(#[case] peers: (SyncTestPeer, SyncTestPeer)) {
-                let (peer1, peer2) = peers;
+                let (mut peer1, peer2) = peers;
                 // Fake some request for peer2 to send to peer1
                 let expected_request = Faker.fake::<$req_type>();
 
+                // Peer2 sends the request to peer1, and waits for the response receiver
+                let mut rx = Client::from(peer2.client.as_pair())
+                    .$req_fn(peer1.peer_id, expected_request)
+                    .await
+                    .expect(&format!(
+                        "sending request using: {}, line: {}",
+                        std::stringify!($req_fn),
+                        line!()
+                    ));
+
                 // Filter peer1's events to fish out the request from peer2 and the channel that
                 // peer1 will use to send the responses
-                // This is also to keep peer1's event loop going
-                let mut tx_ready =
-                    filter_events(peer1.app_event_receiver, move |event| match event {
+                let mut tx = peer1
+                    .wait_for_event(|e| match e {
                         Event::$event_variant {
                             from,
                             channel,
@@ -87,23 +95,12 @@ mod successful_sync {
                             Some(channel)
                         }
                         _ => None,
-                    });
-
-                // Peer2 sends the request to peer1, and waits for the response receiver
-                let mut rx = Client::from(peer2.client.as_pair())
-                    .$req_fn(peer1.peer_id, expected_request)
+                    })
                     .await
                     .expect(&format!(
-                        "sending request using: {}, line: {}",
-                        std::stringify!($req_fn),
+                        "waiting for response channel to be ready, line: {}",
                         line!()
                     ));
-
-                // Peer1 waits for response channel to be ready
-                let mut tx = tx_ready.recv().await.expect(&format!(
-                    "waiting for response channel to be ready, line: {}",
-                    line!()
-                ));
 
                 // Peer1 sends a random number of responses to Peer2
                 for _ in 0usize..(1..100).fake() {
@@ -278,28 +275,10 @@ mod propagate_codec_errors_to_caller {
             #[case::client_to_server(client_to_bad_server($bad_codec).await)]
             #[test_log::test(tokio::test)]
             async fn $test_name(#[case] peers: (SyncTestPeer, SyncTestPeer)) {
-                let (peer1, peer2) = peers;
+                let (mut peer1, peer2) = peers;
 
                 // Fake some request for peer2 to send to peer1
                 let expected_request = Faker.fake::<$req_type>();
-
-                // Filter peer1's events to fish out the request from peer2 and the channel that
-                // peer1 will use to send the responses
-                // This is also to keep peer1's event loop going
-                let mut tx_ready = filter_events(peer1.app_event_receiver, move |event| match event {
-                    Event::$event_variant {
-                        from,
-                        channel,
-                        request: actual_request,
-                    } => {
-                        // Peer 1 should receive the request from peer2
-                        assert_eq!(from, peer2.peer_id);
-                        // Received request should match what peer2 sent
-                        assert_eq!(expected_request, actual_request);
-                        Some(channel)
-                    }
-                    _ => None,
-                });
 
                 // Peer2 sends the request to peer1, and waits for the response receiver
                 let mut rx = Client::from(peer2.client.as_pair())
@@ -313,13 +292,29 @@ mod propagate_codec_errors_to_caller {
                         )
                     });
 
-                // Peer1 waits for response channel to be ready
-                let mut tx = tx_ready.recv().await.unwrap_or_else(|| {
-                    panic!(
+                // Filter peer1's events to fish out the request from peer2 and the channel that
+                // peer1 will use to send the responses
+                let mut tx = peer1
+                    .wait_for_event(|e| match e {
+                        Event::$event_variant {
+                            from,
+                            channel,
+                            request: actual_request,
+                        } => {
+                            // Peer 1 should receive the request from peer2
+                            assert_eq!(from, peer2.peer_id);
+                            // Received request should match what peer2 sent
+                            assert_eq!(expected_request, actual_request);
+                            Some(channel)
+                        }
+                        _ => None,
+                    })
+                    .await
+                    .expect(&format!(
                         "waiting for response channel to be ready, line: {}",
                         line!()
-                    )
-                });
+                    ));
+
 
                 let expected_response = Faker.fake::<$res_type>();
                 // Peer1 sends 1 response, but peer2's codec is mocked to fail upon reception

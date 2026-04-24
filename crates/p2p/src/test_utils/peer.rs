@@ -132,23 +132,6 @@ impl TestPeer<dummy::Behaviour> {
     pub fn with_keypair(keypair: Keypair, cfg: Config) -> Self {
         Self::builder().keypair(keypair).build(cfg)
     }
-
-    /// Wait for a specific test event to happen. Extract data from the event
-    /// using the provided function `f`.
-    pub async fn wait_for_test_event<Data>(
-        &mut self,
-        mut f: impl FnMut(TestEvent) -> Option<Data>,
-    ) -> Option<Data>
-    where
-        Data: Debug + Send + 'static,
-    {
-        while let Some(event) = self.test_event_receiver.recv().await {
-            if let Some(data) = f(event) {
-                return Some(data);
-            }
-        }
-        None
-    }
 }
 
 impl<B> TestPeer<B>
@@ -191,6 +174,50 @@ where
     /// Get peer IDs of the connected peers
     pub async fn connected(&self) -> HashMap<PeerId, Peer> {
         self.client.for_test().get_connected_peers().await
+    }
+
+    /// Wait for a specific test event to happen. Extract data from the event
+    /// using the provided function `f`.
+    pub async fn wait_for_event<Data>(
+        &mut self,
+        f: impl FnMut(<B as ApplicationBehaviour>::Event) -> Option<Data>,
+    ) -> Option<Data>
+    where
+        Data: Debug + Send + 'static,
+    {
+        Self::wait_for_event_impl::<<B as ApplicationBehaviour>::Event, Data>(
+            &mut self.app_event_receiver,
+            f,
+        )
+        .await
+    }
+
+    /// Wait for a specific test event to happen. Extract data from the event
+    /// using the provided function `f`.
+    pub async fn wait_for_test_event<Data>(
+        &mut self,
+        f: impl FnMut(TestEvent) -> Option<Data>,
+    ) -> Option<Data>
+    where
+        Data: Debug + Send + 'static,
+    {
+        Self::wait_for_event_impl::<TestEvent, Data>(&mut self.test_event_receiver, f).await
+    }
+
+    async fn wait_for_event_impl<Event, Data>(
+        receiver: &mut mpsc::UnboundedReceiver<Event>,
+        mut f: impl FnMut(Event) -> Option<Data>,
+    ) -> Option<Data>
+    where
+        Event: Send + 'static,
+        Data: Debug + Send + 'static,
+    {
+        while let Some(event) = receiver.recv().await {
+            if let Some(data) = f(event) {
+                return Some(data);
+            }
+        }
+        None
     }
 }
 
