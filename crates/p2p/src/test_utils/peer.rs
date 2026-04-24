@@ -17,6 +17,36 @@ use crate::core::{Client, Config, TestEvent};
 use crate::peers::Peer;
 use crate::ApplicationBehaviour;
 
+/// Create a pair of connected peers. The first peer is the server that listens
+/// for incoming connections, and the second peer is the client that dials the
+/// server. `create_peer_fn` is a function that creates a new peer with the
+/// desired applicationbehaviour.
+pub async fn create_and_connect_pair<F, B>(create_peer_fn: F) -> (TestPeer<B>, TestPeer<B>)
+where
+    F: Fn() -> TestPeer<B>,
+    B: ApplicationBehaviour + Send,
+    <B as NetworkBehaviour>::ToSwarm: Debug,
+    <B as ApplicationBehaviour>::Command: Debug + Send,
+    <B as ApplicationBehaviour>::Event: Send,
+    <B as ApplicationBehaviour>::State: Default + Send,
+{
+    let mut server = create_peer_fn();
+    let client = create_peer_fn();
+
+    let server_addr = server.start_listening().await.unwrap();
+
+    tracing::info!(%server.peer_id, %server_addr, "Server");
+    tracing::info!(%client.peer_id, "Client");
+
+    client
+        .client
+        .dial(server.peer_id, server_addr)
+        .await
+        .unwrap();
+
+    (server, client)
+}
+
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct TestPeer<B>
@@ -147,7 +177,7 @@ where
     }
 
     /// Start listening on a specified address
-    pub async fn start_listening_on(&mut self, addr: Multiaddr) -> Result<Multiaddr> {
+    async fn start_listening_on(&mut self, addr: Multiaddr) -> Result<Multiaddr> {
         self.client
             .start_listening(addr)
             .await

@@ -11,7 +11,7 @@ use crate::sync::behaviour::Behaviour;
 use crate::sync::client::Client;
 use crate::sync::protocol::codec;
 use crate::sync::{Config, Event};
-use crate::test_utils::peer::{TestPeer, TestPeerBuilder};
+use crate::test_utils::peer::{create_and_connect_pair, TestPeer, TestPeerBuilder};
 
 type SyncTestPeer = TestPeer<Behaviour>;
 
@@ -22,21 +22,7 @@ fn create_peer() -> SyncTestPeer {
 }
 
 async fn create_peers() -> (SyncTestPeer, SyncTestPeer) {
-    let mut server = create_peer();
-    let client = create_peer();
-
-    let server_addr = server.start_listening().await.unwrap();
-
-    tracing::info!(%server.peer_id, %server_addr, "Server");
-    tracing::info!(%client.peer_id, "Client");
-
-    client
-        .client
-        .dial(server.peer_id, server_addr)
-        .await
-        .unwrap();
-
-    (server, client)
+    create_and_connect_pair(create_peer).await
 }
 
 async fn server_to_client() -> (SyncTestPeer, SyncTestPeer) {
