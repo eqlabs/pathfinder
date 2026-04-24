@@ -27,8 +27,8 @@ where
     pub keypair: Keypair,
     pub peer_id: PeerId,
     pub client: Client<<B as ApplicationBehaviour>::Command>,
-    pub app_event_receiver: mpsc::Receiver<<B as ApplicationBehaviour>::Event>,
-    pub test_event_receiver: mpsc::Receiver<TestEvent>,
+    pub app_event_receiver: mpsc::UnboundedReceiver<<B as ApplicationBehaviour>::Event>,
+    pub test_event_receiver: mpsc::UnboundedReceiver<TestEvent>,
     pub main_loop_jh: JoinHandle<()>,
 }
 
@@ -97,18 +97,9 @@ where
             p2p_builder.disable_kademlia_for_test()
         };
 
-        let (client, mut event_receiver, mut main_loop) = p2p_builder
+        let (client, app_event_receiver, mut main_loop) = p2p_builder
             .app_behaviour(app_behaviour.expect("App behaviour to be set in this phase"))
             .build();
-
-        // Ensure that the channel keeps being polled to move the main loop forward.
-        // Store the polled events into a buffered channel instead.
-        let (buf_sender, app_event_receiver) = tokio::sync::mpsc::channel(1024);
-        tokio::spawn(async move {
-            while let Some(event) = event_receiver.recv().await {
-                buf_sender.send(event).await.unwrap();
-            }
-        });
 
         let test_event_receiver = main_loop.take_test_event_receiver();
 

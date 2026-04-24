@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 use crate::core::{Behaviour, Event, TestCommand, TestEvent};
 
 pub async fn handle_event<B: NetworkBehaviour>(
-    event_sender: &mpsc::Sender<TestEvent>,
+    event_sender: &mpsc::UnboundedSender<TestEvent>,
     event: SwarmEvent<Event<B>>,
 ) {
     if let SwarmEvent::NewListenAddr { address, .. } = event {
@@ -58,16 +58,15 @@ pub async fn handle_command<B: NetworkBehaviour>(
     }
 }
 
-pub async fn send_event(event_sender: &mpsc::Sender<TestEvent>, event: TestEvent) {
+pub async fn send_event(event_sender: &mpsc::UnboundedSender<TestEvent>, event: TestEvent) {
     event_sender
         .send(event)
-        .await
         .expect("Event receiver not to be dropped");
 }
 
 pub async fn query_completed(
     _pending_test_queries: &mut PendingQueries,
-    _event_sender: &mpsc::Sender<TestEvent>,
+    _event_sender: &mpsc::UnboundedSender<TestEvent>,
     _id: QueryId,
     _result: QueryResult,
 ) {

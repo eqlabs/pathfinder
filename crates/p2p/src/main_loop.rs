@@ -41,10 +41,6 @@ const COMMAND_CHANNEL_SIZE_LIMIT: usize = 1024;
 /// free however we must ensure that there is rate limiting employed on the
 /// network layer side so that the event channel does not actually grow
 /// indefinitely in some situations.
-///
-/// TODO Determine a safe maximum size for the channels using stress tests with
-/// network layer rate limiting in place and replace them with fixed size
-/// channels of sufficient size.
 pub struct MainLoop<B>
 where
     B: ApplicationBehaviour,
@@ -65,8 +61,8 @@ where
     data_directory: PathBuf,
     /// State of the application behaviour.
     state: State<B>,
-    _test_event_sender: mpsc::Sender<TestEvent>,
-    _test_event_receiver: Option<mpsc::Receiver<TestEvent>>,
+    _test_event_sender: mpsc::UnboundedSender<TestEvent>,
+    _test_event_receiver: Option<mpsc::UnboundedReceiver<TestEvent>>,
     _pending_test_queries: TestQueries,
     /// We keep a single command sender instance at all times so that receiver
     /// can be polled even without any client instance available without
@@ -112,13 +108,9 @@ where
         Self,
         mpsc::UnboundedSender<Command<<B as ApplicationBehaviour>::Command>>,
     ) {
-        // Test event buffer is not used outside tests, so we can make it as small as
-        // possible
-        #[cfg(not(test))]
-        const TEST_EVENT_BUFFER_SIZE: usize = 1;
-        #[cfg(test)]
-        const TEST_EVENT_BUFFER_SIZE: usize = 1000;
-        let (_test_event_sender, rx) = mpsc::channel(TEST_EVENT_BUFFER_SIZE);
+        // Test event buffer is not used outside tests, so it is safe to make it
+        // unbounded as it will never contain any items in production.
+        let (_test_event_sender, rx) = mpsc::unbounded_channel();
 
         let (command_sender, command_receiver) = mpsc::unbounded_channel();
 
@@ -679,14 +671,14 @@ where
     B: ApplicationBehaviour,
 {
     #[cfg(test)]
-    pub fn take_test_event_receiver(&mut self) -> mpsc::Receiver<TestEvent> {
+    pub fn take_test_event_receiver(&mut self) -> mpsc::UnboundedReceiver<TestEvent> {
         Option::take(&mut self._test_event_receiver)
             .expect("Test event receiver not to have been taken before")
     }
 }
 
 /// No-op outside tests
-async fn send_test_event(_event_sender: &mpsc::Sender<TestEvent>, _event: TestEvent) {
+async fn send_test_event(_event_sender: &mpsc::UnboundedSender<TestEvent>, _event: TestEvent) {
     #[cfg(test)]
     test_utils::main_loop::send_event(_event_sender, _event).await
 }

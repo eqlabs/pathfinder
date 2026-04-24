@@ -11,8 +11,8 @@ use crate::sync::behaviour::Behaviour;
 use crate::sync::client::Client;
 use crate::sync::protocol::codec;
 use crate::sync::{Config, Event};
+use crate::test_utils::filter_events;
 use crate::test_utils::peer::{TestPeer, TestPeerBuilder};
-use crate::test_utils::{consume_all_events_forever, filter_events};
 
 type SyncTestPeer = TestPeer<Behaviour>;
 
@@ -88,9 +88,6 @@ mod successful_sync {
                         }
                         _ => None,
                     });
-
-                // This is to keep peer2's event loop going
-                consume_all_events_forever(peer2.app_event_receiver);
 
                 // Peer2 sends the request to peer1, and waits for the response receiver
                 let mut rx = Client::from(peer2.client.as_pair())
@@ -303,9 +300,6 @@ mod propagate_codec_errors_to_caller {
                     }
                     _ => None,
                 });
-
-                // This is to keep peer2's event loop going
-                consume_all_events_forever(peer2.app_event_receiver);
 
                 // Peer2 sends the request to peer1, and waits for the response receiver
                 let mut rx = Client::from(peer2.client.as_pair())
