@@ -226,22 +226,16 @@ mod deserialization {
                 type Value = RpcFelt;
 
                 fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                    formatter
-                        .write_str("a hex string of up to 64 digits with an optional '0x' prefix")
+                    formatter.write_str("a hex string of up to 64 digits with a '0x' prefix")
                 }
 
                 fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
                 where
                     E: serde::de::Error,
                 {
-                    // Felt::from_hex_str currently does not enforce `0x` prefix, add it here to
-                    // prevent breaking other serde related code.
-                    match v.as_bytes() {
-                        &[b'0', b'x', ..] => pathfinder_crypto::Felt::from_hex_str(v)
-                            .map_err(|e| serde::de::Error::custom(e))
-                            .map(RpcFelt),
-                        _missing_prefix => Err(serde::de::Error::custom("Missing '0x' prefix")),
-                    }
+                    pathfinder_crypto::Felt::from_hex_str(v)
+                        .map_err(|e| serde::de::Error::custom(e))
+                        .map(RpcFelt)
                 }
             }
 

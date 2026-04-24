@@ -46,13 +46,13 @@ fn starkhash_to_dec_str(h: &Felt) -> String {
 
 /// A helper conversion function. Only use with __sequencer API related types__.
 fn starkhash_from_dec_str(s: &str) -> Result<Felt, anyhow::Error> {
-    match BigUint::from_str(s) {
-        Ok(b) => {
-            let h = Felt::from_be_slice(&b.to_bytes_be())?;
-            Ok(h)
-        }
+    // The order here matters because `Felt::from_hex_str` requires the '0x'
+    // prefix, so we'll never parse a hex string as a decimal string by mistake.
+    match Felt::from_hex_str(s) {
+        Ok(h) => Ok(h),
         Err(_) => {
-            let h = Felt::from_hex_str(s)?;
+            let b = BigUint::from_str(s)?;
+            let h = Felt::from_be_slice(&b.to_bytes_be())?;
             Ok(h)
         }
     }

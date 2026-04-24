@@ -357,20 +357,24 @@ mod tests {
                 max_fee: fee!("0x4F388496839"),
                 signature: vec![
                     transaction_signature_elem!(
-                        "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
+                        "0x07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
                     ),
                     transaction_signature_elem!(
-                        "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
+                        "0x071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
                     ),
                 ],
                 nonce: transaction_nonce!("0x1"),
                 sender_address: contract_address!(
-                    "023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
+                    "0x023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
                 ),
                 calldata: vec![
                     call_param!("0x1"),
-                    call_param!("0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"),
-                    call_param!("0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"),
+                    call_param!(
+                        "0x0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
+                    ),
+                    call_param!(
+                        "0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
+                    ),
                     call_param!("0x0"),
                     call_param!("0x1"),
                     call_param!("0x1"),
@@ -510,7 +514,7 @@ mod tests {
                     signature: vec![],
                     nonce: transaction_nonce!("0x2"),
                     sender_address: contract_address!(
-                        "03fdcbeb68e607c8febf01d7ef274cbf68091a0bd1556c0b8f8e80d732f7850f"
+                        "0x03fdcbeb68e607c8febf01d7ef274cbf68091a0bd1556c0b8f8e80d732f7850f"
                     ),
                     calldata: vec![],
                 },

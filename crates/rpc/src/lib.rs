@@ -1350,9 +1350,9 @@ mod tests {
                 line!(),
                 r#"{"starting_block_hash":"0xa","starting_block_num":"0x1","current_block_hash":"0xb","current_block_num":"0x2","highest_block_hash":"0xc","highest_block_num":"0x3"}"#,
                 Syncing::Status(Status {
-                    starting: NumberedBlock::from(("a", 1)),
-                    current: NumberedBlock::from(("b", 2)),
-                    highest: NumberedBlock::from(("c", 3)),
+                    starting: NumberedBlock::from(("0xa", 1)),
+                    current: NumberedBlock::from(("0xb", 2)),
+                    highest: NumberedBlock::from(("0xc", 3)),
                 }),
             ),
         ];

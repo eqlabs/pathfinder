@@ -304,6 +304,9 @@ macro_rules! felt {
                 Err(pathfinder_crypto::HexParseError::InvalidLength { .. }) => {
                     panic!("Too many hex digits")
                 }
+                Err(pathfinder_crypto::HexParseError::MissingPrefix) => {
+                    panic!("Missing '0x' prefix")
+                }
                 Err(pathfinder_crypto::HexParseError::Overflow) => panic!("Felt overflow"),
             };
         CONST_FELT

@@ -2306,7 +2306,7 @@ pub mod add_transaction {
             let expected = InvokeResponse {
                 code: "TRANSACTION_RECEIVED".to_owned(),
                 transaction_hash: transaction_hash!(
-                    "0389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b"
+                    "0x0389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b"
                 ),
             };
             assert_eq!(expected, result);
@@ -2318,10 +2318,10 @@ pub mod add_transaction {
             let expected = DeployResponse {
                 code: "TRANSACTION_RECEIVED".to_owned(),
                 transaction_hash: transaction_hash!(
-                    "0296fb89b8a1c7487a1d4b27e1a1e33f440b05548e64980d06052bc089b1a51f"
+                    "0x0296fb89b8a1c7487a1d4b27e1a1e33f440b05548e64980d06052bc089b1a51f"
                 ),
                 address: contract_address!(
-                    "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
+                    "0x0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
                 ),
             };
             assert_eq!(expected, result);

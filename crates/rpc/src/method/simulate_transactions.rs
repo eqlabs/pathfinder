@@ -716,7 +716,7 @@ pub(crate) mod tests {
             include_bytes!("../../fixtures/contracts/cairo0_test.json");
 
         pub const CAIRO0_HASH: ClassHash =
-            class_hash!("02c52e7084728572ea940b4df708a2684677c19fa6296de2ea7ba5327e3a84ef");
+            class_hash!("0x02c52e7084728572ea940b4df708a2684677c19fa6296de2ea7ba5327e3a84ef");
 
         let contract_class = crate::types::ContractClass::from_serialized_def(
             &SerializedOpaqueClassDefinition::from_slice(CAIRO0_DEFINITION),
@@ -900,7 +900,7 @@ pub(crate) mod tests {
         pub const SIERRA_DEFINITION: &[u8] =
             include_bytes!("../../fixtures/contracts/storage_access.json");
         pub const SIERRA_HASH: ClassHash =
-            class_hash!("0544b92d358447cb9e50b65092b7169f931d29e05c1404a2cd08c6fd7e32ba90");
+            class_hash!("0x0544b92d358447cb9e50b65092b7169f931d29e05c1404a2cd08c6fd7e32ba90");
         pub const CASM_HASH: CasmHash =
             casm_hash!("0x069032ff71f77284e1a0864a573007108ca5cc08089416af50f03260f5d6d4d8");
         pub const CASM_DEFINITION: &[u8] =
@@ -1023,7 +1023,7 @@ pub(crate) mod tests {
                             CallParam(EntryPoint::hashed(b"deployContract").0),
                             // Length of the call data for the called contract, i.e.
                             // AccountCallArray::data_len
-                            call_param!("4"),
+                            call_param!("0x4"),
                             // classHash
                             CallParam(contract_hash.0),
                             // salt
@@ -1054,7 +1054,7 @@ pub(crate) mod tests {
                             CallParam(EntryPoint::hashed(b"get_data").0),
                             // Length of the call data for the called contract, i.e.
                             // AccountCallArray::data_len
-                            call_param!("0"),
+                            call_param!("0x0"),
                         ],
                     },
                 ))
@@ -1092,7 +1092,7 @@ pub(crate) mod tests {
                             CallParam(EntryPoint::hashed(b"get_data").0),
                             // Length of the call data for the called contract, i.e.
                             // AccountCallArray::data_len
-                            call_param!("0"),
+                            call_param!("0x0"),
                         ],
                         proof_facts: vec![],
                         proof: Default::default(),
@@ -1137,7 +1137,7 @@ pub(crate) mod tests {
                             CallParam(EntryPoint::hashed(b"get_data").0),
                             // Length of the call data for the called contract, i.e.
                             // AccountCallArray::data_len
-                            call_param!("0"),
+                            call_param!("0x0"),
                         ],
                         proof_facts: vec![],
                         proof: Default::default(),

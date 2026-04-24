@@ -170,8 +170,10 @@ mod tests {
     #[test]
     fn test_sponge() {
         let expected_result = MontFelt::from(
-            Felt::from_hex_str("07b8f30ac298ea12d170c0873f1fa631a18c00756c6e7d1fd273b9a239d0d413")
-                .unwrap(),
+            Felt::from_hex_str(
+                "0x07b8f30ac298ea12d170c0873f1fa631a18c00756c6e7d1fd273b9a239d0d413",
+            )
+            .unwrap(),
         );
 
         // Construct messages, the first few integers

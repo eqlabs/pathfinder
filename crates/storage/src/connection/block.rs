@@ -696,7 +696,7 @@ mod tests {
             event_count: 40,
             l1_da_mode: L1DataAvailabilityMode::Blob,
             receipt_commitment: receipt_commitment_bytes!(b"receipt commitment genesis"),
-            state_diff_commitment: state_diff_commitment!("12"),
+            state_diff_commitment: state_diff_commitment!("0x12"),
             state_diff_length: 12,
         };
 

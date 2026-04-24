@@ -323,13 +323,13 @@ pub fn starkhash_to_dec_str(h: &Felt) -> String {
 
 /// A helper conversion function. Only use with __sequencer API related types__.
 fn starkhash_from_dec_str(s: &str) -> Result<Felt, anyhow::Error> {
-    match BigUint::from_str(s) {
-        Ok(b) => {
-            let h = starkhash_from_biguint(b)?;
-            Ok(h)
-        }
+    // The order here matters because `Felt::from_hex_str` requires the '0x'
+    // prefix, so we'll never parse a hex string as a decimal string by mistake.
+    match Felt::from_hex_str(s) {
+        Ok(h) => Ok(h),
         Err(_) => {
-            let h = Felt::from_hex_str(s)?;
+            let b = BigUint::from_str(s)?;
+            let h = starkhash_from_biguint(b)?;
             Ok(h)
         }
     }
@@ -337,8 +337,8 @@ fn starkhash_from_dec_str(s: &str) -> Result<Felt, anyhow::Error> {
 
 /// A convenience function which parses a hex string into a byte array.
 ///
-/// Supports both upper and lower case hex strings, as well as an
-/// optional "0x" prefix.
+/// Supports both upper and lower case hex strings. The '0x' prefix is
+/// mandatory.
 fn bytes_from_hex_str<const N: usize>(hex_str: &str) -> Result<[u8; N], HexParseError> {
     fn parse_hex_digit(digit: u8) -> Result<u8, HexParseError> {
         match digit {
@@ -349,7 +349,9 @@ fn bytes_from_hex_str<const N: usize>(hex_str: &str) -> Result<[u8; N], HexParse
         }
     }
 
-    let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
+    let Some(hex_str) = hex_str.strip_prefix("0x") else {
+        return Err(HexParseError::MissingPrefix);
+    };
     if hex_str.len() > N * 2 {
         return Err(HexParseError::InvalidLength {
             max: N * 2,
@@ -488,6 +490,7 @@ pub fn extract_program_and_entry_points_by_type(
 
 #[cfg(test)]
 mod tests {
+    use num_bigint::ParseBigIntError;
     use pretty_assertions_sorted::assert_eq;
 
     use super::*;
@@ -639,20 +642,21 @@ mod tests {
         // Regression: previously max in the error message was hard-coded at 64,
         // so try another buf size to make sure it is not anymore
         assert_eq!(
-            &format!("{}", bytes_from_hex_str::<1>("abc").unwrap_err()),
+            &format!("{}", bytes_from_hex_str::<1>("0xabc").unwrap_err()),
             "More than 2 digits found: 3"
         );
     }
 
     #[test]
     fn invalid_digit() {
-        starkhash_from_dec_str("123a").unwrap();
+        starkhash_from_dec_str("0x123a").unwrap();
         assert_eq!(
             starkhash_from_dec_str("123z")
                 .unwrap_err()
-                .downcast::<HexParseError>()
-                .unwrap(),
-            HexParseError::InvalidNibble(b'z')
+                .downcast::<ParseBigIntError>()
+                .unwrap()
+                .to_string(),
+            "invalid digit found in string"
         );
         assert_eq!(
             bytes_from_hex_str::<32>("0x123z"),

@@ -215,10 +215,10 @@ mod tests {
 
     #[test]
     fn test_get_pk() {
-        let sk = felt_hex("03c1e9550e66958296d11b60f8e8e7a7ad990d07fa65d5f7652c4a6c87d4e3cc");
+        let sk = felt_hex("0x03c1e9550e66958296d11b60f8e8e7a7ad990d07fa65d5f7652c4a6c87d4e3cc");
 
-        let pk_x = felm_hex("77a3b314db07c45076d11f62b6f9e748a39790441823307743cf00d6597ea43");
-        let pk_y = felm_hex("54d7beec5ec728223671c627557efc5c9a6508425dc6c900b7741bf60afec06");
+        let pk_x = felm_hex("0x77a3b314db07c45076d11f62b6f9e748a39790441823307743cf00d6597ea43");
+        let pk_y = felm_hex("0x54d7beec5ec728223671c627557efc5c9a6508425dc6c900b7741bf60afec06");
 
         let pk = get_pk(sk).expect("valid sk");
         let pk_affine = AffinePoint::from_x(pk.into()).unwrap();
@@ -229,17 +229,17 @@ mod tests {
 
     #[test]
     fn from_x() {
-        let pk_x = felm_hex("77a3b314db07c45076d11f62b6f9e748a39790441823307743cf00d6597ea43");
-        let pk_y = felm_hex("54d7beec5ec728223671c627557efc5c9a6508425dc6c900b7741bf60afec06");
+        let pk_x = felm_hex("0x77a3b314db07c45076d11f62b6f9e748a39790441823307743cf00d6597ea43");
+        let pk_y = felm_hex("0x54d7beec5ec728223671c627557efc5c9a6508425dc6c900b7741bf60afec06");
         let pk_affine = AffinePoint::from_x(pk_x).unwrap();
         assert_eq!(pk_affine.y, pk_y);
     }
 
     #[test]
     fn get_partial_pk() {
-        let pk_x = felt_hex("77a3b314db07c45076d11f62b6f9e748a39790441823307743cf00d6597ea43");
+        let pk_x = felt_hex("0x77a3b314db07c45076d11f62b6f9e748a39790441823307743cf00d6597ea43");
 
-        let sk = felt_hex("03c1e9550e66958296d11b60f8e8e7a7ad990d07fa65d5f7652c4a6c87d4e3cc");
+        let sk = felt_hex("0x03c1e9550e66958296d11b60f8e8e7a7ad990d07fa65d5f7652c4a6c87d4e3cc");
         let pk = get_pk(sk).unwrap();
 
         assert_eq!(pk, pk_x);
@@ -247,8 +247,8 @@ mod tests {
 
     #[test]
     fn verify_partial() {
-        let sk = felt_hex("03c1e9550e66958296d11b60f8e8e7a7ad990d07fa65d5f7652c4a6c87d4e3cc");
-        let msg = felt_hex("397e76d1667c4454bfb83514e120583af836f8e32a516765497823eabe16a3f");
+        let sk = felt_hex("0x03c1e9550e66958296d11b60f8e8e7a7ad990d07fa65d5f7652c4a6c87d4e3cc");
+        let msg = felt_hex("0x397e76d1667c4454bfb83514e120583af836f8e32a516765497823eabe16a3f");
         let sig = ecdsa_sign(sk, msg).expect("can sign");
         let pk = get_pk(sk).expect("can get pk");
         assert!(ecdsa_verify_partial(pk, msg, sig.0, sig.1).is_ok());
@@ -257,12 +257,12 @@ mod tests {
     #[test]
     fn verify_inner() {
         // Test vector from https://github.com/starkware-libs/crypto-cpp/blob/master/src/starkware/crypto/ecdsa_test.cc
-        let pk_x = felm_hex("77a3b314db07c45076d11f62b6f9e748a39790441823307743cf00d6597ea43");
+        let pk_x = felm_hex("0x77a3b314db07c45076d11f62b6f9e748a39790441823307743cf00d6597ea43");
         let pk = ProjectivePoint::from_x(pk_x).unwrap();
 
-        let msg = felt_hex("397e76d1667c4454bfb83514e120583af836f8e32a516765497823eabe16a3f");
-        let r = felt_hex("173fd03d8b008ee7432977ac27d1e9d1a1f6c98b1a2f05fa84a21c84c44e882");
-        let w = felt_hex("1f2c44a7798f55192f153b4c48ea5c1241fbb69e6132cc8a0da9c5b62a4286e");
+        let msg = felt_hex("0x397e76d1667c4454bfb83514e120583af836f8e32a516765497823eabe16a3f");
+        let r = felt_hex("0x173fd03d8b008ee7432977ac27d1e9d1a1f6c98b1a2f05fa84a21c84c44e882");
+        let w = felt_hex("0x1f2c44a7798f55192f153b4c48ea5c1241fbb69e6132cc8a0da9c5b62a4286e");
 
         // Compute s=1/w
         let w = CurveOrderMontFelt::try_from(MontFelt::from(w)).unwrap();
@@ -274,31 +274,31 @@ mod tests {
     #[test]
     fn verify_bad() {
         // Changed last byte of pk from 3 to 4
-        let pk = felt_hex("77a3b314db07c45076d11f62b6f9e748a39790441823307743cf00d6597ea44");
-        let msg = felt_hex("397e76d1667c4454bfb83514e120583af836f8e32a516765497823eabe16a3f");
-        let r = felt_hex("173fd03d8b008ee7432977ac27d1e9d1a1f6c98b1a2f05fa84a21c84c44e882");
-        let s = felt_hex("1f2c44a7798f55192f153b4c48ea5c1241fbb69e6132cc8a0da9c5b62a4286e");
+        let pk = felt_hex("0x77a3b314db07c45076d11f62b6f9e748a39790441823307743cf00d6597ea44");
+        let msg = felt_hex("0x397e76d1667c4454bfb83514e120583af836f8e32a516765497823eabe16a3f");
+        let r = felt_hex("0x173fd03d8b008ee7432977ac27d1e9d1a1f6c98b1a2f05fa84a21c84c44e882");
+        let s = felt_hex("0x1f2c44a7798f55192f153b4c48ea5c1241fbb69e6132cc8a0da9c5b62a4286e");
         assert!(ecdsa_verify_partial(pk, msg, r, s).is_err());
 
         // Changed last byte of msg from f to 0
-        let pk = felt_hex("77a3b314db07c45076d11f62b6f9e748a39790441823307743cf00d6597ea43");
-        let msg = felt_hex("397e76d1667c4454bfb83514e120583af836f8e32a516765497823eabe16a30");
-        let r = felt_hex("173fd03d8b008ee7432977ac27d1e9d1a1f6c98b1a2f05fa84a21c84c44e882");
-        let s = felt_hex("1f2c44a7798f55192f153b4c48ea5c1241fbb69e6132cc8a0da9c5b62a4286e");
+        let pk = felt_hex("0x77a3b314db07c45076d11f62b6f9e748a39790441823307743cf00d6597ea43");
+        let msg = felt_hex("0x397e76d1667c4454bfb83514e120583af836f8e32a516765497823eabe16a30");
+        let r = felt_hex("0x173fd03d8b008ee7432977ac27d1e9d1a1f6c98b1a2f05fa84a21c84c44e882");
+        let s = felt_hex("0x1f2c44a7798f55192f153b4c48ea5c1241fbb69e6132cc8a0da9c5b62a4286e");
         assert!(ecdsa_verify_partial(pk, msg, r, s).is_err());
 
         // Changed last byte of r from 2 to 3
-        let pk = felt_hex("77a3b314db07c45076d11f62b6f9e748a39790441823307743cf00d6597ea43");
-        let msg = felt_hex("397e76d1667c4454bfb83514e120583af836f8e32a516765497823eabe16a3f");
-        let r = felt_hex("173fd03d8b008ee7432977ac27d1e9d1a1f6c98b1a2f05fa84a21c84c44e883");
-        let s = felt_hex("1f2c44a7798f55192f153b4c48ea5c1241fbb69e6132cc8a0da9c5b62a4286e");
+        let pk = felt_hex("0x77a3b314db07c45076d11f62b6f9e748a39790441823307743cf00d6597ea43");
+        let msg = felt_hex("0x397e76d1667c4454bfb83514e120583af836f8e32a516765497823eabe16a3f");
+        let r = felt_hex("0x173fd03d8b008ee7432977ac27d1e9d1a1f6c98b1a2f05fa84a21c84c44e883");
+        let s = felt_hex("0x1f2c44a7798f55192f153b4c48ea5c1241fbb69e6132cc8a0da9c5b62a4286e");
         assert!(ecdsa_verify_partial(pk, msg, r, s).is_err());
 
         // Changed last byte of s from e to f
-        let pk = felt_hex("77a3b314db07c45076d11f62b6f9e748a39790441823307743cf00d6597ea43");
-        let msg = felt_hex("397e76d1667c4454bfb83514e120583af836f8e32a516765497823eabe16a3f");
-        let r = felt_hex("173fd03d8b008ee7432977ac27d1e9d1a1f6c98b1a2f05fa84a21c84c44e882");
-        let s = felt_hex("1f2c44a7798f55192f153b4c48ea5c1241fbb69e6132cc8a0da9c5b62a4286f");
+        let pk = felt_hex("0x77a3b314db07c45076d11f62b6f9e748a39790441823307743cf00d6597ea43");
+        let msg = felt_hex("0x397e76d1667c4454bfb83514e120583af836f8e32a516765497823eabe16a3f");
+        let r = felt_hex("0x173fd03d8b008ee7432977ac27d1e9d1a1f6c98b1a2f05fa84a21c84c44e882");
+        let s = felt_hex("0x1f2c44a7798f55192f153b4c48ea5c1241fbb69e6132cc8a0da9c5b62a4286f");
         assert!(ecdsa_verify_partial(pk, msg, r, s).is_err());
     }
 
@@ -322,10 +322,10 @@ mod tests {
     #[test]
     fn openzeppelin_signature() {
         // From https://testnet.starkscan.co/tx/0x0630a81628900577eea4b4a677767e57a56dabd730c2f64772ecbbde22ff485a
-        let pk = felt_hex("792c60ec4fdfea7ce6409db046b8dde11f595911cb74906be02a87ae6a4f70d");
-        let msg = felt_hex("0630a81628900577eea4b4a677767e57a56dabd730c2f64772ecbbde22ff485a");
-        let r = felt_hex("176846ea9b114f4f27f0d4d3cefacb5f830513fbd2d2f69a1a4d7552ae040be");
-        let s = felt_hex("601a87d6bc3e3a6513bafa1d449ffb3a0dd6cbe72f927a8e7271af0e8dd1302");
+        let pk = felt_hex("0x792c60ec4fdfea7ce6409db046b8dde11f595911cb74906be02a87ae6a4f70d");
+        let msg = felt_hex("0x0630a81628900577eea4b4a677767e57a56dabd730c2f64772ecbbde22ff485a");
+        let r = felt_hex("0x176846ea9b114f4f27f0d4d3cefacb5f830513fbd2d2f69a1a4d7552ae040be");
+        let s = felt_hex("0x601a87d6bc3e3a6513bafa1d449ffb3a0dd6cbe72f927a8e7271af0e8dd1302");
         assert!(ecdsa_verify_partial(pk, msg, r, s).is_ok());
     }
 }
