@@ -8710,6 +8710,7 @@ name = "pathfinder-serde"
 version = "0.22.3"
 dependencies = [
  "anyhow",
+ "assert_matches",
  "num-bigint 0.4.6",
  "pathfinder-common",
  "pathfinder-crypto",

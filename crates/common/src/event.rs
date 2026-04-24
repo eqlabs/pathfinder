@@ -1,7 +1,4 @@
-use std::str::FromStr;
-
 use fake::Dummy;
-use num_bigint::BigUint;
 use pathfinder_crypto::Felt;
 use pathfinder_tagged::Tagged;
 use pathfinder_tagged_debug_derive::TaggedDebug;
@@ -26,34 +23,13 @@ pub struct EventIndex(pub u64);
 serde_conv!(
     EventDataAsDecimalStr,
     EventData,
-    |serialize_me: &EventData| starkhash_to_dec_str(&serialize_me.0),
-    |s: &str| starkhash_from_dec_str(s).map(EventData)
+    |serialize_me: &EventData| serialize_me.0.to_dec_str(),
+    |s: &str| Felt::from_dec_str(s).map(EventData)
 );
 
 serde_conv!(
     EventKeyAsDecimalStr,
     EventKey,
-    |serialize_me: &EventKey| starkhash_to_dec_str(&serialize_me.0),
-    |s: &str| starkhash_from_dec_str(s).map(EventKey)
+    |serialize_me: &EventKey| serialize_me.0.to_dec_str(),
+    |s: &str| Felt::from_dec_str(s).map(EventKey)
 );
-
-/// A helper conversion function. Only use with __sequencer API related types__.
-fn starkhash_to_dec_str(h: &Felt) -> String {
-    let b = h.to_be_bytes();
-    let b = BigUint::from_bytes_be(&b);
-    b.to_str_radix(10)
-}
-
-/// A helper conversion function. Only use with __sequencer API related types__.
-fn starkhash_from_dec_str(s: &str) -> Result<Felt, anyhow::Error> {
-    // The order here matters because `Felt::from_hex_str` requires the '0x'
-    // prefix, so we'll never parse a hex string as a decimal string by mistake.
-    match Felt::from_hex_str(s) {
-        Ok(h) => Ok(h),
-        Err(_) => {
-            let b = BigUint::from_str(s)?;
-            let h = Felt::from_be_slice(&b.to_bytes_be())?;
-            Ok(h)
-        }
-    }
-}
