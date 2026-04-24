@@ -13,9 +13,9 @@ pub struct Client {
 }
 
 impl From<(PeerId, mpsc::UnboundedSender<core::Command<Command>>)> for Client {
-    fn from((peer_id, sender): (PeerId, mpsc::UnboundedSender<core::Command<Command>>)) -> Self {
+    fn from((peer_id, _sender): (PeerId, mpsc::UnboundedSender<core::Command<Command>>)) -> Self {
         Self {
-            _sender: sender,
+            _sender,
             local_peer_id: peer_id,
         }
     }
