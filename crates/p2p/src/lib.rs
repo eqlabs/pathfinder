@@ -70,8 +70,9 @@ mod builder_phase {
 /// interacts with the network:
 /// - Commands: Actions requested by the application to be executed by the
 ///   network
-/// - Events: Notifications from the network that the application needs to
-///   handle
+/// - Events: Application-specific notifications from the network that the
+///   application needs to handle
+/// - TestEvents: Application-specific events that are only emitted in tests
 /// - State: Data needed to track ongoing operations
 ///
 /// This trait is implemented by application-specific network behaviors (like
@@ -81,6 +82,9 @@ pub trait ApplicationBehaviour: NetworkBehaviour {
     type Command: std::fmt::Debug;
     /// The type of events that the p2p network can emit to the outside world.
     type Event;
+    /// The type of events that the p2p network can emit to the outside world in
+    /// tests only.
+    type TestEvent;
     /// State needed to track pending network operations and their responses.
     type State;
 
@@ -97,6 +101,7 @@ pub trait ApplicationBehaviour: NetworkBehaviour {
         event: <Self as NetworkBehaviour>::ToSwarm,
         state: &mut Self::State,
         event_sender: mpsc::UnboundedSender<Self::Event>,
+        test_event_sender: mpsc::UnboundedSender<Self::TestEvent>,
     ) -> impl Future<Output = ()> + Send;
 
     /// Returns the domain string used for marker file creation in integration

@@ -28,7 +28,8 @@ where
     pub peer_id: PeerId,
     pub client: Client<<B as ApplicationBehaviour>::Command>,
     pub app_event_receiver: mpsc::UnboundedReceiver<<B as ApplicationBehaviour>::Event>,
-    pub test_event_receiver: mpsc::UnboundedReceiver<TestEvent>,
+    pub app_test_event_receiver: mpsc::UnboundedReceiver<<B as ApplicationBehaviour>::TestEvent>,
+    pub core_test_event_receiver: mpsc::UnboundedReceiver<TestEvent>,
     pub main_loop_jh: JoinHandle<()>,
 }
 
@@ -77,6 +78,7 @@ where
     <B as NetworkBehaviour>::ToSwarm: Debug,
     <B as ApplicationBehaviour>::Command: Debug + Send,
     <B as ApplicationBehaviour>::Event: Send,
+    <B as ApplicationBehaviour>::TestEvent: Send,
     <B as ApplicationBehaviour>::State: Default + Send,
 {
     pub fn build(self, cfg: Config) -> TestPeer<B> {
@@ -101,7 +103,8 @@ where
             .app_behaviour(app_behaviour.expect("App behaviour to be set in this phase"))
             .build();
 
-        let test_event_receiver = main_loop.take_test_event_receiver();
+        let (core_test_event_receiver, app_test_event_receiver) =
+            main_loop.take_test_event_receivers();
 
         let main_loop_jh = tokio::spawn(main_loop.run());
         TestPeer {
@@ -109,7 +112,8 @@ where
             peer_id,
             client,
             app_event_receiver,
-            test_event_receiver,
+            app_test_event_receiver,
+            core_test_event_receiver,
             main_loop_jh,
         }
     }
@@ -153,10 +157,11 @@ where
             .await
             .context("Start listening failed")?;
 
-        let event = tokio::time::timeout(Duration::from_secs(1), self.test_event_receiver.recv())
-            .await
-            .context("Timedout while waiting for new listen address")?
-            .context("Event channel closed")?;
+        let event =
+            tokio::time::timeout(Duration::from_secs(1), self.core_test_event_receiver.recv())
+                .await
+                .context("Timedout while waiting for new listen address")?
+                .context("Event channel closed")?;
 
         let addr = match event {
             TestEvent::NewListenAddress(addr) => addr,
@@ -201,7 +206,7 @@ where
     where
         Data: Debug + Send + 'static,
     {
-        Self::wait_for_event_impl::<TestEvent, Data>(&mut self.test_event_receiver, f).await
+        Self::wait_for_event_impl::<TestEvent, Data>(&mut self.core_test_event_receiver, f).await
     }
 
     async fn wait_for_event_impl<Event, Data>(

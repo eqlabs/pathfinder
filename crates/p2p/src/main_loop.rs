@@ -49,8 +49,11 @@ where
     swarm: libp2p::swarm::Swarm<Behaviour<B>>,
     /// Receives commands from the outside world.
     command_receiver: mpsc::UnboundedReceiver<Command<<B as ApplicationBehaviour>::Command>>,
-    /// Sends events to the outside world.
-    event_sender: mpsc::UnboundedSender<<B as ApplicationBehaviour>::Event>,
+    /// Sends application-specific events to the outside world.
+    app_event_sender: mpsc::UnboundedSender<<B as ApplicationBehaviour>::Event>,
+    /// Sends application-specific test events to the outside world, no-op in
+    /// production.
+    _app_test_event_sender: mpsc::UnboundedSender<<B as ApplicationBehaviour>::TestEvent>,
     /// Keeps track of pending dials and allows us to notify the caller when a
     /// dial succeeds or fails.
     pending_dials: PendingDials,
@@ -61,8 +64,16 @@ where
     data_directory: PathBuf,
     /// State of the application behaviour.
     state: State<B>,
-    _test_event_sender: mpsc::UnboundedSender<TestEvent>,
-    _test_event_receiver: Option<mpsc::UnboundedReceiver<TestEvent>>,
+    /// Used to send [`p2p::core::TestEvent`]-s during tests, no-op in
+    /// production.
+    _core_test_event_sender: mpsc::UnboundedSender<TestEvent>,
+    /// Used to receive:
+    /// - [`p2p::core::TestEvent`]-s during tests, no-op in production.
+    /// - Application-specific test events during tests, no-op in production.
+    _test_event_receivers: Option<(
+        mpsc::UnboundedReceiver<TestEvent>,
+        mpsc::UnboundedReceiver<<B as ApplicationBehaviour>::TestEvent>,
+    )>,
     _pending_test_queries: TestQueries,
     /// We keep a single command sender instance at all times so that receiver
     /// can be polled even without any client instance available without
@@ -98,19 +109,21 @@ where
     ///
     /// * `swarm` - The libp2p swarm, including the network behaviour for this
     ///   loop.
-    /// * `event_sender` - The sender for events to the outside world.
+    /// * `app_event_sender` - The sender for application-specific events to the
+    ///   outside world.
     /// * `data_directory` - The data directory for Pathfinder.
     pub fn new(
         swarm: libp2p::swarm::Swarm<Behaviour<B>>,
-        event_sender: mpsc::UnboundedSender<<B as ApplicationBehaviour>::Event>,
+        app_event_sender: mpsc::UnboundedSender<<B as ApplicationBehaviour>::Event>,
         data_directory: PathBuf,
     ) -> (
         Self,
         mpsc::UnboundedSender<Command<<B as ApplicationBehaviour>::Command>>,
     ) {
-        // Test event buffer is not used outside tests, so it is safe to make it
-        // unbounded as it will never contain any items in production.
-        let (_test_event_sender, rx) = mpsc::unbounded_channel();
+        // Test event buffers are not used outside tests, so it is safe to make them
+        // unbounded as they will never contain any items in production.
+        let (_core_test_event_sender, core_rx) = mpsc::unbounded_channel();
+        let (_app_test_event_sender, app_rx) = mpsc::unbounded_channel();
 
         let (command_sender, command_receiver) = mpsc::unbounded_channel();
 
@@ -118,13 +131,14 @@ where
             Self {
                 swarm,
                 command_receiver,
-                event_sender,
+                app_event_sender,
+                _app_test_event_sender,
                 pending_dials: Default::default(),
                 pending_queries: Default::default(),
                 state: Default::default(),
                 data_directory,
-                _test_event_sender,
-                _test_event_receiver: Some(rx),
+                _core_test_event_sender,
+                _test_event_receivers: Some((core_rx, app_rx)),
                 _pending_test_queries: Default::default(),
                 _command_sender: command_sender.clone(),
             },
@@ -207,7 +221,7 @@ where
                 }
 
                 send_test_event(
-                    &self._test_event_sender,
+                    &self._core_test_event_sender,
                     TestEvent::ConnectionEstablished {
                         outbound: endpoint.is_dialer(),
                         remote: peer_id,
@@ -249,7 +263,7 @@ where
                 tracing::debug!(%peer_id, "Connection closed");
                 if num_established == 0 {
                     send_test_event(
-                        &self._test_event_sender,
+                        &self._core_test_event_sender,
                         TestEvent::ConnectionClosed { remote: peer_id },
                     )
                     .await;
@@ -367,7 +381,7 @@ where
                                     }
                                 };
                                 send_test_event(
-                                    &self._test_event_sender,
+                                    &self._core_test_event_sender,
                                     TestEvent::KademliaBootstrapCompleted(result),
                                 )
                                 .await;
@@ -407,7 +421,7 @@ where
                                 //    https://github.com/libp2p/rust-libp2p/blob/d7beb55f672dce54017fa4b30f67ecb8d66b9810/protocols/kad/src/behaviour.rs#L1401).
                                 if step.count == NonZeroUsize::new(1).expect("1>0") {
                                     send_test_event(
-                                        &self._test_event_sender,
+                                        &self._core_test_event_sender,
                                         TestEvent::KademliaBootstrapStarted,
                                     )
                                     .await;
@@ -422,7 +436,7 @@ where
                 } => {
                     if is_new_peer {
                         send_test_event(
-                            &self._test_event_sender,
+                            &self._core_test_event_sender,
                             TestEvent::PeerAddedToDHT { remote: peer },
                         )
                         .await
@@ -452,7 +466,8 @@ where
                     .handle_event(
                         application_event,
                         &mut self.state,
-                        self.event_sender.clone(),
+                        self.app_event_sender.clone(),
+                        self._app_test_event_sender.clone(),
                     )
                     .await;
             }
@@ -589,7 +604,7 @@ where
     /// No-op outside tests
     async fn handle_event_for_test(&mut self, _event: SwarmEvent<Event<B>>) {
         #[cfg(test)]
-        test_utils::main_loop::handle_event(&self._test_event_sender, _event).await
+        test_utils::main_loop::handle_event(&self._core_test_event_sender, _event).await
     }
 
     /// No-op outside tests
@@ -608,7 +623,7 @@ where
         #[cfg(test)]
         test_utils::main_loop::query_completed(
             &mut self._pending_test_queries.inner,
-            &self._test_event_sender,
+            &self._core_test_event_sender,
             _id,
             _result,
         )
@@ -666,14 +681,19 @@ where
     }
 }
 
+#[cfg(test)]
 impl<B> MainLoop<B>
 where
     B: ApplicationBehaviour,
 {
-    #[cfg(test)]
-    pub fn take_test_event_receiver(&mut self) -> mpsc::UnboundedReceiver<TestEvent> {
-        Option::take(&mut self._test_event_receiver)
-            .expect("Test event receiver not to have been taken before")
+    pub fn take_test_event_receivers(
+        &mut self,
+    ) -> (
+        mpsc::UnboundedReceiver<TestEvent>,
+        mpsc::UnboundedReceiver<<B as ApplicationBehaviour>::TestEvent>,
+    ) {
+        Option::take(&mut self._test_event_receivers)
+            .expect("Core test event receiver not to have been taken before")
     }
 }
 

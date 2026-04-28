@@ -132,6 +132,7 @@ impl<B> Builder<B, AppBehaviourSet> {
 impl ApplicationBehaviour for dummy::Behaviour {
     type Command = ();
     type Event = ();
+    type TestEvent = ();
     type State = ();
 
     async fn handle_command(&mut self, _: Self::Command, _: &mut Self::State) {}
@@ -140,6 +141,7 @@ impl ApplicationBehaviour for dummy::Behaviour {
         _: <Self as NetworkBehaviour>::ToSwarm,
         _: &mut Self::State,
         _: mpsc::UnboundedSender<Self::Event>,
+        _: mpsc::UnboundedSender<Self::TestEvent>,
     ) {
     }
     fn domain() -> &'static str {
