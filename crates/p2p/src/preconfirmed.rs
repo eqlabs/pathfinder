@@ -82,14 +82,6 @@ mod tests {
         .unwrap();
     }
 
-    async fn wait_for_subscribed(peer: &mut PcTestPeer, expected_peer_id: PeerId) {
-        peer.wait_for_event(|e| {
-            (matches!(e.kind, EventKind::Subscribed) && expected_peer_id == e.source).then_some(())
-        })
-        .await
-        .unwrap();
-    }
-
     /// A simple sanity test to check gossiping between two nodes.
     #[tokio::test]
     async fn sanity() {
