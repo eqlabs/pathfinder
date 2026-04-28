@@ -8,14 +8,14 @@ use crate::preconfirmed::Command;
 
 #[derive(Clone, Debug)]
 pub struct Client {
-    sender: mpsc::UnboundedSender<core::Command<Command>>,
+    _sender: mpsc::UnboundedSender<core::Command<Command>>,
     local_peer_id: PeerId,
 }
 
 impl From<(PeerId, mpsc::UnboundedSender<core::Command<Command>>)> for Client {
     fn from((peer_id, sender): (PeerId, mpsc::UnboundedSender<core::Command<Command>>)) -> Self {
         Self {
-            sender,
+            _sender: sender,
             local_peer_id: peer_id,
         }
     }
@@ -29,7 +29,7 @@ impl Client {
     #[cfg(test)]
     pub async fn gossip_preconfirmed_transactions(&self) -> Result<(), PublishError> {
         let (done_tx, mut rx) = mpsc::channel(1);
-        self.sender
+        self._sender
             .send(core::Command::Application(
                 Command::TestGossipPreconfirmedTransactions { done_tx },
             ))
