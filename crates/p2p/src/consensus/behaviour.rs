@@ -29,6 +29,7 @@ pub struct Behaviour {
 impl ApplicationBehaviour for Behaviour {
     type Command = consensus::Command;
     type Event = consensus::Event;
+    type TestEvent = consensus::TestEvent;
     type State = consensus::State;
 
     #[tracing::instrument(skip(self, state))]
@@ -148,6 +149,7 @@ impl ApplicationBehaviour for Behaviour {
         event: BehaviourEvent,
         state: &mut Self::State,
         event_sender: mpsc::UnboundedSender<Self::Event>,
+        test_event_sender: mpsc::UnboundedSender<Self::TestEvent>,
     ) {
         use gossipsub::Event::*;
         let BehaviourEvent::Gossipsub(e) = event;
@@ -187,6 +189,17 @@ impl ApplicationBehaviour for Behaviour {
                 }
                 _ => {}
             },
+            Subscribed { peer_id, topic } => {
+                tracing::debug!("Peer {} subscribed to topic {}", peer_id, topic);
+
+                #[cfg(test)]
+                {
+                    let _ = test_event_sender.send(consensus::TestEvent {
+                        source: peer_id,
+                        kind: consensus::TestEventKind::Subscribed(topic),
+                    });
+                }
+            }
             _ => {
                 // TODO: Do we care about any other Gossipsub events?
             }
