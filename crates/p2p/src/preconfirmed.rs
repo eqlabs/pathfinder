@@ -60,7 +60,7 @@ mod tests {
     use libp2p::identity;
 
     use super::*;
-    use crate::test_utils::peer::{TestPeer, TestPeerBuilder};
+    use crate::test_utils::peer::{create_and_connect_pair, TestPeer, TestPeerBuilder};
 
     type PcTestPeer = TestPeer<Behaviour>;
 
@@ -71,21 +71,7 @@ mod tests {
     }
 
     async fn create_peers() -> (PcTestPeer, PcTestPeer) {
-        let mut server = create_peer();
-        let client = create_peer();
-
-        let server_addr = server.start_listening().await.unwrap();
-
-        tracing::info!(%server.peer_id, %server_addr, "Server");
-        tracing::info!(%client.peer_id, "Client");
-
-        client
-            .client
-            .dial(server.peer_id, server_addr)
-            .await
-            .unwrap();
-
-        (server, client)
+        create_and_connect_pair(create_peer).await
     }
 
     async fn wait_for_subscribed(peer: &mut PcTestPeer, expected_peer_id: PeerId) {
