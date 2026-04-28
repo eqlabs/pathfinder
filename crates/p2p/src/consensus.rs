@@ -2,7 +2,7 @@
 //! network.
 use std::collections::HashMap;
 
-use libp2p::gossipsub::PublishError;
+use libp2p::gossipsub::{PublishError, TopicHash};
 use libp2p::PeerId;
 use p2p_proto::consensus::{ProposalPart, Vote};
 use pathfinder_common::ContractAddress;
@@ -91,6 +91,17 @@ impl EventKind {
             EventKind::Vote(_) => "Vote",
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct TestEvent {
+    pub source: PeerId,
+    pub kind: TestEventKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum TestEventKind {
+    Subscribed(TopicHash),
 }
 
 /// The state of the consensus P2P network.

@@ -32,6 +32,7 @@ impl Behaviour {
 impl ApplicationBehaviour for Behaviour {
     type Command = sync::Command;
     type Event = sync::Event;
+    type TestEvent = ();
     type State = sync::State;
 
     async fn handle_command(&mut self, command: Self::Command, state: &mut Self::State) {
@@ -96,6 +97,7 @@ impl ApplicationBehaviour for Behaviour {
         event: BehaviourEvent,
         state: &mut Self::State,
         event_sender: mpsc::UnboundedSender<Self::Event>,
+        _: mpsc::UnboundedSender<Self::TestEvent>,
     ) {
         use p2p_stream::Event as P2PStreamEvent;
         match event {

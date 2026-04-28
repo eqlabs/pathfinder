@@ -46,14 +46,14 @@ async fn disconnect() {
     peer2.client.disconnect(peer1.peer_id).await.unwrap();
 
     peer1
-        .wait_for_test_event(move |e| match e {
+        .wait_for_core_test_event(move |e| match e {
             TestEvent::ConnectionClosed { remote } if remote == peer2.peer_id => Some(()),
             _ => None,
         })
         .await;
 
     peer2
-        .wait_for_test_event(move |e| match e {
+        .wait_for_core_test_event(move |e| match e {
             TestEvent::ConnectionClosed { remote } if remote == peer1.peer_id => Some(()),
             _ => None,
         })
@@ -102,17 +102,17 @@ async fn periodic_bootstrap() {
 
     let peer_id2 = peer2.peer_id;
 
-    let peer2_added_to_dht_of_peer1 = peer1.wait_for_test_event(move |e| match e {
+    let peer2_added_to_dht_of_peer1 = peer1.wait_for_core_test_event(move |e| match e {
         TestEvent::PeerAddedToDHT { remote } if remote == peer_id2 => Some(()),
         _ => None,
     });
 
     join(peer2_added_to_dht_of_peer1, async {
         peer2
-            .wait_for_test_event(filter_kademlia_bootstrap_completed)
+            .wait_for_core_test_event(filter_kademlia_bootstrap_completed)
             .await;
         peer2
-            .wait_for_test_event(filter_kademlia_bootstrap_completed)
+            .wait_for_core_test_event(filter_kademlia_bootstrap_completed)
             .await;
     })
     .await;
@@ -155,14 +155,14 @@ async fn reconnect_too_quickly() {
         .unwrap();
 
     peer1
-        .wait_for_test_event(move |e| match e {
+        .wait_for_core_test_event(move |e| match e {
             TestEvent::ConnectionEstablished { remote, .. } if remote == peer2.peer_id => Some(()),
             _ => None,
         })
         .await;
 
     peer2
-        .wait_for_test_event(move |e| match e {
+        .wait_for_core_test_event(move |e| match e {
             TestEvent::ConnectionEstablished { remote, .. } if remote == peer1.peer_id => Some(()),
             _ => None,
         })
@@ -178,14 +178,14 @@ async fn reconnect_too_quickly() {
     peer1.client.disconnect(peer2.peer_id).await.unwrap();
 
     peer1
-        .wait_for_test_event(move |e| match e {
+        .wait_for_core_test_event(move |e| match e {
             TestEvent::ConnectionClosed { remote } if remote == peer2.peer_id => Some(()),
             _ => None,
         })
         .await;
 
     peer2
-        .wait_for_test_event(move |e| match e {
+        .wait_for_core_test_event(move |e| match e {
             TestEvent::ConnectionClosed { remote } if remote == peer1.peer_id => Some(()),
             _ => None,
         })
@@ -202,14 +202,14 @@ async fn reconnect_too_quickly() {
 
     // The connection is established.
     peer1
-        .wait_for_test_event(move |e| match e {
+        .wait_for_core_test_event(move |e| match e {
             TestEvent::ConnectionEstablished { remote, .. } if remote == peer2.peer_id => Some(()),
             _ => None,
         })
         .await;
 
     peer2
-        .wait_for_test_event(move |e| match e {
+        .wait_for_core_test_event(move |e| match e {
             TestEvent::ConnectionEstablished { remote, .. } if remote == peer1.peer_id => Some(()),
             _ => None,
         })
@@ -241,14 +241,14 @@ async fn duplicate_connection() {
         .unwrap();
 
     peer1
-        .wait_for_test_event(move |e| match e {
+        .wait_for_core_test_event(move |e| match e {
             TestEvent::ConnectionEstablished { remote, .. } if remote == peer2.peer_id => Some(()),
             _ => None,
         })
         .await;
 
     peer2
-        .wait_for_test_event(move |e| match e {
+        .wait_for_core_test_event(move |e| match e {
             TestEvent::ConnectionEstablished { remote, .. } if remote == peer1.peer_id => Some(()),
             _ => None,
         })
@@ -267,14 +267,14 @@ async fn duplicate_connection() {
         .unwrap();
 
     peer1_copy
-        .wait_for_test_event(move |e| match e {
+        .wait_for_core_test_event(move |e| match e {
             TestEvent::ConnectionEstablished { remote, .. } if remote == peer2.peer_id => Some(()),
             _ => None,
         })
         .await;
 
     peer1_copy
-        .wait_for_test_event(move |e| match e {
+        .wait_for_core_test_event(move |e| match e {
             TestEvent::ConnectionClosed { remote, .. } if remote == peer2.peer_id => Some(()),
             _ => None,
         })
@@ -364,7 +364,7 @@ async fn outbound_peer_eviction() {
     assert!(peers.contains_key(&inbound1.peer_id));
 
     // Ensure that outbound1 actually got disconnected.
-    peer.wait_for_test_event(move |e| match e {
+    peer.wait_for_core_test_event(move |e| match e {
         TestEvent::ConnectionClosed { remote, .. } if remote == outbound1.peer_id => Some(()),
         _ => None,
     })
@@ -443,7 +443,7 @@ async fn inbound_peer_eviction() {
 
     // Ensure that a peer got disconnected.
     let disconnected = peer
-        .wait_for_test_event(|e| match e {
+        .wait_for_core_test_event(|e| match e {
             TestEvent::ConnectionClosed { remote, .. }
                 if inbound_peers.iter().take(25).any(|p| p.peer_id == remote) =>
             {
@@ -496,7 +496,7 @@ async fn evicted_peer_reconnection() {
 
     // Check that peer2 got evicted.
     peer1
-        .wait_for_test_event(|e| match e {
+        .wait_for_core_test_event(|e| match e {
             TestEvent::ConnectionClosed { remote, .. } if remote == peer2.peer_id => Some(()),
             _ => None,
         })
@@ -517,7 +517,7 @@ async fn evicted_peer_reconnection() {
         .await
         .unwrap();
     peer2
-        .wait_for_test_event(|e| match e {
+        .wait_for_core_test_event(|e| match e {
             TestEvent::ConnectionClosed { remote, .. } if remote == peer1.peer_id => Some(()),
             _ => None,
         })
@@ -529,7 +529,7 @@ async fn evicted_peer_reconnection() {
 
     // peer3 gets evicted.
     peer1
-        .wait_for_test_event(|e| match e {
+        .wait_for_core_test_event(|e| match e {
             TestEvent::ConnectionClosed { remote, .. } if remote == peer3.peer_id => Some(()),
             _ => None,
         })
