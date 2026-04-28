@@ -88,28 +88,20 @@ mod tests {
         (server, client)
     }
 
+    async fn wait_for_subscribed(peer: &mut PcTestPeer, expected_peer_id: PeerId) {
+        peer.wait_for_event(|e| {
+            (matches!(e.kind, EventKind::Subscribed) && expected_peer_id == e.source).then_some(())
+        })
+        .await
+        .unwrap();
+    }
+
     /// A simple sanity test to check gossiping between two nodes.
     #[tokio::test]
     async fn sanity() {
         let (mut server, mut client) = create_peers().await;
-        let server_peer_id = server.peer_id;
-        let client_peer_id = client.peer_id;
-
-        client
-            .wait_for_event(|e| {
-                (matches!(e.kind, EventKind::Subscribed) && server_peer_id == e.source)
-                    .then_some(())
-            })
-            .await
-            .unwrap();
-
-        server
-            .wait_for_event(|e| {
-                (matches!(e.kind, EventKind::Subscribed) && client_peer_id == e.source)
-                    .then_some(())
-            })
-            .await
-            .unwrap();
+        wait_for_subscribed(&mut client, server.peer_id).await;
+        wait_for_subscribed(&mut server, client.peer_id).await;
 
         let (done_tx, mut done_rx) = tokio::sync::mpsc::channel(1);
 
