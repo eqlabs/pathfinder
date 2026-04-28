@@ -177,7 +177,7 @@ where
     }
 
     /// Start listening on a specified address
-    pub async fn start_listening_on(&mut self, addr: Multiaddr) -> Result<Multiaddr> {
+    async fn start_listening_on(&mut self, addr: Multiaddr) -> Result<Multiaddr> {
         self.client
             .start_listening(addr)
             .await
