@@ -239,6 +239,23 @@ where
         Self::wait_for_event_impl::<TestEvent, Data>(&mut self.core_test_event_receiver, f).await
     }
 
+    /// Wait for a specific application-specific test event to happen. Extract
+    /// data from the event using the provided function `f`.
+    pub async fn wait_for_app_test_event<Data>(
+        &mut self,
+        f: impl FnMut(<B as ApplicationBehaviour>::TestEvent) -> Option<Data>,
+    ) -> Option<Data>
+    where
+        <B as ApplicationBehaviour>::TestEvent: Send + 'static,
+        Data: Debug + Send + 'static,
+    {
+        Self::wait_for_event_impl::<<B as ApplicationBehaviour>::TestEvent, Data>(
+            &mut self.app_test_event_receiver,
+            f,
+        )
+        .await
+    }
+
     async fn wait_for_event_impl<Event, Data>(
         receiver: &mut mpsc::UnboundedReceiver<Event>,
         mut f: impl FnMut(Event) -> Option<Data>,

@@ -1,5 +1,6 @@
 //! Preconfirmed behaviour and other related utilities for the preconfirmed p2p
 //! network.
+use libp2p::gossipsub::TopicHash;
 use libp2p::PeerId;
 #[cfg(test)]
 use tokio::sync::mpsc::Sender;
@@ -41,7 +42,17 @@ pub enum EventKind {
     // TODO this is a placeholder
     /// A batch of preconfirmed transactions.
     PreconfirmedTransactionsPlaceholder,
-    Subscribed,
+}
+
+#[derive(Debug, Clone)]
+pub struct TestEvent {
+    pub source: PeerId,
+    pub kind: TestEventKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum TestEventKind {
+    Subscribed(TopicHash),
 }
 
 // TODO this is a placeholder
@@ -57,6 +68,7 @@ impl State {
 
 #[cfg(test)]
 mod tests {
+    use libp2p::gossipsub::Sha256Topic;
     use libp2p::identity;
 
     use super::*;
@@ -75,8 +87,10 @@ mod tests {
     }
 
     async fn wait_for_subscribed(peer: &mut PcTestPeer, expected_peer_id: PeerId) {
-        peer.wait_for_event(|e| {
-            (matches!(e.kind, EventKind::Subscribed) && expected_peer_id == e.source).then_some(())
+        let topic_hash = Sha256Topic::new(TOPIC_PRECONFIRMED_TRANSACTIONS).hash();
+        peer.wait_for_app_test_event(|e| {
+            let TestEventKind::Subscribed(t) = e.kind;
+            (t == topic_hash && e.source == expected_peer_id).then_some(())
         })
         .await
         .unwrap();
