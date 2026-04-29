@@ -84,6 +84,10 @@ pub(crate) async fn wait_for_parent_committed(
     Ok(())
 }
 
+// Probability of producing an empty proposal (only Init and Fin, no
+// transaction batches).
+const EMPTY_PROPOSAL_PROBABILITY: f64 = 0.25;
+
 /// Creates a dummy proposal for the given height and round, filling it with
 /// realistic transactions based on the state of the main storage DB, if it is
 /// bootstrapped, or with invalid L1 handler transactions otherwise.
@@ -96,7 +100,6 @@ pub(crate) fn create(
     main_storage: Storage,
     compiler_resource_limits: pathfinder_compiler::ResourceLimits,
     blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
-    config: Option<ProposalCreationConfig>,
 ) -> anyhow::Result<(Vec<ProposalPart>, ConsensusFinalizedL2Block)> {
     let mut db_conn = main_storage.connection()?;
     let db_txn = db_conn.transaction()?;
@@ -121,7 +124,7 @@ pub(crate) fn create(
             main_storage,
             compiler_resource_limits,
             blockifier_libfuncs,
-            config,
+            None,
         )
     }
 }
@@ -170,11 +173,16 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
     // We generate up to 10 batches of up to 30 transactions and then randomly pick
     // how many of those transactions we execute.
     let seed = thread_rng().gen::<u64>();
-    tracing::debug!(%height, %round, %seed, "Creating dummy proposal");
     let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
 
     let mut batches = Vec::new();
     let mut next_txn_idx_start = 0;
+
+    // HelloStarknet must be declared first, so empty proposals are only allowed
+    // from height 2 onwards.
+    let empty_proposal = height >= 2 && rng.gen_bool(EMPTY_PROPOSAL_PROBABILITY);
+
+    tracing::debug!(%height, %round, %seed, %empty_proposal, "Creating dummy proposal");
 
     // IMPORTANT
     // Until ConcurrentStorageAdapter supports decided blocks we have to split
@@ -187,7 +195,9 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
     //
     // Bootstrapped devnet DB already contains the genesis block, so the declaration
     // of HelloStarknet falls into block number 1.
-    if height == 1 {
+    if empty_proposal {
+        // Skip building any transaction batches.
+    } else if height == 1 {
         let first_batch = vec![account.hello_starknet_declare()?];
         next_txn_idx_start += first_batch.len();
         batches.push(first_batch);
@@ -198,7 +208,7 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
         //
         // IMPORTANT
         // Until ConcurrentStorageAdapter supports decided blocks we have to split
-        // deploying HelloStarknet fir the first time and invoking it into consecutive
+        // deploying HelloStarknet for the first time and invoking it into consecutive
         // blocks. Otherwise the first invokes will not succeed because the deployment
         // may not be committed to storage yet, and we strictly do not want to mix
         // successful and reverted transactions in the integration tests because
@@ -242,7 +252,11 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
         }
     }
 
-    let num_executed_txns = rng.gen_range(1..=next_txn_idx_start);
+    let num_executed_txns = if empty_proposal {
+        0
+    } else {
+        rng.gen_range(1..=next_txn_idx_start)
+    };
     let txns_to_execute = batches
         .iter()
         .flatten()
@@ -271,7 +285,9 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
     let worker_pool = Arc::into_inner(worker_pool).context("Failed join worker pool")?;
     worker_pool.join();
 
-    parts.extend(batches.into_iter().map(ProposalPart::TransactionBatch));
+    if !empty_proposal {
+        parts.extend(batches.into_iter().map(ProposalPart::TransactionBatch));
+    }
     parts.push(ProposalPart::Fin(ProposalFin {
         proposal_commitment: Hash(block.header.state_diff_commitment.0),
         executed_transaction_count: num_executed_txns as u64,
@@ -290,9 +306,6 @@ pub(crate) struct ProposalCreationConfig {
 
 /// Creates a dummy proposal for the given height and round, filling it with
 /// random L1 handler transactions, which all ultimately will be reverted.
-///
-/// TODO: Until empty proposals reintroduce timestamps, we cannot create
-/// empty proposals here.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn create_with_invalid_l1_handler_transactions(
     db_txn: &pathfinder_storage::Transaction<'_>,
@@ -312,31 +325,37 @@ pub(crate) fn create_with_invalid_l1_handler_transactions(
     let latest_timestamp = db_txn.block_header(BlockId::Latest)?.map(|h| h.timestamp);
 
     let seed = thread_rng().gen::<u64>();
-    tracing::debug!(%height, %round, %seed, ?config, "Creating dummy proposal with invalid L1 handler transactions");
     let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
 
-    let mut batches = Vec::new();
-    let num_batches = config
-        .as_ref()
-        .map(|c| c.num_batches.get())
-        .unwrap_or_else(|| rng.gen_range(1..=10));
+    let empty_proposal = config.is_none() && rng.gen_bool(EMPTY_PROPOSAL_PROBABILITY);
 
+    tracing::debug!(%height, %round, %seed, %empty_proposal, ?config, "Creating dummy proposal with invalid L1 handler transactions");
+
+    let mut batches = Vec::new();
     let mut next_txn_idx_start = 0;
-    for _ in 1..=num_batches {
-        let batch_len = config
+
+    if !empty_proposal {
+        let num_batches = config
             .as_ref()
-            .map(|c| c.batch_len.get())
+            .map(|c| c.num_batches.get())
             .unwrap_or_else(|| rng.gen_range(1..=10));
 
-        let batch = create_transaction_batch(
-            height as u32,
-            next_txn_idx_start,
-            batch_len,
-            ChainId::SEPOLIA_TESTNET,
-        );
+        for _ in 1..=num_batches {
+            let batch_len = config
+                .as_ref()
+                .map(|c| c.batch_len.get())
+                .unwrap_or_else(|| rng.gen_range(1..=10));
 
-        batches.push(batch);
-        next_txn_idx_start += batch_len;
+            let batch = create_transaction_batch(
+                height as u32,
+                next_txn_idx_start,
+                batch_len,
+                ChainId::SEPOLIA_TESTNET,
+            );
+
+            batches.push(batch);
+            next_txn_idx_start += batch_len;
+        }
     }
 
     let proposal_init = ProposalInit {
@@ -363,10 +382,14 @@ pub(crate) fn create_with_invalid_l1_handler_transactions(
     let mut validator =
         validator.skip_validation(main_storage, worker_pool.clone(), DecidedBlocks::default())?;
 
-    let num_executed_txns = config
-        .as_ref()
-        .map(|c| c.num_executed_txns.get())
-        .unwrap_or_else(|| rng.gen_range(1..=next_txn_idx_start));
+    let num_executed_txns = if empty_proposal {
+        0
+    } else {
+        config
+            .as_ref()
+            .map(|c| c.num_executed_txns.get())
+            .unwrap_or_else(|| rng.gen_range(1..=next_txn_idx_start))
+    };
 
     let txns_to_execute = batches
         .iter()
@@ -375,7 +398,9 @@ pub(crate) fn create_with_invalid_l1_handler_transactions(
         .cloned()
         .collect();
 
-    parts.extend(batches.into_iter().map(ProposalPart::TransactionBatch));
+    if !empty_proposal {
+        parts.extend(batches.into_iter().map(ProposalPart::TransactionBatch));
+    }
 
     validator
         .execute_batch::<ProdTransactionMapper>(

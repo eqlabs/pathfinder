@@ -160,7 +160,6 @@ pub fn spawn(
                                 main_storage.clone(),
                                 compiler_resource_limits,
                                 blockifier_libfuncs,
-                                None,
                             ) {
                                 Ok((wire_proposal, finalized_block)) => {
                                     let ProposalFin {
