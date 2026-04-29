@@ -5,7 +5,14 @@ use clap::CommandFactory;
 use ipnet::IpNet;
 use p2p::libp2p::Multiaddr;
 
-use super::cli::{P2PConsensusCli, P2PConsensusCoreCli, P2PSyncCli, P2PSyncCoreCli};
+use super::cli::{
+    P2PConsensusCli,
+    P2PConsensusCoreCli,
+    P2PPreconfirmedCli,
+    P2PPreconfirmedCoreCli,
+    P2PSyncCli,
+    P2PSyncCoreCli,
+};
 use crate::config::Cli;
 
 #[derive(Clone)]
@@ -37,6 +44,11 @@ pub struct P2PSyncConfig {
 
 #[derive(Clone)]
 pub struct P2PConsensusConfig {
+    pub core: P2PCoreConfig,
+}
+
+#[derive(Clone)]
+pub struct P2PPreconfirmedConfig {
     pub core: P2PCoreConfig,
 }
 
@@ -143,8 +155,9 @@ Note: this is the minimum value that should provide normal P2P behaviour and avo
     };
 }
 
-impl_from_p2p_cli! {"sync"}
+impl_from_p2p_cli!("sync");
 impl_from_p2p_cli!("consensus");
+impl_from_p2p_cli!("preconfirmed");
 
 impl P2PSyncConfig {
     pub(crate) fn parse_or_exit(args: P2PSyncCli) -> Self {
@@ -196,6 +209,15 @@ fn parse_l1_checkpoint_or_exit(
 
 impl P2PConsensusConfig {
     pub fn parse_or_exit(args: P2PConsensusCli) -> Self {
+        Self {
+            // SAFETY: core conversion is safe because we exit the process on error
+            core: args.core.into(),
+        }
+    }
+}
+
+impl P2PPreconfirmedConfig {
+    pub fn parse_or_exit(args: P2PPreconfirmedCli) -> Self {
         Self {
             // SAFETY: core conversion is safe because we exit the process on error
             core: args.core.into(),
