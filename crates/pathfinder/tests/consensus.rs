@@ -64,14 +64,14 @@ mod test {
     // No bootstrap DB, all txns get reverted, testing the flow from clear genesis
     #[case::happy_path(None)]
     // Bootstrap DB, none of the transactions should get reverted
-    #[case::fail_on_proposal_init_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalInitRx }))]
-    #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::TransactionBatchRx }))]
-    #[case::fail_on_proposal_fin_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalFinRx }))]
-    #[case::fail_on_proposal_finalized(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalFinalized }))]
-    #[case::fail_on_prevote_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::PrevoteRx }))]
-    #[case::fail_on_precommit_rx(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::PrecommitRx }))]
-    #[case::fail_on_proposal_decided(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalDecided }))]
-    #[case::fail_on_proposal_committed(Some(InjectFailureConfig { height: 4, trigger: InjectFailureTrigger::ProposalCommitted }))]
+    #[case::fail_on_proposal_init_rx(Some(InjectFailureConfig::proposal_init_rx(4)))]
+    #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig::transaction_batch_rx(4)))]
+    #[case::fail_on_proposal_fin_rx(Some(InjectFailureConfig::proposal_fin_rx(4)))]
+    #[case::fail_on_proposal_finalized(Some(InjectFailureConfig::proposal_finalized(4)))]
+    #[case::fail_on_prevote_rx(Some(InjectFailureConfig::prevote_rx(4)))]
+    #[case::fail_on_precommit_rx(Some(InjectFailureConfig::precommit_rx(4)))]
+    #[case::fail_on_proposal_decided(Some(InjectFailureConfig::proposal_decided(4)))]
+    #[case::fail_on_proposal_committed(Some(InjectFailureConfig::proposal_committed(4)))]
     #[tokio::test]
     async fn consensus_3_nodes_with_failures(#[case] inject_failure: Option<InjectFailureConfig>) {
         const NUM_NODES: usize = 3;
