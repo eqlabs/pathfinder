@@ -184,20 +184,11 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
 
     tracing::debug!(%height, %round, %seed, %empty_proposal, "Creating dummy proposal");
 
-    // IMPORTANT
-    // Until ConcurrentStorageAdapter supports decided blocks we have to split
-    // declaring and deploying HelloStarknet into consecutive blocks. Otherwise the
-    // deployment will not succeed because the declaration may not be committed to
-    // storage yet, and we strictly do not want to mix successful and reverted
-    // transactions in the integration tests because this just simplifies
-    // correctness checks (either all successful or all reverted in case of a
-    // non-bootstrapped DB).
-    //
-    // Bootstrapped devnet DB already contains the genesis block, so the declaration
-    // of HelloStarknet falls into block number 1.
     if empty_proposal {
         // Skip building any transaction batches.
     } else if height == 1 {
+        // Bootstrapped devnet DB already contains the genesis block, so the declaration
+        // of HelloStarknet falls into block number 1.
         let first_batch = vec![account.hello_starknet_declare()?];
         next_txn_idx_start += first_batch.len();
         batches.push(first_batch);
@@ -205,15 +196,6 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
         // HelloStarknet need to be deployed at least once before we can invoke it, so
         // if there are no deployments in the DB we just create a batch with the deploy
         // transaction.
-        //
-        // IMPORTANT
-        // Until ConcurrentStorageAdapter supports decided blocks we have to split
-        // deploying HelloStarknet for the first time and invoking it into consecutive
-        // blocks. Otherwise the first invokes will not succeed because the deployment
-        // may not be committed to storage yet, and we strictly do not want to mix
-        // successful and reverted transactions in the integration tests because
-        // this just simplifies correctness checks  (either all successful or all
-        // reverted in case of a non-bootstrapped DB).
         if deployed_in_db.is_empty() {
             // Declare goes into the first proposal, that's it
             let first_batch = vec![account.hello_starknet_deploy()?];
