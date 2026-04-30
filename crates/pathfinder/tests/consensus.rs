@@ -41,6 +41,38 @@ mod test {
     };
     use crate::common::utils;
 
+    /// The different scenarios we want to test in the
+    /// `consensus_3_nodes_with_failures` test case.
+    #[derive(Copy, Clone)]
+    enum ConsensusScenario {
+        /// Start from clear genesis, without a bootstrapped devnet DB. All
+        /// transactions get reverted since they're random, invalid L1
+        /// handlers, but we get to test starting completely from
+        /// scratch without relying on any pre-initialized database state.
+        Genesis,
+        /// Start with a bootstrapped devnet DB, all transactions are valid and
+        /// should get accepted, testing the happy path with a
+        /// bootstrapped DB.
+        BootstrapSuccess,
+        /// Start with a bootstrapped devnet DB but inject failures at different
+        /// stages of the consensus flow, testing the network's ability
+        /// to recover from them and make progress despite them.
+        BootstrapFailure(InjectFailureConfig),
+    }
+
+    impl ConsensusScenario {
+        fn is_bootstrap(&self) -> bool {
+            matches!(
+                self,
+                ConsensusScenario::BootstrapSuccess | ConsensusScenario::BootstrapFailure(_)
+            )
+        }
+
+        fn is_failure(&self) -> bool {
+            matches!(self, ConsensusScenario::BootstrapFailure(_))
+        }
+    }
+
     // TODO Test cases that should be supported by the integration tests:
     // - proposals:
     //   - [x] non-empty proposals (transactions that modify storage):
@@ -61,34 +93,43 @@ mod test {
     //   different stages),
     // - [ ] ??? any missing significant failure injection points ???.
     #[rstest]
-    // No bootstrap DB, all txns get reverted, testing the flow from clear genesis
-    #[case::happy_path(None)]
-    // Bootstrap DB, none of the transactions should get reverted
-    #[case::fail_on_proposal_init_rx(Some(InjectFailureConfig::proposal_init_rx(4)))]
-    #[case::fail_on_transaction_batch_rx(Some(InjectFailureConfig::transaction_batch_rx(4)))]
-    #[case::fail_on_proposal_fin_rx(Some(InjectFailureConfig::proposal_fin_rx(4)))]
-    #[case::fail_on_proposal_finalized(Some(InjectFailureConfig::proposal_finalized(4)))]
-    #[case::fail_on_prevote_rx(Some(InjectFailureConfig::prevote_rx(4)))]
-    #[case::fail_on_precommit_rx(Some(InjectFailureConfig::precommit_rx(4)))]
-    #[case::fail_on_proposal_decided(Some(InjectFailureConfig::proposal_decided(4)))]
-    #[case::fail_on_proposal_committed(Some(InjectFailureConfig::proposal_committed(4)))]
+    #[case::happy_path_from_genesis_reverted_txns(ConsensusScenario::Genesis)]
+    #[case::happy_path_from_bootstrapped(ConsensusScenario::BootstrapSuccess)]
+    #[case::fail_on_proposal_init_rx(ConsensusScenario::BootstrapFailure(
+        InjectFailureConfig::proposal_init_rx(4)
+    ))]
+    #[case::fail_on_transaction_batch_rx(ConsensusScenario::BootstrapFailure(
+        InjectFailureConfig::transaction_batch_rx(4)
+    ))]
+    #[case::fail_on_proposal_fin_rx(ConsensusScenario::BootstrapFailure(
+        InjectFailureConfig::proposal_fin_rx(4)
+    ))]
+    #[case::fail_on_proposal_finalized(ConsensusScenario::BootstrapFailure(
+        InjectFailureConfig::proposal_finalized(4)
+    ))]
+    #[case::fail_on_prevote_rx(ConsensusScenario::BootstrapFailure(
+        InjectFailureConfig::prevote_rx(4)
+    ))]
+    #[case::fail_on_precommit_rx(ConsensusScenario::BootstrapFailure(
+        InjectFailureConfig::precommit_rx(4)
+    ))]
+    #[case::fail_on_proposal_decided(ConsensusScenario::BootstrapFailure(
+        InjectFailureConfig::proposal_decided(4)
+    ))]
+    #[case::fail_on_proposal_committed(ConsensusScenario::BootstrapFailure(
+        InjectFailureConfig::proposal_committed(4)
+    ))]
     #[tokio::test]
-    async fn consensus_3_nodes_with_failures(#[case] inject_failure: Option<InjectFailureConfig>) {
+    async fn consensus_3_nodes_with_failures(#[case] scenario: ConsensusScenario) {
         const NUM_NODES: usize = 3;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
         const TEST_TIMEOUT: Duration = Duration::from_secs(120);
         const POLL_READY: Duration = Duration::from_millis(500);
         const POLL_HEIGHT: Duration = Duration::from_secs(1);
 
-        // IMPORTANT:
-        // Happy path is the only scenario which starts consensus from genesis at the
-        // expense of all transactions being reverted since they're random, invalid L1
-        // handlers. We need this to be able to test starting completely from scratch
-        // without relying on any pre-initialized database state.
-        let disallow_reverted_txns = inject_failure.is_some();
-
-        let (configs, boot_height, stopwatch) =
-            utils::setup(NUM_NODES, disallow_reverted_txns).unwrap();
+        let bootstrap_db = scenario.is_bootstrap();
+        let disallow_reverted_txns = bootstrap_db;
+        let (configs, boot_height, stopwatch) = utils::setup(NUM_NODES, bootstrap_db).unwrap();
 
         // System contracts start to matter after block 10 but we have a separate
         // regression test for that, which checks that rollback at H>10 works correctly.
@@ -123,7 +164,15 @@ mod test {
         let boot_port = alice.consensus_p2p_port();
         let mut configs = configs.map(|cfg| cfg.with_boot_port(boot_port));
 
-        let bob_cfg = configs.next().unwrap().with_inject_failure(inject_failure);
+        let bob_cfg = {
+            let bob_cfg = configs.next().unwrap();
+            match scenario {
+                ConsensusScenario::BootstrapFailure(inject_failure) => {
+                    bob_cfg.with_inject_failure(Some(inject_failure))
+                }
+                _ => bob_cfg,
+            }
+        };
 
         let bob = PathfinderInstance::spawn(bob_cfg.clone()).unwrap();
         let charlie = PathfinderInstance::spawn(configs.next().unwrap()).unwrap();
@@ -174,7 +223,7 @@ mod test {
         );
 
         let maybe_bob = respawn_on_fail(
-            inject_failure.is_some(),
+            scenario.is_failure(),
             bob,
             bob_cfg,
             POLL_READY,
