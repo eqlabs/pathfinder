@@ -100,6 +100,78 @@ mod enabled {
         pub trigger: super::InjectFailureTrigger,
     }
 
+    impl InjectFailureConfig {
+        pub fn proposal_init_rx(height: u64) -> Self {
+            Self {
+                height,
+                trigger: super::InjectFailureTrigger::ProposalInitRx,
+            }
+        }
+
+        pub fn proposal_fin_rx(height: u64) -> Self {
+            Self {
+                height,
+                trigger: super::InjectFailureTrigger::ProposalFinRx,
+            }
+        }
+
+        pub fn transaction_batch_rx(height: u64) -> Self {
+            Self {
+                height,
+                trigger: super::InjectFailureTrigger::TransactionBatchRx,
+            }
+        }
+
+        pub fn proposal_finalized(height: u64) -> Self {
+            Self {
+                height,
+                trigger: super::InjectFailureTrigger::ProposalFinalized,
+            }
+        }
+
+        pub fn prevote_rx(height: u64) -> Self {
+            Self {
+                height,
+                trigger: super::InjectFailureTrigger::PrevoteRx,
+            }
+        }
+
+        pub fn precommit_rx(height: u64) -> Self {
+            Self {
+                height,
+                trigger: super::InjectFailureTrigger::PrecommitRx,
+            }
+        }
+
+        pub fn proposal_decided(height: u64) -> Self {
+            Self {
+                height,
+                trigger: super::InjectFailureTrigger::ProposalDecided,
+            }
+        }
+
+        pub fn proposal_committed(height: u64) -> Self {
+            Self {
+                height,
+                trigger: super::InjectFailureTrigger::ProposalCommitted,
+            }
+        }
+
+        pub fn outdated_vote(height: u64) -> Self {
+            Self {
+                height,
+                trigger: super::InjectFailureTrigger::OutdatedVote,
+            }
+        }
+
+        pub fn committed_vote_lost(height: u64) -> Self {
+            Self {
+                height,
+                trigger: super::InjectFailureTrigger::CommittedVoteLost,
+            }
+        }
+    }
+
     fn parse_inject_failure(s: &str) -> Result<InjectFailureConfig, String> {
         let mut items = s.split(',');
         let height: u64 = items
