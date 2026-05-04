@@ -32,7 +32,7 @@ use tokio::sync::mpsc;
 
 use super::fetch_proposers::L2ProposerSelector;
 use super::fetch_validators::L2ValidatorSetProvider;
-use super::{integration_testing, ConsensusTaskEvent, ConsensusValue, HeightExt, P2PTaskEvent};
+use super::{integration_testing, ConsensusTaskEvent, ConsensusValue, P2PTaskEvent};
 use crate::config::integration_testing::InjectFailureConfig;
 use crate::config::ConsensusConfig;
 use crate::consensus::inner::dummy_proposal;
@@ -223,22 +223,17 @@ pub fn spawn(
                         // The consensus engine wants us to gossip a message via the P2P consensus
                         // network.
                         ConsensusEvent::Gossip(msg) => {
-                            // TODO Sometimes the engine requests gossiping votes for heights that
-                            // are a few steps behind the current height and have already been
-                            // decided upon. This is due to the fact that `history_depth` in config
-                            // is > 0 and we're not supporting round certificates yet. Once round
-                            // certificates are supported this check can be removed.
-                            if msg.height() >= next_height {
-                                tx_to_p2p
-                                    .send(P2PTaskEvent::GossipRequest(msg))
-                                    .await
-                                    .expect("Gossip request receiver not to be dropped");
-                            } else {
-                                tracing::debug!(
-                                    "🧠 🤷 Ignoring gossip request for height {} < {next_height}",
-                                    msg.height()
-                                );
-                            }
+                            // Note: sometimes the engine will request gossiping votes for heights
+                            // lower than the current height, due to the fact that `history_depth`
+                            // in config is > 0 and we're not supporting round certificates yet. We
+                            // do want to gossip those votes, because rarely this could even cause
+                            // the network to stall with us having decided upon H while the others
+                            // not due to subtle race conditions and our votes missing in their
+                            // consensus engines.
+                            tx_to_p2p
+                                .send(P2PTaskEvent::GossipRequest(msg))
+                                .await
+                                .expect("Gossip request receiver not to be dropped");
                         }
                         // Consensus has been reached for the given height and value.
                         ConsensusEvent::Decision {

@@ -163,19 +163,6 @@ impl std::fmt::Display for ConsensusValue {
     }
 }
 
-trait HeightExt {
-    fn height(&self) -> u64;
-}
-
-impl HeightExt for NetworkMessage<ConsensusValue, ContractAddress> {
-    fn height(&self) -> u64 {
-        match self {
-            NetworkMessage::Proposal(proposal) => proposal.proposal.height,
-            NetworkMessage::Vote(vote) => vote.vote.height,
-        }
-    }
-}
-
 /// Creates an empty finalized L2 block for the given height.
 ///
 /// TODO: The consensus spec does not define this for empty proposals. However,
