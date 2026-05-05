@@ -141,6 +141,7 @@ enum P2PTaskEvent {
 
 #[derive(Copy, Clone, Debug)]
 struct P2PTaskConfig {
+    my_starknet_version: StarknetVersion,
     my_validator_address: ContractAddress,
     history_depth: u64,
 }
@@ -148,6 +149,7 @@ struct P2PTaskConfig {
 impl From<&ConsensusConfig> for P2PTaskConfig {
     fn from(config: &ConsensusConfig) -> Self {
         Self {
+            my_starknet_version: config.my_starknet_version,
             my_validator_address: config.my_validator_address,
             history_depth: config.history_depth,
         }
@@ -169,18 +171,14 @@ impl std::fmt::Display for ConsensusValue {
 /// the validator logic and storage usage patterns currently require a finalized
 /// block to be created even for empty proposals. For now, we create a (mostly)
 /// default block header with the necessary fields filled in.
-///
-/// NOTE: Until timestamps become part of an empty proposal, disseminating an
-/// empty proposal will cause timestamp discrepancies between nodes and
-/// validation errors.
-pub(crate) fn create_empty_block(height: u64) -> ConsensusFinalizedL2Block {
+pub(crate) fn create_empty_block(
+    height: u64,
+    starknet_version: StarknetVersion,
+) -> ConsensusFinalizedL2Block {
     let timestamp = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-
-    // The only version handled by consensus, so far
-    let starknet_version = StarknetVersion::new(0, 14, 0, 0);
 
     ConsensusFinalizedL2Block {
         header: ConsensusFinalizedBlockHeader {
