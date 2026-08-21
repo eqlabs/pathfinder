@@ -88,6 +88,7 @@ pub async fn get_transaction_receipt(
     _rpc_version: RpcVersion,
 ) -> Result<Output, Error> {
     let span = tracing::Span::current();
+    let pending = context.pending_data.resolve_optional().await?;
     util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = context
@@ -98,7 +99,7 @@ pub async fn get_transaction_receipt(
         let db_tx = db.transaction().context("Creating database transaction")?;
 
         // Pending is an optional first look; a finalized tx lives in the DB regardless.
-        let pending = context.pending_data.get_optional(&db_tx)?;
+        let pending = pending.map(|p| p.validate(&db_tx)).transpose()?;
 
         let finalized_tx_data = pending
             .as_ref()

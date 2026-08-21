@@ -60,6 +60,7 @@ pub async fn get_storage_at(
     _rpc_version: RpcVersion,
 ) -> Result<Output, Error> {
     let span = tracing::Span::current();
+    let pending = context.pending_data.resolve_by_id(input.block_id).await?;
     let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
@@ -76,8 +77,8 @@ pub async fn get_storage_at(
 
         let tx = db.transaction().context("Creating database transaction")?;
 
-        if input.block_id.is_pending() {
-            let pending_data = context.pending_data.get(&tx)?;
+        if let Some(pending) = pending {
+            let pending_data = pending.validate(&tx)?;
             let opt_found = pending_data.find_storage_value(input.contract_address, input.key);
             if let Some(found) = opt_found {
                 let (value, last_update_block) = match found {

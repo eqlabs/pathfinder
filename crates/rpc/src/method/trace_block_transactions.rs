@@ -12,6 +12,7 @@ use crate::executor::{
     MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START,
     VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
 };
+use crate::pending::UnvalidatedOrId;
 use crate::types::BlockId;
 use crate::{compose_executor_transaction, RpcVersion};
 
@@ -98,15 +99,17 @@ pub async fn trace_block_transactions(
         .trace_flags
         .contains(&crate::dto::TraceFlag::ReturnInitialReads);
 
+    let pending_or_id = context.pending_data.resolve_or_id(input.block_id).await?;
+
     let traces = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
         let mut db_conn = storage.connection()?;
         let db_tx = db_conn.transaction()?;
 
-        let (block_id, header, transactions, pending_state, cache) = match input.block_id {
-            BlockId::PreConfirmed => {
-                let pending = context.pending_data.get(&db_tx)?;
+        let (block_id, header, transactions, pending_state, cache) = match pending_or_id {
+            UnvalidatedOrId::PreConfirmed(pending) => {
+                let pending = pending.validate(&db_tx)?;
 
                 let header = pending.pre_confirmed_header();
                 let transactions = pending.pre_confirmed_transactions().to_vec();
@@ -130,9 +133,9 @@ pub async fn trace_block_transactions(
                     pathfinder_executor::TraceCache::default(),
                 )
             }
-            other => {
+            UnvalidatedOrId::Other(other) => {
                 let block_id = other
-                    .to_common_or_panic(&db_tx)
+                    .to_common(&db_tx)
                     .map_err(|_| TraceBlockTransactionsError::BlockNotFound)?;
 
                 let header = db_tx

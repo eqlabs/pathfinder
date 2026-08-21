@@ -26,6 +26,24 @@ pub mod request {
         PreConfirmed,
     }
 
+    /// A way of distinguishing between a pre-confirmed and other block
+    /// identifiers.
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+    pub enum PreconfirmedOrOtherId {
+        PreConfirmed,
+        Other(NonPreConfirmedBlockId),
+    }
+
+    /// A way of identifying a block in a JSON-RPC request that **is not the
+    /// pre-confirmed block**.
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+    pub enum NonPreConfirmedBlockId {
+        Number(BlockNumber),
+        Hash(BlockHash),
+        L1Accepted,
+        Latest,
+    }
+
     impl From<BlockHash> for BlockId {
         fn from(value: BlockHash) -> Self {
             BlockId::Hash(value)
@@ -41,35 +59,6 @@ pub mod request {
     impl BlockId {
         pub fn is_pending(&self) -> bool {
             matches!(self, BlockId::PreConfirmed)
-        }
-
-        /// Converts this [BlockId] to a [pathfinder_common::BlockId].
-        ///
-        /// Resolves [`BlockId::L1Accepted`] to the latest L1 accepted block
-        /// number. Returns an error if there is no L1 accepted block number
-        /// or the database lookup fails.
-        ///
-        /// # Panics
-        ///
-        /// If this [BlockId] is [`BlockId::PreConfirmed`].
-        pub fn to_common_or_panic(
-            self,
-            tx: &pathfinder_storage::Transaction<'_>,
-        ) -> anyhow::Result<pathfinder_common::BlockId> {
-            match self {
-                BlockId::Number(number) => Ok(pathfinder_common::BlockId::Number(number)),
-                BlockId::Hash(hash) => Ok(pathfinder_common::BlockId::Hash(hash)),
-                BlockId::L1Accepted => {
-                    let block_number = tx
-                        .l1_l2_pointer()?
-                        .context("L1 accepted block number not found")?;
-                    Ok(pathfinder_common::BlockId::Number(block_number))
-                }
-                BlockId::Latest => Ok(pathfinder_common::BlockId::Latest),
-                BlockId::PreConfirmed => {
-                    panic!("Cannot convert BlockId::PreConfirmed to FinalizedBlockId")
-                }
-            }
         }
 
         /// Converts this [BlockId] to a [pathfinder_common::BlockId].
@@ -94,6 +83,47 @@ pub mod request {
                     Ok(pathfinder_common::BlockId::Number(block_number))
                 }
                 BlockId::Latest | BlockId::PreConfirmed => Ok(pathfinder_common::BlockId::Latest),
+            }
+        }
+
+        pub fn to_preconfirmed_or_other(self) -> PreconfirmedOrOtherId {
+            match self {
+                BlockId::PreConfirmed => PreconfirmedOrOtherId::PreConfirmed,
+                BlockId::Number(number) => {
+                    PreconfirmedOrOtherId::Other(NonPreConfirmedBlockId::Number(number))
+                }
+                BlockId::Hash(hash) => {
+                    PreconfirmedOrOtherId::Other(NonPreConfirmedBlockId::Hash(hash))
+                }
+                BlockId::L1Accepted => {
+                    PreconfirmedOrOtherId::Other(NonPreConfirmedBlockId::L1Accepted)
+                }
+                BlockId::Latest => PreconfirmedOrOtherId::Other(NonPreConfirmedBlockId::Latest),
+            }
+        }
+    }
+
+    impl NonPreConfirmedBlockId {
+        /// Converts this [NonPreConfirmedBlockId] to a
+        /// [pathfinder_common::BlockId].
+        ///
+        /// Resolves [`NonPreConfirmedBlockId::L1Accepted`] to the latest L1
+        /// accepted block number. Returns an error if there is no L1
+        /// accepted block number or the database lookup fails.
+        pub fn to_common(
+            self,
+            tx: &pathfinder_storage::Transaction<'_>,
+        ) -> anyhow::Result<pathfinder_common::BlockId> {
+            match self {
+                Self::Number(number) => Ok(pathfinder_common::BlockId::Number(number)),
+                Self::Hash(hash) => Ok(pathfinder_common::BlockId::Hash(hash)),
+                Self::L1Accepted => {
+                    let block_number = tx
+                        .l1_l2_pointer()?
+                        .context("L1 accepted block number not found")?;
+                    Ok(pathfinder_common::BlockId::Number(block_number))
+                }
+                Self::Latest => Ok(pathfinder_common::BlockId::Latest),
             }
         }
     }

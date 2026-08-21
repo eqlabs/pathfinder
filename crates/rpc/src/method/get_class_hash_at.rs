@@ -33,6 +33,7 @@ pub async fn get_class_hash_at(
     _rpc_version: RpcVersion,
 ) -> Result<Output, Error> {
     let span = tracing::Span::current();
+    let pending = context.pending_data.resolve_by_id(input.block_id).await?;
     util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = context
@@ -42,10 +43,9 @@ pub async fn get_class_hash_at(
 
         let tx = db.transaction().context("Creating database transaction")?;
 
-        if input.block_id.is_pending() {
-            let class_hash = context
-                .pending_data
-                .get(&tx)?
+        if let Some(pending) = pending {
+            let class_hash = pending
+                .validate(&tx)?
                 .find_contract_class(input.contract_address);
 
             if let Some(class_hash) = class_hash {

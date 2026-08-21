@@ -6,7 +6,7 @@ use pathfinder_common::BlockHeader;
 
 use crate::context::RpcContext;
 use crate::dto::TransactionResponseFlags;
-use crate::pending::PendingBlocks;
+use crate::pending::{PendingBlocks, UnvalidatedOrId};
 use crate::types::BlockId;
 use crate::RpcVersion;
 
@@ -62,6 +62,7 @@ pub async fn get_block_with_txs(
     _rpc_version: RpcVersion,
 ) -> Result<Output, Error> {
     let span = tracing::Span::current();
+    let pending_or_id = context.pending_data.resolve_or_id(input.block_id).await?;
     util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
@@ -80,9 +81,9 @@ pub async fn get_block_with_txs(
             .transaction()
             .context("Creating database transaction")?;
 
-        let block_id = match input.block_id {
-            BlockId::PreConfirmed => {
-                let pending = context.pending_data.get(&transaction)?;
+        let block_id = match pending_or_id {
+            UnvalidatedOrId::PreConfirmed(pending) => {
+                let pending = pending.validate(&transaction)?;
 
                 let transactions = pending.pre_confirmed_transactions().to_vec();
 
@@ -92,8 +93,8 @@ pub async fn get_block_with_txs(
                     include_proof_facts,
                 });
             }
-            other => other
-                .to_common_or_panic(&transaction)
+            UnvalidatedOrId::Other(other) => other
+                .to_common(&transaction)
                 .map_err(|_| Error::BlockNotFound)?,
         };
 

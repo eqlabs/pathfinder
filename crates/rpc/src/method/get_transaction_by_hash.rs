@@ -55,6 +55,7 @@ pub async fn get_transaction_by_hash(
 
     let storage = context.storage.clone();
     let span = tracing::Span::current();
+    let pending = context.pending_data.resolve_optional().await?;
     let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = storage
@@ -64,7 +65,7 @@ pub async fn get_transaction_by_hash(
         let db_tx = db.transaction().context("Creating database transaction")?;
 
         // Pending is an optional first look; a finalized tx lives in the DB regardless.
-        let pending = context.pending_data.get_optional(&db_tx)?;
+        let pending = pending.map(|p| p.validate(&db_tx)).transpose()?;
         if let Some(transaction) = pending
             .as_ref()
             .and_then(|p| p.find_transaction(input.transaction_hash))

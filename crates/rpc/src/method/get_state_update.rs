@@ -4,6 +4,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use pathfinder_common::{ContractAddress, StateUpdate};
 
+use crate::pending::UnvalidatedOrId;
 use crate::types::BlockId;
 use crate::{dto, RpcContext, RpcVersion};
 
@@ -59,6 +60,7 @@ pub async fn get_state_update(
 ) -> Result<Output, Error> {
     let storage = context.storage.clone();
     let span = tracing::Span::current();
+    let pending_or_id = context.pending_data.resolve_or_id(input.block_id).await?;
     let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = storage
@@ -67,20 +69,20 @@ pub async fn get_state_update(
 
         let tx = db.transaction().context("Creating database transaction")?;
 
-        if input.block_id.is_pending() {
-            let mut state_update = context.pending_data.get(&tx)?.pre_confirmed_state_update();
-            if !input.contract_addresses.is_empty() {
-                let mut own_state_update = state_update.as_ref().clone();
-                filter_state_update_contracts(&mut own_state_update, &input.contract_addresses);
-                state_update = Arc::new(own_state_update);
+        let block_id = match pending_or_id {
+            UnvalidatedOrId::PreConfirmed(pending) => {
+                let mut state_update = pending.validate(&tx)?.pre_confirmed_state_update();
+                if !input.contract_addresses.is_empty() {
+                    let mut own_state_update = state_update.as_ref().clone();
+                    filter_state_update_contracts(&mut own_state_update, &input.contract_addresses);
+                    state_update = Arc::new(own_state_update);
+                }
+                return Ok(Output::Pending(state_update));
             }
-            return Ok(Output::Pending(state_update));
-        }
-
-        let block_id = input
-            .block_id
-            .to_common_or_panic(&tx)
-            .map_err(|_| Error::BlockNotFound)?;
+            UnvalidatedOrId::Other(block_id) => {
+                block_id.to_common(&tx).map_err(|_| Error::BlockNotFound)?
+            }
+        };
 
         let Some(block_number) = tx.block_number(block_id).context("Fetching block number")? else {
             return Err(Error::BlockNotFound);
