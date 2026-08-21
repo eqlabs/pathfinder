@@ -41,6 +41,39 @@ impl PendingWatcher {
         self.cache.subscribe()
     }
 
+    /// Reads the cached preconfirmed data, awaiting fresh data if the cache
+    /// is stale.
+    ///
+    /// The result must be checked against the committed head with
+    /// [`Unvalidated::validate`] before it can be served.
+    pub async fn resolve(&self) -> Result<Unvalidated, ReadError> {
+        match self.cache.try_read() {
+            Some(data) => Ok(Unvalidated(data)),
+            None => Ok(Unvalidated(self.cache.read().await?)),
+        }
+    }
+
+    /// [`Self::resolve`], which returns `None` instead of an error if the cache
+    /// is `Unavailable`.
+    pub async fn resolve_optional(&self) -> Result<Option<Unvalidated>, ReadError> {
+        match self.resolve().await {
+            Ok(data) => Ok(Some(data)),
+            Err(ReadError::Unavailable(_)) => Ok(None),
+            Err(e @ ReadError::Internal(_)) => Err(e),
+        }
+    }
+
+    /// Temporary function which will be removed with `get` and `get_optional`
+    /// once the refactor is complete.
+    fn resolve_blocking(&self) -> Result<Unvalidated, ReadError> {
+        match self.cache.try_read() {
+            Some(data) => Ok(Unvalidated(data)),
+            None => Ok(Unvalidated(
+                tokio::runtime::Handle::current().block_on(self.cache.read())?,
+            )),
+        }
+    }
+
     /// Returns [PendingData] which has been validated against the latest block
     /// available in storage.
     ///
@@ -52,15 +85,47 @@ impl PendingWatcher {
     ///
     /// This function will panic if called from async context.
     pub fn get(&self, tx: &Transaction<'_>) -> Result<PendingData, ReadError> {
+        self.resolve_blocking()?.validate(tx)
+    }
+
+    /// Returns the pending data, or `None` when the cache is unavailable.
+    /// Unlike [`Self::get`], an `Unavailable` cache is not an error.
+    ///
+    /// #Panics
+    ///
+    /// This function will panic if called from async context.
+    pub fn get_optional(&self, tx: &Transaction<'_>) -> Result<Option<PendingData>, ReadError> {
+        match self.get(tx) {
+            Ok(data) => Ok(Some(data)),
+            Err(ReadError::Unavailable(_)) => Ok(None),
+            Err(e @ ReadError::Internal(_)) => Err(e),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn get_unchecked(&self) -> PendingData {
+        self.cache.subscribe().borrow().clone()
+    }
+}
+
+/// Preconfirmed data as published by the polling loop. Use [`Self::validate`]
+/// to validate it against the committed head.
+pub struct Unvalidated(PendingData);
+
+impl Unvalidated {
+    /// Checks the resolved preconfirmed view against the latest block in
+    /// storage and adapts it to that head.
+    ///
+    /// Returns an empty block with gas price and timestamp taken from the
+    /// latest block if no valid pending data is available. The block number
+    /// is also incremented.
+    pub fn validate(self, tx: &Transaction<'_>) -> Result<PendingData, ReadError> {
+        let Self(watched_pending_data) = self;
+
         let latest = tx
             .block_header(pathfinder_common::BlockId::Latest)
             .context("Querying latest block header")?
             .unwrap_or_default();
-
-        let watched_pending_data = match self.cache.try_read() {
-            Some(data) => data,
-            None => tokio::runtime::Handle::current().block_on(self.cache.read())?,
-        };
 
         let watched_pending_blocks = watched_pending_data.pending_block();
         let PendingBlocks {
@@ -182,25 +247,6 @@ impl PendingWatcher {
         };
 
         Ok(pending_data)
-    }
-
-    /// Returns the pending data, or `None` when the cache is unavailable.
-    /// Unlike [`Self::get`], an `Unavailable` cache is not an error.
-    ///
-    /// #Panics
-    ///
-    /// This function will panic if called from async context.
-    pub fn get_optional(&self, tx: &Transaction<'_>) -> Result<Option<PendingData>, ReadError> {
-        match self.get(tx) {
-            Ok(data) => Ok(Some(data)),
-            Err(ReadError::Unavailable(_)) => Ok(None),
-            Err(e @ ReadError::Internal(_)) => Err(e),
-        }
-    }
-
-    #[cfg(test)]
-    pub fn get_unchecked(&self) -> PendingData {
-        self.cache.subscribe().borrow().clone()
     }
 }
 
