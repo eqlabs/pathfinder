@@ -10,6 +10,7 @@ use pathfinder_storage::Transaction;
 
 use crate::context::RpcContext;
 use crate::dto::{DeserializeForVersion, SerializeForVersion};
+use crate::types::request::PreconfirmedOrOtherId;
 use crate::types::BlockId;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -288,14 +289,14 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
 
         let tx = db.transaction().context("Creating database transaction")?;
 
-        let block_id = match input.block_id {
-            BlockId::PreConfirmed => {
+        let block_id = match input.block_id.to_preconfirmed_or_other() {
+            PreconfirmedOrOtherId::PreConfirmed => {
                 // Getting proof of a pre-confirmed block is not supported.
                 return Err(Error::ProofMissing);
             }
-            other => other
-                .to_common_or_panic(&tx)
-                .map_err(|_| Error::BlockNotFound)?,
+            PreconfirmedOrOtherId::Other(other) => {
+                other.to_common(&tx).map_err(|_| Error::BlockNotFound)?
+            }
         };
 
         // Use internal error to indicate that the process of querying for a particular

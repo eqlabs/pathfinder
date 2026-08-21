@@ -57,6 +57,7 @@ pub async fn trace_transaction(
     }
 
     let span = tracing::Span::current();
+    let pending = context.pending_data.resolve_optional().await?;
     let local =
         util::task::spawn_blocking(move |_| -> Result<LocalExecution, TraceTransactionError> {
             let _g = span.enter();
@@ -70,7 +71,7 @@ pub async fn trace_transaction(
                 .context("Creating database transaction")?;
 
             // Find the transaction's block.
-            let pending = context.pending_data.get_optional(&db_tx)?;
+            let pending = pending.map(|p| p.validate(&db_tx)).transpose()?;
             let pending = pending.as_ref();
 
             let (header, transactions, pending_state, cache) = if let Some((pending, pending_tx)) =

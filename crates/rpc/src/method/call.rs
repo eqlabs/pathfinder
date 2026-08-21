@@ -5,6 +5,7 @@ use pathfinder_executor::{ExecutionState, L1BlobDataAvailability};
 use crate::context::RpcContext;
 use crate::error::ApplicationError;
 use crate::executor::CALLDATA_LIMIT;
+use crate::pending::UnvalidatedOrId;
 use crate::types::BlockId;
 use crate::RpcVersion;
 
@@ -125,6 +126,7 @@ pub async fn call(
             "Calldata limit ({CALLDATA_LIMIT}) exceeded"
         )));
     }
+    let pending_or_id = context.pending_data.resolve_or_id(input.block_id).await?;
     let result = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
@@ -136,18 +138,18 @@ pub async fn call(
             .transaction()
             .context("Creating database transaction")?;
 
-        let (header, pending) = match input.block_id {
-            BlockId::PreConfirmed => {
-                let pending = context.pending_data.get(&db_tx)?;
+        let (header, pending) = match pending_or_id {
+            UnvalidatedOrId::PreConfirmed(pending) => {
+                let pending = pending.validate(&db_tx)?;
 
                 (
                     pending.pre_confirmed_header(),
                     Some(pending.aggregated_state_update()),
                 )
             }
-            other => {
+            UnvalidatedOrId::Other(other) => {
                 let block_id = other
-                    .to_common_or_panic(&db_tx)
+                    .to_common(&db_tx)
                     .map_err(|_| CallError::BlockNotFound)?;
 
                 let header = db_tx

@@ -1,6 +1,7 @@
 use anyhow::Context;
 
 use crate::context::RpcContext;
+use crate::pending::UnvalidatedOrId;
 use crate::types::BlockId;
 use crate::RpcVersion;
 
@@ -31,6 +32,7 @@ pub async fn get_block_transaction_count(
     _rpc_version: RpcVersion,
 ) -> Result<Output, Error> {
     let span = tracing::Span::current();
+    let pending_or_id = context.pending_data.resolve_or_id(input.block_id).await?;
     util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = context
@@ -39,19 +41,15 @@ pub async fn get_block_transaction_count(
             .context("Opening database connection")?;
         let db = db.transaction().context("Creating database transaction")?;
 
-        let block_id = match input.block_id {
-            BlockId::PreConfirmed => {
-                let count = context
-                    .pending_data
-                    .get(&db)?
-                    .pre_confirmed_transactions()
-                    .len() as u64;
+        let block_id = match pending_or_id {
+            UnvalidatedOrId::PreConfirmed(pending) => {
+                let count = pending.validate(&db)?.pre_confirmed_transactions().len() as u64;
                 return Ok(Output(count));
             }
 
-            other => other
-                .to_common_or_panic(&db)
-                .map_err(|_| Error::BlockNotFound)?,
+            UnvalidatedOrId::Other(other) => {
+                other.to_common(&db).map_err(|_| Error::BlockNotFound)?
+            }
         };
 
         let exists = db

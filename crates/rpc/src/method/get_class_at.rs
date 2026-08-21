@@ -58,6 +58,7 @@ pub async fn get_class_at(
     _rpc_version: RpcVersion,
 ) -> Result<Output, Error> {
     let span = tracing::Span::current();
+    let pending = context.pending_data.resolve_by_id(input.block_id).await?;
     let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = context
@@ -67,13 +68,11 @@ pub async fn get_class_at(
 
         let tx = db.transaction().context("Creating database transaction")?;
 
-        let pending_class_hash = if input.block_id.is_pending() {
-            context
-                .pending_data
-                .get(&tx)?
-                .find_contract_class(input.contract_address)
-        } else {
-            None
+        let pending_class_hash = match pending {
+            Some(pending) => pending
+                .validate(&tx)?
+                .find_contract_class(input.contract_address),
+            None => None,
         };
 
         let block_id = input

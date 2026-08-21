@@ -14,6 +14,9 @@ use pathfinder_pending_data::{PendingDataCache, ReadError};
 use pathfinder_storage::Transaction;
 use tokio::sync::watch::Receiver as WatchReceiver;
 
+use crate::types::request::NonPreConfirmedBlockId;
+use crate::types::BlockId;
+
 /// A finalized transaction along with its receipt, events, status and the block
 /// number it was included in.
 #[derive(Debug)]
@@ -31,6 +34,19 @@ pub struct PendingWatcher {
     cache: Arc<PendingDataCache>,
 }
 
+/// Preconfirmed data as published by the polling loop. Use [`Self::validate`]
+/// to validate it against the committed head.
+pub struct UnvalidatedPendingData(PendingData);
+
+/// Useful pattern in many RPC methods:
+/// - if the request is for the pre-confirmed block, return the cached data,
+/// - otherwise return the other non-preconfirmed block id variant so the caller
+///   can handle it.
+pub enum UnvalidatedOrId {
+    PreConfirmed(UnvalidatedPendingData),
+    Other(NonPreConfirmedBlockId),
+}
+
 impl PendingWatcher {
     pub fn new(cache: Arc<PendingDataCache>) -> Self {
         Self { cache }
@@ -45,17 +61,17 @@ impl PendingWatcher {
     /// is stale.
     ///
     /// The result must be checked against the committed head with
-    /// [`Unvalidated::validate`] before it can be served.
-    pub async fn resolve(&self) -> Result<Unvalidated, ReadError> {
+    /// [`UnvalidatedPendingData::validate`] before it can be served.
+    pub async fn resolve(&self) -> Result<UnvalidatedPendingData, ReadError> {
         match self.cache.try_read() {
-            Some(data) => Ok(Unvalidated(data)),
-            None => Ok(Unvalidated(self.cache.read().await?)),
+            Some(data) => Ok(UnvalidatedPendingData(data)),
+            None => Ok(UnvalidatedPendingData(self.cache.read().await?)),
         }
     }
 
     /// [`Self::resolve`], which returns `None` instead of an error if the cache
     /// is `Unavailable`.
-    pub async fn resolve_optional(&self) -> Result<Option<Unvalidated>, ReadError> {
+    pub async fn resolve_optional(&self) -> Result<Option<UnvalidatedPendingData>, ReadError> {
         match self.resolve().await {
             Ok(data) => Ok(Some(data)),
             Err(ReadError::Unavailable(_)) => Ok(None),
@@ -65,10 +81,10 @@ impl PendingWatcher {
 
     /// Temporary function which will be removed with `get` and `get_optional`
     /// once the refactor is complete.
-    fn resolve_blocking(&self) -> Result<Unvalidated, ReadError> {
+    fn resolve_blocking(&self) -> Result<UnvalidatedPendingData, ReadError> {
         match self.cache.try_read() {
-            Some(data) => Ok(Unvalidated(data)),
-            None => Ok(Unvalidated(
+            Some(data) => Ok(UnvalidatedPendingData(data)),
+            None => Ok(UnvalidatedPendingData(
                 tokio::runtime::Handle::current().block_on(self.cache.read())?,
             )),
         }
@@ -102,17 +118,41 @@ impl PendingWatcher {
         }
     }
 
+    /// [`Self::resolve`] if block id is [`BlockId::PreConfirmed`], otherwise
+    /// return `None`.
+    pub async fn resolve_by_id(
+        &self,
+        block_id: BlockId,
+    ) -> Result<Option<UnvalidatedPendingData>, ReadError> {
+        Ok(match block_id {
+            BlockId::PreConfirmed => Some(self.resolve().await?),
+            _ => None,
+        })
+    }
+
+    /// [`Self::resolve`] if block id is [`BlockId::PreConfirmed`], otherwise
+    /// return the other block id variant.
+    pub async fn resolve_or_id(&self, block_id: BlockId) -> Result<UnvalidatedOrId, ReadError> {
+        Ok(match block_id {
+            BlockId::PreConfirmed => UnvalidatedOrId::PreConfirmed(self.resolve().await?),
+            BlockId::Number(block_number) => {
+                UnvalidatedOrId::Other(NonPreConfirmedBlockId::Number(block_number))
+            }
+            BlockId::Hash(block_hash) => {
+                UnvalidatedOrId::Other(NonPreConfirmedBlockId::Hash(block_hash))
+            }
+            BlockId::L1Accepted => UnvalidatedOrId::Other(NonPreConfirmedBlockId::L1Accepted),
+            BlockId::Latest => UnvalidatedOrId::Other(NonPreConfirmedBlockId::Latest),
+        })
+    }
+
     #[cfg(test)]
     pub fn get_unchecked(&self) -> PendingData {
         self.cache.subscribe().borrow().clone()
     }
 }
 
-/// Preconfirmed data as published by the polling loop. Use [`Self::validate`]
-/// to validate it against the committed head.
-pub struct Unvalidated(PendingData);
-
-impl Unvalidated {
+impl UnvalidatedPendingData {
     /// Checks the resolved preconfirmed view against the latest block in
     /// storage and adapts it to that head.
     ///

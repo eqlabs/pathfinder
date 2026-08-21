@@ -172,6 +172,15 @@ pub async fn get_events(
         request.keys.truncate(last_non_empty + 1);
     }
 
+    let requires_pre_confirmed = matches!(request.from_block, Some(PreConfirmed))
+        || matches!(request.to_block, Some(PreConfirmed));
+
+    let pending = if requires_pre_confirmed {
+        Some(context.pending_data.resolve().await?)
+    } else {
+        context.pending_data.resolve_optional().await?
+    };
+
     // blocking task to perform database event query
     let span = tracing::Span::current();
     let db_events: JoinHandle<Result<_, GetEventsError>> = util::task::spawn_blocking(move |_| {
@@ -184,15 +193,7 @@ pub async fn get_events(
             .transaction()
             .context("Creating database transaction")?;
 
-        let requires_pre_confirmed = matches!(request.from_block, Some(PreConfirmed))
-            || matches!(request.to_block, Some(PreConfirmed));
-
-        // Missing pending data only errs when the request explicitly asked for it.
-        let pending: Option<PendingData> = if requires_pre_confirmed {
-            Some(context.pending_data.get(&transaction)?)
-        } else {
-            context.pending_data.get_optional(&transaction)?
-        };
+        let pending: Option<PendingData> = pending.map(|p| p.validate(&transaction)).transpose()?;
 
         // Replace from/to blocks with `BlockId::PreConfirmed` if their numbers match
         // the pre-latest/pre-confirmed block number.

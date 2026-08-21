@@ -33,6 +33,7 @@ pub async fn get_nonce(
     _rpc_version: RpcVersion,
 ) -> Result<Output, Error> {
     let span = tracing::Span::current();
+    let pending = context.pending_data.resolve_by_id(input.block_id).await?;
     util::task::spawn_blocking(move |_| -> Result<_, Error> {
         let _g = span.enter();
         let mut db = context
@@ -41,11 +42,8 @@ pub async fn get_nonce(
             .context("Opening database connection")?;
         let tx = db.transaction().context("Creating database transaction")?;
 
-        if input.block_id.is_pending() {
-            let nonce = context
-                .pending_data
-                .get(&tx)?
-                .find_nonce(input.contract_address);
+        if let Some(pending) = pending {
+            let nonce = pending.validate(&tx)?.find_nonce(input.contract_address);
 
             if let Some(nonce) = nonce {
                 return Ok(Output(nonce));

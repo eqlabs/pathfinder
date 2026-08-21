@@ -4,6 +4,7 @@ use pathfinder_common::TransactionIndex;
 
 use crate::context::RpcContext;
 use crate::dto::TransactionResponseFlags;
+use crate::pending::UnvalidatedOrId;
 use crate::types::BlockId;
 use crate::RpcVersion;
 
@@ -68,6 +69,7 @@ pub async fn get_transaction_by_block_id_and_index(
 
     let storage = context.storage.clone();
     let span = tracing::Span::current();
+    let pending_or_id = context.pending_data.resolve_or_id(input.block_id).await?;
     let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
@@ -77,11 +79,10 @@ pub async fn get_transaction_by_block_id_and_index(
 
         let db_tx = db.transaction().context("Creating database transaction")?;
 
-        let block_id = match input.block_id {
-            BlockId::PreConfirmed => {
-                let result = context
-                    .pending_data
-                    .get(&db_tx)?
+        let block_id = match pending_or_id {
+            UnvalidatedOrId::PreConfirmed(pending) => {
+                let result = pending
+                    .validate(&db_tx)?
                     .pre_confirmed_transactions()
                     .get(index)
                     .cloned()
@@ -91,8 +92,8 @@ pub async fn get_transaction_by_block_id_and_index(
                     include_proof_facts,
                 });
             }
-            other => other
-                .to_common_or_panic(&db_tx)
+            UnvalidatedOrId::Other(other) => other
+                .to_common(&db_tx)
                 .map_err(|_| GetTransactionByBlockIdAndIndexError::BlockNotFound)?,
         };
 

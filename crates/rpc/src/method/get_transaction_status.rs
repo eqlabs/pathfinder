@@ -43,6 +43,7 @@ pub async fn get_transaction_status(
 ) -> Result<Output, Error> {
     // Check database.
     let span = tracing::Span::current();
+    let pending = context.pending_data.resolve_optional().await?;
     let db_status = util::task::spawn_blocking(move |_| -> Result<Option<Output>, Error> {
         let _g = span.enter();
 
@@ -52,7 +53,7 @@ pub async fn get_transaction_status(
             .context("Opening database connection")?;
         let db_tx = db.transaction().context("Creating database transaction")?;
 
-        let pending_data = context.pending_data.get_optional(&db_tx)?;
+        let pending_data = pending.map(|p| p.validate(&db_tx)).transpose()?;
 
         let finalized_tx_data = pending_data
             .as_ref()
