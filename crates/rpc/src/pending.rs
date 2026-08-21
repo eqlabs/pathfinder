@@ -79,45 +79,6 @@ impl PendingWatcher {
         }
     }
 
-    /// Temporary function which will be removed with `get` and `get_optional`
-    /// once the refactor is complete.
-    fn resolve_blocking(&self) -> Result<UnvalidatedPendingData, ReadError> {
-        match self.cache.try_read() {
-            Some(data) => Ok(UnvalidatedPendingData(data)),
-            None => Ok(UnvalidatedPendingData(
-                tokio::runtime::Handle::current().block_on(self.cache.read())?,
-            )),
-        }
-    }
-
-    /// Returns [PendingData] which has been validated against the latest block
-    /// available in storage.
-    ///
-    /// Returns an empty block with gas price and timestamp taken from the
-    /// latest block if no valid pending data is available. The block number
-    /// is also incremented.
-    ///
-    /// # Panics
-    ///
-    /// This function will panic if called from async context.
-    pub fn get(&self, tx: &Transaction<'_>) -> Result<PendingData, ReadError> {
-        self.resolve_blocking()?.validate(tx)
-    }
-
-    /// Returns the pending data, or `None` when the cache is unavailable.
-    /// Unlike [`Self::get`], an `Unavailable` cache is not an error.
-    ///
-    /// #Panics
-    ///
-    /// This function will panic if called from async context.
-    pub fn get_optional(&self, tx: &Transaction<'_>) -> Result<Option<PendingData>, ReadError> {
-        match self.get(tx) {
-            Ok(data) => Ok(Some(data)),
-            Err(ReadError::Unavailable(_)) => Ok(None),
-            Err(e @ ReadError::Internal(_)) => Err(e),
-        }
-    }
-
     /// [`Self::resolve`] if block id is [`BlockId::PreConfirmed`], otherwise
     /// return `None`.
     pub async fn resolve_by_id(
