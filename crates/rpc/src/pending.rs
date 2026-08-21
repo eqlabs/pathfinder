@@ -451,8 +451,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn valid_pre_confirmed() {
+    #[tokio::test]
+    async fn valid_pre_confirmed() {
         let cache = Arc::new(PendingDataCache::new());
         let uut = PendingWatcher::new(cache.clone());
 
@@ -469,12 +469,12 @@ mod tests {
         let pending = valid_pre_confirmed_block(&latest);
         cache.store(pending.clone());
 
-        let result = uut.get(&tx).unwrap();
+        let result = uut.resolve().await.unwrap().validate(&tx).unwrap();
         pretty_assertions_sorted::assert_eq_sorted!(result, pending);
     }
 
-    #[test]
-    fn valid_pre_confirmed_with_pre_latest() {
+    #[tokio::test]
+    async fn valid_pre_confirmed_with_pre_latest() {
         // There are certain intervals where the pre-latest block is still stored in
         // pending data but that same block has already been finalized and received as
         // the new L2 block. This test makes sure that we still provide pending data
@@ -512,7 +512,7 @@ mod tests {
         let pending = valid_pre_confirmed_block_with_pre_latest(&latest);
         cache.store(pending.clone());
 
-        let result = uut.get(&tx).unwrap();
+        let result = uut.resolve().await.unwrap().validate(&tx).unwrap();
         pretty_assertions_sorted::assert_eq_sorted!(result, pending);
 
         // Now the pre-latest block (latest + 1) is itself finalized into storage,
@@ -525,7 +525,7 @@ mod tests {
             .finalize_with_hash(block_hash_bytes!(b"child hash"));
         tx.insert_block_header(&child).unwrap();
 
-        let result = uut.get(&tx).unwrap();
+        let result = uut.resolve().await.unwrap().validate(&tx).unwrap();
         // We got a non-empty pre-confirmed block..
         assert!(!result.pre_confirmed_transactions().is_empty());
         // ..and we did not receive a pre-latest block.
@@ -551,8 +551,8 @@ mod tests {
         assert_eq!(result.aggregated_lower_bound, latest.number + 1);
     }
 
-    #[test]
-    fn windowed_pre_confirmed_reports_committed_head_as_old_root() {
+    #[tokio::test]
+    async fn windowed_pre_confirmed_reports_committed_head_as_old_root() {
         // With a pre-latest present the window is two blocks deep, so the tip is
         // served through the immediate-parent branch. Its own state update must
         // carry the committed head's state commitment as its old root, otherwise
@@ -582,7 +582,7 @@ mod tests {
         // Window of two: pre-latest at latest + 1, pre-confirmed at latest + 2.
         cache.store(valid_pre_confirmed_block_with_pre_latest(&latest));
 
-        let result = uut.get(&tx).unwrap();
+        let result = uut.resolve().await.unwrap().validate(&tx).unwrap();
 
         assert!(
             result.pre_latest_block().is_some(),
@@ -594,8 +594,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn invalid_pending_defaults_to_latest_in_storage() {
+    #[tokio::test]
+    async fn invalid_pending_defaults_to_latest_in_storage() {
         // If the pending data isn't consistent with the latest data in storage,
         // then the result should be an empty block with the gas price, timestamp
         // and hash as parent hash of the latest block in storage.
@@ -628,15 +628,15 @@ mod tests {
         tx.insert_block_header(&parent).unwrap();
         tx.insert_block_header(&latest).unwrap();
 
-        let result = uut.get(&tx).unwrap();
+        let result = uut.resolve().await.unwrap().validate(&tx).unwrap();
 
         let expected = PendingData::empty(&latest);
 
         pretty_assertions_sorted::assert_eq_sorted!(result, expected);
     }
 
-    #[test]
-    fn invalid_pre_confirmed_defaults_to_latest_in_storage() {
+    #[tokio::test]
+    async fn invalid_pre_confirmed_defaults_to_latest_in_storage() {
         // If the pending data isn't consistent with the latest data in storage,
         // then the result should be an empty block with the gas price, timestamp
         // and hash as parent hash of the latest block in storage.
@@ -672,15 +672,15 @@ mod tests {
         let pending = valid_pre_confirmed_block(&parent);
         cache.store(pending.clone());
 
-        let result = uut.get(&tx).unwrap();
+        let result = uut.resolve().await.unwrap().validate(&tx).unwrap();
 
         let expected = empty_pre_confirmed_block(&latest);
 
         pretty_assertions_sorted::assert_eq_sorted!(result, expected);
     }
 
-    #[test]
-    fn invalid_pre_confirmed_with_pre_latest_defaults_to_latest_in_storage() {
+    #[tokio::test]
+    async fn invalid_pre_confirmed_with_pre_latest_defaults_to_latest_in_storage() {
         // If the pending data isn't consistent with the latest data in storage,
         // then the result should be an empty block with the gas price, timestamp
         // and hash as parent hash of the latest block in storage.
@@ -730,15 +730,15 @@ mod tests {
         let pending = valid_pre_confirmed_block_with_pre_latest(&parent1);
         cache.store(pending.clone());
 
-        let result = uut.get(&tx).unwrap();
+        let result = uut.resolve().await.unwrap().validate(&tx).unwrap();
 
         let expected = empty_pre_confirmed_block(&latest);
 
         pretty_assertions_sorted::assert_eq_sorted!(result, expected);
     }
 
-    #[test]
-    fn pre_confirmed_is_not_child_of_pre_latest_defaults_to_latest_in_storage() {
+    #[tokio::test]
+    async fn pre_confirmed_is_not_child_of_pre_latest_defaults_to_latest_in_storage() {
         let cache = Arc::new(PendingDataCache::new());
         let uut = PendingWatcher::new(cache.clone());
 
@@ -769,7 +769,7 @@ mod tests {
         let pending = invalid_pre_confirmed_block_with_pre_latest(&latest);
         cache.store(pending.clone());
 
-        let result = uut.get(&tx).unwrap();
+        let result = uut.resolve().await.unwrap().validate(&tx).unwrap();
 
         let expected = empty_pre_confirmed_block(&latest);
 
