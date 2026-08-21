@@ -595,6 +595,91 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn validate_retains_only_valid_view_if_commit_head_advanced_after_resolve() {
+        let cache = Arc::new(PendingDataCache::new());
+        let uut = PendingWatcher::new(cache.clone());
+
+        let mut storage = pathfinder_storage::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
+
+        let parent = BlockHeader::builder()
+            .number(BlockNumber::GENESIS + 12)
+            .finalize_with_hash(block_hash_bytes!(b"parent hash"));
+        let latest = parent
+            .child_builder()
+            .finalize_with_hash(block_hash_bytes!(b"latest hash"));
+
+        let tx = storage.transaction().unwrap();
+        tx.insert_block_header(&parent).unwrap();
+        tx.insert_block_header(&latest).unwrap();
+
+        // Cache resolves to pre-latest and pre-confirmed
+        cache.store(valid_pre_confirmed_block_with_pre_latest(&latest));
+        let resolved = uut.resolve().await.unwrap();
+
+        // Pre-latest becomes the new commit head
+        let pre_latest = latest
+            .child_builder()
+            .finalize_with_hash(block_hash_bytes!(b"pre latest hash"));
+        tx.insert_block_header(&pre_latest).unwrap();
+
+        let result = resolved.validate(&tx).unwrap();
+
+        let overlay = result.aggregated_state_update();
+        // Prelatest block has been swallowed by the advancing committed head
+        assert!(result.pre_latest_block().is_none());
+        assert!(overlay
+            .contract_nonce(contract_address_bytes!(b"pre latest contract address"))
+            .is_none());
+        // But pre-confirmed block still remains in the valid served view
+        assert!(!result.pre_confirmed_transactions().is_empty());
+        assert_eq!(
+            overlay.contract_nonce(contract_address_bytes!(b"contract address")),
+            Some(contract_nonce_bytes!(b"nonce"))
+        );
+        assert_eq!(result.aggregated_lower_bound, pre_latest.number);
+    }
+
+    #[tokio::test]
+    async fn validate_returns_empty_if_commit_head_advanced_past_resolved_tip() {
+        let cache = Arc::new(PendingDataCache::new());
+        let uut = PendingWatcher::new(cache.clone());
+
+        let mut storage = pathfinder_storage::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
+
+        let parent = BlockHeader::builder()
+            .number(BlockNumber::GENESIS + 12)
+            .finalize_with_hash(block_hash_bytes!(b"parent hash"));
+        let latest = parent
+            .child_builder()
+            .finalize_with_hash(block_hash_bytes!(b"latest hash"));
+
+        let tx = storage.transaction().unwrap();
+        tx.insert_block_header(&parent).unwrap();
+        tx.insert_block_header(&latest).unwrap();
+
+        // Cache resolves to pre-confirmed
+        cache.store(valid_pre_confirmed_block(&latest));
+        let resolved = uut.resolve().await.unwrap();
+
+        // Pre-confirmed becomes the new commit head
+        let pre_confirmed = latest
+            .child_builder()
+            .finalize_with_hash(block_hash_bytes!(b"pre confirmed hash"));
+        tx.insert_block_header(&pre_confirmed).unwrap();
+
+        let result = resolved.validate(&tx).unwrap();
+
+        // The entire pre-confirmed view is now swallowed by the committed head
+        pretty_assertions_sorted::assert_eq_sorted!(result, PendingData::empty(&pre_confirmed));
+    }
+
+    #[tokio::test]
     async fn invalid_pending_defaults_to_latest_in_storage() {
         // If the pending data isn't consistent with the latest data in storage,
         // then the result should be an empty block with the gas price, timestamp
