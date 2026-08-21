@@ -144,6 +144,10 @@ impl crate::dto::SerializeForVersion for Output {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use pathfinder_pending_data::PendingDataCache;
+
     use super::*;
     use crate::dto::{SerializeForVersion, Serializer};
     use crate::RpcVersion;
@@ -214,5 +218,49 @@ mod tests {
             version,
             "blocks/latest_with_tx_hashes.json"
         );
+    }
+
+    /// Prior to splitting `PendingDataCache::get[_optional]` into and async
+    /// `resolve` and sync `validate` all the RPC methods that used preconfirmed
+    /// data would hold the database connection in `spawn_blocking` for the
+    /// entire duration of the cold start timeout that could happen in
+    /// `PendingDataCache::get[_optional]` if the cache was cold and the
+    /// gateway happened to be slow. Using an arbitrary single method is
+    /// representative of all the other affected methods.
+    #[tokio::test]
+    async fn regression_waiting_for_pre_confirmed_data_does_not_hold_a_database_connection() {
+        const COLD_START: Duration = Duration::from_millis(500);
+        const LATEST_TIMEOUT: Duration = Duration::from_millis(300);
+
+        let cache = Arc::new(PendingDataCache::new().with_cold_start_timeout(COLD_START));
+        // Mark stale so that any readers will wait.
+        cache.mark_stale();
+        let context = RpcContext::for_tests().with_pending_data_cache(cache);
+
+        let _waiting = tokio::spawn(get_block_with_tx_hashes(
+            context.clone(),
+            Input {
+                block_id: BlockId::PreConfirmed,
+            },
+            RpcVersion::V09,
+        ));
+
+        // Make sure that the read hangs on waiting for preconfirmed data.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let latest = get_block_with_tx_hashes(
+            context,
+            Input {
+                block_id: BlockId::Latest,
+            },
+            RpcVersion::V09,
+        );
+
+        // Latest should be served regardless of whether the preconfirmed reader is
+        // still waiting.
+        tokio::time::timeout(LATEST_TIMEOUT, latest)
+            .await
+            .unwrap()
+            .unwrap();
     }
 }
