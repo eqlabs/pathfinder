@@ -435,8 +435,8 @@ pub mod tests {
 
     #[test_log::test]
     fn init_declare_deploy_invoke_hello_abi() {
-        // Block 0 - predeploys and initializes contracts, including the account we'll
-        // use for testing
+        // Block 0 - predeploys and initializes contracts, including the account
+        // we'll use for testing
         let proposer = Address(Felt::ONE);
         let db_dir = TempDir::new().unwrap();
         let BootDb { db_file_path, .. } = init_db(db_dir.path(), proposer).unwrap();
@@ -515,8 +515,8 @@ pub mod tests {
             insert_block(storage.clone(), db_txn, block_2, block_1_header.hash);
         let hello_contract_address = hello_contract_address.unwrap();
 
-        // Block 3 - invoke increase_balance and get_balance on the deployed Hello
-        // Starknet instance
+        // Block 3 - invoke increase_balance and get_balance on the deployed
+        // Hello Starknet instance
         let block_3_number = block_2_header.number + 1;
         let (mut validator, _) = init_proposal_and_validator(
             block_3_number,

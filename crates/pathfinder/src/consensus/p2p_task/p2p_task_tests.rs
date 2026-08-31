@@ -182,7 +182,8 @@ impl TestEnvironment {
                 };
 
                 if let Some(true) = handle_opt {
-                    // Handle is finished, take it out and await to get the result
+                    // Handle is finished, take it out and await to get the
+                    // result
                     let handle = {
                         let mut handle_guard = self.handle.lock().unwrap();
                         handle_guard.take().expect("Handle should exist")
@@ -469,8 +470,8 @@ async fn test_proposal_fin_deferred_until_parent_block_decided(
         verify_proposal_event(proposal_cmd, 2, expected_proposal_commitment2);
     }
 
-    // Step 6: Send MarkBlockAsDecidedAndCleanUp for parent block (should trigger
-    // finalization)
+    // Step 6: Send MarkBlockAsDecidedAndCleanUp for parent block (should
+    // trigger finalization)
     env.tx_to_p2p
         .send(P2PTaskEvent::MarkBlockAsDecidedAndCleanUp(
             h2r1,
@@ -480,14 +481,15 @@ async fn test_proposal_fin_deferred_until_parent_block_decided(
         .expect("Failed to send MarkBlockAsDecidedAndCleanUp");
     env.verify_task_alive().await;
 
-    // Make sure the above message is consumed before proceeding, otherwise we can
-    // get an ugly race condition which does not occur in reality but will make the
-    // test fail once in a while
+    // Make sure the above message is consumed before proceeding, otherwise we
+    // can get an ugly race condition which does not occur in reality but
+    // will make the test fail once in a while
     env.wait_tx_to_p2p_consumed().await;
 
     if consensus_ahead_of_fgw {
-        // Step 8: At some point sync sends SyncMessageToConsensus::GetFinalizedBlock
-        // for H=1, and then confirms committing the block with
+        // Step 8: At some point sync sends
+        // SyncMessageToConsensus::GetFinalizedBlock for H=1, and then
+        // confirms committing the block with
         // SyncMessageToConsensus::ConfirmFinalizedBlockCommitted
         env.create_committed_block(1);
         env.tx_sync_to_consensus
@@ -558,8 +560,8 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
     let proposal_init =
         create_test_proposal_init(chain_id, h2r1.height(), h2r1.round(), proposer_address);
 
-    // Focus is on batch execution and deferral logic, not commitment validation.
-    // Using a dummy commitment...
+    // Focus is on batch execution and deferral logic, not commitment
+    // validation. Using a dummy commitment...
     let proposal_commitment2 = ProposalCommitment(Felt::ZERO);
 
     // Step 1: Send ProposalInit
@@ -610,8 +612,8 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
         verify_proposal_event(proposal_cmd, 2, proposal_commitment2);
     }
 
-    // Step 6: Send MarkBlockAsDecidedAndCleanUp for parent block (should trigger
-    // finalization)
+    // Step 6: Send MarkBlockAsDecidedAndCleanUp for parent block (should
+    // trigger finalization)
     env.tx_to_p2p
         .send(P2PTaskEvent::MarkBlockAsDecidedAndCleanUp(
             h1r0,
@@ -621,14 +623,15 @@ async fn test_proposal_fin_deferred_until_parent_block_committed(
         .expect("Failed to send MarkBlockAsDecidedAndCleanUp");
     env.verify_task_alive().await;
 
-    // Make sure the above message is consumed before proceeding, otherwise we can
-    // get an ugly race condition which does not occur in reality but will make the
-    // test fail once in a while
+    // Make sure the above message is consumed before proceeding, otherwise we
+    // can get an ugly race condition which does not occur in reality but
+    // will make the test fail once in a while
     env.wait_tx_to_p2p_consumed().await;
 
     if consensus_ahead_of_fgw {
-        // Step 8: At some point sync sends SyncMessageToConsensus::GetFinalizedBlock
-        // for H=1, and then confirms committing the block with
+        // Step 8: At some point sync sends
+        // SyncMessageToConsensus::GetFinalizedBlock for H=1, and then
+        // confirms committing the block with
         // SyncMessageToConsensus::ConfirmBlockCommitted
         env.create_committed_block(1);
         env.tx_sync_to_consensus
@@ -674,8 +677,8 @@ async fn test_full_proposal_flow_normal_order() {
     let transactions = create_transaction_batch(0, 0, 5, chain_id);
     let proposal_init = create_test_proposal_init(chain_id, 2, 1, proposer_address);
 
-    // Focus is on batch execution and deferral logic, not commitment validation.
-    // Using a dummy commitment...
+    // Focus is on batch execution and deferral logic, not commitment
+    // validation. Using a dummy commitment...
     let proposal_commitment = ProposalCommitment(Felt::ZERO);
 
     // Step 1: Send ProposalInit
@@ -850,8 +853,8 @@ async fn test_multiple_batches_execution() {
     let transactions_batch3 = create_transaction_batch(0, 5, 2, chain_id); // Total: 7
     let proposal_init = create_test_proposal_init(chain_id, 2, 1, proposer_address);
 
-    // Focus is on batch execution and deferral logic, not commitment validation.
-    // Using a dummy commitment...
+    // Focus is on batch execution and deferral logic, not commitment
+    // validation. Using a dummy commitment...
     let proposal_commitment = ProposalCommitment(Felt::ZERO);
 
     // Step 1: Send ProposalInit
@@ -949,8 +952,8 @@ async fn test_executed_transaction_count_rollback() {
     let transactions_batch2 = create_transaction_batch(0, 5, 5, chain_id); // Total: 10
     let proposal_init = create_test_proposal_init(chain_id, 2, 1, proposer_address);
 
-    // Focus is on batch execution and deferral logic, not commitment validation.
-    // Using a dummy commitment...
+    // Focus is on batch execution and deferral logic, not commitment
+    // validation. Using a dummy commitment...
     let proposal_commitment = ProposalCommitment(Felt::ZERO);
 
     // Step 1: Send ProposalInit
@@ -1005,9 +1008,9 @@ async fn test_executed_transaction_count_rollback() {
     // Verify: Proposal event should be sent (rollback completed successfully)
     //
     // NOTE: We verify that a proposal event is sent, which indicates rollback
-    // completed. However, we cannot directly verify the transaction count in e2e
-    // tests because the validator is internal to p2p_task. The rollback logic
-    // itself is verified in unit tests
+    // completed. However, we cannot directly verify the transaction count in
+    // e2e tests because the validator is internal to p2p_task. The rollback
+    // logic itself is verified in unit tests
     // (batch_execution.rs::test_executed_transaction_count_rollback).
     // This e2e test verifies that rollback doesn't break the proposal flow
     // end-to-end.
@@ -1218,7 +1221,8 @@ async fn recv_outdated_event_changes_peer_score() {
     let chain_id = ChainId::SEPOLIA_TESTNET;
     let validator_address = ContractAddress::new_or_panic(Felt::from_hex_str("0x123").unwrap());
     let mut env = TestEnvironment::new(chain_id, validator_address);
-    // Latest height (the only in this case) must be higher than the proposal height
+    // Latest height (the only in this case) must be higher than the proposal
+    // height
     // + history.
     env.create_committed_block(TestEnvironment::HISTORY_DEPTH + 4);
     let proposal_height_and_round = HeightAndRound::new(2, 1);
@@ -1246,8 +1250,8 @@ async fn recv_outdated_event_changes_peer_score() {
         .expect("Failed to send ProposalInit");
     env.verify_task_alive().await;
 
-    // As soon as we receive an outdated command, the P2P client should receive the
-    // command to penalize the peer.
+    // As soon as we receive an outdated command, the P2P client should receive
+    // the command to penalize the peer.
     let (peer_id, delta) =
         wait_for_change_peer_score(&mut env.p2p_client_receiver, Duration::from_secs(2))
             .await

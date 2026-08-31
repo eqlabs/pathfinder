@@ -982,8 +982,8 @@ pub mod test_utils {
         .await
         .unwrap();
 
-        // Aggregated state update is the same as state update for pre-confirmed blocks
-        // as there's no pre-latest block.
+        // Aggregated state update is the same as state update for pre-confirmed
+        // blocks as there's no pre-latest block.
         let aggregated_state_update = state_update.clone();
         PendingData::from_parts(
             block,
@@ -1443,8 +1443,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Do not send the body yet. Make sure the request is accepted so that the
-        // global limit is hit.
+        // Do not send the body yet. Make sure the request is accepted so that
+        // the global limit is hit.
         let mut slow_request = tokio::net::TcpStream::connect(addr).await.unwrap();
         slow_request
             .write_all(
@@ -1458,8 +1458,8 @@ mod tests {
         slow_request.flush().await.unwrap();
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        // This request to a different route should be blocked because of the global
-        // limit.
+        // This request to a different route should be blocked because of the
+        // global limit.
         let url = format!("http://{addr}/");
         let client = reqwest::Client::new();
 
@@ -1547,7 +1547,8 @@ mod tests {
 
         let (_jh, url) = ws_keepalive_server(|ws_ctx| {
             ws_ctx.initial_frame_timeout = Duration::from_millis(200);
-            // Long enough that the initial deadline is what closes the connection.
+            // Long enough that the initial deadline is what closes the
+            // connection.
             ws_ctx.ping_interval = Duration::from_secs(30);
         })
         .await;
@@ -1567,7 +1568,8 @@ mod tests {
 
         let (_jh, url) = ws_keepalive_server(|ws_ctx| {
             ws_ctx.initial_frame_timeout = Duration::from_millis(300);
-            // Long enough that the initial deadline is what closes the connection.
+            // Long enough that the initial deadline is what closes the
+            // connection.
             ws_ctx.ping_interval = Duration::from_secs(30);
         })
         .await;
@@ -1632,7 +1634,8 @@ mod tests {
         ws.next().await.unwrap().unwrap();
 
         // Sit through more than `max_missed_pings` intervals without sending
-        // anything. Only pings should arrive and the connection should stay open.
+        // anything. Only pings should arrive and the connection should stay
+        // open.
         let closed = timeout(Duration::from_secs(1), async {
             while let Some(msg) = ws.next().await {
                 if let tokio_tungstenite::tungstenite::Message::Close(_) = msg.unwrap() {
@@ -1641,8 +1644,8 @@ mod tests {
             }
         })
         .await;
-        // We expect a timeout: connection is not closed, because it is exchanging
-        // pings.
+        // We expect a timeout: connection is not closed, because it is
+        // exchanging pings.
         assert!(closed.is_err());
     }
 
@@ -1672,9 +1675,10 @@ mod tests {
         .await
         .unwrap();
 
-        // Leave the stream unpolled. `tokio_tungstenite` answers pings only while
-        // something polls it, so the client looks unresponsive. Wait out more than
-        // `max_missed_pings` intervals before reading what arrived.
+        // Leave the stream unpolled. `tokio_tungstenite` answers pings only
+        // while something polls it, so the client looks unresponsive.
+        // Wait out more than `max_missed_pings` intervals before
+        // reading what arrived.
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         let closed = timeout(Duration::from_secs(1), async {

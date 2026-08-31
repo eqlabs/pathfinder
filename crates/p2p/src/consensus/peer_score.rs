@@ -46,11 +46,11 @@ pub mod penalty {
     use super::{APP_SPECIFIC_WEIGHT, GRAYLIST_THRESHOLD, INITIAL_APPLICATION_SCORE};
 
     // This is the only penalty we have at the moment and the whole peer scoring
-    // system still needs to be tested in a realistic environment before we can be
-    // confident these values make sense.
+    // system still needs to be tested in a realistic environment before we can
+    // be confident these values make sense.
     //
-    // For now we'll set this to a value that requires quite a lot of offenses to
-    // graylist a peer, in order to avoid affecting the network.
+    // For now we'll set this to a value that requires quite a lot of offenses
+    // to graylist a peer, in order to avoid affecting the network.
     pub const OUTDATED_MESSAGE: f64 = penalty(1000);
 
     /// Calculate a penalty value. Penalties are defined in terms of the number

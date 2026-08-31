@@ -297,7 +297,8 @@ mod tests {
                 .finalize_with_hash(BlockHash(felt!("0xb00")));
             tx.insert_block_header(&header).unwrap();
 
-            // Declare & deploy a test class providing an entry point reading from storage
+            // Declare & deploy a test class providing an entry point reading
+            // from storage
             let block1_number = BlockNumber::GENESIS + 1;
             let block1_hash = BlockHash(felt!("0xb01"));
 
@@ -490,8 +491,8 @@ mod tests {
             last_block_header: BlockHeader,
             state_update: StateUpdate,
         ) -> PendingData {
-            // Aggregated state update is the same as state update for pre-confirmed blocks
-            // as there's no pre-latest block.
+            // Aggregated state update is the same as state update for
+            // pre-confirmed blocks as there's no pre-latest block.
             let aggregated_state_update = state_update.clone();
 
             PendingData::from_parts(
@@ -595,7 +596,8 @@ mod tests {
             .await;
             let context = RpcContext::for_tests().with_storage(storage);
 
-            // Our test account class is Sierra 1.7, so the easiest is just to call that.
+            // Our test account class is Sierra 1.7, so the easiest is just to
+            // call that.
             let input = Input {
                 request: FunctionCall {
                     contract_address: account_contract_address,
@@ -623,7 +625,8 @@ mod tests {
             .await;
             let context = RpcContext::for_tests().with_storage(storage);
 
-            // Our test account class is Sierra 1.7, so the easiest is just to call that.
+            // Our test account class is Sierra 1.7, so the easiest is just to
+            // call that.
             let validate_entry_point = EntryPoint::hashed(b"__validate__");
             let input = Input {
                 request: FunctionCall {
@@ -741,7 +744,8 @@ mod tests {
             tx.commit().unwrap();
             drop(connection);
 
-            // Our test account class is Sierra 1.7, so the easiest is just to call that.
+            // Our test account class is Sierra 1.7, so the easiest is just to
+            // call that.
             let caller_entry_point = EntryPoint::hashed(b"call");
             let input = Input {
                 request: FunctionCall {

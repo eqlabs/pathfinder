@@ -342,8 +342,9 @@ impl EthereumClient {
 
             util::task::spawn(async move {
                 let mut interval = tokio::time::interval(poll_interval);
-                // Don't fire missed ticks if a poll takes longer than the interval. We want to
-                // avoid rapid "catch up" bursts if for whatever reason there's a slow down.
+                // Don't fire missed ticks if a poll takes longer than the
+                // interval. We want to avoid rapid "catch up"
+                // bursts if for whatever reason there's a slow down.
                 interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
                 loop {
                     interval.tick().await;

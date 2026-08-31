@@ -454,9 +454,11 @@ impl<P> EventSource<P> {
 
             while let Some(header) = headers.next().await {
                 let Some(block_transactions) = transactions.next().await else {
-                    // Expected transactions stream ended prematurely which means there was an error
-                    // at the source and track sync should be restarted. We should not signal an
-                    // error here as the error has already been indicated at the
+                    // Expected transactions stream ended prematurely which
+                    // means there was an error
+                    // at the source and track sync should be restarted. We
+                    // should not signal an error here as
+                    // the error has already been indicated at the
                     // transactions source.
                     return;
                 };
@@ -798,7 +800,8 @@ impl ProcessStage for StoreBlock {
 
         let mut ordered_events = Vec::new();
         transactions.iter().for_each(|(t, _)| {
-            // Some transactions can emit no events, in that case we insert an empty vector.
+            // Some transactions can emit no events, in that case we insert an
+            // empty vector.
             ordered_events.push(events.remove(&t.hash).unwrap_or_default());
         });
 

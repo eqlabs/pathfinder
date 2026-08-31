@@ -249,8 +249,8 @@ where
         rx_latest.clone(),
     ));
 
-    // Start L1 producer task. Clone the event sender so that the channel remains
-    // open even if the producer task fails.
+    // Start L1 producer task. Clone the event sender so that the channel
+    // remains open even if the producer task fails.
     let mut l1_handle = util::task::spawn(l1_sync(event_sender.clone(), l1_context.clone()));
 
     // Fetch latest blocks from storage
@@ -259,8 +259,8 @@ where
         .context("Fetching latest blocks from storage")?;
     let block_chain = BlockChain::with_capacity(block_cache_size, latest_blocks);
 
-    // Start L2 producer task. Clone the event sender so that the channel remains
-    // open even if the producer task fails.
+    // Start L2 producer task. Clone the event sender so that the channel
+    // remains open even if the producer task fails.
     let mut l2_handle = util::task::spawn(l2_sync(
         event_sender.clone(),
         l2_context.clone(),
@@ -510,19 +510,21 @@ where
         Ok(l2_head)
     })?;
 
-    // (Jan 2026) Although this will not happen on mainnet, nor on testnet, we can
-    // imagine custom networks (in particular ad-hoc integration test networks)
-    // which start from genesis, where the genesis block is decided upon in
-    // consensus and it will not not be available at a feeder gateway until >=3
-    // network participants actually decide upon the genesis block.
+    // (Jan 2026) Although this will not happen on mainnet, nor on testnet, we
+    // can imagine custom networks (in particular ad-hoc integration test
+    // networks) which start from genesis, where the genesis block is
+    // decided upon in consensus and it will not not be available at a
+    // feeder gateway until >=3 network participants actually decide upon
+    // the genesis block.
     let gateway_latest = match sequencer.head().await {
         Ok(gateway_latest) => gateway_latest,
         Err(SequencerError::StarknetError(e))
             if e.code == KnownStarknetErrorCode::BlockNotFound.into() =>
         {
-            // Use some invalid initial values, the reason is that the API is common for
-            // production sync and we don't want to introduce an Option-based runtime check
-            // that could fail.
+            // Use some invalid initial values, the reason is that the API is
+            // common for production sync and we don't want to
+            // introduce an Option-based runtime check that could
+            // fail.
             (BlockNumber::GENESIS, BlockHash::ZERO)
         }
         // head() retries on non starknet errors so any other starknet error code indicates
@@ -541,8 +543,8 @@ where
         tx_latest,
     ));
 
-    // Start L1 producer task. Clone the event sender so that the channel remains
-    // open even if the producer task fails.
+    // Start L1 producer task. Clone the event sender so that the channel
+    // remains open even if the producer task fails.
     let mut l1_handle = util::task::spawn(l1_sync(event_sender.clone(), l1_context.clone()));
 
     // Fetch latest blocks from storage
@@ -553,8 +555,8 @@ where
 
     let sync_to_consensus_tx = consensus_channels.sync_to_consensus_tx.clone();
 
-    // Start L2 producer task. Clone the event sender so that the channel remains
-    // open even if the producer task fails.
+    // Start L2 producer task. Clone the event sender so that the channel
+    // remains open even if the producer task fails.
     let mut l2_handle = util::task::spawn(l2_sync(
         event_sender.clone(),
         Some(consensus_channels.clone()),
@@ -872,11 +874,13 @@ async fn consumer(
                     latest_timestamp = block_timestamp;
                     next_number += 1;
 
-                    // Give a simple log under INFO level, and a more verbose log
-                    // with timing information under DEBUG+ level.
+                    // Give a simple log under INFO level, and a more verbose
+                    // log with timing information under
+                    // DEBUG+ level.
                     //
-                    // This should be removed if we have a configurable log level.
-                    // See the docs for LevelFilter for more information.
+                    // This should be removed if we have a configurable log
+                    // level. See the docs for LevelFilter
+                    // for more information.
                     match tracing::level_filters::LevelFilter::current().into_level() {
                         None => {}
                         Some(level) if level <= tracing::Level::INFO => {
@@ -996,10 +1000,10 @@ async fn consumer(
             }
             let commit_result = tx.commit().context("Committing database transaction");
 
-            // Now that the changes have been committed to storage we can send out the
-            // notification. It is important that this is only ever done _after_
-            // the commit otherwise clients could potentially see inconsistent
-            // state.
+            // Now that the changes have been committed to storage we can send
+            // out the notification. It is important that this is
+            // only ever done _after_ the commit otherwise clients
+            // could potentially see inconsistent state.
             if let Some(notification) = notification {
                 send_notification(notification, &mut notifications);
             }
@@ -1072,7 +1076,8 @@ fn perform_blockchain_pruning(
                 return Ok(());
             };
             if l1_checkpoint >= l2_head {
-                // We don't prune relative to L1 update if it is ahead of (or at) L2 head.
+                // We don't prune relative to L1 update if it is ahead of (or
+                // at) L2 head.
                 return Ok(());
             }
 
@@ -1089,7 +1094,8 @@ fn perform_blockchain_pruning(
                 .context("Querying latest L1 checkpoint")?
             {
                 if l2_head > latest_l1_checkpoint {
-                    // We don't prune relative to L2 head if it is ahead of latest L1 checkpoint.
+                    // We don't prune relative to L2 head if it is ahead of
+                    // latest L1 checkpoint.
                     return Ok(());
                 }
             }
@@ -1111,11 +1117,12 @@ fn perform_blockchain_pruning(
 
     let mut blocks_covered = 0;
     let start = std::time::Instant::now();
-    // For L2 relative pruning this will _usually_ be a single block. The scenario
-    // in which it will be more than that is when the L2 head passes the L1
-    // checkpoint and the L2 relative pruning stops, then the node shuts down so the
-    // L2 head falls behind the L1 checkpoint again. For L1 relative pruning, this
-    // will cover the blocks between two L1 checkpoints.
+    // For L2 relative pruning this will _usually_ be a single block. The
+    // scenario in which it will be more than that is when the L2 head
+    // passes the L1 checkpoint and the L2 relative pruning stops, then the
+    // node shuts down so the L2 head falls behind the L1 checkpoint again.
+    // For L1 relative pruning, this will cover the blocks between two L1
+    // checkpoints.
     for block in earliest.get()..last_kept_block.get() {
         let block = BlockNumber::new(block).expect("Valid block number");
         if tx.block_exists(block.into())? {
@@ -1155,9 +1162,10 @@ async fn latest_n_blocks(
             current = (header.number - 1).into();
         }
 
-        // We need to reverse the order here because we want the last `N` blocks in
-        // chronological order. Our sql query gives us the last `N` blocks but
-        // in reverse order (ORDER BY DESC), so we undo that here.
+        // We need to reverse the order here because we want the last `N` blocks
+        // in chronological order. Our sql query gives us the last `N`
+        // blocks but in reverse order (ORDER BY DESC), so we undo that
+        // here.
         blocks.reverse();
 
         Ok(blocks)
@@ -1274,8 +1282,8 @@ fn l2_update(
     );
 
     if let Some(expected_state_commitment) = block.state_commitment() {
-        // Ensure that roots match.. what should we do if it doesn't? For now the whole
-        // sync process ends..
+        // Ensure that roots match.. what should we do if it doesn't? For now
+        // the whole sync process ends..
         anyhow::ensure!(
             state_commitment == expected_state_commitment,
             "State commitment mismatch"
@@ -1307,10 +1315,12 @@ fn l2_update(
                      sierra_def,
                      casm_def,
                  }| {
-                    // Insert classes before state update because the latter will trigger
-                    // `upsert_declared_at` and insert a NULL definition
+                    // Insert classes before state update because the latter
+                    // will trigger `upsert_declared_at` and
+                    // insert a NULL definition
                     //
-                    // TODO so far `L2Block` does not contain the class definitions, due to the flow
+                    // TODO so far `L2Block` does not contain the class
+                    // definitions, due to the flow
                     // of the FGw sync.
                     transaction.insert_sierra_class_definition(
                         &sierra_hash,
@@ -1337,8 +1347,8 @@ fn l2_update(
 
     // Update L2 database. These types shouldn't be options at this level,
     // but for now the unwraps are "safe" in that these should only ever be
-    // None for pending queries to the sequencer, but we aren't using those here.
-    // Nonetheless, the 0 defaults for l2_gas_price do show in the
+    // None for pending queries to the sequencer, but we aren't using those
+    // here. Nonetheless, the 0 defaults for l2_gas_price do show in the
     // database (for old blocks that don't really have that price),
     // and since the feeder gateway normally returns 1 in that case,
     // that should also be the default.
@@ -1512,8 +1522,8 @@ Blockchain history must include the reorg tail and its parent block to perform a
 
     // Roll back Merkle trie updates.
     //
-    // If we're rolling back genesis then there will be no blocks left so state will
-    // be empty.
+    // If we're rolling back genesis then there will be no blocks left so state
+    // will be empty.
     if let Some(target_block) = reorg_tail.parent() {
         let Some(target_header) = transaction
             .block_header(target_block.into())
@@ -1562,8 +1572,8 @@ Blockchain history must include the reorg tail and its parent block to perform a
     let l1_l2_head = transaction.l1_l2_pointer().context("Query L1-L2 head")?;
     if let Some(l1_l2_head) = l1_l2_head {
         if reorg_tail == BlockNumber::GENESIS {
-            // If we purged genesis then unset the L1 L2 pointer as well since there
-            // are now no blocks remaining.
+            // If we purged genesis then unset the L1 L2 pointer as well since
+            // there are now no blocks remaining.
             transaction
                 .update_l1_l2_pointer(None)
                 .context("Unsetting L1-L2 head")?;
@@ -1801,8 +1811,9 @@ mod tests {
                     }),
                 },
             ];
-            // Generate a random receipt for each transaction. Note that these won't make
-            // physical sense but its enough for the tests.
+            // Generate a random receipt for each transaction. Note that these
+            // won't make physical sense but its enough for the
+            // tests.
             let transaction_receipts: Vec<(pathfinder_common::receipt::Receipt, Vec<Event>)> =
                 transactions
                     .iter()
@@ -1946,8 +1957,9 @@ mod tests {
                     }),
                 },
             ];
-            // Generate a random receipt for each transaction. Note that these won't make
-            // physical sense but its enough for the tests.
+            // Generate a random receipt for each transaction. Note that these
+            // won't make physical sense but its enough for the
+            // tests.
             let transaction_receipts: Vec<(pathfinder_common::receipt::Receipt, Vec<Event>)> =
                 transactions
                     .iter()
@@ -2070,8 +2082,9 @@ mod tests {
 
         let tx = connection.transaction().unwrap();
         for i in 0..num_blocks {
-            // TODO: Ideally we would test data consistency as well, but that will be easier
-            // once we use the same types between storage, sync and gateway.
+            // TODO: Ideally we would test data consistency as well, but that
+            // will be easier once we use the same types between
+            // storage, sync and gateway.
             let should_exist = tx
                 .block_exists(BlockNumber::new_or_panic(i as u64).into())
                 .unwrap();
@@ -2165,8 +2178,8 @@ mod tests {
             .await
             .unwrap();
         // This previously failed as the expected next block number was never
-        // updated after a reorg, causing the reorg'd block numbers to be considered
-        // duplicates and skipped - breaking sync.
+        // updated after a reorg, causing the reorg'd block numbers to be
+        // considered duplicates and skipped - breaking sync.
         event_tx
             .send(SyncEvent::DownloadedBlock(
                 block2.0, block2.1, block2.2, block2.3, block2.4,
@@ -2597,7 +2610,8 @@ mod tests {
             let tx = conn.transaction().unwrap();
             for block in 0..(num_blocks - 1) {
                 let block_id: BlockId = BlockNumber::new_or_panic(block).into();
-                // Transaction data has been pruned (as well as block so query returns None).
+                // Transaction data has been pruned (as well as block so query
+                // returns None).
                 assert!(tx.transactions_for_block(block_id).unwrap().is_none());
                 assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
                 // Block data has been pruned.
@@ -2656,7 +2670,8 @@ mod tests {
 
             for block in 0..(num_blocks - 1) {
                 let block_id: BlockId = BlockNumber::new_or_panic(block).into();
-                // Transaction data has been pruned (as well as block so query returns None).
+                // Transaction data has been pruned (as well as block so query
+                // returns None).
                 assert!(tx.transactions_for_block(block_id).unwrap().is_none());
                 assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
                 // Block data has been pruned.
@@ -2888,7 +2903,8 @@ Blockchain history must include the reorg tail and its parent block to perform a
             let prunable_blocks = vec![0, 1];
             for block in prunable_blocks {
                 let block_id: BlockId = BlockNumber::new_or_panic(block).into();
-                // Transaction data has been pruned (as well as block so query returns None).
+                // Transaction data has been pruned (as well as block so query
+                // returns None).
                 assert!(tx.transactions_for_block(block_id).unwrap().is_none());
                 assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
                 // Block data has been pruned.
@@ -2943,15 +2959,16 @@ Blockchain history must include the reorg tail and its parent block to perform a
 
             for block in pruned_blocks {
                 let block_id: BlockId = BlockNumber::new_or_panic(block).into();
-                // Transaction data has been pruned (as well as block so query returns None).
+                // Transaction data has been pruned (as well as block so query
+                // returns None).
                 assert!(tx.transactions_for_block(block_id).unwrap().is_none());
                 assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
                 // Block data has been pruned.
                 assert!(!tx.block_exists(block_id).unwrap());
             }
 
-            // Block 2 is not pruned but also cannot be queried for state update since it
-            // doesn't have a parent block.
+            // Block 2 is not pruned but also cannot be queried for state update
+            // since it doesn't have a parent block.
             assert!(tx
                 .block_exists(BlockNumber::new_or_panic(2).into())
                 .unwrap());
@@ -3012,8 +3029,8 @@ Blockchain history must include the reorg tail and its parent block to perform a
 
             let blocks = generate_block_data();
             let latest = blocks.len() - 1;
-            // Make sure pruning doesn't happen before next L1 checkpoint (by setting the
-            // current L1 checkpoint to genesis).
+            // Make sure pruning doesn't happen before next L1 checkpoint (by
+            // setting the current L1 checkpoint to genesis).
             let genesis_state_update = EthereumStateUpdate {
                 block_number: BlockNumber::GENESIS,
                 ..Default::default()
@@ -3062,7 +3079,8 @@ Blockchain history must include the reorg tail and its parent block to perform a
 
             for block in prunable_blocks {
                 let block_id: BlockId = BlockNumber::new_or_panic(block).into();
-                // Transaction data has been pruned (as well as block so query returns None).
+                // Transaction data has been pruned (as well as block so query
+                // returns None).
                 assert!(tx.transactions_for_block(block_id).unwrap().is_none());
                 assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
                 // Block data has been pruned.
@@ -3201,8 +3219,8 @@ Blockchain history must include the reorg tail and its parent block to perform a
             drop(conn);
             drop(storage);
 
-            // Create a new storage object to make sure the running event filter is rebuilt
-            // correctly even when filters are pruned.
+            // Create a new storage object to make sure the running event filter
+            // is rebuilt correctly even when filters are pruned.
             let storage =
                 StorageBuilder::in_persisted_tempdir_with_blockchain_pruning_and_pool_size(
                     &tempdir,
@@ -3212,7 +3230,8 @@ Blockchain history must include the reorg tail and its parent block to perform a
                 .unwrap();
             let mut conn = storage.connection().unwrap();
             let db_tx = conn.transaction().unwrap();
-            // Running event filter got rebuilt so its next expected block is latest + 1.
+            // Running event filter got rebuilt so its next expected block is
+            // latest + 1.
             assert_eq!(
                 db_tx.next_block_without_events().get(),
                 AGGREGATE_BLOOM_BLOCK_RANGE_LEN + 1

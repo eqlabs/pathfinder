@@ -32,8 +32,8 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
         .finalize_with_hash(BlockHash(felt!("0xb00")));
     tx.insert_block_header(&genesis).unwrap();
 
-    // Declare a modified OpenZeppelin AccountUpgradeable account class that does
-    // _no_ signature checks.
+    // Declare a modified OpenZeppelin AccountUpgradeable account class that
+    // does _no_ signature checks.
     let openzeppelin_account_class_definition = include_bytes!(
         "../fixtures/contracts/openzeppelin/openzeppelin_presets_AccountUpgradeable.\
          starknet_contract_class.json"

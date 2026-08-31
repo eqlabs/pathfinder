@@ -68,8 +68,9 @@ pub async fn get_nonce(
             return Ok(Output(nonce));
         };
 
-        // Early starknet contracts had no nonces, so its possible for a contract to
-        // exist without having the nonce explicitly set to zero on deployment.
+        // Early starknet contracts had no nonces, so its possible for a
+        // contract to exist without having the nonce explicitly set to
+        // zero on deployment.
         let contract_exists = tx
             .contract_exists(input.contract_address, block_id)
             .context("Checking contract exists")?;
@@ -153,7 +154,8 @@ mod tests {
     async fn latest() {
         let context = RpcContext::for_tests();
 
-        // This contract is created in `setup_storage` and has a nonce set to 0x1.
+        // This contract is created in `setup_storage` and has a nonce set to
+        // 0x1.
         let input = Input {
             block_id: BlockId::Latest,
             contract_address: contract_address_bytes!(b"contract 0"),
@@ -180,8 +182,8 @@ mod tests {
     async fn pre_confirmed() {
         let context = RpcContext::for_tests_with_pre_confirmed().await;
 
-        // This contract is created in `setup_storage` and has a nonce set in the
-        // pending block.
+        // This contract is created in `setup_storage` and has a nonce set in
+        // the pending block.
         let input = Input {
             block_id: BlockId::PreConfirmed,
             contract_address: contract_address_bytes!(b"contract 1"),
@@ -196,8 +198,8 @@ mod tests {
     async fn pre_latest() {
         let context = RpcContext::for_tests_with_pre_latest_and_pre_confirmed().await;
 
-        // This contract is created during storage setup and has a nonce set in the
-        // pre-latest block.
+        // This contract is created during storage setup and has a nonce set in
+        // the pre-latest block.
         let input = Input {
             block_id: BlockId::PreConfirmed,
             contract_address: contract_address_bytes!(b"prelatest contract 1 address"),
@@ -212,9 +214,9 @@ mod tests {
     async fn pre_confirmed_defaults_to_latest() {
         let context = RpcContext::for_tests();
 
-        // This contract is created in `setup_storage` and has a nonce set to 0x1, and
-        // is not overwritten in pre confirmed (since this test does not specify any
-        // pending data).
+        // This contract is created in `setup_storage` and has a nonce set to
+        // 0x1, and is not overwritten in pre confirmed (since this test
+        // does not specify any pending data).
         let input = Input {
             block_id: BlockId::PreConfirmed,
             contract_address: contract_address_bytes!(b"contract 0"),
@@ -242,8 +244,8 @@ mod tests {
     async fn contract_deployed_in_pre_confirmed_defaults_to_zero() {
         let context = RpcContext::for_tests_with_pre_confirmed().await;
 
-        // This contract is deployed in the pre-confirmed block but does not have a
-        // nonce update.
+        // This contract is deployed in the pre-confirmed block but does not
+        // have a nonce update.
         let input = Input {
             block_id: BlockId::PreConfirmed,
             contract_address: contract_address_bytes!(b"preconfirmed contract 0 address"),

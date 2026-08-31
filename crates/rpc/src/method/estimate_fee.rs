@@ -713,8 +713,8 @@ mod tests {
             transaction_nonce!("0x2"),
             call_param!("0x7"),
         );
-        // Invoke once more to test that the execution state updates properly with L2
-        // gas accounting aware code.
+        // Invoke once more to test that the execution state updates properly
+        // with L2 gas accounting aware code.
         let invoke_transaction2 = invoke_v3_transaction_with_data_gas(
             account_contract_address,
             transaction_nonce!("0x3"),
@@ -765,8 +765,8 @@ mod tests {
             transaction_nonce!("0x2"),
             call_param!("0x7"),
         );
-        // Invoke once more to test that the execution state updates properly with L2
-        // gas accounting aware code.
+        // Invoke once more to test that the execution state updates properly
+        // with L2 gas accounting aware code.
         let invoke_transaction2 = invoke_v3_transaction_with_data_gas(
             account_contract_address,
             transaction_nonce!("0x3"),
@@ -818,8 +818,8 @@ mod tests {
             transaction_nonce!("0x2"),
             call_param!("0x7"),
         );
-        // Invoke once more to test that the execution state updates properly with L2
-        // gas accounting aware code.
+        // Invoke once more to test that the execution state updates properly
+        // with L2 gas accounting aware code.
         let invoke_transaction2 = invoke_v3_transaction_with_data_gas(
             account_contract_address,
             transaction_nonce!("0x3"),
@@ -1003,8 +1003,9 @@ mod tests {
         // deploy with universal deployer contract
         let deploy_transaction =
             deploy_v3_transaction(account_contract_address, universal_deployer_address);
-        // Invoke deployed contract with large depth (it is a recursive function) such
-        // that the L2 gas required exceeds the user provided limit.
+        // Invoke deployed contract with large depth (it is a recursive
+        // function) such that the L2 gas required exceeds the user
+        // provided limit.
         let invoke_transaction = invoke_v3_transaction_with_data_gas(
             account_contract_address,
             transaction_nonce!("0x2"),

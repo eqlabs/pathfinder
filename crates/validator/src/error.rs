@@ -63,7 +63,8 @@ impl ProposalHandlingError {
     /// extracts the full error chain as a message otherwise.
     pub fn recoverable(error: impl Into<anyhow::Error>) -> Self {
         let err = error.into();
-        // Check if it's actually a storage error (shouldn't happen, but be safe)
+        // Check if it's actually a storage error (shouldn't happen, but be
+        // safe)
         if is_storage_error(&err) {
             Self::Fatal(err)
         } else {

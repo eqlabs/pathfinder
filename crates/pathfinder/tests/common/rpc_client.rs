@@ -45,13 +45,15 @@ async fn wait_for_height_fut(
     let mut last_hnr = None;
 
     loop {
-        // Sleeping first actually makes sense here, because the node will likely not
-        // have any decided heights immediately after the RPC server is ready.
+        // Sleeping first actually makes sense here, because the node will
+        // likely not have any decided heights immediately after the RPC
+        // server is ready.
         sleep(poll_interval).await;
 
-        // We're waiting for the rpc port to change from 0 on each iteriation, because
-        // in case of tests where the instance is terminated and then respawned the RPC
-        // port number will temporarily be reset to 0.
+        // We're waiting for the rpc port to change from 0 on each iteriation,
+        // because in case of tests where the instance is terminated and
+        // then respawned the RPC port number will temporarily be reset
+        // to 0.
         let (pid, rpc_port) =
             if let Ok(borrowed) = rpc_port_watch_rx.wait_for(|port| *port != (0, 0)).await {
                 *borrowed
@@ -133,9 +135,10 @@ async fn wait_for_block_exists_fut(
     loop {
         sleep(poll_interval).await;
 
-        // We're waiting for the rpc port to change from 0 on each iteriation, because
-        // in case of tests where the instance is terminated and then respawned the RPC
-        // port number will temporarily be reset to 0.
+        // We're waiting for the rpc port to change from 0 on each iteriation,
+        // because in case of tests where the instance is terminated and
+        // then respawned the RPC port number will temporarily be reset
+        // to 0.
         let (pid, rpc_port) =
             if let Ok(borrowed) = rpc_port_watch_rx.wait_for(|port| *port != (0, 0)).await {
                 *borrowed
@@ -217,8 +220,8 @@ async fn handle_reply<T>(
                 "Pathfinder instance {name:<7} (pid: {pid}) port {rpc_port} {artifact_name} \
                  unavailable yet"
             );
-            // It seems like the node does not have this artifact available yet, but it
-            // might be available soon, so let's just wait.
+            // It seems like the node does not have this artifact available yet,
+            // but it might be available soon, so let's just wait.
             HandleReplyResult::Continue
         }
         Err(error) if error.is_decode() => {
@@ -229,12 +232,14 @@ async fn handle_reply<T>(
                 )))
                 .await
                 .unwrap();
-            // We're can't fix the issue here, waiting won't work either, we're done
+            // We're can't fix the issue here, waiting won't work either, we're
+            // done
             HandleReplyResult::Bail
         }
         Err(_) => {
-            // There's not much we can do here. Some of these maybe be send errors due to
-            // the node being in the process of being respawned, so let's just wait.
+            // There's not much we can do here. Some of these maybe be send
+            // errors due to the node being in the process of being
+            // respawned, so let's just wait.
             HandleReplyResult::Continue
         }
     }
@@ -262,8 +267,8 @@ pub async fn get_cached_artifacts_info(
     let fut = async move {
         let name = instance.name();
         let mut rpc_port_watch_rx = instance.rpc_port_watch_rx().clone();
-        // If any of the nodes crashes we need to timeout otherwise the test will just
-        // hang forever.
+        // If any of the nodes crashes we need to timeout otherwise the test
+        // will just hang forever.
         let (pid, rpc_port) =
             if let Ok(borrowed) = rpc_port_watch_rx.wait_for(|port| *port != (0, 0)).await {
                 *borrowed

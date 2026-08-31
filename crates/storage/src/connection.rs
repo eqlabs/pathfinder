@@ -117,9 +117,9 @@ type TransactionDataForBlock = (StarknetTransaction, Receipt, Vec<Event>);
 type EventsForBlock = ((TransactionHash, TransactionIndex), Vec<Event>);
 
 impl Transaction<'_> {
-    // The implementations here are intentionally kept as simple wrappers. This lets
-    // the real implementations be kept in separate files with more reasonable
-    // LOC counts and easier test oversight.
+    // The implementations here are intentionally kept as simple wrappers. This
+    // lets the real implementations be kept in separate files with more
+    // reasonable LOC counts and easier test oversight.
 
     pub(crate) fn inner(&self) -> &rusqlite::Transaction<'_> {
         &self.transaction

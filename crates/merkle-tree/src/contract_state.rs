@@ -79,8 +79,8 @@ pub fn update_contract_state(
     };
 
     let class_hash = if contract_address.is_system_contract() {
-        // This is a special system contract at address 0x1 or 0x2, which doesn't have a
-        // class hash.
+        // This is a special system contract at address 0x1 or 0x2, which
+        // doesn't have a class hash.
         ClassHash::ZERO
     } else if let Some(class_hash) = new_class_hash {
         class_hash
@@ -126,9 +126,9 @@ pub fn calculate_contract_state_hash(
     let hash = pedersen_hash(hash, nonce.0);
     let hash = pedersen_hash(hash, CONTRACT_STATE_HASH_VERSION);
 
-    // Compare this with the HashChain construction used in the contract_hash: the
-    // number of elements is not hashed to this hash, and this is supposed to be
-    // different.
+    // Compare this with the HashChain construction used in the contract_hash:
+    // the number of elements is not hashed to this hash, and this is
+    // supposed to be different.
     ContractStateHash(hash)
 }
 
@@ -201,8 +201,8 @@ pub fn revert_contract_state(
 
             let state_hash = if contract_address.is_system_contract() && root == ContractRoot::ZERO
             {
-                // special case: if the contract trie is empty the system contract should be
-                // deleted
+                // special case: if the contract trie is empty the system
+                // contract should be deleted
                 ContractStateHash::ZERO
             } else {
                 calculate_contract_state_hash(class_hash, root, nonce)

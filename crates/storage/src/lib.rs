@@ -213,7 +213,8 @@ impl StorageBuilder {
         static COUNT: std::sync::Mutex<u64> = std::sync::Mutex::new(0);
         let unique_mem_db = {
             let mut count = COUNT.lock().unwrap();
-            // &cache=shared allows other threads to see and access the inmemory database
+            // &cache=shared allows other threads to see and access the inmemory
+            // database
             let unique_mem_db = format!("file:memdb{count}?mode=memory&cache=shared");
             *count += 1;
             unique_mem_db
@@ -221,8 +222,9 @@ impl StorageBuilder {
 
         let database_path = PathBuf::from(unique_mem_db);
         // This connection must be held until a pool has been created, since an
-        // in-memory database is dropped once all its connections are. This connection
-        // therefore holds the database in-place until the pool is established.
+        // in-memory database is dropped once all its connections are. This
+        // connection therefore holds the database in-place until the
+        // pool is established.
         let conn = rusqlite::Connection::open(&database_path)?;
 
         let mut storage = Self::file(database_path)
@@ -249,7 +251,8 @@ impl StorageBuilder {
         static COUNT: std::sync::Mutex<u64> = std::sync::Mutex::new(0);
         let unique_mem_db = {
             let mut count = COUNT.lock().unwrap();
-            // &cache=shared allows other threads to see and access the inmemory database
+            // &cache=shared allows other threads to see and access the inmemory
+            // database
             let unique_mem_db = format!("file:memdb{count}?mode=memory&cache=shared");
             *count += 1;
             unique_mem_db
@@ -257,8 +260,9 @@ impl StorageBuilder {
 
         let database_path = PathBuf::from(unique_mem_db);
         // This connection must be held until a pool has been created, since an
-        // in-memory database is dropped once all its connections are. This connection
-        // therefore holds the database in-place until the pool is established.
+        // in-memory database is dropped once all its connections are. This
+        // connection therefore holds the database in-place until the
+        // pool is established.
         let conn = rusqlite::Connection::open(&database_path)?;
 
         let mut storage = Self::file(database_path)
@@ -280,9 +284,10 @@ impl StorageBuilder {
     /// connections and shared cache causes locking errors if the connection
     /// pool is larger than 1 and timeouts otherwise.
     pub fn in_tempdir() -> anyhow::Result<Storage> {
-        // Note: it is ok to drop the tempdir object and hence delete the tempdir right
-        // after opening the storage, because the connection pool keeps the inode alive
-        // for the lifetime of the storage anyway.
+        // Note: it is ok to drop the tempdir object and hence delete the
+        // tempdir right after opening the storage, because the
+        // connection pool keeps the inode alive for the lifetime of the
+        // storage anyway.
         let tempdir = tempfile::tempdir()?;
         tracing::trace!("Creating storage in: {}", tempdir.path().display());
         crate::StorageBuilder::file(tempdir.path().join("db.sqlite"))
@@ -297,9 +302,10 @@ impl StorageBuilder {
         trie_prune_mode: TriePruneMode,
         pool_size: NonZeroU32,
     ) -> anyhow::Result<Storage> {
-        // Note: it is ok to drop the tempdir object and hence delete the tempdir right
-        // after opening the storage, because the connection pool keeps the inode alive
-        // for the lifetime of the storage anyway.
+        // Note: it is ok to drop the tempdir object and hence delete the
+        // tempdir right after opening the storage, because the
+        // connection pool keeps the inode alive for the lifetime of the
+        // storage anyway.
         let tempdir = tempfile::tempdir()?;
         tracing::trace!("Creating storage in: {}", tempdir.path().display());
         crate::StorageBuilder::file(tempdir.path().join("db.sqlite"))
@@ -346,9 +352,9 @@ impl StorageBuilder {
                 )
                 .context("Opening DB for migration")?;
 
-        // Migration is done with rollback journal mode. Otherwise dropped tables
-        // get copied into the WAL which is prohibitively expensive for large
-        // tables.
+        // Migration is done with rollback journal mode. Otherwise dropped
+        // tables get copied into the WAL which is prohibitively
+        // expensive for large tables.
         setup_journal_mode(&mut connection, JournalMode::Rollback)
             .context("Setting journal mode to rollback")?;
         setup_connection(&mut connection, JournalMode::Rollback)
@@ -609,9 +615,10 @@ fn validate_mode_and_update_db(
                 return Ok(blockchain_history_mode);
             }
 
-            // If the blockchain history size got reduced, here we use the opportunity to
-            // prune the now excess blocks. If the size got increased, we don't need to do
-            // anything here since the gap will be filled as new blocks are synced.
+            // If the blockchain history size got reduced, here we use the
+            // opportunity to prune the now excess blocks. If the
+            // size got increased, we don't need to do anything here
+            // since the gap will be filled as new blocks are synced.
             let num_blocks_to_remove = match init_num_blocks_kept.checked_sub(num_blocks_kept) {
                 Some(block_diff) if block_diff > 0 => block_diff,
                 _ => return Ok(blockchain_history_mode),
@@ -705,12 +712,13 @@ fn setup_connection(
 
     match journal_mode {
         JournalMode::Rollback => {
-            // According to the documentation FULL is the recommended setting for rollback
-            // mode.
+            // According to the documentation FULL is the recommended setting
+            // for rollback mode.
             connection.pragma_update(None, "synchronous", "full")?;
         }
         JournalMode::WAL => {
-            // According to the documentation NORMAL is a good choice for WAL mode.
+            // According to the documentation NORMAL is a good choice for WAL
+            // mode.
             connection.pragma_update(None, "synchronous", "normal")?;
         }
     };
@@ -884,10 +892,10 @@ mod tests {
     fn foreign_keys_are_enforced() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
 
-        // We first disable foreign key support. Sqlite currently enables this by
-        // default, but this may change in the future. So we disable to check
-        // that our enable function works regardless of what Sqlite's default
-        // is.
+        // We first disable foreign key support. Sqlite currently enables this
+        // by default, but this may change in the future. So we disable
+        // to check that our enable function works regardless of what
+        // Sqlite's default is.
         use rusqlite::config::DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY;
         conn.set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, false)
             .unwrap();
@@ -1060,7 +1068,8 @@ mod tests {
         // We are using only the running event filter.
         assert!(inserted_event_filter_count == 0);
         assert!(events_after.len() > events_before.len());
-        // Events added in the first run are present in the running event filter.
+        // Events added in the first run are present in the running event
+        // filter.
         for e in events_before {
             assert!(events_after.contains(&e));
         }

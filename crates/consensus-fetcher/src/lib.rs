@@ -99,7 +99,8 @@ fn get_proposer_contract_address(
     match chain_id {
         ChainId::SEPOLIA_TESTNET => {
             // Sepolia testnet mock proposer contract
-            // TODO: Replace with actual proposer contract address when available
+            // TODO: Replace with actual proposer contract address when
+            // available
             parse_contract_address(
                 "0x06473b97715c7b665923bc0629c66f2a7b8a1ce144699be12bcbe1e3278f109d",
             )
@@ -267,8 +268,8 @@ where
     let array_length = u64::from_be_bytes(first_bytes[24..32].try_into().unwrap());
 
     // Skip the first element (array length) and process the data
-    // The remaining elements are the participant data (address, public_key, value)
-    // for each participant
+    // The remaining elements are the participant data (address, public_key,
+    // value) for each participant
     let data = &result[1..];
 
     // Validate that we have the expected number of elements

@@ -153,8 +153,9 @@ where
                 }
             };
 
-            // Initial sync might take so long that the latest checkpoint is actually far
-            // ahead again. Repeat until we are within some margin of L1.
+            // Initial sync might take so long that the latest checkpoint is
+            // actually far ahead again. Repeat until we are within
+            // some margin of L1.
             let latest_checkpoint = self.get_checkpoint().await;
             if checkpoint.block_number + CHECKPOINT_MARGIN < latest_checkpoint.block_number {
                 checkpoint = latest_checkpoint;
@@ -377,7 +378,8 @@ mod tests {
         storage: Storage,
         expected_last: BlockNumber,
     ) {
-        // Don't poll the DB until the last event is emitted from the fake P2P client
+        // Don't poll the DB until the last event is emitted from the fake P2P
+        // client
         last_event_rx.recv().await.unwrap();
 
         let mut interval = tokio::time::interval_at(
@@ -395,8 +397,9 @@ mod tests {
             let done = tokio::task::spawn_blocking(move || {
                 let mut db = storage.connection().unwrap();
                 let db = db.transaction().unwrap();
-                // We don't have to query the entire block, as tracking sync commits entire
-                // blocks to the DB, so if the header is there, the block is there
+                // We don't have to query the entire block, as tracking sync
+                // commits entire blocks to the DB, so if the
+                // header is there, the block is there
                 let header = db.block_header(expected_last.into()).unwrap();
                 if let Some(header) = header {
                     if header.number == expected_last {
@@ -961,9 +964,11 @@ mod tests {
                 tracing::debug!(%block,
                     "FakeP2PClient::transactions_for_block triggering fatal error at",
                 );
-                // Returning an error from the "for_block" apis does not trigger a fatal error
-                // so instead we insert a fake header for this very block to trigger an
-                // insertion conflict when track is about to store the entire block
+                // Returning an error from the "for_block" apis does not trigger
+                // a fatal error so instead we insert a fake
+                // header for this very block to trigger an
+                // insertion conflict when track is about to store the entire
+                // block
                 let mut db = self.storage.connection().unwrap();
                 let db = db.transaction().unwrap();
                 let header = BlockHeader {

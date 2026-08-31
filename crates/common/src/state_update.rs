@@ -242,8 +242,8 @@ impl StateUpdate {
             x.nonce.or_else(|| {
                 x.class.as_ref().and_then(|c| match c {
                     ContractClassUpdate::Deploy(_) => {
-                        // The contract has been just deployed in the pending block, so
-                        // its nonce is zero.
+                        // The contract has been just deployed in the pending
+                        // block, so its nonce is zero.
                         Some(ContractNonce::ZERO)
                     }
                     ContractClassUpdate::Replace(_) => None,
@@ -788,7 +788,8 @@ mod tests {
         let result = state_update.contract_nonce(contract_address!("0x10"));
         assert_eq!(result, Some(contract_nonce!("0x20")));
 
-        // A newly deployed contract without an explicit nonce set should be zero
+        // A newly deployed contract without an explicit nonce set should be
+        // zero
         let result = state_update.contract_nonce(contract_address!("0x2"));
         assert_eq!(result, Some(ContractNonce::ZERO));
 

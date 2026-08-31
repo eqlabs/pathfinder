@@ -245,8 +245,8 @@ mod tests {
     async fn pre_confirmed() {
         let ctx = RpcContext::for_tests_with_pre_confirmed().await;
 
-        // This contract is created during storage setup and has a storage value set in
-        // the pre-confirmed block.
+        // This contract is created during storage setup and has a storage value
+        // set in the pre-confirmed block.
         let input = Input {
             contract_address: contract_address_bytes!(b"preconfirmed contract 1 address"),
             key: storage_address_bytes!(b"preconfirmed storage key 0"),
@@ -267,8 +267,8 @@ mod tests {
     async fn pre_latest() {
         let ctx = RpcContext::for_tests_with_pre_latest_and_pre_confirmed().await;
 
-        // This contract is created during storage setup and has a storage value set in
-        // the pre-latest block.
+        // This contract is created during storage setup and has a storage value
+        // set in the pre-latest block.
         let input = Input {
             contract_address: contract_address_bytes!(b"prelatest contract 1 address"),
             key: storage_address_bytes!(b"prelatest storage key 0"),

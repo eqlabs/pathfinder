@@ -192,7 +192,8 @@ mod tests {
         // Contract 0x2 is a system contract.
         let contract_address = ContractAddress::TWO;
 
-        // Create contract storage tree with single entry: key 0x0 -> value 0x80.
+        // Create contract storage tree with single entry: key 0x0 -> value
+        // 0x80.
         let mut contract_tree = ContractsStorageTree::empty(&tx, contract_address);
         contract_tree
             .set(storage_address!("0x0"), storage_value!("0x80"))
@@ -252,8 +253,8 @@ mod tests {
         let storage_commitment = storage_commitment!("0x1234");
         let class_commitment = ClassCommitment::ZERO;
 
-        // Pre-v0.14: state_commitment should equal storage_commitment when class is
-        // zero.
+        // Pre-v0.14: state_commitment should equal storage_commitment when
+        // class is zero.
         let state_v013 = StateCommitment::calculate(
             storage_commitment,
             class_commitment,
@@ -283,7 +284,8 @@ mod tests {
         let storage_commitment = storage_commitment!("0x1234");
         let class_commitment = class_commitment!("0x5678");
 
-        // Both versions should use Poseidon formula when class_commitment is non-zero.
+        // Both versions should use Poseidon formula when class_commitment is
+        // non-zero.
         let state_v013 = StateCommitment::calculate(
             storage_commitment,
             class_commitment,

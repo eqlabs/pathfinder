@@ -194,8 +194,8 @@ impl Account {
         Ok(())
     }
 
-    // Simulate constructor logic (register interfaces and set public key), as done
-    // in https://github.com/OpenZeppelin/cairo-contracts/blob/89a450a88628ec3b86273f261b2d8d1ca9b1522b/src/account/account.cairo#L207-L211
+    // Simulate constructor logic (register interfaces and set public key), as
+    // done in https://github.com/OpenZeppelin/cairo-contracts/blob/89a450a88628ec3b86273f261b2d8d1ca9b1522b/src/account/account.cairo#L207-L211
     fn simulate_constructor(&self, state_update: &mut StateUpdateData) -> anyhow::Result<()> {
         let interface_storage_var = get_storage_var_address(
             "SRC5_supported_interfaces",
@@ -294,8 +294,8 @@ impl Account {
         //     "0x0457EF47CFAA819D9FE1372E8957815CDBA2252ED3E42A15536A5A40747C8A00",
         //     /* UDC Calldata - salt */
         //     "0x0",
-        //     /* UDC Calldata - not_from_zero, 0 for origin independent deployment */
-        //     "0x0",
+        //     /* UDC Calldata - not_from_zero, 0 for origin independent
+        // deployment */     "0x0",
         //     /* UDC Calldata - calldata to pass to the target contract */
         //     "0x0"
         // ],

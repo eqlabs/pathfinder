@@ -821,8 +821,8 @@ fn resolve_block(
 
     let (transaction_commitment, event_commitment) =
         if header.starknet_version < StarknetVersion::V_0_13_2 {
-            // This needs to be re-calculated because we _always_ store 0.13.2 commitments
-            // in the DB for P2P sync purposes
+            // This needs to be re-calculated because we _always_ store 0.13.2
+            // commitments in the DB for P2P sync purposes
             let transaction_commitment =
                 calculate_transaction_commitment(&transactions, header.starknet_version)?;
             let events: Vec<_> = transaction_receipts

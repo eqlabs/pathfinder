@@ -87,8 +87,8 @@ where
         assert!(enable_kademlia, "Kademlia must be enabled in production");
 
         let kademlia = Toggle::from(enable_kademlia.then_some({
-            // This makes sure that the DHT we're implementing is incompatible with the
-            // "default" IPFS DHT from libp2p.
+            // This makes sure that the DHT we're implementing is incompatible
+            // with the "default" IPFS DHT from libp2p.
             let protocol_name = cfg
                 .kad_name
                 .clone()

@@ -117,10 +117,11 @@ where
             .await
             .context("Analysing local storage against L1 checkpoint")?;
 
-        // Persist checkpoint as new L1 anchor. This must be done first to protect
-        // against an interrupted sync process. Subsequent syncs will use this
-        // value to rollback against. Persisting it later would result in more data than
-        // necessary being rolled back (potentially all data if the header sync process
+        // Persist checkpoint as new L1 anchor. This must be done first to
+        // protect against an interrupted sync process. Subsequent syncs
+        // will use this value to rollback against. Persisting it later
+        // would result in more data than necessary being rolled back
+        // (potentially all data if the header sync process
         // is frequently interrupted), so this ensures sync will progress even
         // under bad conditions.
         let anchor = checkpoint;
@@ -130,8 +131,8 @@ where
 
         let head = anchor.block_number;
 
-        // Sync missing headers in reverse chronological order, from the new anchor to
-        // genesis.
+        // Sync missing headers in reverse chronological order, from the new
+        // anchor to genesis.
         self.sync_headers(anchor).await?;
 
         // Sync the rest of the data in chronological order.
@@ -551,8 +552,9 @@ impl CheckpointAnalysis {
                 anyhow::bail!("Ethereum checkpoint hash did not match local anchor.");
             }
             CheckpointAnalysis::PredatesAnchor { checkpoint, anchor } => {
-                // TODO: or consider this valid. If so, then we should continue sync but use the
-                // local anchor instead of the checkpoint.
+                // TODO: or consider this valid. If so, then we should continue
+                // sync but use the local anchor instead of the
+                // checkpoint.
                 tracing::error!(
                     %checkpoint, %anchor,
                     "Ethereum checkpoint is older than the local anchor. This indicates a serious inconsistency in the Ethereum source used by this sync and the previous sync."
@@ -691,8 +693,8 @@ async fn persist_anchor(storage: Storage, anchor: EthereumStateUpdate) -> anyhow
             .context("Creating database connection")?;
         let db = db.transaction().context("Creating database transaction")?;
         db.upsert_l1_state(&anchor).context("Inserting anchor")?;
-        // TODO: this is a bit dodgy, but is used by the sync process. However it
-        // destroys some RPC assumptions which we should be aware of.
+        // TODO: this is a bit dodgy, but is used by the sync process. However
+        // it destroys some RPC assumptions which we should be aware of.
         db.update_l1_l2_pointer(Some(anchor.block_number))
             .context("Updating L1-L2 pointer")?;
         db.commit().context("Committing database transaction")?;
@@ -839,8 +841,8 @@ mod tests {
             }
         }
 
-        // These two cases are an implicit verification that [`storage::fake::generate`]
-        // is just good enough for tests.
+        // These two cases are an implicit verification that
+        // [`storage::fake::generate`] is just good enough for tests.
         #[rstest]
         #[case::from_fixture(setup_from_fixture())]
         #[case::from_fake(setup_from_fake(10))]

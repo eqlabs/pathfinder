@@ -441,7 +441,8 @@ pub mod generate {
                         Default::default()
                     },
                     contract_updates: {
-                        // We can only deploy what was declared so far in the chain
+                        // We can only deploy what was declared so far in the
+                        // chain
                         if declared_classes_accum.is_empty() {
                             Default::default()
                         } else {
@@ -478,14 +479,15 @@ pub mod generate {
                     .collect(),
             });
 
-            // These new classes from this block can now be deployed in the next blocks
+            // These new classes from this block can now be deployed in the next
+            // blocks
             declared_classes_accum.extend(all_declared_classes_in_this_block);
         }
 
-        // FIXME Previous way of faking replaced classes made trie generation using
-        // `update_starknet_state` unstable, ie. state roots did not match
-        // between the generated block data and what was computed as a result of
-        // checkpoint or tracking sync test.
+        // FIXME Previous way of faking replaced classes made trie generation
+        // using `update_starknet_state` unstable, ie. state roots did
+        // not match between the generated block data and what was
+        // computed as a result of checkpoint or tracking sync test.
 
         // Compute state diff length and commitment
         for Block {
@@ -515,8 +517,8 @@ pub mod generate {
 
     // Updates class, storage and state commitments
     fn update_commitments(blocks: &mut [Block], update_tries: UpdateTriesFn) {
-        // This dummy db is only necessary to build the tries whose roots are the
-        // storage and class commitments
+        // This dummy db is only necessary to build the tries whose roots are
+        // the storage and class commitments
         let dummy_storage = StorageBuilder::in_tempdir().unwrap();
         let mut db = dummy_storage.connection().unwrap();
         let db = db.transaction().unwrap();

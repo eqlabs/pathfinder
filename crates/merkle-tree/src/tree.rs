@@ -162,8 +162,8 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     ) -> anyhow::Result<(Felt, Option<NodeRef>)> {
         let result = match node {
             InternalNode::Unresolved(idx) => {
-                // Unresolved nodes are already committed, but we need their hash for subsequent
-                // iterations.
+                // Unresolved nodes are already committed, but we need their
+                // hash for subsequent iterations.
                 let hash = storage
                     .hash(*idx)
                     .context("Fetching stored node's hash")?
@@ -276,18 +276,19 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         //
         // 1. The leaf exists, in which case we simply change its value.
         //
-        // 2. The tree is empty, we insert the new leaf and the root becomes an edge
-        //    node connecting to it.
+        // 2. The tree is empty, we insert the new leaf and the root becomes an
+        //    edge node connecting to it.
         //
-        // 3. The leaf does not exist, and the tree is not empty. The final node in the
-        //    traversal will be an edge node who's path diverges from our new leaf
-        //    node's.
+        // 3. The leaf does not exist, and the tree is not empty. The final node
+        //    in the traversal will be an edge node who's path diverges from our
+        //    new leaf node's.
         //
-        //    This edge must be split into a new subtree containing both the existing
-        // edge's child and the    new leaf. This requires an edge followed by a
-        // binary node and then further edges to both the    current child and
-        // the new leaf. Any of these new edges may also end with an empty path in
-        //    which case they should be elided. It depends on the common path length of
+        //    This edge must be split into a new subtree containing both the
+        // existing edge's child and the    new leaf. This requires an
+        // edge followed by a binary node and then further edges to both
+        // the    current child and the new leaf. Any of these new edges
+        // may also end with an empty path in    which case they should
+        // be elided. It depends on the common path length of
         // the current edge    and the new leaf i.e. the split may be at the
         // first bit (in which case there is no leading    edge), or the split
         // may be in the middle (requires both leading and post edges), or the
@@ -412,11 +413,12 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         // must be a binary node. In either case we end up with a binary node
         // who's one child is deleted. This changes the binary to an edge node.
         //
-        // Note that its possible that there is no binary node -- if the resulting tree
-        // would be empty.
+        // Note that its possible that there is no binary node -- if the
+        // resulting tree would be empty.
         //
-        // This new edge node may need to merge with the old binary node's parent node
-        // and other remaining child node -- if they're also edges.
+        // This new edge node may need to merge with the old binary node's
+        // parent node and other remaining child node -- if they're also
+        // edges.
         //
         // Then we are done.
         let path = self.traverse(storage, key)?;
@@ -448,11 +450,13 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         match node_iter.next() {
             Some(node) => {
                 let new_edge = {
-                    // This node must be a binary node due to the iteration condition.
+                    // This node must be a binary node due to the iteration
+                    // condition.
                     let binary = node.borrow().as_binary().cloned().unwrap();
                     // Create an edge node to replace the old binary node
-                    // i.e. with the remaining child (note the direction invert),
-                    //      and a path of just a single bit.
+                    // i.e. with the remaining child (note the direction
+                    // invert),      and a path of just a
+                    // single bit.
                     let direction = binary.direction(key).invert();
                     let child = binary.get_child(direction);
                     let path = std::iter::once(bool::from(direction)).collect::<BitVec<_, _>>();
@@ -475,16 +479,16 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 };
             }
             None => {
-                // We reached the root without a hitting binary node. The new tree
-                // must therefore be empty.
+                // We reached the root without a hitting binary node. The new
+                // tree must therefore be empty.
                 self.root = None;
                 self.nodes_removed.extend(indexes_removed);
                 return Ok(());
             }
         };
 
-        // Check the parent of the new edge. If it is also an edge, then they must
-        // merge.
+        // Check the parent of the new edge. If it is also an edge, then they
+        // must merge.
         if let Some(node) = node_iter.next() {
             if let InternalNode::Edge(edge) = &mut *node.borrow_mut() {
                 self.merge_edges(storage, edge)?;
@@ -606,7 +610,8 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                             .context("Key path is too short for edge node")?;
                         height += path.len();
 
-                        // If the path matches then we continue otherwise the proof is complete.
+                        // If the path matches then we continue otherwise the
+                        // proof is complete.
                         if key == path {
                             next = Some(child);
                         }
@@ -852,7 +857,8 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                             // the default, no action, just continue deeper
                         }
                         ControlFlow::Continue(Visit::StopSubtree) => {
-                            // make sure we don't add any more to `visiting` on this subtree
+                            // make sure we don't add any more to `visiting` on
+                            // this subtree
                             continue;
                         }
                         ControlFlow::Break(x) => {
@@ -1151,8 +1157,9 @@ mod tests {
 
             uut.set(&storage, key.clone(), value).unwrap();
 
-            // The tree should consist of an edge node (root) leading to a leaf node.
-            // The edge node path should match the key, and the leaf node the value.
+            // The tree should consist of an edge node (root) leading to a leaf
+            // node. The edge node path should match the key, and
+            // the leaf node the value.
             let expected_path = key.clone();
 
             let edge = uut
@@ -1297,8 +1304,8 @@ mod tests {
             uut.set(&storage, key0.clone(), value0).unwrap();
             uut.set(&storage, key1, value1).unwrap();
 
-            // The tree should consist of an edge node, terminating in a binary node
-            // connecting to the two leaf nodes.
+            // The tree should consist of an edge node, terminating in a binary
+            // node connecting to the two leaf nodes.
             let edge = uut
                 .root
                 .unwrap()
@@ -1306,8 +1313,9 @@ mod tests {
                 .as_edge()
                 .cloned()
                 .expect("root should be an edge");
-            // The edge's path will be the full key path excluding the final bit.
-            // The final bit is represented by the following binary node.
+            // The edge's path will be the full key path excluding the final
+            // bit. The final bit is represented by the following
+            // binary node.
             let mut expected_path = key0.to_bitvec();
             expected_path.pop();
 
@@ -1472,9 +1480,10 @@ mod tests {
 
         #[test]
         fn delete_leaf_regression() {
-            // This test exercises a bug in the merging of edge nodes. It was caused
-            // by the merge code not resolving unresolved nodes. This meant that
-            // unresolved edge nodes would not get merged with the parent edge node
+            // This test exercises a bug in the merging of edge nodes. It was
+            // caused by the merge code not resolving unresolved
+            // nodes. This meant that unresolved edge nodes would
+            // not get merged with the parent edge node
             // causing a malformed tree.
             let mut uut = TestTree::empty();
             let mut storage = TestStorage::default();
@@ -1509,8 +1518,8 @@ mod tests {
             }
             let root = commit_and_persist_with_pruning(uut, &mut storage).unwrap();
 
-            // Delete the final leaf; this exercises the bug as the nodes are all in storage
-            // (unresolved).
+            // Delete the final leaf; this exercises the bug as the nodes are
+            // all in storage (unresolved).
             let mut uut = TestTree::new(root.1);
             let key = leaves[4].0.view_bits().to_bitvec();
             let val = leaves[4].1;
@@ -1659,8 +1668,9 @@ mod tests {
             // This was discovered by comparing the global state tree for the
             // gensis block on goerli testnet (alpha 4.0).
             //
-            // The bug was identified by comparing root and nodes against the python
-            // utility in `root/py/src/test_generate_test_storage_tree.py`.
+            // The bug was identified by comparing root and nodes against the
+            // python utility in
+            // `root/py/src/test_generate_test_storage_tree.py`.
             let leaves = [
                 (felt!("0x5"), felt!("0x66")),
                 (
@@ -2132,12 +2142,15 @@ mod tests {
                     }
                     TrieNode::Edge { child, path } => {
                         if path != &remaining_path[..path.len()] {
-                            // If paths don't match, we've found a proof of non membership because
+                            // If paths don't match, we've found a proof of non
+                            // membership because
                             // we:
-                            // 1. Correctly moved towards the target insofar as is possible, and
-                            // 2. hashing all the nodes along the path does result in the root hash,
-                            //    which means
-                            // 3. the target definitely does not exist in this tree
+                            // 1. Correctly moved towards the target insofar as
+                            //    is possible, and
+                            // 2. hashing all the nodes along the path does
+                            //    result in the root hash, which means
+                            // 3. the target definitely does not exist in this
+                            //    tree
                             return Some(Membership::NonMember);
                         }
 
@@ -2427,7 +2440,8 @@ mod tests {
 
             let random_tree = RandomTree::new(LEN);
 
-            // 1337 code to be able to filter out duplicates in O(n) instead of O(n^2)
+            // 1337 code to be able to filter out duplicates in O(n) instead of
+            // O(n^2)
             let keys_set: std::collections::HashSet<&Felt> = random_tree.keys.iter().collect();
 
             let inexistent_keys: Vec<Felt> = gen_random_hashes(LEN)
@@ -2456,7 +2470,8 @@ mod tests {
 
             let random_tree = RandomTree::new(LEN);
 
-            // 1337 code to be able to filter out duplicates in O(n) instead of O(n^2)
+            // 1337 code to be able to filter out duplicates in O(n) instead of
+            // O(n^2)
             let values_set: std::collections::HashSet<&Felt> = random_tree.values.iter().collect();
 
             let inexistent_values: Vec<Felt> = gen_random_hashes(LEN)

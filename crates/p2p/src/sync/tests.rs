@@ -65,8 +65,8 @@ mod successful_sync {
                         line!()
                     ));
 
-                // Filter peer1's events to fish out the request from peer2 and the channel that
-                // peer1 will use to send the responses
+                // Filter peer1's events to fish out the request from peer2 and the channel
+                // that peer1 will use to send the responses
                 let mut tx = peer1
                     .wait_for_event(|e| match e {
                         Event::$event_variant {

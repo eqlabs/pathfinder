@@ -263,8 +263,8 @@ impl ApplicationError {
 
     pub fn data(&self, _version: RpcVersion) -> Option<serde_json::Value> {
         // We purposefully don't use a catch-all branch to force us to update
-        // here whenever a new variant is added. This will prevent adding a stateful
-        // error variant but forgetting to forward its data.
+        // here whenever a new variant is added. This will prevent adding a
+        // stateful error variant but forgetting to forward its data.
         match self {
             ApplicationError::FailedToReceiveTxn => None,
             ApplicationError::ContractNotFound => None,

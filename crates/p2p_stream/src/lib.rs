@@ -543,10 +543,11 @@ where
 
     fn on_dial_failure(&mut self, DialFailure { peer_id, .. }: DialFailure<'_>) {
         if let Some(peer) = peer_id {
-            // If there are pending outgoing requests when a dial failure occurs,
-            // it is implied that we are not connected to the peer, since pending
-            // outgoing requests are drained when a connection is established and
-            // only created when a peer is not connected when a request is made.
+            // If there are pending outgoing requests when a dial failure
+            // occurs, it is implied that we are not connected to
+            // the peer, since pending outgoing requests are drained
+            // when a connection is established and only created
+            // when a peer is not connected when a request is made.
             // Thus these requests must be considered failed, even if there is
             // another, concurrent dialing attempt ongoing.
             if let Some(pending) = self.pending_outbound_requests.remove(&peer) {
@@ -799,7 +800,8 @@ where
                             error: InboundFailure::Timeout,
                         }));
                 } else {
-                    // This happens when timeout is emitted before `read_request` finishes.
+                    // This happens when timeout is emitted before
+                    // `read_request` finishes.
                     tracing::debug!(
                         "Inbound request timeout for an unknown request_id ({request_id})"
                     );

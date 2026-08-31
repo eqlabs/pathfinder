@@ -177,20 +177,20 @@ pub async fn task_call(user: &mut GooseUser) -> TransactionResult {
 }
 
 pub async fn task_estimate_fee(user: &mut GooseUser) -> TransactionResult {
-    // Estimate the fee for a real mainnet INVOKE v1 transaction from block 500k.
-    // Replay an existing transaction so that the account, the called contract and
-    // its entry point are all guaranteed to exist on chain.
-    // `estimate_fee_for_invoke` runs this against the previous state (block 499999)
-    // with SKIP_VALIDATE, so the historical nonce/signature and the chain tip's
-    // mutable state (token balances etc.) don't influence the result. We only care
-    // about execution.
+    // Estimate the fee for a real mainnet INVOKE v1 transaction from block
+    // 500k. Replay an existing transaction so that the account, the called
+    // contract and its entry point are all guaranteed to exist on chain.
+    // `estimate_fee_for_invoke` runs this against the previous state (block
+    // 499999) with SKIP_VALIDATE, so the historical nonce/signature and the
+    // chain tip's mutable state (token balances etc.) don't influence the
+    // result. We only care about execution.
     //
     // Structure of the transaction:
     // - invoke `__execute__` on `sender_address`, passing `calldata` as the
     //   multicall to do,
     // - `calldata` is the Cairo 0 OpenZeppelin account multicall, encoded as:
-    //   `(call_array_len, [(to, selector, data_offset, data_len); N], calldata_len,
-    //   calldata)`.
+    //   `(call_array_len, [(to, selector, data_offset, data_len); N],
+    //   calldata_len, calldata)`.
     //
     // So a single ERC20-style transfer looks like this:
     //

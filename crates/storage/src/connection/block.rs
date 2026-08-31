@@ -669,8 +669,8 @@ mod tests {
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
 
-        // This intentionally does not use the builder so that we don't forget to test
-        // any new fields that get added.
+        // This intentionally does not use the builder so that we don't forget
+        // to test any new fields that get added.
         //
         // Set unique values so we can be sure we are (de)serializing correctly.
         let storage_commitment = storage_commitment_bytes!(b"storage commitment genesis");

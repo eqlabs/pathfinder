@@ -313,8 +313,8 @@ impl Transaction<'_> {
             return Ok(None);
         };
 
-        // We explicitly do _not_ stop here on no events: empty blocks are valid and
-        // fairly common since Starknet 0.14.0.
+        // We explicitly do _not_ stop here on no events: empty blocks are valid
+        // and fairly common since Starknet 0.14.0.
         let events = self
             .query_events_by_block(block_number)?
             .unwrap_or_default();
@@ -3357,8 +3357,8 @@ mod tests {
             },
         ];
 
-        // Generate a random receipt for each transaction. Note that these won't make
-        // physical sense but its enough for the tests.
+        // Generate a random receipt for each transaction. Note that these won't
+        // make physical sense but its enough for the tests.
         let receipts: Vec<pathfinder_common::receipt::Receipt> = transactions
             .iter()
             .enumerate()

@@ -42,7 +42,8 @@ pub mod hex_str {
         buf[0] = b'0';
         buf[1] = b'x';
 
-        // Handle the first byte separately as we may need to skip the first nibble.
+        // Handle the first byte separately as we may need to skip the first
+        // nibble.
         let (offset, data) = if skip_first_nibble {
             buf[2] = LUT[data[0] as usize & 0x0f];
             (3, &data[1..])

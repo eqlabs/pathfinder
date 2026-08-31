@@ -365,9 +365,9 @@ impl Client {
     /// gateway and feeder gateway if their IP addresses change due to DNS
     /// updates, without needing to restart the entire application.
     pub fn refresh(&self) -> anyhow::Result<()> {
-        // Resolve the gateway URLs to detect any DNS changes. If the resolved addresses
-        // have changed, we refresh the HTTP client to ensure that new connections are
-        // made to the correct addresses.
+        // Resolve the gateway URLs to detect any DNS changes. If the resolved
+        // addresses have changed, we refresh the HTTP client to ensure
+        // that new connections are made to the correct addresses.
         let new_resolved_gateway_addresses =
             resolve_hosts(&self.gateway).context("Resolving gateway URL")?;
         let new_resolved_feeder_gateway_addresses =
@@ -624,9 +624,9 @@ impl GatewayApi for Client {
         invoke: request::add_transaction::InvokeFunction<'tx>,
     ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
         // Note that we don't do retries here.
-        // This method is used to proxy an add transaction operation from the JSON-RPC
-        // API to the sequencer. Retries should be implemented in the JSON-RPC
-        // client instead.
+        // This method is used to proxy an add transaction operation from the
+        // JSON-RPC API to the sequencer. Retries should be implemented
+        // in the JSON-RPC client instead.
         self.gateway_request()
             .add_transaction()
             .retry(false)
@@ -648,9 +648,9 @@ impl GatewayApi for Client {
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
         // Note that we don't do retries here.
-        // This method is used to proxy an add transaction operation from the JSON-RPC
-        // API to the sequencer. Retries should be implemented in the JSON-RPC
-        // client instead.
+        // This method is used to proxy an add transaction operation from the
+        // JSON-RPC API to the sequencer. Retries should be implemented
+        // in the JSON-RPC client instead.
         self.gateway_request()
             .add_transaction()
             // mainnet requires a token (but testnet does not so its optional).
@@ -669,9 +669,9 @@ impl GatewayApi for Client {
         deploy: request::add_transaction::DeployAccount<'tx>,
     ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError> {
         // Note that we don't do retries here.
-        // This method is used to proxy an add transaction operation from the JSON-RPC
-        // API to the sequencer. Retries should be implemented in the JSON-RPC
-        // client instead.
+        // This method is used to proxy an add transaction operation from the
+        // JSON-RPC API to the sequencer. Retries should be implemented
+        // in the JSON-RPC client instead.
         self.gateway_request()
             .add_transaction()
             .retry(false)
@@ -930,7 +930,8 @@ mod tests {
                     .mount(&server)
                     .await;
                 let client = Client::for_test(server.uri().parse().unwrap()).unwrap();
-                // test with values dumped from `starknet invoke` for a test contract
+                // test with values dumped from `starknet invoke` for a test
+                // contract
                 let (_, fee, sig, nonce, addr, call) = inputs();
                 let invoke = InvokeFunction::V1(InvokeFunctionV0V1 {
                     max_fee: fee,
@@ -1350,8 +1351,8 @@ mod tests {
                 .unwrap();
         }
 
-        // FIXME: add a proper fixture once `proof_facts` is available on a public
-        // chain.
+        // FIXME: add a proper fixture once `proof_facts` is available on a
+        // public chain.
         #[test_log::test(tokio::test)]
         async fn success_0_14_3_with_invoke_proof_facts() {
             let body: serde_json::Value = serde_json::from_str(starknet_gateway_test_fixtures::v0_14_3::state_update_with_block::SEPOLIA_INTEGRATION_FAKE_WITH_SIGNATURE).unwrap();
@@ -1412,15 +1413,17 @@ mod tests {
             const EXPECTED_BLOCK_HASH: &str =
                 "0x6a2755817d86ade81ed0fea2eaf23d94264e2f25aff43ecb2e5000bf3ec28b7";
 
-            // Create the JSON response that will be gzip-compressed by the server
+            // Create the JSON response that will be gzip-compressed by the
+            // server
             let response_json = serde_json::json!({
                 "block_hash": EXPECTED_BLOCK_HASH,
                 "block_number": EXPECTED_BLOCK_NUMBER
             });
 
             // Create a mock server that returns gzip-compressed responses
-            // warp's gzip filter will automatically compress the response when the client
-            // sends Accept-Encoding: gzip (which reqwest does by default)
+            // warp's gzip filter will automatically compress the response when
+            // the client sends Accept-Encoding: gzip (which reqwest
+            // does by default)
             let server_filter = warp::path("feeder_gateway")
                 .and(warp::path("get_block"))
                 .and(warp::query::<std::collections::HashMap<String, String>>())
@@ -1441,7 +1444,8 @@ mod tests {
                 .unwrap()
                 .disable_retry_for_tests();
 
-            // Make a request (reqwest should automatically decompress the gzip response)
+            // Make a request (reqwest should automatically decompress the gzip
+            // response)
             let (actual_block_number, actual_block_hash) = client
                 .block_header(BlockId::Number(BlockNumber::new_or_panic(
                     EXPECTED_BLOCK_NUMBER,

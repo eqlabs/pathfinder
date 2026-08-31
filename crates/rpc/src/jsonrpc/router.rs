@@ -74,7 +74,8 @@ impl RpcRouterBuilder {
 
     pub fn build(self, context: RpcContext) -> RpcRouter {
         // Intentionally leak the hashmaps to give them a static lifetime.
-        // Since the router is expected to be long lived, this shouldn't be an issue.
+        // Since the router is expected to be long lived, this shouldn't be an
+        // issue.
         let methods = Box::new(self.method_endpoints);
         let methods = Box::leak(methods);
         let subscriptions = Box::new(self.subscription_endpoints);
@@ -117,8 +118,8 @@ impl RpcRouter {
             return None;
         }
 
-        // Also grab the method_name as it is a static str, which is required by the
-        // metrics.
+        // Also grab the method_name as it is a static str, which is required by
+        // the metrics.
         let Some((&method_name, method)) =
             self.method_endpoints.get_key_value(request.method.as_ref())
         else {
@@ -225,8 +226,9 @@ pub async fn rpc_handler(
 
             ws.max_message_size(ws_cfg.subscription_max_size)
                 .on_upgrade(async move |ws| {
-                    // Axum drives this closure for as long as the socket is open, so
-                    // holding the guard here frees the connection's slot exactly when
+                    // Axum drives this closure for as long as the socket is
+                    // open, so holding the guard here frees
+                    // the connection's slot exactly when
                     // the socket is closed.
                     let _connection_guard = connection_guard;
                     let (ws_tx, ws_rx, socket) = split_ws(ws, state.version, &ws_cfg);
@@ -1048,9 +1050,10 @@ mod tests {
                 concurrent_count(iterations, NonZeroUsize::new(concurrency_limit).unwrap()).await;
             assert_eq!(max_concurrency_level(&events), concurrency_limit);
 
-            // The test should have messed up with the execution order, which is important
-            // to assess that the results are ordered according to the input
-            // order and not the execution order.
+            // The test should have messed up with the execution order, which is
+            // important to assess that the results are ordered
+            // according to the input order and not the execution
+            // order.
             let order_difference = events
                 .into_iter()
                 .filter_map(|event| {
@@ -1073,8 +1076,9 @@ mod tests {
                 concurrent_count(iterations, NonZeroUsize::new(concurrency_limit).unwrap()).await;
             assert_eq!(max_concurrency_level(&events), concurrency_limit);
 
-            // Make sure there isn't a change in the execution order so there is no change
-            // in behavior with the introduction of this feature.
+            // Make sure there isn't a change in the execution order so there is
+            // no change in behavior with the introduction of this
+            // feature.
             let order_match = events
                 .into_iter()
                 .filter_map(|event| {
@@ -1134,7 +1138,8 @@ mod tests {
                 }
             });
 
-            // N tasks should already have started, N being the `concurrency_limit`.
+            // N tasks should already have started, N being the
+            // `concurrency_limit`.
             let mut events = vec![];
             for _i in 0..concurrency_limit.get() {
                 let event = timeout(Duration::from_millis(100), event_receiver.recv())
@@ -1144,8 +1149,8 @@ mod tests {
                 events.push(event);
             }
 
-            // Allow all tasks to continue, descending order to mess up with completion
-            // order.
+            // Allow all tasks to continue, descending order to mess up with
+            // completion order.
             for i in (0..iterations).rev() {
                 task_states[i].notify.notify_one();
             }

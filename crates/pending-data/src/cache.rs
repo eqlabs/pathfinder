@@ -203,7 +203,8 @@ impl PendingDataCache {
                     return Ok(());
                 }
 
-                // Still stale. Park until the next change, or bail if the producer is gone.
+                // Still stale. Park until the next change, or bail if the
+                // producer is gone.
                 if rx.changed().await.is_err() {
                     return Err(ReadError::Internal(anyhow::anyhow!(
                         "producer disconnected"
@@ -504,7 +505,8 @@ mod tests {
     #[tokio::test]
     async fn mark_unavailable_wakes_blocked_stale_reader() {
         // A reader blocked on a Stale cache must wake the moment the producer
-        // flips to Unavailable, instead of riding out the 5s cold-start timeout.
+        // flips to Unavailable, instead of riding out the 5s cold-start
+        // timeout.
         let cache =
             Arc::new(PendingDataCache::new().with_cold_start_timeout(Duration::from_secs(5)));
         cache.mark_stale();
@@ -535,8 +537,9 @@ mod tests {
     #[tokio::test]
     async fn blocked_read_wakes_on_publish_even_if_restaled() {
         // A publish immediately followed by re-staling (Stale → Fresh → Stale)
-        // must still release a blocked read. `freshness` looks unchanged at both
-        // ends, so the wake relies on the bumped publish counter alone.
+        // must still release a blocked read. `freshness` looks unchanged at
+        // both ends, so the wake relies on the bumped publish counter
+        // alone.
         let cache =
             Arc::new(PendingDataCache::new().with_cold_start_timeout(Duration::from_secs(5)));
         cache.mark_stale();

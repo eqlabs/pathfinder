@@ -234,9 +234,9 @@ mod tests {
         // Automatically deregister the recorder
         let _guard = metrics::set_default_local_recorder(&recorder);
 
-        // We don't care about the recorder being a singleton as the counter name here
-        // does not interfere with any other "real" counter registered in
-        // pathfinder or other tests
+        // We don't care about the recorder being a singleton as the counter
+        // name here does not interfere with any other "real" counter
+        // registered in pathfinder or other tests
         let counter = metrics::counter!("x");
         counter.increment(123);
 

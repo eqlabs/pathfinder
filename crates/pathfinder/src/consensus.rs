@@ -82,11 +82,12 @@ pub fn start(
     blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
     inject_failure_config: Option<InjectFailureConfig>,
 ) -> ConsensusTaskHandles {
-    // Events that are produced by the P2P task and consumed by the consensus task.
-    // The number of events produced by the P2P task could grow with increased peer
-    // count, hence the larger channel.
+    // Events that are produced by the P2P task and consumed by the consensus
+    // task. The number of events produced by the P2P task could grow with
+    // increased peer count, hence the larger channel.
     let (tx_to_consensus, rx_from_p2p) = mpsc::channel::<ConsensusTaskEvent>(30);
-    // Events that are produced by the consensus task and consumed by the P2P task.
+    // Events that are produced by the consensus task and consumed by the P2P
+    // task.
     let (tx_to_p2p, rx_from_consensus) = mpsc::channel::<P2PTaskEvent>(10);
     // Requests sent to consensus by the sync task.
     let (sync_to_consensus_tx, sync_to_consensus_rx) = mpsc::channel::<SyncMessageToConsensus>(10);

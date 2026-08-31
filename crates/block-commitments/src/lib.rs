@@ -40,7 +40,8 @@ pub fn verify_gateway_block_commitments_and_hash(
     let computed_transaction_commitment =
         calculate_transaction_commitment(&block.transactions, block.starknet_version)?;
 
-    // Older blocks on mainnet don't carry a precalculated transaction commitment.
+    // Older blocks on mainnet don't carry a precalculated transaction
+    // commitment.
     if block.transaction_commitment == TransactionCommitment::ZERO {
         // Update with the computed transaction commitment, verification is not
         // possible.
@@ -452,7 +453,8 @@ pub fn calculate_receipt_commitment(receipts: &[Receipt]) -> Result<ReceiptCommi
                         let mut keccak = sha3::Keccak256::default();
                         keccak.update(reason.as_bytes());
                         let mut hashed_bytes: [u8; 32] = keccak.finalize().into();
-                        hashed_bytes[0] &= 0b00000011_u8; // Discard the six MSBs.
+                        hashed_bytes[0] &= 0b00000011_u8; // Discard the six
+                                                          // MSBs.
                         MontFelt::from_be_bytes(hashed_bytes)
                     }
                 },
@@ -760,7 +762,8 @@ mod tests {
         };
 
         // produced by the cairo-lang Python implementation:
-        // `hex(calculate_event_hash(0xdeadbeef, [1, 2, 3, 4], [5, 6, 7, 8, 9]))`
+        // `hex(calculate_event_hash(0xdeadbeef, [1, 2, 3, 4], [5, 6, 7, 8,
+        // 9]))`
         let expected_event_hash =
             felt!("0xdb96455b3a61f9139f7921667188d31d1e1d49fb60a1aa3dbf3756dbe3a9b4");
         let calculated_event_hash = calculate_event_hash_pre_0_13_2(&event);
@@ -865,8 +868,8 @@ mod tests {
 
     #[test]
     fn test_block_hash_with_sequencer_address() {
-        // This tests with a post-0.8.2 block where we have correct sequencer address
-        // information in the block itself.
+        // This tests with a post-0.8.2 block where we have correct sequencer
+        // address information in the block itself.
         let json = starknet_gateway_test_fixtures::v0_9_0::block::MAINNET_2800;
         let block: Block = serde_json::from_str(json).unwrap();
 

@@ -59,10 +59,12 @@ impl State {
                 new_receipts,
                 new_state_diffs,
             } => {
-                // Per spec, the server only sends a delta when its identifier matches
-                // ours. A mismatch indicates a server bug or local state corruption;
-                // skip defensively and wait for the next poll (which our stored identifier
-                // will not match server's, triggering a full rebuild).
+                // Per spec, the server only sends a delta when its identifier
+                // matches ours. A mismatch indicates a server
+                // bug or local state corruption;
+                // skip defensively and wait for the next poll (which our stored
+                // identifier will not match server's,
+                // triggering a full rebuild).
                 if self.block_identifier.as_ref() != Some(&identifier) {
                     tracing::warn!(
                         ours = ?self.block_identifier,
@@ -90,10 +92,12 @@ impl State {
                 block,
             } => {
                 // Emit on either independent signal:
-                //  - the server's identifier changed (round bump, new height, or first poll)
+                //  - the server's identifier changed (round bump, new height,
+                //    or first poll)
                 //  - new transactions arrived
-                // Otherwise suppress: pre-0.14.3 gateways re-serve the same view across
-                // polls and we don't want to bombard downstream with redundant events.
+                // Otherwise suppress: pre-0.14.3 gateways re-serve the same
+                // view across polls and we don't want to
+                // bombard downstream with redundant events.
                 let identifier_changed = self.block_identifier.as_ref() != Some(&identifier);
                 let new_txs_arrived = (block.transactions.len() as u64) > self.tx_count();
 
@@ -254,8 +258,9 @@ pub(super) async fn poll_pre_confirmed<S: GatewayApi + Clone + Send + 'static>(
         {
             Ok(r) => r,
             Err(err) => {
-                // A transient failure must not invalidate the cache. We serve the last good
-                // view as a best effort until a poll succeeds again.
+                // A transient failure must not invalidate the cache. We serve
+                // the last good view as a best effort until a
+                // poll succeeds again.
                 tracing::debug!(%err, "Failed to fetch pre-confirmed block; retaining last view");
                 cache.mark_fresh();
                 wait_for_next_poll(t_fetch + poll_interval, &cache).await;
@@ -272,8 +277,8 @@ pub(super) async fn poll_pre_confirmed<S: GatewayApi + Clone + Send + 'static>(
             _ => None,
         };
 
-        // Set when the preconfirmed tip advances: the previous block to complete once
-        // the new height has been published.
+        // Set when the preconfirmed tip advances: the previous block to
+        // complete once the new height has been published.
         let mut prev_to_complete: Option<State> = None;
 
         if let Some(height) = resolved {
@@ -290,9 +295,10 @@ pub(super) async fn poll_pre_confirmed<S: GatewayApi + Clone + Send + 'static>(
                 continue;
             }
 
-            // The preconfirmed tip advanced. Keep the previous block's state so we can
-            // complete it after publishing the new height. We keep completion of tip-1 off
-            // the critical path to avoid delaying serving the new tip to readers.
+            // The preconfirmed tip advanced. Keep the previous block's state so
+            // we can complete it after publishing the new height.
+            // We keep completion of tip-1 off the critical path to
+            // avoid delaying serving the new tip to readers.
             if height > state.block_number {
                 let prev = std::mem::replace(
                     &mut state,
@@ -302,9 +308,11 @@ pub(super) async fn poll_pre_confirmed<S: GatewayApi + Clone + Send + 'static>(
                     },
                 );
 
-                // Provisionally fill the window with the previous block from our previous
-                // state, so the window stays contiguous and the new tip can be served
-                // on this poll instead of waiting for [`complete_previous_block`] to finish.
+                // Provisionally fill the window with the previous block from
+                // our previous state, so the window stays
+                // contiguous and the new tip can be served
+                // on this poll instead of waiting for
+                // [`complete_previous_block`] to finish.
                 if let Some(block) = prev.accumulated.clone() {
                     let prev_number = prev.block_number;
                     if let Ok(pending) = run_cpu_bound(|| {
@@ -389,9 +397,10 @@ pub(super) async fn poll_pre_confirmed<S: GatewayApi + Clone + Send + 'static>(
             }
         }
 
-        // Complete the previous block off the critical path. Any missing tail data will
-        // be filled in the window, incrementing its generation, which is a signal to
-        // serve the fresher data on the next poll.
+        // Complete the previous block off the critical path. Any missing tail
+        // data will be filled in the window, incrementing its
+        // generation, which is a signal to serve the fresher data on
+        // the next poll.
         if let Some(prev) = prev_to_complete {
             let sequencer = sequencer.clone();
             let window = window.clone();
@@ -520,8 +529,9 @@ async fn complete_previous_block<S: GatewayApi + Send + 'static>(
         });
         match converted {
             Ok(pending) => {
-                // Upgrade the window entry to the complete block (full transactions,
-                // receipts/events and composed state diff).
+                // Upgrade the window entry to the complete block (full
+                // transactions, receipts/events and composed
+                // state diff).
                 window
                     .lock()
                     .unwrap()
@@ -1004,7 +1014,8 @@ mod tests {
                 })
             });
 
-        // We're tracking block 11 with one receipted transaction already merged.
+        // We're tracking block 11 with one receipted transaction already
+        // merged.
         let state = State {
             block_number: BlockNumber::new_or_panic(11),
             block_identifier: Some(BLOCK_ID.to_string()),
@@ -1219,10 +1230,11 @@ mod tests {
 
         let mut sequencer = MockGatewayApi::new();
 
-        // `Latest` polls advance the tip 11, 12, 13 (then hold at 13, with a stable
-        // identifier so the contents stop changing - forcing the re-serve to rely on
-        // the window warming up, not on a content change). Concrete-number queries are
-        // completions and return that block in full.
+        // `Latest` polls advance the tip 11, 12, 13 (then hold at 13, with a
+        // stable identifier so the contents stop changing - forcing the
+        // re-serve to rely on the window warming up, not on a content
+        // change). Concrete-number queries are completions and return
+        // that block in full.
         static HEIGHT: Mutex<u64> = Mutex::new(10);
         sequencer
             .expect_preconfirmed_block()
@@ -1257,8 +1269,8 @@ mod tests {
 
         spawn_producer(sequencer, committed, block_hash!("0xbeef"), cache.clone());
 
-        // Wait until the producer serves block 13 with its full window: deep ancestor
-        // 11 plus immediate parent 12.
+        // Wait until the producer serves block 13 with its full window: deep
+        // ancestor 11 plus immediate parent 12.
         let deadline = tokio::time::Instant::now() + TEST_TIMEOUT;
         loop {
             tokio::time::timeout_at(deadline, sub.changed())
@@ -1274,8 +1286,9 @@ mod tests {
                 continue;
             }
 
-            // The deep ancestor's, the immediate parent's and the tip's transactions are
-            // all present - no tail lost across the window.
+            // The deep ancestor's, the immediate parent's and the tip's
+            // transactions are all present - no tail lost across
+            // the window.
             assert!(pending.find_transaction(tx_for(11)).is_some());
             assert!(pending.find_transaction(tx_for(12)).is_some());
             assert!(pending.find_transaction(tx_for(13)).is_some());
@@ -1333,7 +1346,8 @@ mod tests {
             if parents != vec![BlockNumber::new_or_panic(11), BlockNumber::new_or_panic(12)] {
                 continue;
             }
-            // Both un-committed parents are present from provisional data alone.
+            // Both un-committed parents are present from provisional data
+            // alone.
             assert!(pending.find_transaction(tx_for(11)).is_some());
             assert!(pending.find_transaction(tx_for(12)).is_some());
             assert!(pending.find_transaction(tx_for(13)).is_some());
@@ -1344,8 +1358,9 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn idle_pauses_polling_until_cache_read() {
         // Polling suspends once the inactivity window elapses without a read,
-        // and a cache read resumes it. Activity is observed via the gateway call
-        // counter, since touching the cache would itself reset the window.
+        // and a cache read resumes it. Activity is observed via the gateway
+        // call counter, since touching the cache would itself reset the
+        // window.
         const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(10);
         const IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(100);
 
@@ -1455,7 +1470,8 @@ mod tests {
                     BlockNumber::new_or_panic(13),
                 ]
             );
-            // All transactions are present, the entire window was filled and served.
+            // All transactions are present, the entire window was filled and
+            // served.
             assert!(pending.find_transaction(tx_at(11)).is_some());
             assert!(pending.find_transaction(tx_at(12)).is_some());
             assert!(pending.find_transaction(tx_at(13)).is_some());

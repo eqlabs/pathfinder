@@ -10,9 +10,10 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     )
     .context("Adding block_headers.parent_hash column")?;
 
-    // Select the parent hash from the previous row. Skip the genesis block since
-    // its parent hash is 0x0 and sqlite does not allow for default values
-    // within the update (select cannot return data for rows that do not exist).
+    // Select the parent hash from the previous row. Skip the genesis block
+    // since its parent hash is 0x0 and sqlite does not allow for default
+    // values within the update (select cannot return data for rows that do
+    // not exist).
     tx.execute(
         r"UPDATE block_headers SET parent_hash = ( 
             SELECT hash FROM block_headers AS parent WHERE parent.number = block_headers.number - 1 

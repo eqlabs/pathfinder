@@ -91,8 +91,8 @@ impl Client {
             // Avoid deadlock
             drop(r);
             let mut w = self.peers.write().await;
-            // Check again because the previous lock in the queue might have been a write
-            // lock that has already updated the peers.
+            // Check again because the previous lock in the queue might have
+            // been a write lock that has already updated the peers.
             if let Some(peers) = w.get() {
                 return peers.iter().copied().collect::<Vec<_>>();
             }
@@ -100,11 +100,12 @@ impl Client {
             // TODO known peers abstraction should not poll
             //
             // Loop until we find at least a single peer.
-            // 1. After the process is spawned the first outgoing query may start earlier
-            //    than the `kad` protocol is pushed in from `identify/push` resulting in a
-            //    `kind: ConnectionRefused, error: "protocol not supported"` error.
-            // 2. Initially there may be no other peers but maybe we're running a local test
-            //    and the other peer pops up in a few seconds.
+            // 1. After the process is spawned the first outgoing query may
+            //    start earlier than the `kad` protocol is pushed in from
+            //    `identify/push` resulting in a `kind: ConnectionRefused,
+            //    error: "protocol not supported"` error.
+            // 2. Initially there may be no other peers but maybe we're running
+            //    a local test and the other peer pops up in a few seconds.
             // Either way we don't want to wait for the bootstrap timeout or the
             // `Decaying::DEFAULT_TIMEOUT`, whichever kicks in first.
             let peers = loop {
@@ -783,7 +784,8 @@ mod transaction_stream {
                             continue 'next_peer;
                         }
                     };
-                    // If the previous peer failed to provide the entire block we need to start over
+                    // If the previous peer failed to provide the entire block
+                    // we need to start over
                     progress.rollback();
 
                     while start <= stop {
@@ -965,7 +967,8 @@ mod state_diff_stream {
                             continue 'next_peer;
                         }
                     };
-                    // If the previous peer failed to provide the entire block we need to start over
+                    // If the previous peer failed to provide the entire block
+                    // we need to start over
                     progress.rollback();
 
                     while start <= stop {
@@ -1190,7 +1193,8 @@ mod class_definition_stream {
                             continue 'next_peer;
                         }
                     };
-                    // If the previous peer failed to provide the entire block we need to start over
+                    // If the previous peer failed to provide the entire block
+                    // we need to start over
                     progress.rollback();
 
                     while start <= stop {
@@ -1387,11 +1391,12 @@ mod event_stream {
                         }
                     };
 
-                    // Maintain the current transaction hash to group events by transaction
-                    // This grouping is TRUSTED for pre 0.13.2 Starknet blocks.
+                    // Maintain the current transaction hash to group events by
+                    // transaction This grouping is TRUSTED
+                    // for pre 0.13.2 Starknet blocks.
                     let mut txn = None;
-                    // If the previous peer failed to provide the entire block we need to start
-                    // over
+                    // If the previous peer failed to provide the entire block
+                    // we need to start over
                     progress.rollback();
 
                     while start <= stop {

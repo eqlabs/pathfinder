@@ -240,7 +240,8 @@ async fn wal_concurrent_heights_retention_test() {
                 if decisions.lock().unwrap().len() == (NUM_HEIGHTS as usize * NUM_VALIDATORS) {
                     break;
                 }
-                // Small yield to avoid busy-waiting and allow other tasks to run
+                // Small yield to avoid busy-waiting and allow other tasks to
+                // run
                 tokio::task::yield_now().await;
             }
         });
@@ -249,9 +250,9 @@ async fn wal_concurrent_heights_retention_test() {
     }
 
     // Wait for validator tasks to make progress and create WAL files
-    // This test checks WAL file retention, not consensus correctness, so we don't
-    // need to wait for all decisions. A short sleep allows tasks to run and create
-    // files.
+    // This test checks WAL file retention, not consensus correctness, so we
+    // don't need to wait for all decisions. A short sleep allows tasks to
+    // run and create files.
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Check that at least config.history_depth WAL files exist
@@ -436,8 +437,9 @@ async fn recover_from_wal_tracks_last_decided_height() {
         wal_helper.backup(height);
     }
 
-    // At this point, the consensus is dropped and the original WAL file is deleted.
-    // But we have a backup copy that we can use for recovery testing.
+    // At this point, the consensus is dropped and the original WAL file is
+    // deleted. But we have a backup copy that we can use for recovery
+    // testing.
 
     // Restore the WAL file from backup so we can test recovery
     wal_helper.restore_from_backup(height);
@@ -760,10 +762,11 @@ async fn recover_skips_finalized_heights_outside_history_depth() {
         );
     }
 
-    // Verify that votes for non-restored finalized heights are handled correctly.
-    // Since the height is finalized but not in the internal map (outside
-    // history_depth), votes should be properly handled (either accepted if the
-    // system allows it, or properly ignored without causing errors).
+    // Verify that votes for non-restored finalized heights are handled
+    // correctly. Since the height is finalized but not in the internal map
+    // (outside history_depth), votes should be properly handled (either
+    // accepted if the system allows it, or properly ignored without causing
+    // errors).
     let vote = Vote {
         r#type: VoteType::Prevote,
         height: finalized_height,
@@ -776,8 +779,9 @@ async fn recover_skips_finalized_heights_outside_history_depth() {
         signature: Signature::from_bytes([0u8; 64]),
     };
 
-    // This should not cause errors even though the height is not in the internal
-    // map. The system should handle votes for finalized heights gracefully.
+    // This should not cause errors even though the height is not in the
+    // internal map. The system should handle votes for finalized heights
+    // gracefully.
     consensus.handle_command(ConsensusCommand::Vote(signed_vote));
 }
 
@@ -909,9 +913,10 @@ async fn finalized_wal_files_kept_within_history_depth() {
         "Height {finalized_height} should be marked as finalized",
     );
 
-    // Step 5: Create more heights to push finalized_height outside history_depth
-    // and verify WAL file is deleted during pruning
-    let heights_to_create = history_depth + 2; // Push it well outside history_depth
+    // Step 5: Create more heights to push finalized_height outside
+    // history_depth and verify WAL file is deleted during pruning
+    let heights_to_create = history_depth + 2; // Push it well outside
+                                               // history_depth
     for h in incomplete_height + 1..=incomplete_height + heights_to_create {
         consensus.handle_command(ConsensusCommand::StartHeight(h, validators.clone()));
 

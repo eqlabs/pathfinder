@@ -108,9 +108,10 @@ pub fn should_defer_validation(
         // The node observed parent block get decided - no deferral needed.
         false
     } else {
-        // The node did not observe parent block get decided - either it has not been
-        // decided on yet, or the node joined the network too late to observe it. Fall
-        // back to checking the committed blocks in DB.
+        // The node did not observe parent block get decided - either it has not
+        // been decided on yet, or the node joined the network too late
+        // to observe it. Fall back to checking the committed blocks in
+        // DB.
         let parent_block = BlockNumber::new(parent_height)
             .context("Block number is larger than i64::MAX")
             .map_err(ProposalHandlingError::Fatal)?;
@@ -592,9 +593,9 @@ impl ValidatorTransactionBatchStage {
             self.transactions.len()
         );
 
-        // Convert transactions to executor format, use `par_iter` because any declare
-        // transactions will require sierra compilation and casm hash computation. Both
-        // are blocking.
+        // Convert transactions to executor format, use `par_iter` because any
+        // declare transactions will require sierra compilation and casm
+        // hash computation. Both are blocking.
         let txns = transactions
             .par_iter()
             .map(|t| {
@@ -683,8 +684,8 @@ impl ValidatorTransactionBatchStage {
         //
         // IMPORTANT
         // Filter out declarations which were not reverted and add only those to
-        // the declared_classes list, which if the block is decide, goes to storage and
-        // hence updates the state.
+        // the declared_classes list, which if the block is decide, goes to
+        // storage and hence updates the state.
         receipts
             .iter()
             .zip(declared_classes)
@@ -819,9 +820,9 @@ impl ValidatorTransactionBatchStage {
         let block = self.consensus_finalize0()?;
         let actual_proposal_commitment = block.header.state_diff_commitment;
 
-        // Skip commitment validation in tests when using dummy commitment (ZERO)
-        // This allows e2e tests to focus on batch execution logic without commitment
-        // complexity
+        // Skip commitment validation in tests when using dummy commitment
+        // (ZERO) This allows e2e tests to focus on batch execution
+        // logic without commitment complexity
         #[cfg(any(test, feature = "skip-commitment-validation"))]
         if expected_proposal_commitment.0.is_zero() {
             return Ok(block);
@@ -869,7 +870,8 @@ impl ValidatorTransactionBatchStage {
                 .context("Executor should exist for finalization")
                 .map_err(ProposalHandlingError::fatal)?;
 
-            // close_block(n) commits only the first n transactions' state changes.
+            // close_block(n) commits only the first n transactions' state
+            // changes.
             let state_diff = executor
                 .close_block(transactions.len())
                 .map_err(ProposalHandlingError::fatal)?;
@@ -1391,7 +1393,8 @@ mod tests {
         }
 
         // Finalize should work with concurrent executor
-        // Note: State diffs may be empty for L1Handler transactions, which is fine
+        // Note: State diffs may be empty for L1Handler transactions, which is
+        // fine
         let _state_diff = validator_stage
             .finalize()
             .expect("Failed to finalize")
@@ -1788,8 +1791,8 @@ mod tests {
             .expect("Failed to create ValidatorBlockInfoStage");
 
         if proposal_height == BlockNumber::GENESIS {
-            // Genesis block should pass timestamp validation even though it does not have a
-            // parent.
+            // Genesis block should pass timestamp validation even though it
+            // does not have a parent.
             assert!(
                 validator_block_info
                     .validate_block_info(

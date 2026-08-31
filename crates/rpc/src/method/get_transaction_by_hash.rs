@@ -64,7 +64,8 @@ pub async fn get_transaction_by_hash(
 
         let db_tx = db.transaction().context("Creating database transaction")?;
 
-        // Pending is an optional first look; a finalized tx lives in the DB regardless.
+        // Pending is an optional first look; a finalized tx lives in the DB
+        // regardless.
         let pending = pending.map(|p| p.validate(&db_tx)).transpose()?;
         if let Some(transaction) = pending
             .as_ref()
@@ -186,8 +187,8 @@ mod tests {
             response_flags: TransactionResponseFlags::default(),
         };
 
-        // A finalized tx lives in the DB, so an unavailable pending cache must not
-        // error.
+        // A finalized tx lives in the DB, so an unavailable pending cache must
+        // not error.
         let result = get_transaction_by_hash(context, input, RpcVersion::V09).await;
         assert!(result.is_ok());
     }

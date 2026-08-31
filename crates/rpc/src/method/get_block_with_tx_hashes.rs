@@ -257,8 +257,8 @@ mod tests {
             RpcVersion::V09,
         );
 
-        // Latest should be served regardless of whether the preconfirmed reader is
-        // still waiting.
+        // Latest should be served regardless of whether the preconfirmed reader
+        // is still waiting.
         tokio::time::timeout(LATEST_TIMEOUT, latest)
             .await
             .unwrap()

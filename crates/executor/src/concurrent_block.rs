@@ -262,10 +262,11 @@ impl ConcurrentBlockExecutor {
 
 impl Drop for ConcurrentBlockExecutor {
     fn drop(&mut self) {
-        // If the executor hasn't been consumed by close_block() or abort_block(),
-        // we must abort it to halt the scheduler. Otherwise, worker threads will
-        // remain blocked waiting for this executor's scheduler to signal completion,
-        // which would cause deadlocks if the worker pool is reused for another block.
+        // If the executor hasn't been consumed by close_block() or
+        // abort_block(), we must abort it to halt the scheduler.
+        // Otherwise, worker threads will remain blocked waiting for
+        // this executor's scheduler to signal completion, which would
+        // cause deadlocks if the worker pool is reused for another block.
         if let Some(mut executor) = self.executor.take() {
             tracing::debug!(
                 "ConcurrentBlockExecutor dropped without close_block/abort_block - aborting"
@@ -354,8 +355,8 @@ fn convert_commitment_state_diff(
     let mut deployed_contracts = Vec::new();
 
     // Process address to class hash mappings
-    // In CommitmentStateDiff, these are all the contracts that changed their class
-    // hash
+    // In CommitmentStateDiff, these are all the contracts that changed their
+    // class hash
     for (address, class_hash) in commitment_diff.address_to_class_hash {
         // For simplicity, we treat all entries as deployed contracts.
         // The close_block() mechanism ensures we get the correct state diff

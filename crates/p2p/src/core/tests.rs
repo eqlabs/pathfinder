@@ -254,12 +254,12 @@ async fn duplicate_connection() {
         })
         .await;
 
-    // Ensure that the connection timeout has passed, so this is not the reason why
-    // the connection is getting closed.
+    // Ensure that the connection timeout has passed, so this is not the reason
+    // why the connection is getting closed.
     tokio::time::sleep(CONNECTION_TIMEOUT).await;
 
-    // Try to open another connection using the same peer ID and IP address (in this
-    // case, localhost).
+    // Try to open another connection using the same peer ID and IP address (in
+    // this case, localhost).
     peer1_copy
         .client
         .dial(peer2.peer_id, addr2.clone())
@@ -331,8 +331,8 @@ async fn outbound_peer_eviction() {
         .await
         .unwrap();
 
-    // Trying to open another one fails, because no peers are marked as not useful,
-    // and hence no peer can be evicted.
+    // Trying to open another one fails, because no peers are marked as not
+    // useful, and hence no peer can be evicted.
     let result = peer
         .client
         .dial(outbound3.peer_id, outbound_addr3.clone())
@@ -348,8 +348,8 @@ async fn outbound_peer_eviction() {
     // Mark one of the connected peers as not useful.
     peer.client.not_useful(outbound1.peer_id).await;
 
-    // Now the connection to outbound3 can be opened, because outbound1 is marked as
-    // not useful and will be evicted.
+    // Now the connection to outbound3 can be opened, because outbound1 is
+    // marked as not useful and will be evicted.
     peer.client
         .dial(outbound3.peer_id, outbound_addr3.clone())
         .await
@@ -484,8 +484,8 @@ async fn evicted_peer_reconnection() {
     let addr3 = peer3.start_listening().await.unwrap();
     tracing::info!(%peer3.peer_id, %addr3);
 
-    // Connect peer1 to peer2, then to peer3. Because the outbound connection limit
-    // is 1, peer2 will be evicted when peer1 connects to peer3.
+    // Connect peer1 to peer2, then to peer3. Because the outbound connection
+    // limit is 1, peer2 will be evicted when peer1 connects to peer3.
     peer1
         .client
         .dial(peer2.peer_id, addr2.clone())
@@ -549,8 +549,8 @@ async fn ip_whitelist() {
     let addr1 = peer1.start_listening().await.unwrap();
     tracing::info!(%peer1.peer_id, %addr1);
 
-    // Can't open the connection because peer2 is bound to 127.0.0.1 and peer1 only
-    // allows 127.0.0.2.
+    // Can't open the connection because peer2 is bound to 127.0.0.1 and peer1
+    // only allows 127.0.0.2.
     let result = peer2.client.dial(peer1.peer_id, addr1.clone()).await;
     assert!(result.is_err());
 

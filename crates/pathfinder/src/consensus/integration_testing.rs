@@ -72,8 +72,8 @@ fn debug_fail_on_impl(
             // triggered.
             let file = std::fs::File::create(&path)
                 .unwrap_or_else(|_| panic!("Failed to create marker file {}", path.display()));
-            // Ensure the file is written to disk. We've seen cases of TOCTOU issues here
-            // during test execution.
+            // Ensure the file is written to disk. We've seen cases of TOCTOU
+            // issues here during test execution.
             file.sync_all()
                 .unwrap_or_else(|_| panic!("Failed to sync marker file {}", path.display()));
             tracing::trace!(

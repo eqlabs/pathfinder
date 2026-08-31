@@ -342,9 +342,9 @@ async fn current_known_tx_status(
     submission_tracker: &tracker::SubmittedTransactionTracker,
     tx_hash: TransactionHash,
 ) -> Result<Option<(BlockNumber, FinalityStatus, Option<ExecutionStatus>)>, RpcError> {
-    // Check the DB first since, in case the transaction can be found both in the
-    // pending data and DB, the DB would contain "fresher" transaction status
-    // information.
+    // Check the DB first since, in case the transaction can be found both in
+    // the pending data and DB, the DB would contain "fresher" transaction
+    // status information.
     let (l1_state, tx_with_receipt) = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
         let mut conn = storage.connection()?;
         let db = conn.transaction()?;
@@ -396,8 +396,8 @@ fn pending_data_cache_status(
     pending_data: &PendingData,
     tx_hash: TransactionHash,
 ) -> Option<(BlockNumber, FinalityStatus, Option<ExecutionStatus>)> {
-    // Search every un-committed parent, newest to oldest, before the pre-confirmed
-    // block in the next step.
+    // Search every un-committed parent, newest to oldest, before the
+    // pre-confirmed block in the next step.
     for parent in pending_data.parent_blocks().rev() {
         let status_in_parent = find_tx_receipt(&parent.block.transaction_receipts, tx_hash)
             .map(|r| r.execution_status.clone());
@@ -1440,7 +1440,8 @@ mod tests {
         while router.context.notifications.l2_blocks.receiver_count() == 0
             || router.context.notifications.reorgs.receiver_count() == 0
         {
-            // Make sure that the receiver task is set up before sending notifications.
+            // Make sure that the receiver task is set up before sending
+            // notifications.
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
 

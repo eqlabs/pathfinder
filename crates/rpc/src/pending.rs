@@ -166,15 +166,16 @@ impl UnvalidatedPendingData {
             .cloned()
             .collect();
 
-        // If the committed head has advanced past the overlay's base, the stored
-        // aggregated overlay still carries the state diffs of blocks that are now
-        // committed. Recompose it from the surviving parents plus the
-        // pre-confirmed block so it sits exactly on `committed` — no block ever
-        // appears in both the committed DB base and the pending overlay, so
-        // execution can't double-apply a just-committed block's diffs. When the
-        // base is already at the committed head the stored overlay is reused
-        // as-is. Composition mirrors `PendingData::from_window`: parents oldest →
-        // newest, then the pre-confirmed block's own diffs on top.
+        // If the committed head has advanced past the overlay's base, the
+        // stored aggregated overlay still carries the state diffs of
+        // blocks that are now committed. Recompose it from the
+        // surviving parents plus the pre-confirmed block so it sits
+        // exactly on `committed` — no block ever appears in both the
+        // committed DB base and the pending overlay, so execution can't
+        // double-apply a just-committed block's diffs. When the base is
+        // already at the committed head the stored overlay is reused
+        // as-is. Composition mirrors `PendingData::from_window`: parents oldest
+        // → newest, then the pre-confirmed block's own diffs on top.
         let aggregated_overlay = if watched_pending_data.aggregated_lower_bound < committed {
             Arc::new(
                 PendingData::compose_parents_overlay(&parents)
@@ -187,8 +188,9 @@ impl UnvalidatedPendingData {
         let pending_data = if let Some(immediate_parent) = parents.last_mut() {
             // The immediate parent (newest un-committed block) is the
             // pre-confirmed's parent and carries the parent state commitment.
-            // Deeper parents carry only data (txns, receipts, events); execution
-            // uses the aggregated overlay, so they need no patch.
+            // Deeper parents carry only data (txns, receipts, events);
+            // execution uses the aggregated overlay, so they need
+            // no patch.
             //
             // The producer only stores contiguous windows, so a gap here means
             // the cache was written by something that broke that invariant.
@@ -224,9 +226,10 @@ impl UnvalidatedPendingData {
                 aggregated_lower_bound: committed,
             }
         } else {
-            // No un-committed parent (a gap of one, or the parents have all been
-            // finalised into the DB): serve the pre-confirmed against the
-            // committed base, which then carries the parent state commitment.
+            // No un-committed parent (a gap of one, or the parents have all
+            // been finalised into the DB): serve the pre-confirmed
+            // against the committed base, which then carries the
+            // parent state commitment.
             let state_update = Arc::new(
                 StateUpdate::clone(&watched_pending_data.state_update)
                     .with_parent_state_commitment(latest.state_commitment),
@@ -476,9 +479,10 @@ mod tests {
 
     #[tokio::test]
     async fn valid_pre_confirmed_with_pre_latest() {
-        // There are certain intervals where the pre-latest block is still stored in
-        // pending data but that same block has already been finalized and received as
-        // the new L2 block. This test makes sure that we still provide pending data
+        // There are certain intervals where the pre-latest block is still
+        // stored in pending data but that same block has already been
+        // finalized and received as the new L2 block. This test makes
+        // sure that we still provide pending data
         // from the pre-confirmed block in this case and *we do not provide* the
         // pre-latest block because it is not pending anymore.
         let cache = Arc::new(PendingDataCache::new());
@@ -489,7 +493,8 @@ mod tests {
             .connection()
             .unwrap();
 
-        // Required otherwise latest doesn't have a valid parent hash in storage.
+        // Required otherwise latest doesn't have a valid parent hash in
+        // storage.
         let parent = BlockHeader::builder()
             .number(BlockNumber::GENESIS + 12)
             .finalize_with_hash(block_hash_bytes!(b"parent hash"));
@@ -516,11 +521,12 @@ mod tests {
         let result = uut.resolve().await.unwrap().validate(&tx).unwrap();
         pretty_assertions_sorted::assert_eq_sorted!(result, pending);
 
-        // Now the pre-latest block (latest + 1) is itself finalized into storage,
-        // advancing the committed head to it. The same pre-confirmed view
-        // (latest + 2) is still cached, but the now-committed pre-latest must no
-        // longer be reported as pending — we serve the pre-confirmed against the
-        // new head and drop the pre-latest.
+        // Now the pre-latest block (latest + 1) is itself finalized into
+        // storage, advancing the committed head to it. The same
+        // pre-confirmed view (latest + 2) is still cached, but the
+        // now-committed pre-latest must no longer be reported as
+        // pending — we serve the pre-confirmed against the new head and
+        // drop the pre-latest.
         let child = latest
             .child_builder()
             .finalize_with_hash(block_hash_bytes!(b"child hash"));
@@ -536,8 +542,8 @@ mod tests {
         // just the reported parents: the now-committed pre-latest block's state
         // diff is dropped, only the pre-confirmed block's own diff remains, and
         // the overlay is declared to sit on the new committed head. Otherwise
-        // execution would double-apply the just-committed block's diff, which is
-        // already in the committed DB base.
+        // execution would double-apply the just-committed block's diff, which
+        // is already in the committed DB base.
         let overlay = result.aggregated_state_update();
         assert_eq!(
             overlay.contract_nonce(contract_address_bytes!(b"pre latest contract address")),
@@ -554,10 +560,11 @@ mod tests {
 
     #[tokio::test]
     async fn windowed_pre_confirmed_reports_committed_head_as_old_root() {
-        // With a pre-latest present the window is two blocks deep, so the tip is
-        // served through the immediate-parent branch. Its own state update must
-        // carry the committed head's state commitment as its old root, otherwise
-        // getStateUpdate(pre_confirmed) on v0.9 serializes old_root as 0x0.
+        // With a pre-latest present the window is two blocks deep, so the tip
+        // is served through the immediate-parent branch. Its own state
+        // update must carry the committed head's state commitment as
+        // its old root, otherwise getStateUpdate(pre_confirmed) on v0.9
+        // serializes old_root as 0x0.
         let cache = Arc::new(PendingDataCache::new());
         let uut = PendingWatcher::new(cache.clone());
 
@@ -683,8 +690,9 @@ mod tests {
     #[tokio::test]
     async fn invalid_pending_defaults_to_latest_in_storage() {
         // If the pending data isn't consistent with the latest data in storage,
-        // then the result should be an empty block with the gas price, timestamp
-        // and hash as parent hash of the latest block in storage.
+        // then the result should be an empty block with the gas price,
+        // timestamp and hash as parent hash of the latest block in
+        // storage.
 
         let cache = Arc::new(PendingDataCache::new());
         let uut = PendingWatcher::new(cache.clone());
@@ -694,7 +702,8 @@ mod tests {
             .connection()
             .unwrap();
 
-        // Required otherwise latest doesn't have a valid parent hash in storage.
+        // Required otherwise latest doesn't have a valid parent hash in
+        // storage.
         let parent = BlockHeader::builder()
             .number(BlockNumber::GENESIS + 12)
             .finalize_with_hash(block_hash_bytes!(b"parent hash"));
@@ -724,8 +733,9 @@ mod tests {
     #[tokio::test]
     async fn invalid_pre_confirmed_defaults_to_latest_in_storage() {
         // If the pending data isn't consistent with the latest data in storage,
-        // then the result should be an empty block with the gas price, timestamp
-        // and hash as parent hash of the latest block in storage.
+        // then the result should be an empty block with the gas price,
+        // timestamp and hash as parent hash of the latest block in
+        // storage.
 
         let cache = Arc::new(PendingDataCache::new());
         let uut = PendingWatcher::new(cache.clone());
@@ -735,7 +745,8 @@ mod tests {
             .connection()
             .unwrap();
 
-        // Required otherwise latest doesn't have a valid parent hash in storage.
+        // Required otherwise latest doesn't have a valid parent hash in
+        // storage.
         let parent = BlockHeader::builder()
             .number(BlockNumber::GENESIS + 12)
             .finalize_with_hash(block_hash_bytes!(b"parent hash"));
@@ -768,8 +779,9 @@ mod tests {
     #[tokio::test]
     async fn invalid_pre_confirmed_with_pre_latest_defaults_to_latest_in_storage() {
         // If the pending data isn't consistent with the latest data in storage,
-        // then the result should be an empty block with the gas price, timestamp
-        // and hash as parent hash of the latest block in storage.
+        // then the result should be an empty block with the gas price,
+        // timestamp and hash as parent hash of the latest block in
+        // storage.
 
         let cache = Arc::new(PendingDataCache::new());
         let uut = PendingWatcher::new(cache.clone());
@@ -779,7 +791,8 @@ mod tests {
             .connection()
             .unwrap();
 
-        // Required otherwise latest doesn't have a valid parent hash in storage.
+        // Required otherwise latest doesn't have a valid parent hash in
+        // storage.
         let parent1 = BlockHeader::builder()
             .number(BlockNumber::GENESIS + 12)
             .finalize_with_hash(block_hash_bytes!(b"parent1 hash"));
@@ -811,8 +824,8 @@ mod tests {
         tx.insert_block_header(&parent2).unwrap();
         tx.insert_block_header(&latest).unwrap();
 
-        // Pre-latest block exists but is behind `== latest - 1` (because `== latest`
-        // is still considered valid).
+        // Pre-latest block exists but is behind `== latest - 1` (because `==
+        // latest` is still considered valid).
         let pending = valid_pre_confirmed_block_with_pre_latest(&parent1);
         cache.store(pending.clone());
 
@@ -964,7 +977,8 @@ mod tests {
             pending_data.pre_confirmed_state_update().as_ref()
         );
 
-        // We expect the transaction list to contain pre-confirmed transactions only.
+        // We expect the transaction list to contain pre-confirmed transactions
+        // only.
         assert_eq!(
             number_of_pre_confirmed_transactions,
             pending_data.pre_confirmed_transactions().len()

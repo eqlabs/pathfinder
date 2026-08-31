@@ -242,8 +242,8 @@ mod tests {
             transaction_hash: transaction_hash_bytes!(b"txn 1"),
         };
 
-        // A finalized tx lives in the DB, so an unavailable pending cache must not
-        // error.
+        // A finalized tx lives in the DB, so an unavailable pending cache must
+        // not error.
         let status = get_transaction_status(context, input, RPC_VERSION)
             .await
             .unwrap();

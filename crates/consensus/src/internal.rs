@@ -114,7 +114,8 @@ impl<
             "Recovering consensus from WAL entries"
         );
 
-        // Check if any entry is a Decision, which indicates this height is finalized.
+        // Check if any entry is a Decision, which indicates this height is
+        // finalized.
         let has_decision = entries
             .iter()
             .any(|e| matches!(e, WalEntry::Decision { .. }));
