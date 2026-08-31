@@ -109,10 +109,12 @@ impl ApplicationBehaviour for Behaviour {
                     .gossipsub
                     .set_application_score(&peer_id, *current_score);
                 if !done {
-                    // Peer scoring _should_ be active for consensus P2P, so the only reason we
-                    // would fail to set the score is if the peer disconnected or its score
+                    // Peer scoring _should_ be active for consensus P2P, so the
+                    // only reason we would fail to set the
+                    // score is if the peer disconnected or its score
                     // expired.
-                    // Either way, we can remove its score from our local state at this point.
+                    // Either way, we can remove its score from our local state
+                    // at this point.
                     state.peer_app_scores.remove(&peer_id);
                     tracing::debug!(
                         "Failed to set peer score for {peer_id}, peer may have disconnected"
@@ -121,10 +123,12 @@ impl ApplicationBehaviour for Behaviour {
             }
             #[cfg(test)]
             ConsensusCommand::TestProposalStream(height_and_round, proposal_stream, shuffle) => {
-                // This command is used to test out-of-order delivery of proposal streams.
-                // The `message_id` must be assigned sequentially within
+                // This command is used to test out-of-order delivery of
+                // proposal streams. The `message_id` must be
+                // assigned sequentially within
                 // `create_outgoing_proposal_message`, so this test command
-                // needs to live in the network layer rather than the application layer.
+                // needs to live in the network layer rather than the
+                // application layer.
                 let mut stream_msgs = Vec::new();
                 for part in proposal_stream {
                     let msgs = create_outgoing_proposal_message(state, height_and_round, part);

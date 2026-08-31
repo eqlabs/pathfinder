@@ -425,7 +425,8 @@ mod tests {
         // Add block 10 first
         provider.add_sample(sample(10, 100, 100, 10)).unwrap();
 
-        // Now add block 11 with a parent hash that doesn't match block 10's hash
+        // Now add block 11 with a parent hash that doesn't match block 10's
+        // hash
         let mut bad_block = sample(11, 112, 100, 10);
         bad_block.parent_hash = L1BlockHash::from([0xFFu8; 32]);
 

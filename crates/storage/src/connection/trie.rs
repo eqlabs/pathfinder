@@ -562,8 +562,8 @@ impl Transaction<'_> {
         // Reusable (and oversized) buffer for encoding.
         let mut buffer = [0u8; 256];
 
-        // Insert nodes in reverse to ensure children always have an assigned index for
-        // the parent to use.
+        // Insert nodes in reverse to ensure children always have an assigned
+        // index for the parent to use.
         for idx in to_insert.into_iter().rev() {
             let (hash, node) = &update.nodes_added.get(idx).context("Node index missing")?;
 
@@ -596,9 +596,9 @@ impl Transaction<'_> {
         index: TrieStorageIndex,
         table: &'static str,
     ) -> anyhow::Result<Option<StoredNode>> {
-        // We rely on sqlite caching the statement here. Storing the statement would be
-        // nice, however that leads to &mut requirements or interior mutable
-        // work-arounds.
+        // We rely on sqlite caching the statement here. Storing the statement
+        // would be nice, however that leads to &mut requirements or
+        // interior mutable work-arounds.
         let mut stmt = self
             .inner()
             .prepare_cached(&format!("SELECT data FROM {table} WHERE idx = ?"))
@@ -622,9 +622,9 @@ impl Transaction<'_> {
         index: TrieStorageIndex,
         table: &'static str,
     ) -> anyhow::Result<Option<Felt>> {
-        // We rely on sqlite caching the statement here. Storing the statement would be
-        // nice, however that leads to &mut requirements or interior mutable
-        // work-arounds.
+        // We rely on sqlite caching the statement here. Storing the statement
+        // would be nice, however that leads to &mut requirements or
+        // interior mutable work-arounds.
         let mut stmt = self
             .inner()
             .prepare_cached(&format!("SELECT hash FROM {table} WHERE idx = ?"))
@@ -1017,7 +1017,8 @@ mod tests {
         let c1 = contract_address_bytes!(b"first");
         let c2 = contract_address_bytes!(b"second");
 
-        // Simplest trie node setup so we can test the fetching of contract root hashes.
+        // Simplest trie node setup so we can test the fetching of contract root
+        // hashes.
         let root0 = contract_root_bytes!(b"root 0");
         let root_node = Node::LeafBinary;
         let nodes = vec![(root0.0, root_node.clone())];

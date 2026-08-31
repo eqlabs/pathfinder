@@ -130,8 +130,8 @@ impl BatchExecutionManager {
             ..
         }) = deferred
         {
-            // Deferred transactions arrived first, so they should be executed first.
-            // Prepend them to the new transactions.
+            // Deferred transactions arrived first, so they should be executed
+            // first. Prepend them to the new transactions.
             deferred_txns.extend(all_transactions);
             all_transactions = deferred_txns;
             match validator_stage {
@@ -243,8 +243,8 @@ impl BatchExecutionManager {
         executed_transaction_count: u64,
         validator: &mut ValidatorTransactionBatchStage,
     ) -> Result<(), ProposalHandlingError> {
-        // Verify that execution has started (at least one batch was executed, not
-        // deferred)
+        // Verify that execution has started (at least one batch was executed,
+        // not deferred)
         if !self.executing.contains(&height_and_round) {
             return Err(ProposalHandlingError::Fatal(anyhow::anyhow!(
                 "No execution state found for {height_and_round}. Execution should have started \
@@ -270,8 +270,9 @@ impl BatchExecutionManager {
             );
             validator.rollback_to_transaction::<T>(target_transaction_count)?;
         } else if target_transaction_count > current_transaction_count {
-            // This shouldn't happen with proper message ordering and no protocol errors.
-            // Ordering is guaranteed by p2p::consensus::handle_incoming_proposal_message.
+            // This shouldn't happen with proper message ordering and no
+            // protocol errors. Ordering is guaranteed by
+            // p2p::consensus::handle_incoming_proposal_message.
             // ProposalFin should arrive after all TransactionBatches, so we
             // should have at least as many transactions as its
             // executed transaction count indicates.
@@ -468,7 +469,8 @@ mod tests {
         let storage = StorageBuilder::in_tempdir().expect("Failed to create temp database");
         let chain_id = ChainId::SEPOLIA_TESTNET;
 
-        // Create and commit parent block (height 1) so height 2 won't be deferred
+        // Create and commit parent block (height 1) so height 2 won't be
+        // deferred
         {
             let mut db_conn = storage.connection().unwrap();
             let db_tx = db_conn.transaction().unwrap();
@@ -676,7 +678,8 @@ mod tests {
                 )
                 .expect("Failed to process batch");
 
-            // Verify execution: deferred + new transactions executed, execution started
+            // Verify execution: deferred + new transactions executed, execution
+            // started
             assert!(
                 batch_execution_manager.is_executing(&height_and_round),
                 "Execution should have started after parent committed"
@@ -692,9 +695,10 @@ mod tests {
             );
         }
 
-        // Test 3: Multiple batches with immediate execution (parent already committed)
-        // Create a new worker pool for the second validator to avoid potential issues
-        // with the blockifier's ConcurrentTransactionExecutor and shared worker pools.
+        // Test 3: Multiple batches with immediate execution (parent already
+        // committed) Create a new worker pool for the second validator
+        // to avoid potential issues with the blockifier's
+        // ConcurrentTransactionExecutor and shared worker pools.
         let worker_pool_2 = create_test_worker_pool();
         let height_and_round_2 = HeightAndRound::new(3, 1);
         let proposal_init = create_test_proposal(height_and_round_2.height());

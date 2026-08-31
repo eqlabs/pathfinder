@@ -184,8 +184,8 @@ impl PathfinderInstance {
         );
 
         let (rpc_port_watch_tx, rpc_port_watch_rx) = watch::channel((0u32, 0u16));
-        // Keep the refcount at at least 1 to achieve 'static lifetime, especially when
-        // an instance is terminated and then respawned.
+        // Keep the refcount at at least 1 to achieve 'static lifetime,
+        // especially when an instance is terminated and then respawned.
         let rpc_port_watch_tx2 = rpc_port_watch_tx.clone();
         _ = Box::leak(Box::new(rpc_port_watch_tx2));
 
@@ -213,8 +213,8 @@ impl PathfinderInstance {
             // The process has exited with some error exit code.
             Ok(Some(status)) if !status.success() => {
                 self.is_terminated = true;
-                // The previous port value is invalid, and the new Pathfinder instance hasn't
-                // been spawned yet.
+                // The previous port value is invalid, and the new Pathfinder
+                // instance hasn't been spawned yet.
                 self.rpc_port_watch_tx
                     .send((0, 0))
                     .context("Clearing rpc port")?;
@@ -223,8 +223,8 @@ impl PathfinderInstance {
             // The process has exited with 0 code.
             Ok(Some(_)) => {
                 self.is_terminated = true;
-                // The previous port value is invalid, and the new Pathfinder instance hasn't
-                // been spawned yet.
+                // The previous port value is invalid, and the new Pathfinder
+                // instance hasn't been spawned yet.
                 self.rpc_port_watch_tx
                     .send((0, 0))
                     .context("Clearing rpc port")?;

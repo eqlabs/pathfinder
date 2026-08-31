@@ -47,14 +47,15 @@ pub async fn poll_github_for_releases() {
                 tracing::trace!(latest=?latest_gh_version, "No new release found on Github");
             }
             UpdateResult::ReqwestError(e) if e.is_decode() || e.is_body() || e.is_builder() => {
-                // More severe errors, probably indicating something is wrong with our setup.
-                // Set to warn and not error because this update checking is a non-critical
+                // More severe errors, probably indicating something is wrong
+                // with our setup. Set to warn and not error
+                // because this update checking is a non-critical
                 // feature.
                 tracing::warn!(error=%e, "Error checking Github for new releases")
             }
             UpdateResult::ReqwestError(e) => {
-                // Less severe errors, includes transient connection errors and timeouts; does
-                // not warrant a high log level.
+                // Less severe errors, includes transient connection errors and
+                // timeouts; does not warrant a high log level.
                 tracing::trace!(error=%e, "Error checking Github for new releases")
             }
             UpdateResult::Other(e) => {

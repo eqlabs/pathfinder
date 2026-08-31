@@ -262,20 +262,22 @@ impl RpcSubscriptionFlow for SubscribeEvents {
             }
         }
 
-        // Keep track of the updates already sent for each block. This is done in order
-        // to avoid sending duplicate notifications when seeing the same block multiple
-        // times in pending data (as new transactions are added). Post Starknet v0.14.0
-        // this includes the pre-confirmed block and an optional pre-latest block, which
+        // Keep track of the updates already sent for each block. This is done
+        // in order to avoid sending duplicate notifications when seeing
+        // the same block multiple times in pending data (as new
+        // transactions are added). Post Starknet v0.14.0 this includes
+        // the pre-confirmed block and an optional pre-latest block, which
         // is why we need the map.
         let mut sent_updates_per_block: HashMap<
             BlockNumber,
             HashSet<(TransactionHash, TxnFinalityStatus)>,
         > = HashMap::new();
 
-        // The highest committed block height seen on the L2-block stream. A block at or
-        // below this has been finalized, and its `sent_updates` were dropped when it
-        // was committed, so it must not be re-emitted as pending. A not-yet-pruned
-        // pending view can briefly show a just committed block as a parent.
+        // The highest committed block height seen on the L2-block stream. A
+        // block at or below this has been finalized, and its
+        // `sent_updates` were dropped when it was committed, so it must
+        // not be re-emitted as pending. A not-yet-pruned pending view
+        // can briefly show a just committed block as a parent.
         let mut latest_committed = BlockNumber::GENESIS;
 
         loop {
@@ -928,8 +930,8 @@ mod tests {
             sample_event_message(0x16, subscription_id, RpcVersion::V09)
         );
 
-        // Pending window: tip with the parent below it. The tip is emitted first,
-        // then the parent, both PRE_CONFIRMED (no block hash).
+        // Pending window: tip with the parent below it. The tip is emitted
+        // first, then the parent, both PRE_CONFIRMED (no block hash).
         pending_data_cache.store(sample_pending_with_parent(tip, parent));
         assert_eq!(
             recv(&mut sender_rx).await,
@@ -953,10 +955,10 @@ mod tests {
             sample_event_message(parent, subscription_id, RpcVersion::V09)
         );
 
-        // A not-yet-pruned pending view still lists the now-committed parent. It
-        // must NOT be re-emitted as PRE_CONFIRMED. (Don't commit the tip to
-        // disambiguate — that would exercise the unguarded pre-confirmed/tip path
-        // and mask the check.)
+        // A not-yet-pruned pending view still lists the now-committed parent.
+        // It must NOT be re-emitted as PRE_CONFIRMED. (Don't commit the
+        // tip to disambiguate — that would exercise the unguarded
+        // pre-confirmed/tip path and mask the check.)
         pending_data_cache.store(sample_pending_with_parent(tip, parent));
         assert_recv_nothing(&mut sender_rx).await;
     }
@@ -1016,8 +1018,8 @@ mod tests {
         );
         assert!(sender_rx.is_empty());
 
-        // Process a new block to make sure that we are still receiving new blocks, just
-        // not pre-confirmed data.
+        // Process a new block to make sure that we are still receiving new
+        // blocks, just not pre-confirmed data.
         let next_block_number = num_blocks + 1;
         let num_receivers = retry(|| {
             router
@@ -1030,7 +1032,8 @@ mod tests {
         .unwrap();
         assert_eq!(num_receivers, 1);
 
-        // Expect `num_blocks + 1` (new block) and not `num_blocks` (pending data).
+        // Expect `num_blocks + 1` (new block) and not `num_blocks` (pending
+        // data).
         let expected = sample_event_message(next_block_number, subscription_id, RpcVersion::V09);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {

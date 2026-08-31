@@ -598,8 +598,8 @@ mod tests {
 
         let addr = |b: &[u8]| contract_address_bytes!(b);
         let nonce = |b: &[u8]| contract_nonce_bytes!(b);
-        // Three parents each bump a distinct contract's nonce; the pre-confirmed
-        // block bumps a fourth.
+        // Three parents each bump a distinct contract's nonce; the
+        // pre-confirmed block bumps a fourth.
         let parent = |b: u64, a: &'static [u8], n: &'static [u8]| PreLatestData {
             block: PreLatestBlock {
                 number: bn(b),
@@ -678,7 +678,8 @@ mod tests {
             Some(deep_tx)
         );
 
-        // Every un-committed block reports as pending; a committed one does not.
+        // Every un-committed block reports as pending; a committed one does
+        // not.
         assert!(data.is_pre_latest_or_pre_confirmed(bn(7)));
         assert!(data.is_pre_latest_or_pre_confirmed(bn(8)));
         assert!(data.is_pre_latest_or_pre_confirmed(bn(9)));

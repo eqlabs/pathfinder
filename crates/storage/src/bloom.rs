@@ -177,12 +177,13 @@ impl AggregateBloom {
             .for_each(|(i, bloom_byte)| {
                 let row_idx_base = 8 * i;
 
-                // Each bit (possible key index) in the Bloom filter has its own row.
+                // Each bit (possible key index) in the Bloom filter has its own
+                // row.
                 for offset in 0..8 {
                     let row_idx = (row_idx_base + offset) * Self::BLOCK_RANGE_BYTES;
                     let bitmap_idx = row_idx + byte_idx;
-                    // Reverse the offsets so that the most significant bit is considered as the
-                    // first.
+                    // Reverse the offsets so that the most significant bit is
+                    // considered as the first.
                     let bit = (bloom_byte >> (7 - offset)) & 1;
                     self.bitmap[bitmap_idx] |= bit << (7 - bit_idx);
                 }
@@ -379,8 +380,8 @@ impl AggregateBloomCache {
 
         // Align to the nearest lower multiple of BLOCK_RANGE_LEN.
         let from_block_aligned = from_block - from_block % AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
-        // Align to the nearest higher multiple of BLOCK_RANGE_LEN, then subtract 1
-        // (zero based indexing).
+        // Align to the nearest higher multiple of BLOCK_RANGE_LEN, then
+        // subtract 1 (zero based indexing).
         let to_block_aligned = to_block + AGGREGATE_BLOOM_BLOCK_RANGE_LEN
             - (to_block % AGGREGATE_BLOOM_BLOCK_RANGE_LEN)
             - 1;

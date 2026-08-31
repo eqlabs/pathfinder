@@ -44,8 +44,9 @@ impl ContractClass {
             // ABI is optional.
             let abi = json_obj.get_mut("abi").and_then(|json| {
                 let json = json.take();
-                // ABIs are set by users and not verified by starknet, therefore ABIs
-                // can fail to parse (and just be nonsense). Discard these ABIs.
+                // ABIs are set by users and not verified by starknet, therefore
+                // ABIs can fail to parse (and just be
+                // nonsense). Discard these ABIs.
                 serde_json::from_value::<Vec<cairo::abi::ContractAbiEntry>>(json).ok()
             });
 

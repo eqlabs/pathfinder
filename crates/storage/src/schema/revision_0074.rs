@@ -60,8 +60,8 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         .expect("DB is not empty");
 
     if FIRST_EVENT_FILTER_TO_REBUILD_FROM_BLOCK > latest {
-        // This DB instance has not reached the corrupted aggregate filter range.
-        // No need to repair it.
+        // This DB instance has not reached the corrupted aggregate filter
+        // range. No need to repair it.
         return Ok(());
     }
 

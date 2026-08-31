@@ -85,8 +85,9 @@ impl crate::dto::SerializeForVersion for pathfinder_common::BlockHeader {
 
         if serializer.version >= RpcVersion::V10 {
             if self.starknet_version < StarknetVersion::V_0_13_2 {
-                // Pathfinder storage stores 0.13.2-style event and transaction commitments for
-                // pre-0.13.2 blocks. This is required so that we can serve the
+                // Pathfinder storage stores 0.13.2-style event and transaction
+                // commitments for pre-0.13.2 blocks. This is
+                // required so that we can serve the
                 // 0.13.2-style commitments over the P2P sync protocol. To avoid
                 // confusion, we return zeroed commitments for such blocks.
                 serializer.serialize_field("event_commitment", &EventCommitment::ZERO)?;

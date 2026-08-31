@@ -148,7 +148,8 @@ where
                         "Failed to gossip {} after max NoPeersSubscribedToTopic retries - giving up",
                         context
                     );
-                    // Consensus engine should handle missing gossip via timeouts, so we return Ok.
+                    // Consensus engine should handle missing gossip via
+                    // timeouts, so we return Ok.
                     return Ok(());
                 }
                 tracing::warn!(
@@ -175,11 +176,12 @@ where
                             "Failed to gossip {} after max retries - giving up",
                             context
                         );
-                        // Consensus engine should handle missing gossip via timeouts, so we return
-                        // Ok.
+                        // Consensus engine should handle missing gossip via
+                        // timeouts, so we return Ok.
                         return Ok(());
                     }
-                    // Retry with exponential backoff: initial_delay * 2^retry_count (capped at
+                    // Retry with exponential backoff: initial_delay *
+                    // 2^retry_count (capped at
                     // max_backoff_delay_ms)
                     let backoff_multiplier = 2_u64.pow(retry_count);
                     let delay_ms = (config.initial_retry_delay_ms * backoff_multiplier)
@@ -203,8 +205,9 @@ where
                         "Fatal error gossiping {} - task must restart",
                         context
                     );
-                    // Fatal, unexpected publish error. Likely something permanent that won't be
-                    // resolved by retrying. Return the error.
+                    // Fatal, unexpected publish error. Likely something
+                    // permanent that won't be resolved by
+                    // retrying. Return the error.
                     return Err(anyhow::Error::from(error)
                         .context(format!("Fatal error gossiping {context}")));
                 }

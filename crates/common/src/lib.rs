@@ -521,9 +521,9 @@ impl StarknetVersion {
         self.2
     }
 
-    // A version from which retrospective block tracing with blockifier v0.19.0-rc.2
-    // triggers proving_gas overrun errors for blocks that were previously valid
-    // (because proving_gas was not a thing back then).
+    // A version from which retrospective block tracing with blockifier
+    // v0.19.0-rc.2 triggers proving_gas overrun errors for blocks that were
+    // previously valid (because proving_gas was not a thing back then).
     pub const V_0_13_1_1: Self = Self::new(0, 13, 1, 1);
 
     pub const V_0_13_2: Self = Self::new(0, 13, 2, 0);
@@ -699,8 +699,8 @@ where
 /// See:
 /// <https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/public/abi.py#L21-L26>
 pub fn truncated_keccak(mut plain: [u8; 32]) -> Felt {
-    // python code masks with (2**250 - 1) which starts 0x03 and is followed by 31
-    // 0xff in be truncation is needed not to overflow the field element.
+    // python code masks with (2**250 - 1) which starts 0x03 and is followed by
+    // 31 0xff in be truncation is needed not to overflow the field element.
     plain[0] &= 0x03;
     Felt::from_be_bytes(plain).expect("cannot overflow: smaller than modulus")
 }

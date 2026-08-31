@@ -131,8 +131,9 @@ impl Transaction<'_> {
         running_event_filter.filter.insert(bloom, block_number);
         running_event_filter.next_block = block_number + 1;
 
-        // This check is the reason that blocks cannot be skipped, if they were we would
-        // risk missing the last block of the running event filter's range.
+        // This check is the reason that blocks cannot be skipped, if they were
+        // we would risk missing the last block of the running event
+        // filter's range.
         if block_number == running_event_filter.filter.to_block {
             insert_stmt.execute(params![
                 &running_event_filter.filter.from_block,
@@ -393,8 +394,8 @@ impl Transaction<'_> {
 
             emitted_events.extend(events);
 
-            // Stop if we have a page of events plus an extra one to decide if we're on
-            // the last page.
+            // Stop if we have a page of events plus an extra one to decide if
+            // we're on the last page.
             if emitted_events.len() > constraints.page_size {
                 let continuation_token = continuation_token(
                     &emitted_events,
@@ -621,8 +622,8 @@ impl RunningEventFilter {
             )
             .optional()?
         else {
-            // No blocks in the database, create an event filter starting from the Genesis
-            // block.
+            // No blocks in the database, create an event filter starting from
+            // the Genesis block.
             return Ok(Self {
                 filter: AggregateBloom::new(BlockNumber::GENESIS),
                 next_block: BlockNumber::GENESIS,
@@ -654,7 +655,8 @@ impl RunningEventFilter {
             )
             .context("Querying running event filter")?;
 
-        // Check whether the running event filter was stored during graceful shutdown.
+        // Check whether the running event filter was stored during graceful
+        // shutdown.
         let running_event_filter = if next_block == latest + 1 {
             Self { filter, next_block }
         } else {
@@ -817,7 +819,8 @@ fn continuation_token(
         .take_while(|event| event.block_number == last_block_number)
         .count();
 
-    // Since we're taking the block number of the last block this is at least one.
+    // Since we're taking the block number of the last block this is at least
+    // one.
     assert!(number_of_events_in_last_block >= 1);
 
     let token = if number_of_events_in_last_block < events.len() {
@@ -1046,9 +1049,11 @@ mod tests {
         // This is a regression test where events were incorrectly ordered by
         // transaction hash instead of transaction index.
         //
-        // Events should be ordered by block number, transaction index, event index.
+        // Events should be ordered by block number, transaction index, event
+        // index.
 
-        // All events we are storing, arbitrarily use from_address to distinguish them.
+        // All events we are storing, arbitrarily use from_address to
+        // distinguish them.
         let expected_events = (0u8..5)
             .map(|idx| Event {
                 data: Vec::new(),
@@ -1563,7 +1568,8 @@ mod tests {
             }
         );
 
-        // using the continuation token should be equivalent to the previous query
+        // using the continuation token should be equivalent to the previous
+        // query
         let constraints: EventConstraints = EventConstraints {
             from_block: Some(BlockNumber::new_or_panic(0)),
             to_block: None,
@@ -1608,7 +1614,8 @@ mod tests {
             }
         );
 
-        // using the continuation token should be equivalent to the previous query
+        // using the continuation token should be equivalent to the previous
+        // query
         let constraints = EventConstraints {
             from_block: Some(BlockNumber::new_or_panic(3)),
             to_block: None,

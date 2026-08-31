@@ -6,7 +6,8 @@ crate::error::generate_rpc_error_subset!(Error);
 pub struct Output(Syncing);
 
 pub async fn syncing(context: RpcContext) -> Result<Output, Error> {
-    // Scoped so I don't have to think too hard about mutex guard drop semantics.
+    // Scoped so I don't have to think too hard about mutex guard drop
+    // semantics.
     let value = match *context.sync_status.status.read().await {
         Syncing::False => Syncing::False,
         Syncing::Status(status) => {

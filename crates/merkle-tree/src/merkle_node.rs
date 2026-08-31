@@ -279,8 +279,9 @@ mod tests {
             // Test data taken from starkware cairo-lang repo:
             // https://github.com/starkware-libs/cairo-lang/blob/fc97bdd8322a7df043c87c371634b26c15ed6cee/src/starkware/starkware_utils/commitment_tree/patricia_tree/nodes_test.py#L14
             //
-            // Note that the hash function must be exchanged for `async_stark_hash_func`,
-            // otherwise it just uses some other test hash function.
+            // Note that the hash function must be exchanged for
+            // `async_stark_hash_func`, otherwise it just uses some
+            // other test hash function.
             let expected = Felt::from_hex_str(
                 "0x0615bb8d47888d2987ad0c63fc06e9e771930986a4dd8adc55617febfcf3639e",
             )
@@ -305,8 +306,9 @@ mod tests {
             // Test data taken from starkware cairo-lang repo:
             // https://github.com/starkware-libs/cairo-lang/blob/fc97bdd8322a7df043c87c371634b26c15ed6cee/src/starkware/starkware_utils/commitment_tree/patricia_tree/nodes_test.py#L38
             //
-            // Note that the hash function must be exchanged for `async_stark_hash_func`,
-            // otherwise it just uses some other test hash function.
+            // Note that the hash function must be exchanged for
+            // `async_stark_hash_func`, otherwise it just uses some
+            // other test hash function.
             let expected = Felt::from_hex_str(
                 "0x1d937094c09b5f8e26a662d21911871e3cbc6858d55cc49af9848ea6fed4e9",
             )

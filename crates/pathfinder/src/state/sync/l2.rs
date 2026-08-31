@@ -332,9 +332,10 @@ where
     // in the loop below.
     let consensus_watch_fut = consensus_info_watch.wait_for(|info| info.highest_decision.is_some());
     let fgw_watch_fut = latest.wait_for(|(number, hash)| {
-        // The watch does not wrap the missing value in an Option, because we want to
-        // avoid runtime checks in production sync (which is FGw only at the moment and
-        // assumes that the watch is always initialized with a valid value).
+        // The watch does not wrap the missing value in an Option, because we
+        // want to avoid runtime checks in production sync (which is FGw
+        // only at the moment and assumes that the watch is always
+        // initialized with a valid value).
         if number == &BlockNumber::GENESIS {
             // Zero hash indicates an uninitialized watch
             hash != &BlockHash::ZERO
@@ -378,11 +379,11 @@ where
         // A race condition can occur in fast local networks:
         // - Alice (the proposer) commits H
         // - FGw uses Alice's DB directly, so it also serves H immediately
-        // - Bob hasn't committed H yet, he executed the proposal at H and voted on it,
-        //   but his internal consensus engine hasn't communicated the positive decision
-        //   yet, so he asks for the block from FGw
-        // - Bob downloads H from FGw, even though he will shortly have a confirmation
-        //   that he can commit the locally executed proposal at H.
+        // - Bob hasn't committed H yet, he executed the proposal at H and voted
+        //   on it, but his internal consensus engine hasn't communicated the
+        //   positive decision yet, so he asks for the block from FGw
+        // - Bob downloads H from FGw, even though he will shortly have a
+        //   confirmation that he can commit the locally executed proposal at H.
         if let Some(l2_block) = reply {
             tracing::debug!("Block {next} already decided in consensus, skipping download");
 
@@ -463,7 +464,8 @@ where
                     }
                 }
                 DownloadBlock::Retry => {
-                    // Now try from consensus, and then retry downloading from the FGw
+                    // Now try from consensus, and then retry downloading from
+                    // the FGw
                     continue 'outer;
                 }
                 DownloadBlock::Reorg => {
@@ -742,8 +744,8 @@ async fn download_block(
             let block = Box::new(block);
 
             // Verify that transaction hashes match transaction contents.
-            // Block hash is verified using these transaction hashes so we have to make
-            // sure these are correct first.
+            // Block hash is verified using these transaction hashes so we have
+            // to make sure these are correct first.
             let (send, recv) = tokio::sync::oneshot::channel();
             rayon::spawn(move || {
                 let result = block
@@ -770,8 +772,8 @@ async fn download_block(
                 let state_update = Box::new(state_update);
                 let state_diff_length = state_update.state_diff_length();
 
-                // TODO Currently empty proposals used for consensus integration tests carry an
-                // empty state diff commitment.
+                // TODO Currently empty proposals used for consensus integration
+                // tests carry an empty state diff commitment.
                 #[cfg(all(
                     feature = "p2p",
                     feature = "consensus-integration-tests",
@@ -833,8 +835,8 @@ async fn download_block(
             }
         }
         Err(SequencerError::StarknetError(err)) if err.code == BlockNotFound.into() => {
-            // We've queried past the head of the chain or the genesis block is not yet
-            // available.
+            // We've queried past the head of the chain or the genesis block is
+            // not yet available.
             let (seq_head_number, seq_head_hash) = match sequencer.head().await {
                 Ok(x) => x,
                 Err(SequencerError::StarknetError(err)) if err.code == BlockNotFound.into() => {
@@ -849,15 +851,18 @@ async fn download_block(
             };
 
             if seq_head_number >= block_number {
-                // We were ahead of the sequencer but in the meantime it has caught up to us. We
-                // can proceed with the sync.
+                // We were ahead of the sequencer but in the meantime it has
+                // caught up to us. We can proceed with the
+                // sync.
                 Ok(DownloadBlock::Retry)
             } else {
-                // The sequencer is still behind us, check if there has been a reorg or it is
-                // just serving us its latest data (which we are ahead of).
+                // The sequencer is still behind us, check if there has been a
+                // reorg or it is just serving us its latest
+                // data (which we are ahead of).
                 let our_block_hash = if seq_head_number + 1 == block_number {
-                    // We know this isn't the genesis block since (due to the condition above)
-                    // `block_number` is at least 1.
+                    // We know this isn't the genesis block since (due to the
+                    // condition above) `block_number` is at
+                    // least 1.
                     assert!(
                         prev_block_hash.is_some(),
                         "previous block hash should be `Some` for all blocks except genesis"
@@ -877,9 +882,10 @@ async fn download_block(
                     // Our chain is not valid anymore so there must have been a reorg.
                     Some(_) => Ok(DownloadBlock::Reorg),
                     None => {
-                        // The block hash to compare to sequencer's could not be fetched because the
-                        // block was pruned. Send a reorg event since the reorg logic handles pruned
-                        // blocks.
+                        // The block hash to compare to sequencer's could not be
+                        // fetched because the block was
+                        // pruned. Send a reorg event since the reorg logic
+                        // handles pruned blocks.
                         Ok(DownloadBlock::Reorg)
                     }
                 }
@@ -1039,14 +1045,15 @@ where
         })
         .peekable();
 
-    // We want to download blocks in an unordered fashion, but still have a limit on
-    // the size of the cache that is used to then sort the downloaded blocks before
-    // emitting them. (Tries need to be updated in order, hence the sorting.)
+    // We want to download blocks in an unordered fashion, but still have a
+    // limit on the size of the cache that is used to then sort the
+    // downloaded blocks before emitting them. (Tries need to be updated in
+    // order, hence the sorting.)
     //
-    // The limit is needed because if we encounter problems downloading a block, at
-    // some point we need to wait for it, otherwise the cache would balloon being
-    // filled with endless newer and newer blocks that we cannot emit and this would
-    // lead to oom.
+    // The limit is needed because if we encounter problems downloading a block,
+    // at some point we need to wait for it, otherwise the cache would
+    // balloon being filled with endless newer and newer blocks that we
+    // cannot emit and this would lead to oom.
     const UNORDERED_CACHE_CAPACITY_FACTOR: usize = 32;
 
     while futures.peek().is_some() {
@@ -1061,9 +1068,10 @@ where
 
         while let Some(result) = stream.next().await {
             let Ok(ok) = result else {
-                // We've hit an error, so we stop the loop and return. `head` has been updated
-                // to the last synced block so our "tracking" sync will just
-                // continue from there.
+                // We've hit an error, so we stop the loop and return. `head`
+                // has been updated to the last synced block so
+                // our "tracking" sync will just continue from
+                // there.
                 tracing::info!(
                     "Error during bulk syncing blocks, falling back to normal sync: {}",
                     result.err().unwrap()
@@ -1077,7 +1085,8 @@ where
 
             tracing::trace!(start, len = ordered_blocks.len(), ?keys, "Cached blocks");
 
-            // Find number of elems till the first gap that we can emit right now
+            // Find number of elems till the first gap that we can emit right
+            // now
             let num_to_emit = ordered_blocks
                 .keys()
                 .take_while(|block_number| {
@@ -1180,15 +1189,17 @@ pub(super) async fn emit_events_for_downloaded_classes(
                 casm_definition,
                 casm_hash_v2,
             } => {
-                // NOTE: we _have_ to use the same compiled_class_class hash as returned by the
-                // feeder gateway, since that's what has been added to the class
-                // commitment tree.
+                // NOTE: we _have_ to use the same compiled_class_class hash as
+                // returned by the feeder gateway, since that's
+                // what has been added to the class commitment
+                // tree.
                 let Some(casm_hash) = declared_sierra_classes
                     .iter()
                     .find_map(|(sierra, casm)| (sierra.0 == sierra_hash.0).then_some(*casm))
                 else {
-                    // This can occur if the sierra was in here as a deploy contract, if the class
-                    // was declared in a previous block but not yet persisted by
+                    // This can occur if the sierra was in here as a deploy
+                    // contract, if the class was declared
+                    // in a previous block but not yet persisted by
                     // the database.
                     continue;
                 };
@@ -1339,7 +1350,8 @@ fn verify_gateway_block_commitments_and_hash(
         calculate_transaction_commitment(&block.transactions, block.starknet_version)?;
     let block_number = block.block_number;
 
-    // Older blocks on mainnet don't carry a precalculated transaction commitment.
+    // Older blocks on mainnet don't carry a precalculated transaction
+    // commitment.
     if block.transaction_commitment == TransactionCommitment::ZERO {
         // Update with the computed transaction commitment, verification is not
         // possible.
@@ -1390,10 +1402,11 @@ fn verify_gateway_block_commitments_and_hash(
 
     Ok(match verify_block_hash(header, chain, chain_id)? {
         pathfinder_block_commitments::VerifyResult::Match => {
-            // For pre-0.13.2 blocks we actually have to re-compute some commitments: after
-            // we've verified that the block hash is correct we no longer need
-            // the legacy commitments. The P2P protocol requires that all
-            // commitments in block headers are the 0.13.2 variants for legacy
+            // For pre-0.13.2 blocks we actually have to re-compute some
+            // commitments: after we've verified that the block hash
+            // is correct we no longer need the legacy commitments.
+            // The P2P protocol requires that all commitments in
+            // block headers are the 0.13.2 variants for legacy
             // blocks.
             let (transaction_commitment, event_commitment, receipt_commitment) = if block
                 .starknet_version
@@ -2026,7 +2039,8 @@ mod tests {
                 let mut mock = MockGatewayApi::new();
                 let mut seq = mockall::Sequence::new();
 
-                // Download the genesis block with respective state update and contracts
+                // Download the genesis block with respective state update and
+                // contracts
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -2207,14 +2221,15 @@ mod tests {
                 );
             }
 
-            // This test simulates the scenario where the L2 sync unfolds in the following
-            // manner:
-            // 1) L2 sync task ('task' from now on) requests block N while sequencer is at
-            //    block N - 1.
-            // 2) Task checks what sequencer's head is to determine whether a reorg has
-            //    occurred.
-            // 3) Before the request from 2) goes through, sequencer produces block N so now
-            //    its head matches the block that task requested in 1).
+            // This test simulates the scenario where the L2 sync unfolds in the
+            // following manner:
+            // 1) L2 sync task ('task' from now on) requests block N while
+            //    sequencer is at block N - 1.
+            // 2) Task checks what sequencer's head is to determine whether a
+            //    reorg has occurred.
+            // 3) Before the request from 2) goes through, sequencer produces
+            //    block N so now its head matches the block that task requested
+            //    in 1).
             // 4) Task may immediately retry downloading block N.
             #[tokio::test]
             async fn sequencer_race_condition() {
@@ -2222,7 +2237,8 @@ mod tests {
                 let mut mock = MockGatewayApi::new();
                 let mut seq = mockall::Sequence::new();
 
-                // Fetch the genesis block with respective state update and contracts
+                // Fetch the genesis block with respective state update and
+                // contracts
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -2264,8 +2280,9 @@ mod tests {
                     Err(block_not_found()),
                 );
 
-                // L2 sync task is then looking if reorg occurred. In the meantime, sequencer
-                // has produced block #2 and responds with it to L2 sync.
+                // L2 sync task is then looking if reorg occurred. In the
+                // meantime, sequencer has produced block #2 and
+                // responds with it to L2 sync.
                 expect_block_header(
                     &mut mock,
                     &mut seq,
@@ -2285,8 +2302,9 @@ mod tests {
                     )),
                 );
 
-                // Indicate that we are at the head - no new blocks available and the latest
-                // block matches our head. Because of this, L2 sync task will wait for the
+                // Indicate that we are at the head - no new blocks available
+                // and the latest block matches our head.
+                // Because of this, L2 sync task will wait for the
                 // sequencer's head to change.
                 expect_state_update_with_block(
                     &mut mock,
@@ -2323,8 +2341,8 @@ mod tests {
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
 
-                // Make sure L2 sync "waits" on the new block to be published at the end of the
-                // test.
+                // Make sure L2 sync "waits" on the new block to be published at
+                // the end of the test.
                 latest_tx.send((BLOCK2_NUMBER, BLOCK2_HASH)).unwrap();
 
                 assert_matches!(rx_event.recv().await.unwrap(),
@@ -2342,7 +2360,8 @@ mod tests {
             use crate::state::sync::l2_reorg;
 
             #[tokio::test]
-            // This reorg occurs at the genesis block, which is swapped for a new one.
+            // This reorg occurs at the genesis block, which is swapped for a
+            // new one.
             //
             // [block 0]
             //
@@ -2355,7 +2374,8 @@ mod tests {
                 let mut mock = MockGatewayApi::new();
                 let mut seq = mockall::Sequence::new();
 
-                // Fetch the genesis block with respective state update and contracts
+                // Fetch the genesis block with respective state update and
+                // contracts
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -2409,7 +2429,8 @@ mod tests {
                     Ok(CONTRACT0_DEF_V2.clone()),
                 );
 
-                // Indicate that we are still staying at the head - no new blocks
+                // Indicate that we are still staying at the head - no new
+                // blocks
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -2417,8 +2438,8 @@ mod tests {
                     Err(block_not_found()),
                 );
 
-                // Indicate that we are still staying at the head - the latest block matches our
-                // head
+                // Indicate that we are still staying at the head - the latest
+                // block matches our head
                 expect_block_header(
                     &mut mock,
                     &mut seq,
@@ -2452,8 +2473,8 @@ mod tests {
             }
 
             #[tokio::test]
-            // This reorg occurs at the genesis block, which means that the fork replaces
-            // the entire chain.
+            // This reorg occurs at the genesis block, which means that the fork
+            // replaces the entire chain.
             //
             // [block 0]-------[block 1]-------[block 2]
             //
@@ -2499,7 +2520,8 @@ mod tests {
                     state_diff_length: Default::default(),
                 };
 
-                // Fetch the genesis block with respective state update and contracts
+                // Fetch the genesis block with respective state update and
+                // contracts
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -2553,8 +2575,8 @@ mod tests {
                 );
 
                 // L2 sync task is then looking if reorg occurred
-                // We indicate that reorg started at genesis by setting the latest on the new
-                // genesis block
+                // We indicate that reorg started at genesis by setting the
+                // latest on the new genesis block
                 expect_block_header(
                     &mut mock,
                     &mut seq,
@@ -2562,8 +2584,9 @@ mod tests {
                     Ok((BLOCK0_V2.block_number, BLOCK0_V2.block_hash)),
                 );
 
-                // Then the L2 sync task goes back block by block to find the last block where
-                // the block hash matches the DB
+                // Then the L2 sync task goes back block by block to find the
+                // last block where the block hash matches the
+                // DB
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -2587,8 +2610,8 @@ mod tests {
 
                 // Once the L2 sync task has found where reorg occurred,
                 // it can get back to downloading the new blocks
-                // Fetch the new genesis block from the fork with respective state update and
-                // contracts
+                // Fetch the new genesis block from the fork with respective
+                // state update and contracts
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -2605,8 +2628,8 @@ mod tests {
                     CONTRACT0_HASH_V2,
                     Ok(CONTRACT0_DEF_V2.clone()),
                 );
-                // Fetch the new block #1 from the fork with respective state update and
-                // contracts
+                // Fetch the new block #1 from the fork with respective state
+                // update and contracts
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -2618,8 +2641,9 @@ mod tests {
                     )),
                 );
 
-                // Indicate that we are still staying at the head - no new blocks and the latest
-                // block matches our head. Because of this, L2 sync task will wait for the
+                // Indicate that we are still staying at the head - no new
+                // blocks and the latest block matches our head.
+                // Because of this, L2 sync task will wait for the
                 // sequencer's head to change.
                 expect_state_update_with_block(
                     &mut mock,
@@ -2681,8 +2705,8 @@ mod tests {
                         assert_eq!(hash, CONTRACT0_HASH_V2);
                 });
 
-                // Make sure L2 sync "waits" on the new block to be published at the end of the
-                // test.
+                // Make sure L2 sync "waits" on the new block to be published at
+                // the end of the test.
                 latest_tx
                     .send((block1_v2.block_number, block1_v2.block_hash))
                     .unwrap();
@@ -2811,7 +2835,8 @@ mod tests {
                     state_diff_length: Default::default(),
                 };
 
-                // Fetch the genesis block with respective state update and contracts
+                // Fetch the genesis block with respective state update and
+                // contracts
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -2875,12 +2900,14 @@ mod tests {
                     Err(block_not_found()),
                 );
 
-                // L2 sync task is then looking if reorg occurred. We indicate that reorg
-                // started at block #1.
+                // L2 sync task is then looking if reorg occurred. We indicate
+                // that reorg started at block #1.
                 //
-                // L2 sync will try to verify that a reorg occurred by comparing block hashes of
-                // sequencer head and the block at that number in its DB (so we have to make
-                // sure that the blocks headers are inserted as sync events are received).
+                // L2 sync will try to verify that a reorg occurred by comparing
+                // block hashes of sequencer head and the block
+                // at that number in its DB (so we have to make
+                // sure that the blocks headers are inserted as sync events are
+                // received).
                 expect_block_header(
                     &mut mock,
                     &mut seq,
@@ -2888,8 +2915,8 @@ mod tests {
                     Ok((block1_v2.block_number, block1_v2.block_hash)),
                 );
 
-                // L2 sync task goes back block by block to find where the block hash matches
-                // the DB
+                // L2 sync task goes back block by block to find where the block
+                // hash matches the DB
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -2921,10 +2948,11 @@ mod tests {
                     )),
                 );
 
-                // Finally the L2 sync task is downloading the new blocks once it knows where to
-                // start again.
+                // Finally the L2 sync task is downloading the new blocks once
+                // it knows where to start again.
                 //
-                // Fetch the new block #1 from the fork with respective state update.
+                // Fetch the new block #1 from the fork with respective state
+                // update.
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -2935,7 +2963,8 @@ mod tests {
                         BLOCK1_SIGNATURE_V2.clone(),
                     )),
                 );
-                // Fetch the new block #2 from the fork with respective state update
+                // Fetch the new block #2 from the fork with respective state
+                // update
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -2946,8 +2975,9 @@ mod tests {
                         BLOCK2_SIGNATURE_V2.clone(),
                     )),
                 );
-                // Indicate that we are still staying at the head - no new blocks and the latest
-                // block matches our head. Because of this, L2 sync task will wait for the
+                // Indicate that we are still staying at the head - no new
+                // blocks and the latest block matches our head.
+                // Because of this, L2 sync task will wait for the
                 // sequencer's head to change.
                 expect_state_update_with_block(
                     &mut mock,
@@ -2962,8 +2992,9 @@ mod tests {
                     Ok((block2_v2.block_number, block2_v2.block_hash)),
                 );
 
-                // Make sure we insert the block headers into the DB as they are received since
-                // L2 sync task will need them to check whether a reorg has occurred.
+                // Make sure we insert the block headers into the DB as they are
+                // received since L2 sync task will need them to
+                // check whether a reorg has occurred.
                 let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
                     pathfinder_storage::TriePruneMode::Archive,
                     NonZeroU32::new(5).unwrap(),
@@ -3004,8 +3035,8 @@ mod tests {
                     insert_block_header(&storage, *block);
                 });
 
-                // Make sure L2 sync "waits" on the new block to be published at the end of the
-                // test.
+                // Make sure L2 sync "waits" on the new block to be published at
+                // the end of the test.
                 latest_tx.send((BLOCK2_NUMBER, BLOCK2_HASH_V2)).unwrap();
 
                 // Reorg started from block #1
@@ -3076,7 +3107,8 @@ mod tests {
                     state_diff_length: Default::default(),
                 };
 
-                // Fetch the genesis block with respective state update and contracts
+                // Fetch the genesis block with respective state update and
+                // contracts
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -3129,11 +3161,12 @@ mod tests {
                     Err(block_not_found()),
                 );
 
-                // L2 sync task is then looking if reorg occurred. We indicate that reorg
-                // started at block #2.
+                // L2 sync task is then looking if reorg occurred. We indicate
+                // that reorg started at block #2.
                 //
-                // L2 sync will try to verify that a reorg occurred by comparing block hashes of
-                // sequencer head and the head that it keeps track of (since reorg occurred at
+                // L2 sync will try to verify that a reorg occurred by comparing
+                // block hashes of sequencer head and the head
+                // that it keeps track of (since reorg occurred at
                 // head).
                 expect_block_header(
                     &mut mock,
@@ -3142,8 +3175,8 @@ mod tests {
                     Ok((block2_v2.block_number, block2_v2.block_hash)),
                 );
 
-                // L2 sync task goes back block by block to find where the block hash matches
-                // the DB
+                // L2 sync task goes back block by block to find where the block
+                // hash matches the DB
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -3155,9 +3188,10 @@ mod tests {
                     )),
                 );
 
-                // Finally the L2 sync task is downloading the new blocks once it knows where to
-                // start again Fetch the new block #2 from the fork with
-                // respective state update
+                // Finally the L2 sync task is downloading the new blocks once
+                // it knows where to start again Fetch the new
+                // block #2 from the fork with respective state
+                // update
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -3169,8 +3203,9 @@ mod tests {
                     )),
                 );
 
-                // Indicate that we are still staying at the head - no new blocks and the latest
-                // block matches our head. Because of this, L2 sync task will wait for the
+                // Indicate that we are still staying at the head - no new
+                // blocks and the latest block matches our head.
+                // Because of this, L2 sync task will wait for the
                 // sequencer's head to change.
                 expect_state_update_with_block(
                     &mut mock,
@@ -3211,8 +3246,8 @@ mod tests {
                     assert_eq!(*state_update, *STATE_UPDATE2);
                 });
 
-                // Make sure L2 sync "waits" on the new block to be published at the end of the
-                // test.
+                // Make sure L2 sync "waits" on the new block to be published at
+                // the end of the test.
                 latest_tx.send((BLOCK2_NUMBER, BLOCK2_HASH_V2)).unwrap();
 
                 // Reorg started from block #2
@@ -3226,8 +3261,9 @@ mod tests {
             }
 
             #[tokio::test]
-            // This reorg occurs because the downloaded block at head turns out to indicate
-            // a different parent hash than the previous downloaded block.
+            // This reorg occurs because the downloaded block at head turns out
+            // to indicate a different parent hash than the previous
+            // downloaded block.
             //
             // [block 0]-----[block 1]       --[block 2]
             //            \                 /
@@ -3303,7 +3339,8 @@ mod tests {
                     state_diff_length: Default::default(),
                 };
 
-                // Fetch the genesis block with respective state update and contracts
+                // Fetch the genesis block with respective state update and
+                // contracts
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -3350,9 +3387,9 @@ mod tests {
                     )),
                 );
 
-                // L2 sync task goes back block by block to find where the block hash matches
-                // the DB It starts at the previous block to which the mismatch
-                // happened
+                // L2 sync task goes back block by block to find where the block
+                // hash matches the DB It starts at the previous
+                // block to which the mismatch happened
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -3364,9 +3401,10 @@ mod tests {
                     )),
                 );
 
-                // Finally the L2 sync task is downloading the new blocks once it knows where to
-                // start again Fetch the new block #1 from the fork with
-                // respective state update
+                // Finally the L2 sync task is downloading the new blocks once
+                // it knows where to start again Fetch the new
+                // block #1 from the fork with respective state
+                // update
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -3389,8 +3427,8 @@ mod tests {
                     )),
                 );
 
-                // Indicate that we are still staying at the head - no new blocks and the latest
-                // block matches our head
+                // Indicate that we are still staying at the head - no new
+                // blocks and the latest block matches our head
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -3440,8 +3478,8 @@ mod tests {
             #[tokio::test]
             async fn shutdown() {
                 let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
-                // Closing the event's channel should trigger the sync to exit with error after
-                // the first send.
+                // Closing the event's channel should trigger the sync to exit
+                // with error after the first send.
                 rx_event.close();
 
                 let mut mock = MockGatewayApi::new();
@@ -3467,8 +3505,9 @@ mod tests {
                 // Run the UUT
                 let jh = spawn_sync_default(tx_event, mock);
 
-                // Wrap this in a timeout so we don't wait forever in case of test failure.
-                // Right now closing the channel causes an error.
+                // Wrap this in a timeout so we don't wait forever in case of
+                // test failure. Right now closing the channel
+                // causes an error.
                 tokio::time::timeout(std::time::Duration::from_secs(2), jh)
                     .await
                     .unwrap()
@@ -3487,7 +3526,8 @@ mod tests {
                 let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
                 let mut mock = MockGatewayApi::new();
 
-                // Download the genesis block with respective state update and contracts
+                // Download the genesis block with respective state update and
+                // contracts
                 expect_state_update_with_block_no_sequence(
                     &mut mock,
                     BLOCK0_NUMBER,
@@ -3549,8 +3589,8 @@ mod tests {
                 let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
                 let mut mock = MockGatewayApi::new();
 
-                // Downloading the genesis block data is racing against the failure of block 1,
-                // hence "at most once"
+                // Downloading the genesis block data is racing against the
+                // failure of block 1, hence "at most once"
                 expect_state_update_with_block_no_sequence_at_most_once(
                     &mut mock,
                     BLOCK0_NUMBER,

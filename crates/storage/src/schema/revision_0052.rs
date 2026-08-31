@@ -383,9 +383,9 @@ mod dto {
         }
     }
 
-    // This struct purposefully allows for unknown fields as it is not critical to
-    // store these counters perfectly. Failure would be far more costly than simply
-    // ignoring them.
+    // This struct purposefully allows for unknown fields as it is not critical
+    // to store these counters perfectly. Failure would be far more costly
+    // than simply ignoring them.
     #[derive(Copy, Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq)]
     pub struct BuiltinCounters {
         pub output: u64,
@@ -1564,9 +1564,9 @@ pub(crate) mod old_dto {
         }
     }
 
-    // This struct purposefully allows for unknown fields as it is not critical to
-    // store these counters perfectly. Failure would be far more costly than simply
-    // ignoring them.
+    // This struct purposefully allows for unknown fields as it is not critical
+    // to store these counters perfectly. Failure would be far more costly
+    // than simply ignoring them.
     #[derive(Copy, Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(default)]
     pub struct BuiltinCounters {
@@ -1908,12 +1908,12 @@ pub(crate) mod old_dto {
     // will have these as Invoke but modern one's as L1 handler. This causes
     // confusion, so we convert these old Invoke to L1 handler manually.
     //
-    // The alternative is to do a costly database migration which involves opening
-    // every tx.
+    // The alternative is to do a costly database migration which involves
+    // opening every tx.
     //
-    // This work-around may be removed once we are certain all databases no longer
-    // contain these transactions, which will likely only occur after either a
-    // migration, or regenesis.
+    // This work-around may be removed once we are certain all databases no
+    // longer contain these transactions, which will likely only occur after
+    // either a migration, or regenesis.
     impl<'de> Deserialize<'de> for Transaction {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where
@@ -2545,7 +2545,8 @@ pub(crate) mod old_dto {
 
             let mut v = serde_json::Value::deserialize(deserializer)?;
             let version = Version::deserialize(&v).map_err(de::Error::custom)?;
-            // remove "version", since v0 and v1 transactions use deny_unknown_fields
+            // remove "version", since v0 and v1 transactions use
+            // deny_unknown_fields
             v.as_object_mut()
                 .expect("must be an object because deserializing version succeeded")
                 .remove("version");
@@ -2776,7 +2777,8 @@ pub(crate) mod old_dto {
 
             let mut v = serde_json::Value::deserialize(deserializer)?;
             let version = Version::deserialize(&v).map_err(de::Error::custom)?;
-            // remove "version", since v0 and v1 transactions use deny_unknown_fields
+            // remove "version", since v0 and v1 transactions use
+            // deny_unknown_fields
             v.as_object_mut()
                 .expect("must be an object because deserializing version succeeded")
                 .remove("version");

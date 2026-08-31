@@ -19,7 +19,8 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     let mut rows = stmt.query([])?;
     while let Some(row) = rows.next()? {
         let id: i64 = row.get(0)?;
-        // Older starknet versions were stored as null, map those to empty string.
+        // Older starknet versions were stored as null, map those to empty
+        // string.
         let s = row.get_optional_str(1)?.unwrap_or_default().to_string();
         let version = StarknetVersion::from_str(&s).expect("invalid Starknet version");
         let version = version.as_u32();

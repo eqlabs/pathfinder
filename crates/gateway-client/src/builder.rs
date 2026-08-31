@@ -685,14 +685,15 @@ mod tests {
                 retry_condition,
             );
 
-            // The retry loops forever, so wrap it in a timeout and check the counter.
-            // 4 retries = 2 + 4 + 8 + 10 = 24 seconds
+            // The retry loops forever, so wrap it in a timeout and check the
+            // counter. 4 retries = 2 + 4 + 8 + 10 = 24 seconds
             // 5 retries = 2 + 4 + 8 + 10 + 10 = 34 seconds
             tokio::time::timeout(Duration::from_secs(30), fut)
                 .await
                 .unwrap_err();
 
-            // 5th try should have timedout if this is really exponential backoff
+            // 5th try should have timedout if this is really exponential
+            // backoff
             assert_eq!(CNT.load(Ordering::Relaxed), 5);
         }
     }

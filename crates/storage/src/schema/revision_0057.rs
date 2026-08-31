@@ -465,9 +465,9 @@ pub(crate) mod dto {
         }
     }
 
-    // This struct purposefully allows for unknown fields as it is not critical to
-    // store these counters perfectly. Failure would be far more costly than simply
-    // ignoring them.
+    // This struct purposefully allows for unknown fields as it is not critical
+    // to store these counters perfectly. Failure would be far more costly
+    // than simply ignoring them.
     #[derive(Copy, Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq)]
     pub struct BuiltinCounters {
         pub output: u64,
@@ -1146,9 +1146,9 @@ pub(crate) mod dto {
     //             Transaction {
     //                 hash: _,
     //                 variant:
-    //                     TransactionVariantV0::DeclareV0(DeclareTransactionV0V1 {
-    //                         class_hash,
-    //                         max_fee,
+    //
+    // TransactionVariantV0::DeclareV0(DeclareTransactionV0V1 {
+    // class_hash,                         max_fee,
     //                         nonce,
     //                         sender_address,
     //                         signature,
@@ -1168,9 +1168,9 @@ pub(crate) mod dto {
     //             Transaction {
     //                 hash: _,
     //                 variant:
-    //                     TransactionVariantV0::DeclareV1(DeclareTransactionV0V1 {
-    //                         class_hash,
-    //                         max_fee,
+    //
+    // TransactionVariantV0::DeclareV1(DeclareTransactionV0V1 {
+    // class_hash,                         max_fee,
     //                         nonce,
     //                         sender_address,
     //                         signature,
@@ -1180,9 +1180,9 @@ pub(crate) mod dto {
     //                     class_hash: ClassHash(class_hash.into()),
     //                     max_fee: Fee(max_fee.into()),
     //                     nonce: TransactionNonce(nonce.into()),
-    //                     sender_address: ContractAddress(sender_address.into()),
-    //                     signature: signature
-    //                         .into_iter()
+    //                     sender_address:
+    // ContractAddress(sender_address.into()),
+    // signature: signature                         .into_iter()
     //                         .map(|x| TransactionSignatureElem(x.into()))
     //                         .collect(),
     //                 },
@@ -1190,8 +1190,8 @@ pub(crate) mod dto {
     //             Transaction {
     //                 hash: _,
     //                 variant:
-    //                     TransactionVariantV0::DeclareV2(DeclareTransactionV2 {
-    //                         class_hash,
+    //                     TransactionVariantV0::DeclareV2(DeclareTransactionV2
+    // {                         class_hash,
     //                         max_fee,
     //                         nonce,
     //                         sender_address,
@@ -1203,9 +1203,9 @@ pub(crate) mod dto {
     //                     class_hash: ClassHash(class_hash.into()),
     //                     max_fee: Fee(max_fee.into()),
     //                     nonce: TransactionNonce(nonce.into()),
-    //                     sender_address: ContractAddress(sender_address.into()),
-    //                     signature: signature
-    //                         .into_iter()
+    //                     sender_address:
+    // ContractAddress(sender_address.into()),
+    // signature: signature                         .into_iter()
     //                         .map(|x| TransactionSignatureElem(x.into()))
     //                         .collect(),
     //                     compiled_class_hash:
@@ -1214,8 +1214,8 @@ pub(crate) mod dto {
     //             Transaction {
     //                 hash: _,
     //                 variant:
-    //                     TransactionVariantV0::DeclareV3(DeclareTransactionV3 {
-    //                         class_hash,
+    //                     TransactionVariantV0::DeclareV3(DeclareTransactionV3
+    // {                         class_hash,
     //                         nonce,
     //                         nonce_data_availability_mode,
     //                         fee_data_availability_mode,
@@ -1289,7 +1289,8 @@ pub(crate) mod dto {
     //                         class_hash,
     //                     }),
     //             } => TransactionVariant::DeployAccountV1(
-    //                 pathfinder_common::transaction::DeployAccountTransactionV1 {
+    //
+    // pathfinder_common::transaction::DeployAccountTransactionV1 {
     //                     contract_address:
     // ContractAddress::new_or_panic(contract_address.into()),
     // max_fee: Fee(max_fee.into()),                     signature: signature
@@ -1323,7 +1324,8 @@ pub(crate) mod dto {
     //                         class_hash,
     //                     }),
     //             } => TransactionVariant::DeployAccountV3(
-    //                 pathfinder_common::transaction::DeployAccountTransactionV3 {
+    //
+    // pathfinder_common::transaction::DeployAccountTransactionV3 {
     //                     contract_address:
     // ContractAddress::new_or_panic(sender_address.into()),
     // signature: signature                         .into_iter()
@@ -1436,9 +1438,9 @@ pub(crate) mod dto {
     //             Transaction {
     //                 hash: _,
     //                 variant:
-    //                     TransactionVariantV0::L1HandlerV0(L1HandlerTransactionV0
-    // {                         contract_address,
-    //                         entry_point_selector,
+    //
+    // TransactionVariantV0::L1HandlerV0(L1HandlerTransactionV0 {
+    // contract_address,                         entry_point_selector,
     //                         nonce,
     //                         calldata,
     //                     }),

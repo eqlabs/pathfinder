@@ -231,7 +231,8 @@ mod tests {
     async fn pre_confirmed() {
         let context = RpcContext::for_tests_with_pre_confirmed().await;
 
-        // This should still work even though it was deployed in an actual block.
+        // This should still work even though it was deployed in an actual
+        // block.
         let expected = class_hash_bytes!(b"class 0 hash");
         let input = Input {
             block_id: BlockId::PreConfirmed,

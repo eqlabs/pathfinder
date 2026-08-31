@@ -34,9 +34,11 @@ pub fn pedersen_hash(a: Felt, b: Felt) -> Felt {
     // Compute hash
     let mut acc = PEDERSEN_P0;
     add_points(&mut acc, &a_bits[..248], &CURVE_CONSTS_P1); // Add a_low * P1
-    add_points(&mut acc, &a_bits[248..252], &CURVE_CONSTS_P2); // Add a_high * P2
+    add_points(&mut acc, &a_bits[248..252], &CURVE_CONSTS_P2); // Add a_high *
+                                                               // P2
     add_points(&mut acc, &b_bits[..248], &CURVE_CONSTS_P3); // Add b_low * P3
-    add_points(&mut acc, &b_bits[248..252], &CURVE_CONSTS_P4); // Add b_high * P4
+    add_points(&mut acc, &b_bits[248..252], &CURVE_CONSTS_P4); // Add b_high *
+                                                               // P4
 
     // Convert to affine
     let result = AffinePoint::from(&acc);

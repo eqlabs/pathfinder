@@ -123,8 +123,9 @@ async fn sync_gas_prices_inner(
     provider: &L1GasPriceProvider,
     config: &L1GasPriceSyncConfig,
 ) -> anyhow::Result<()> {
-    // Bootstrap with historical data up to the latest block (not just finalized)
-    // to minimize the gap between bootstrap and the first subscription block.
+    // Bootstrap with historical data up to the latest block (not just
+    // finalized) to minimize the gap between bootstrap and the first
+    // subscription block.
     let latest = ethereum.get_latest_block_number().await?;
     let start_block =
         L1BlockNumber::new_or_panic(latest.get().saturating_sub(config.startup_blocks).max(1));

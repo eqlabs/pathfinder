@@ -181,8 +181,8 @@ impl ProcessStage for VerifyCommitment {
         } = transactions;
 
         let txs: Vec<_> = transactions.iter().map(|(t, _)| t.clone()).collect();
-        // This computation can only fail in case of internal trie error which is always
-        // a fatal error
+        // This computation can only fail in case of internal trie error which
+        // is always a fatal error
         let actual = calculate_transaction_commitment(&txs, version.max(StarknetVersion::V_0_13_2))
             .context("Computing transaction commitment")?;
         if actual != expected_commitment {

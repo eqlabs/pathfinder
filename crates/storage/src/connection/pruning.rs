@@ -66,9 +66,9 @@ pub(crate) fn prune_block(
         ))
         .context("Deleting block from block_headers")?;
 
-    // Only run event filter pruning if the block to prune is the last block in an
-    // event filter range, because now we know that all blocks covered by this
-    // filter will be gone.
+    // Only run event filter pruning if the block to prune is the last block in
+    // an event filter range, because now we know that all blocks covered by
+    // this filter will be gone.
     let is_to_block = (block.get() + 1).is_multiple_of(AGGREGATE_BLOOM_BLOCK_RANGE_LEN);
     if is_to_block {
         event_filters_delete_stmt

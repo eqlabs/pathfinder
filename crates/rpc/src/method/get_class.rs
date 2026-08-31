@@ -71,8 +71,8 @@ pub async fn get_class(
             return Err(Error::BlockNotFound);
         }
 
-        // If the class is declared in the pending block, then we shouldn't check the
-        // class's declaration point.
+        // If the class is declared in the pending block, then we shouldn't
+        // check the class's declaration point.
         let definition = if is_pending {
             tx.class_definition(input.class_hash)
         } else {
@@ -280,8 +280,8 @@ mod tests {
         .unwrap_err();
         assert_matches!(error, Error::ClassHashNotFound);
 
-        // This class is defined, but is not declared in any canonical block, such
-        // as what may occur for a pending class declaration.
+        // This class is defined, but is not declared in any canonical block,
+        // such as what may occur for a pending class declaration.
         let undeclared = class_hash_bytes!(b"class pending hash");
         let error = super::get_class(
             context.clone(),
@@ -355,8 +355,8 @@ mod tests {
         .unwrap_err();
         assert_matches!(error, Error::ClassHashNotFound);
 
-        // This class is defined, but is not declared in any canonical block, such
-        // as what may occur for a pending class declaration.
+        // This class is defined, but is not declared in any canonical block,
+        // such as what may occur for a pending class declaration.
         let undeclared = class_hash_bytes!(b"class pending hash");
         let error = super::get_class(
             context.clone(),

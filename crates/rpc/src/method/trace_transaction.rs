@@ -151,10 +151,11 @@ pub async fn trace_transaction(
                     return Ok(LocalExecution::Unsupported(transaction));
                 }
 
-                // Mainnet has a block range where re-execution is not possible (we get a
-                // different state diff due to a bug that was present on the
-                // sequencer when these blocks were produced). We should fall
-                // back to fetching traces from the feeder gateway instead.
+                // Mainnet has a block range where re-execution is not possible
+                // (we get a different state diff due to a bug
+                // that was present on the sequencer when these
+                // blocks were produced). We should fall back to
+                // fetching traces from the feeder gateway instead.
                 if context.chain_id == ChainId::MAINNET
                     && header.number >= MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START
                     && header.number <= MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_END
@@ -191,8 +192,9 @@ pub async fn trace_transaction(
                     .native_execution_force_use_for_incompatible_classes,
             );
 
-            // The flag is not included in the spec for this method. Moreover, it isn't
-            // possible to return per-transaction initial reads at the moment.
+            // The flag is not included in the spec for this method. Moreover,
+            // it isn't possible to return per-transaction initial
+            // reads at the moment.
             let return_initial_reads = false;
 
             let executor_transactions = transactions
@@ -255,10 +257,11 @@ pub async fn trace_transaction(
     );
 
     // The gateway client retries transport errors with an unbounded exponential
-    // backoff, so a slow or unresponsive sequencer would otherwise hold this task
-    // (and the resources acquired during the preflight) for the full retry
-    // policy. Bound the fallback with an operator-tunable timeout and bail out
-    // early on graceful shutdown so the RPC slot is freed promptly.
+    // backoff, so a slow or unresponsive sequencer would otherwise hold this
+    // task (and the resources acquired during the preflight) for the full
+    // retry policy. Bound the fallback with an operator-tunable timeout and
+    // bail out early on graceful shutdown so the RPC slot is freed
+    // promptly.
     let cancellation_token = util::task::cancellation_token();
     let trace = tokio::select! {
         biased;

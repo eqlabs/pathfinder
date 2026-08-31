@@ -291,7 +291,8 @@ mod tests {
             }
         }
 
-        // If parts became empty from mutations, create a minimal invalid sequence
+        // If parts became empty from mutations, create a minimal invalid
+        // sequence
         if parts.is_empty() {
             parts.push(ProposalPart::Fin(fake::Faker.fake_with_rng(&mut rng)));
         }
@@ -358,7 +359,8 @@ mod tests {
     }
 
     // An empty proposal [Init, Fin] must be fully accepted: Init returns
-    // Accepted, Fin returns EmptyProposal, and the proposer address is captured.
+    // Accepted, Fin returns EmptyProposal, and the proposer address is
+    // captured.
     #[test]
     fn valid_empty_proposal_is_accepted() {
         let parts = create_valid_empty_proposal(42);

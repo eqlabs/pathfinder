@@ -127,7 +127,8 @@ impl ConsensusPriceConverter {
 
     pub fn eth_l2_gas_price(&self) -> u128 {
         // Derive WEI price from the FRI price using the L1 gas price ratio.
-        // l2_gas_price_wei = l2_gas_price_fri * l1_gas_price_wei / l1_gas_price_fri
+        // l2_gas_price_wei = l2_gas_price_fri * l1_gas_price_wei /
+        // l1_gas_price_fri
         (self.l2_gas_price_fri * self.l1_gas_price_wei)
             .checked_div(self.l1_gas_price_fri)
             .unwrap_or_default()
@@ -285,11 +286,11 @@ impl FeeEstimate {
             l2_gas: gas_vector.l2_gas.max(minimal_gas_vector.l2_gas),
         };
 
-        // In some cases (like: L1 handler transactions with blockifier >= 0.15.0) we
-        // may have L2 gas in the gas vector even though the gas vector
-        // computation mode (derived from the transaction type) is set to
-        // `NoL2Gas`. In that case we need to convert the L2 gas to L1
-        // gas and add it to the L1 gas amount.
+        // In some cases (like: L1 handler transactions with blockifier >=
+        // 0.15.0) we may have L2 gas in the gas vector even though the
+        // gas vector computation mode (derived from the transaction
+        // type) is set to `NoL2Gas`. In that case we need to convert
+        // the L2 gas to L1 gas and add it to the L1 gas amount.
         let adjusted_gas_vector = match gas_vector_computation_mode {
             GasVectorComputationMode::All => adjusted_gas_vector,
             GasVectorComputationMode::NoL2Gas => GasVector {
@@ -312,8 +313,9 @@ impl FeeEstimate {
             },
         };
 
-        // Blockifier does not put the actual fee into the receipt if `max_fee` in the
-        // transaction was zero. In that case we have to compute the fee explicitly.
+        // Blockifier does not put the actual fee into the receipt if `max_fee`
+        // in the transaction was zero. In that case we have to compute
+        // the fee explicitly.
         let overall_fee = blockifier::fee::fee_utils::get_fee_by_gas_vector(
             block_context.block_info(),
             adjusted_gas_vector,
@@ -1022,8 +1024,8 @@ pub(crate) fn to_receipt_and_events(
         gas_vector_computation_mode,
     );
 
-    // Maps to collect events and messages are ordered by the internal index of an
-    // ordered but because indices of such items are not unique across
+    // Maps to collect events and messages are ordered by the internal index of
+    // an ordered but because indices of such items are not unique across
     // the entire block we must put duplicates and from comparing the order of
     // events/messages to the existing blocks we know that duplicated
     // indices are put at the end.
@@ -1198,8 +1200,8 @@ pub(crate) fn to_state_diff<S: StorageAdapter + Clone>(
     let mut deployed_contracts = Vec::new();
     let mut replaced_classes = Vec::new();
 
-    // We need to check the previous class hash for a contract to decide if it's a
-    // deployed contract or a replaced class.
+    // We need to check the previous class hash for a contract to decide if it's
+    // a deployed contract or a replaced class.
     for (address, class_hash) in state_maps.class_hashes {
         let is_deployed = initial_state
             .get_class_hash_at(address)?

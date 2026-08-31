@@ -288,8 +288,9 @@ pub fn trace(
                         error: err.to_string(),
                     }),
                 };
-                // Update the cache with the error. Lock the cache before sending to avoid
-                // race conditions between senders and receivers.
+                // Update the cache with the error. Lock the cache before
+                // sending to avoid race conditions between
+                // senders and receivers.
                 let mut cache = cache.0.lock().unwrap();
                 let _ = sender.send(Err(error.clone()));
                 cache.cache_set(cache_key, CacheItem::CachedErr(error.clone()));
@@ -338,8 +339,8 @@ pub fn trace(
         BlockTraces::TracesOnly(traces)
     };
 
-    // Lock the cache before sending to avoid race conditions between senders and
-    // receivers.
+    // Lock the cache before sending to avoid race conditions between senders
+    // and receivers.
     let mut cache = cache.0.lock().unwrap();
     let _ = sender.send(Ok(block_traces.clone()));
     cache.cache_set(cache_key, CacheItem::CachedOk(block_traces.clone()));

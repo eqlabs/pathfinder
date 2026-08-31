@@ -81,10 +81,14 @@ pub fn spawn(
             )?;
 
         {
-            // Compute the next height to work on using all available information:
-            // - max_active_height: highest incomplete/active height being tracked
-            // - last_decided_height: highest decided height (even if not actively tracked)
-            // - highest_committed + 1: next height after what's been committed to DB
+            // Compute the next height to work on using all available
+            // information:
+            // - max_active_height: highest incomplete/active height being
+            //   tracked
+            // - last_decided_height: highest decided height (even if not
+            //   actively tracked)
+            // - highest_committed + 1: next height after what's been committed
+            //   to DB
             let next_height = [
                 consensus.max_active_height().unwrap_or(0),
                 consensus.last_decided_height().unwrap_or(0),
@@ -203,12 +207,17 @@ pub fn spawn(
                                     consensus.handle_command(ConsensusCommand::Propose(proposal));
                                 }
                                 Err(e) => {
-                                    // Proposal creation failed - skip this round but continue
-                                    // consensus (we can still vote on other validators' proposals)
+                                    // Proposal creation failed - skip this
+                                    // round but continue
+                                    // consensus (we can still vote on other
+                                    // validators' proposals)
                                     //
-                                    // NOTE: The consensus engine is event-driven and doesn't block
-                                    // waiting for our proposal. If we're the designated proposer
-                                    // and don't propose, the round will timeout and move to the
+                                    // NOTE: The consensus engine is
+                                    // event-driven and doesn't block
+                                    // waiting for our proposal. If we're the
+                                    // designated proposer
+                                    // and don't propose, the round will timeout
+                                    // and move to the
                                     // next round.
                                     tracing::warn!(
                                         validator = %validator_address,
@@ -223,12 +232,18 @@ pub fn spawn(
                         // The consensus engine wants us to gossip a message via the P2P consensus
                         // network.
                         ConsensusEvent::Gossip(msg) => {
-                            // Note: sometimes the engine will request gossiping votes for heights
-                            // lower than the current height, due to the fact that `history_depth`
-                            // in config is > 0 and we're not supporting round certificates yet. We
-                            // do want to gossip those votes, because rarely this could even cause
-                            // the network to stall with us having decided upon H while the others
-                            // not due to subtle race conditions and our votes missing in their
+                            // Note: sometimes the engine will request gossiping
+                            // votes for heights
+                            // lower than the current height, due to the fact
+                            // that `history_depth`
+                            // in config is > 0 and we're not supporting round
+                            // certificates yet. We
+                            // do want to gossip those votes, because rarely
+                            // this could even cause
+                            // the network to stall with us having decided upon
+                            // H while the others
+                            // not due to subtle race conditions and our votes
+                            // missing in their
                             // consensus engines.
                             tx_to_p2p
                                 .send(P2PTaskEvent::GossipRequest(msg))
@@ -264,11 +279,13 @@ pub fn spawn(
                                 .expect("Commit block receiver not to be dropped");
 
                             // Start the next height if:
-                            // - this decision's height is the latest (highest) decided height by
-                            //   consensus (otherwise this is not the highest decided height due to
-                            //   some race conditions),
-                            // - AND there is no active height that is larger than this last decided
-                            //   height (otherwise the next height has already been started and is
+                            // - this decision's height is the latest (highest)
+                            //   decided height by consensus (otherwise this is
+                            //   not the highest decided height due to some race
+                            //   conditions),
+                            // - AND there is no active height that is larger
+                            //   than this last decided height (otherwise the
+                            //   next height has already been started and is
                             //   actively being worked on).
                             if consensus
                                 .last_decided_height()
@@ -293,8 +310,10 @@ pub fn spawn(
                         ConsensusEvent::Error(error) => {
                             if error.is_recoverable() {
                                 // Recoverable errors: log and continue
-                                // - WAL entry errors: can skip corrupted entries
-                                // - Invalid peer messages: engine should handle, we continue
+                                // - WAL entry errors: can skip corrupted
+                                //   entries
+                                // - Invalid peer messages: engine should
+                                //   handle, we continue
                                 tracing::warn!(
                                     validator = %validator_address,
                                     error = %error,
@@ -328,7 +347,8 @@ pub fn spawn(
                         ConsensusCommand::Proposal(_) | ConsensusCommand::Vote(_) => {
                             if let ConsensusCommand::Vote(ref signed_vote) = cmd {
                                 let vote = &signed_vote.vote;
-                                // The condition is always false in production builds.
+                                // The condition is always false in production
+                                // builds.
                                 if integration_testing::debug_ignore_received_vote(
                                     vote.r#type.clone(),
                                     vote.height,

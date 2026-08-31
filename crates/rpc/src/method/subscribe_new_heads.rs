@@ -272,8 +272,8 @@ mod tests {
         for _ in 0..10 {
             tokio::task::yield_now().await;
         }
-        // Insert more blocks before the active updates kick in. This simulates a
-        // real-world race condition.
+        // Insert more blocks before the active updates kick in. This simulates
+        // a real-world race condition.
         let storage = router.context.storage.clone();
         tokio::task::spawn_blocking(move || {
             for i in 0..num_blocks {
@@ -474,7 +474,8 @@ mod tests {
         for _ in 0..10 {
             tokio::task::yield_now().await;
         }
-        // Since the subscription was cancelled, no more messages should be received.
+        // Since the subscription was cancelled, no more messages should be
+        // received.
         assert!(rx.is_empty());
     }
 

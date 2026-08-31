@@ -155,9 +155,9 @@ pub(crate) fn find_l2_gas_limit_and_execute_transaction(
     let initial_l2_gas_limit = initial_resource_bounds.l2_gas.max_amount;
 
     let max_l2_gas_limit = if execution_flags.charge_fee {
-        // If charge_fee is set, blockifier will enforce that the account balance covers
-        // the committed bounds, including the L2 gas limit. If it doesn't, the
-        // transaction will be rejected.
+        // If charge_fee is set, blockifier will enforce that the account
+        // balance covers the committed bounds, including the L2 gas
+        // limit. If it doesn't, the transaction will be rejected.
         get_max_l2_gas_amount_covered_by_balance(
             tx,
             &tx_executor.block_context,
@@ -205,8 +205,9 @@ pub(crate) fn find_l2_gas_limit_and_execute_transaction(
         match simulate_transaction(tx, tx_index, tx_executor, &revert_behavior) {
             Ok((output, saved_state)) => {
                 metrics::counter!("rpc_fee_estimation.without_binary_search").increment(1);
-                // If 110% of the actual transaction gas fee is enough, we use that
-                // as the estimate and skip the binary search.
+                // If 110% of the actual transaction gas fee is enough, we use
+                // that as the estimate and skip the binary
+                // search.
                 let gas_limit = GasVector {
                     l2_gas: l2_gas_adjusted,
                     ..output.0.receipt.gas
@@ -225,8 +226,9 @@ pub(crate) fn find_l2_gas_limit_and_execute_transaction(
 
                 let mut steps = 0;
 
-                // Run a binary search to find the minimal gas limit that still allows the
-                // transaction to execute without running out of L2 gas.
+                // Run a binary search to find the minimal gas limit that still
+                // allows the transaction to execute without
+                // running out of L2 gas.
                 let (tx_info, tx_state) = loop {
                     steps += 1;
 
@@ -292,17 +294,19 @@ pub(crate) fn find_l2_gas_limit_and_execute_transaction(
         // reverts.
         set_l2_gas_limit(tx, initial_l2_gas_limit);
 
-        // Revert state changes, and run the transaction again with the initial state.
+        // Revert state changes, and run the transaction again with the initial
+        // state.
         tx_executor.block_state = Some(saved_state);
 
-        // Make sure we return the gas limit we've determined is sufficient to run the
-        // transaction, and _not_ the resources for the reverted transaction.
+        // Make sure we return the gas limit we've determined is sufficient to
+        // run the transaction, and _not_ the resources for the reverted
+        // transaction.
         let (output, _) = execute_transaction(tx, tx_index, tx_executor, revert_behavior)?;
 
         output
     } else {
-        // Not necessary but let's be explicit about not reverting the final execution
-        // on the executor.
+        // Not necessary but let's be explicit about not reverting the final
+        // execution on the executor.
         drop(saved_state);
         output
     };
@@ -349,9 +353,9 @@ fn midpoint(a: GasAmount, b: GasAmount) -> GasAmount {
     let GasAmount(b) = b;
     let distance = b.checked_sub(a).expect("b >= a");
 
-    // NB: Without ceiling, the binary search could enter an infinite loop if the
-    // target is ever equal to the upper bound and the difference between the bounds
-    // is 1.
+    // NB: Without ceiling, the binary search could enter an infinite loop if
+    // the target is ever equal to the upper bound and the difference
+    // between the bounds is 1.
     GasAmount(a + distance.div_ceil(2))
 }
 
@@ -409,9 +413,9 @@ fn simulate_transaction<'tx>(
         Err(error) => {
             tracing::debug!(%error, %tx_index, "Transaction simulation failed");
 
-            // Check if the error is due to running out of gas. Transactions might run out
-            // of gas during validation, in which case we don't get a revert
-            // error.
+            // Check if the error is due to running out of gas. Transactions
+            // might run out of gas during validation, in which case
+            // we don't get a revert error.
             if failed_with_insufficient_l2_gas_error(&error) {
                 return Err(TransactionSimulationError::OutOfGas(initial_state));
             }
@@ -473,10 +477,10 @@ fn set_l2_gas_limit(transaction: &mut Transaction, gas_limit: GasAmount) {
         }
     }
 
-    // This function should only be called with account transaction versions that
-    // have L2 gas. It's a pain to set it up through the type system, so we'll
-    // just return early in expected cases (see match above) and panic if we get
-    // here.
+    // This function should only be called with account transaction versions
+    // that have L2 gas. It's a pain to set it up through the type system,
+    // so we'll just return early in expected cases (see match above) and
+    // panic if we get here.
     tracing::debug!(transaction=?transaction, "update_l2_gas_limit() called with a transaction that doesn't have L2 gas");
     unreachable!();
 }
@@ -631,8 +635,9 @@ fn get_max_l2_gas_amount_covered_by_balance(
             tracing::trace!(%balance, "Balance");
 
             if balance > max_possible_fee_without_l2_gas.0.into() {
-                // The maximum amount of L2 gas that can be bought with the balance.
-                // max_possible_fee = max_amount * (max_price + tip).
+                // The maximum amount of L2 gas that can be bought with the
+                // balance. max_possible_fee = max_amount *
+                // (max_price + tip).
                 let effective_l2_price: u128 = initial_resource_bounds
                     .l2_gas
                     .max_price_per_unit
@@ -642,9 +647,9 @@ fn get_max_l2_gas_amount_covered_by_balance(
                 let max_amount = (balance - max_possible_fee_without_l2_gas.0) / effective_l2_price;
                 Ok(u64::try_from(max_amount).unwrap_or(u64::MAX).into())
             } else {
-                // Balance is less than committed L1 gas and L1 data gas, tx will fail
-                // anyway. Let it pass through here so that
-                // execution returns a detailed error.
+                // Balance is less than committed L1 gas and L1 data gas, tx
+                // will fail anyway. Let it pass through here so
+                // that execution returns a detailed error.
                 tracing::trace!(
                     %balance,
                     "Balance does not cover committed L1 gas and L1 data gas"

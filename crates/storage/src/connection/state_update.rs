@@ -103,8 +103,8 @@ impl Transaction<'_> {
             )
             .context("Preparing contract insert statement")?;
 
-        // ON CONFLICT is required to handle legacy syncing logic, where the definition
-        // is inserted before the state update
+        // ON CONFLICT is required to handle legacy syncing logic, where the
+        // definition is inserted before the state update
         let mut upsert_declared_at = self
             .inner()
             .prepare_cached(
@@ -201,10 +201,11 @@ impl Transaction<'_> {
             }
         }
 
-        // Set all declared classes block numbers. Class definitions are inserted by a
-        // separate mechanism, prior to state update inserts. However, since the
-        // class insertion does not know with which block number to
-        // associate with the class definition, we need to fill it in here.
+        // Set all declared classes block numbers. Class definitions are
+        // inserted by a separate mechanism, prior to state update
+        // inserts. However, since the class insertion does not know
+        // with which block number to associate with the class
+        // definition, we need to fill it in here.
         let sierra = declared_sierra_classes
             .keys()
             .map(|sierra| ClassHash(sierra.0));
@@ -246,8 +247,9 @@ impl Transaction<'_> {
                 .context("Inserting CASM hash")?;
         }
 
-        // Starknet 0.14.1 introduced CASM hash migrations: CASM class hashes are
-        // gradually migrated to the new hash algorithm (using Blake2).
+        // Starknet 0.14.1 introduced CASM hash migrations: CASM class hashes
+        // are gradually migrated to the new hash algorithm (using
+        // Blake2).
         for (sierra_hash, casm_hash) in migrated_compiled_classes {
             insert_casm_hash
                 .execute(params![sierra_hash, &block_number, casm_hash])
@@ -281,8 +283,9 @@ impl Transaction<'_> {
             // The genesis block would not have a value.
             let parent_state_commitment =
                 row.get_optional_state_commitment(3)?.unwrap_or_else(|| {
-                    // Block at the tip of blockchain history (see `pruning.rs`) would also not have
-                    // a parent, but this case should be handled at the RPC
+                    // Block at the tip of blockchain history (see `pruning.rs`)
+                    // would also not have a parent, but
+                    // this case should be handled at the RPC
                     // layer.
                     assert_eq!(number, BlockNumber::GENESIS);
                     Default::default()
@@ -1121,7 +1124,8 @@ mod tests {
         tx.insert_state_update(header_1.number, &state_update)
             .unwrap();
 
-        // We expect the first state update to contain the class, and not the second.
+        // We expect the first state update to contain the class, and not the
+        // second.
         let declared_at = tx
             .class_definition_with_block_number(target_class)
             .unwrap()
@@ -1226,9 +1230,9 @@ mod tests {
             .unwrap();
         assert_eq!(non_existent, None);
 
-        // Query a few blocks after deployment as well. This is a regression case where
-        // querying by block hash failed to find the class hash if it wasn't
-        // literally the deployed block.
+        // Query a few blocks after deployment as well. This is a regression
+        // case where querying by block hash failed to find the class
+        // hash if it wasn't literally the deployed block.
         let is_replaced = tx
             .contract_class_hash(header_4.number.into(), contract)
             .unwrap();
@@ -1256,8 +1260,8 @@ mod tests {
                 .unwrap();
             let tx = db.transaction().unwrap();
 
-            // Submit the class definitions since this occurs out of band of the header and
-            // state diff.
+            // Submit the class definitions since this occurs out of band of the
+            // header and state diff.
             tx.insert_cairo_class_definition(
                 CAIRO_HASH,
                 &SerializedCairoDefinition::from_slice(b"cairo definition"),
@@ -1277,8 +1281,8 @@ mod tests {
             )
             .unwrap();
 
-            // Create genesis block with a deployed contract so we can replace it in the
-            // next block and test against it.
+            // Create genesis block with a deployed contract so we can replace
+            // it in the next block and test against it.
             let genesis_state_update = StateUpdate::default()
                 .with_declared_cairo_class(CAIRO_HASH)
                 .with_deployed_contract(CONTRACT_ADDRESS, CAIRO_HASH);
@@ -1535,9 +1539,10 @@ mod tests {
                 .unwrap();
             assert_eq!(by_hash, expected);
 
-            // Valid 2nd contract nonce. This exercises a bug where we didn't actually
-            // use the contract address when querying by hash. Checking an additional
-            // contract guards against only having a single entree to find.
+            // Valid 2nd contract nonce. This exercises a bug where we didn't
+            // actually use the contract address when querying by
+            // hash. Checking an additional contract guards against
+            // only having a single entree to find.
             let (contract, expected) = state_update
                 .contract_updates
                 .iter()

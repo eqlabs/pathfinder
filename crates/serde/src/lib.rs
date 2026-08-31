@@ -713,8 +713,8 @@ mod tests {
 
         #[test]
         fn deserialize() {
-            // u64::from_str_radix does not accept the `0x` prefix, so also make sure it is
-            // stripped
+            // u64::from_str_radix does not accept the `0x` prefix, so also make
+            // sure it is stripped
             ["", "0x"].into_iter().for_each(|prefix| {
                 assert_eq!(
                     serde_json::from_str::<BlockNum>(&format!("\"{prefix}0\"")).unwrap(),

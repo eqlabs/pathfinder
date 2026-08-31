@@ -164,8 +164,8 @@ impl TryFromProtobuf<proto::sync::receipt::EthereumAddress> for EthereumAddress 
             ));
         }
 
-        // from_slice() panics if the input length is incorrect, but we've already
-        // checked that
+        // from_slice() panics if the input length is incorrect, but we've
+        // already checked that
         let address = primitive_types::H160::from_slice(&input.elements);
         Ok(Self(address))
     }

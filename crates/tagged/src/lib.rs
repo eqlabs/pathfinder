@@ -226,8 +226,9 @@ mod tests {
             r#"Complex { u: Unit, t: Tuple(0, 1), e: C { a: 2, b: 3 } }"#
         );
 
-        // Register types by inserting at least one value per type, now the debugs for
-        // those values should show the tag they were created with
+        // Register types by inserting at least one value per type, now the
+        // debugs for those values should show the tag they were created
+        // with
         Tagged::<Unit>::get_fake("unit");
         Tagged::<Tuple>::get("tuple", || tuple);
         Tagged::<Struct>::get("struct", || stru);

@@ -168,8 +168,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         )?;
 
     // Set the rpc file connection limit to a fraction of the RPC connections.
-    // Having this be too large is counter productive as disk IO will then slow down
-    // all queries.
+    // Having this be too large is counter productive as disk IO will then slow
+    // down all queries.
     let max_rpc_connections: u32 = config
         .max_rpc_connections
         .get()
@@ -196,8 +196,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 Hint: This is usually caused by exceeding the file descriptor limit of your system.
       Try increasing the file limit to using `ulimit` or similar tooling.",
         )?;
-    // 5 is enough for normal sync operations, and then `available_parallelism` for
-    // the rayon thread pool workers to use.
+    // 5 is enough for normal sync operations, and then `available_parallelism`
+    // for the rayon thread pool workers to use.
     let p2p_storage = storage_manager
         .create_pool(NonZeroU32::new(5 + available_parallelism.get() as u32).unwrap())
         .context(
@@ -244,9 +244,9 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         .prune_tries()
         .context("Pruning tries on startup")?;
 
-    // Register signal handlers here, because we want to be able to interrupt long
-    // running migrations or trie pruning. No tasks are spawned before this point so
-    // we don't worry about detachment.
+    // Register signal handlers here, because we want to be able to interrupt
+    // long running migrations or trie pruning. No tasks are spawned before
+    // this point so we don't worry about detachment.
     let mut term_signal = signal(SignalKind::terminate())?;
     let mut int_signal = signal(SignalKind::interrupt())?;
 
@@ -330,12 +330,13 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         .context("Starting monitoring task")?;
     }
 
-    // From this point onwards, until the final select, we don't exit the process
-    // even if some error is encountered or a signal is received as it would result
-    // in tasks being detached and cancelled abruptly without a chance to clean
-    // up. We need to wait for the final select where we can cancel all the tasks
-    // and wait for them to finish. Only then can we exit the process and return an
-    // error if some of the tasks failed or no error if we have received a signal.
+    // From this point onwards, until the final select, we don't exit the
+    // process even if some error is encountered or a signal is received as
+    // it would result in tasks being detached and cancelled abruptly
+    // without a chance to clean up. We need to wait for the final select
+    // where we can cancel all the tasks and wait for them to finish. Only
+    // then can we exit the process and return an error if some of the tasks
+    // failed or no error if we have received a signal.
 
     let (sync_p2p_handle, sync_p2p_client) = if config.is_sync_enabled {
         p2p_network::sync::start(
@@ -483,8 +484,9 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         ));
 
     // Nodes that ran v0.17.0–v0.19.x with pruning enabled may have
-    // class_definitions rows where definition IS NULL that were never filled due
-    // to a storage bug. This task re-downloads any such definitions on startup.
+    // class_definitions rows where definition IS NULL that were never filled
+    // due to a storage bug. This task re-downloads any such definitions on
+    // startup.
     util::task::spawn(state::repair::repair_missing_class_definitions(
         sync_storage.clone(),
         pathfinder_context.gateway.clone(),
@@ -570,8 +572,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         }
     }
 
-    // Join all worker pool threads so that they don't panic when the `p2p_task` is
-    // cancelled.
+    // Join all worker pool threads so that they don't panic when the `p2p_task`
+    // is cancelled.
     #[cfg(feature = "p2p")]
     if let Some(worker_pool) = worker_pool {
         match Arc::try_unwrap(worker_pool) {
@@ -600,10 +602,10 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     // Wait for the shutdown storage task to finish.
     let shutdown_storage = jh.await.context("Running shutdown storage task")??;
 
-    // If a RO db connection pool remains after all RW connection pools have been
-    // dropped, WAL & SHM files are never cleaned up. To avoid this, we make sure
-    // that all RO pools and all but one RW pools are dropped when task tracker
-    // finishes waiting, and then we drop the last RW pool.
+    // If a RO db connection pool remains after all RW connection pools have
+    // been dropped, WAL & SHM files are never cleaned up. To avoid this, we
+    // make sure that all RO pools and all but one RW pools are dropped when
+    // task tracker finishes waiting, and then we drop the last RW pool.
     main_result.map(|_| shutdown_storage)
 }
 
@@ -674,8 +676,8 @@ fn compute_compiler_concurrency_limit(
     available_parallelism: NonZeroUsize,
     is_rpc_enabled: bool,
 ) -> anyhow::Result<NonZeroUsize> {
-    // concurrency_limit = min(floor((system_ram - margin) / compiler_ram_limit),
-    // n_cpus)
+    // concurrency_limit = min(floor((system_ram - margin) /
+    // compiler_ram_limit), n_cpus)
     let concurrency_limit = total_memory_bytes
         .saturating_sub(compiler_concurrency_memory_margin_bytes)
         / compiler_memory_limit_bytes;
@@ -697,8 +699,8 @@ fn compute_compiler_concurrency_limit(
              --rpc.compiler.concurrency-limit, or disable the RPC server via --rpc.enable=false."
         );
 
-        // Use a dummy value, the RPC server will not be started anyway, yet we need to
-        // construct a valid RPC config beforehand
+        // Use a dummy value, the RPC server will not be started anyway, yet we
+        // need to construct a valid RPC config beforehand
         Ok(NonZeroUsize::new(1).expect("1>0"))
     } else {
         tracing::info!(
@@ -1036,7 +1038,8 @@ impl EthereumContext {
     /// Configure an [EthereumContext]'s transport and read the chain ID using
     /// it.
     async fn setup(url: reqwest::Url, password: &Option<String>) -> anyhow::Result<Self> {
-        // Require WebSocket URL - EthereumClient uses WebSocket for all operations
+        // Require WebSocket URL - EthereumClient uses WebSocket for all
+        // operations
         if !matches!(url.scheme(), "ws" | "wss") {
             anyhow::bail!(
                 "Ethereum URL must use WebSocket protocol (ws:// or wss://), got: {url}\n\nHint: \
@@ -1196,8 +1199,8 @@ mod pathfinder_context {
                 reply_contract_addresses.strk_l2_token_address,
             );
 
-            // Check for proxies by comparing the core address against those of the known
-            // networks.
+            // Check for proxies by comparing the core address against those of
+            // the known networks.
             let network = match l1_core_address.as_bytes() {
                 x if x == core_addr::MAINNET => Chain::Mainnet,
                 x if x == core_addr::SEPOLIA_TESTNET => Chain::SepoliaTestnet,
@@ -1361,7 +1364,8 @@ mod tests {
 
     #[test]
     fn zero_limit_with_rpc_disabled_returns_dummy() {
-        // (5 - 4) / 4 = 0, but RPC is disabled, so a dummy value of 1 is returned.
+        // (5 - 4) / 4 = 0, but RPC is disabled, so a dummy value of 1 is
+        // returned.
         let limit =
             compute_compiler_concurrency_limit(5 * GIB, 4 * GIB, MARGIN, nonzero(32), false)
                 .unwrap();

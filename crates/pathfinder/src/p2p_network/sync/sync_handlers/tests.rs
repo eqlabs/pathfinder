@@ -387,7 +387,8 @@ mod prop {
         };
         use pathfinder_common::TransactionNonce;
 
-        // Align with the deserialization workaround to avoid false negative mismatches
+        // Align with the deserialization workaround to avoid false negative
+        // mismatches
         pub fn for_legacy_l1_handlers(tx: TransactionVariant) -> TransactionVariant {
             match tx {
                 TransactionVariant::InvokeV0(InvokeTransactionV0 {
@@ -517,7 +518,8 @@ mod prop {
         pub fn storage_with_seed(seed: u64, num_blocks: u64) -> (Storage, Vec<Block>) {
             use rand::SeedableRng;
             let storage = StorageBuilder::in_memory().unwrap();
-            // Explicitly choose RNG to make sure seeded storage is always reproducible
+            // Explicitly choose RNG to make sure seeded storage is always
+            // reproducible
             let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
             let blocks = generate::with_rng_and_config(
                 num_blocks.try_into().unwrap(),
@@ -577,8 +579,8 @@ mod prop {
             num_blocks: u64,
         ) -> impl Iterator<Item = Block> {
             if start_block >= num_blocks {
-                // The is no overlapping range but we want to keep the iterator type in this
-                // branch type-consistent
+                // The is no overlapping range but we want to keep the iterator
+                // type in this branch type-consistent
                 from_db.clear();
             }
 

@@ -299,9 +299,9 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
             }
         };
 
-        // Use internal error to indicate that the process of querying for a particular
-        // block failed, which is not the same as being sure that the block is
-        // not in the db.
+        // Use internal error to indicate that the process of querying for a
+        // particular block failed, which is not the same as being sure
+        // that the block is not in the db.
         let header = tx
             .block_header(block_id)
             .context("Fetching block header")?
@@ -349,9 +349,11 @@ fn get_class_proofs(
             return Err(Error::StorageProofNotSupported);
         } else {
             // Either:
-            // - the chain is empty (no declared classes) up to and including this block
+            // - the chain is empty (no declared classes) up to and including
+            //   this block
             // - or all leaves were removed resulting in an empty trie
-            // An empty proof is then a proof of non-membership in an empty block.
+            // An empty proof is then a proof of non-membership in an empty
+            // block.
             return Ok((Felt::default(), NodeHashToNodeMappings(vec![])));
         }
     };
@@ -394,9 +396,11 @@ fn get_contract_proofs(
             return Err(Error::StorageProofNotSupported);
         } else {
             // Either:
-            // - the chain is empty (no contract updates) up to and including this block
+            // - the chain is empty (no contract updates) up to and including
+            //   this block
             // - or all leaves were removed resulting in an empty trie
-            // An empty proof is then a proof of non-membership in an empty block.
+            // An empty proof is then a proof of non-membership in an empty
+            // block.
             return Ok((Felt::default(), NodeHashToNodeMappings(vec![]), vec![]));
         }
     };

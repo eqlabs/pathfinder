@@ -155,27 +155,29 @@ pub(crate) fn convert_wal_entry_to_input<
             // reasoning:
             //
             // 1. We configure malachite with `ValuePayload::ProposalOnly` (see
-            //    `create_consensus` in `lib.rs`), so malachite's `parts_only()` check is
-            //    always false.
+            //    `create_consensus` in `lib.rs`), so malachite's `parts_only()`
+            //    check is always false.
             //
-            // 2. We never feed `Input::ProposedValue` into malachite during live operation:
-            //    the `ConsensusCommand` enum only has `Vote`, `Proposal`, `Propose`, and
-            //    `StartHeight` variants, none of which map to `Input::ProposedValue`. The
-            //    function here is the *only* place that constructs that input, and only on
-            //    WAL replay.
+            // 2. We never feed `Input::ProposedValue` into malachite during
+            //    live operation: the `ConsensusCommand` enum only has `Vote`,
+            //    `Proposal`, `Propose`, and `StartHeight` variants, none of
+            //    which map to `Input::ProposedValue`. The function here is the
+            //    *only* place that constructs that input, and only on WAL
+            //    replay.
             //
-            // 3. We deliberately stub out every sync-subprotocol effect (`SyncValue`,
-            //    `VerifyCommitCertificate`, `VerifyPolkaCertificate`,
-            //    `VerifyRoundCertificate`, `PublishLivenessMsg`,
-            //    `RepublishRoundCertificate`) as no-ops in `handle_effect` — pathfinder
-            //    uses malachite in a sync-unaware way and runs its own sync logic
-            //    separately.
+            // 3. We deliberately stub out every sync-subprotocol effect
+            //    (`SyncValue`, `VerifyCommitCertificate`,
+            //    `VerifyPolkaCertificate`, `VerifyRoundCertificate`,
+            //    `PublishLivenessMsg`, `RepublishRoundCertificate`) as no-ops
+            //    in `handle_effect` — pathfinder uses malachite in a
+            //    sync-unaware way and runs its own sync logic separately.
             //
             // 4. Given (2), the only path inside malachite that writes a
-            //    `WalEntry::ProposedValue` for us is `on_propose` (i.e. when *this* node is
-            //    the local proposer for the round). The other writer, `on_proposed_value`,
-            //    only fires in response to an external `Input::ProposedValue(_, origin)` —
-            //    which by (2) we never emit, regardless of `origin`.
+            //    `WalEntry::ProposedValue` for us is `on_propose` (i.e. when
+            //    *this* node is the local proposer for the round). The other
+            //    writer, `on_proposed_value`, only fires in response to an
+            //    external `Input::ProposedValue(_, origin)` — which by (2) we
+            //    never emit, regardless of `origin`.
             //
             // Therefore every persisted entry replayed here was written as
             // a locally-proposed consensus value, and replaying it as

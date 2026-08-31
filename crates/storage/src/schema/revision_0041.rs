@@ -34,8 +34,8 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     )
     .context("Creating contract_roots_address_block_number index")?;
 
-    // Redo the class commitment leaf table. This is safe to do without migrating
-    // the data since this is the first migration.
+    // Redo the class commitment leaf table. This is safe to do without
+    // migrating the data since this is the first migration.
     tx.execute("DROP TABLE class_commitment_leaves", [])
         .context("Dropping class_commitment_leaves table")?;
     tx.execute(
@@ -54,8 +54,8 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     )
     .context("Creating class_commitment_leaves_casm index")?;
 
-    // Redo the contract state hash table. We already store nonce, root and class
-    // hashes in separate tables, so we only need the state hash now.
+    // Redo the contract state hash table. We already store nonce, root and
+    // class hashes in separate tables, so we only need the state hash now.
     tx.execute("DROP TABLE contract_states", [])
         .context("Dropping contract_states table")?;
     tx.execute(

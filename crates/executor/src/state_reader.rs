@@ -124,8 +124,8 @@ impl<S: StorageAdapter> PathfinderStateReader<S> {
 
         match casm_definition {
             Some(casm_definition) => {
-                // There's a CASM definition in storage, so this is a Sierra class. Extract
-                // class version from program.
+                // There's a CASM definition in storage, so this is a Sierra
+                // class. Extract class version from program.
                 let sierra_version = self.sierra_version_from_class(&class_definition)?;
 
                 #[cfg(feature = "cairo-native")]
@@ -143,8 +143,9 @@ impl<S: StorageAdapter> PathfinderStateReader<S> {
                             None => {
                                 let runnable_class =
                                     sierra_class_as_casm(sierra_version, casm_definition)?;
-                                // FIXME: this is a hack to avoid caching the CASM
-                                // class in the global cache until Native
+                                // FIXME: this is a hack to avoid caching the
+                                // CASM class in
+                                // the global cache until Native
                                 // compilation is finished
                                 return Ok((None, runnable_class));
                             }
@@ -380,8 +381,8 @@ impl<S: StorageAdapter> StateReader for PathfinderStateReader<S> {
             return Ok(casm_hash);
         }
 
-        // Look up pre-computed CASM v2 hash from storage, fall back to computing it if
-        // not found.
+        // Look up pre-computed CASM v2 hash from storage, fall back to
+        // computing it if not found.
         let casm_hash = self.storage_adapter.casm_hash_v2(pathfinder_class_hash)?;
         match casm_hash {
             Some(casm_hash) => Ok(starknet_api::core::CompiledClassHash(

@@ -155,8 +155,8 @@ impl Felt {
             ]),
         ];
 
-        // Loop over each word, if all previous are equal and current is less, we are
-        // good.
+        // Loop over each word, if all previous are equal and current is less,
+        // we are good.
         let mut maybe_overflow = true;
         let mut i = 0;
         while i < 4 && maybe_overflow {
@@ -468,7 +468,8 @@ impl Felt {
     /// types__.
     pub fn from_dec_str(s: &str) -> Result<Self, DecParseError> {
         // The order here matters because `Felt::from_hex_str` requires the '0x'
-        // prefix, so we'll never parse a hex string as a decimal string by mistake.
+        // prefix, so we'll never parse a hex string as a decimal string by
+        // mistake.
         match Felt::from_hex_str(s) {
             Ok(h) => Ok(h),
             Err(_) => {

@@ -315,7 +315,8 @@ pub trait RowExt {
         index: Index,
     ) -> rusqlite::Result<TrieStorageIndex> {
         let idx = self.get_u64(index)?;
-        // Always safe since get_u64 is capped at i64::MAX, just like TrieStorageIndex.
+        // Always safe since get_u64 is capped at i64::MAX, just like
+        // TrieStorageIndex.
         Ok(TrieStorageIndex::new(idx)
             .expect("TrieStorageIndex is non-negative and within i64::MAX"))
     }
@@ -573,7 +574,8 @@ mod tests {
 
     #[test]
     fn to_sql() {
-        // Exercises to_sql! and params! in a roundtrip to and from storage trip.
+        // Exercises to_sql! and params! in a roundtrip to and from storage
+        // trip.
 
         let original = class_hash!("0xdeadbeef");
 

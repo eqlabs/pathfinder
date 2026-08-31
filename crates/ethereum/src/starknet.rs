@@ -9,7 +9,8 @@ impl StarknetCoreContract::LogMessageToL2 {
     pub fn message_hash(&self) -> alloy::primitives::U256 {
         let mut hash = alloy::primitives::Keccak256::new();
 
-        // This is an ethereum address: pad the 160 bits to 32 bytes to match a felt.
+        // This is an ethereum address: pad the 160 bits to 32 bytes to match a
+        // felt.
         hash.update([0u8; 12]);
         hash.update(self.fromAddress);
         hash.update(self.toAddress.to_be_bytes::<32>());

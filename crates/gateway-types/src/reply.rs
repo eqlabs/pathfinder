@@ -545,9 +545,9 @@ pub mod transaction {
         }
     }
 
-    // This struct purposefully allows for unknown fields as it is not critical to
-    // store these counters perfectly. Failure would be far more costly than simply
-    // ignoring them.
+    // This struct purposefully allows for unknown fields as it is not critical
+    // to store these counters perfectly. Failure would be far more costly
+    // than simply ignoring them.
     #[derive(Copy, Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(default)]
     pub struct BuiltinCounters {
@@ -886,7 +886,8 @@ pub mod transaction {
             let revert_error =
                 (execution_status == ExecutionStatus::Reverted).then(|| Faker.fake_with_rng(rng));
 
-            // Those fields that were missing in very old receipts are always present
+            // Those fields that were missing in very old receipts are always
+            // present
             Self {
                 actual_fee: Faker.fake_with_rng(rng),
                 execution_resources: Faker.fake_with_rng(rng),
@@ -1638,7 +1639,8 @@ pub mod transaction {
 
             let mut v = serde_json::Value::deserialize(deserializer)?;
             let version = Version::deserialize(&v).map_err(de::Error::custom)?;
-            // remove "version", since v0 and v1 transactions use deny_unknown_fields
+            // remove "version", since v0 and v1 transactions use
+            // deny_unknown_fields
             v.as_object_mut()
                 .expect("must be an object because deserializing version succeeded")
                 .remove("version");
@@ -1951,7 +1953,8 @@ pub mod transaction {
 
             let mut v = serde_json::Value::deserialize(deserializer)?;
             let version = Version::deserialize(&v).map_err(de::Error::custom)?;
-            // remove "version", since v0 and v1 transactions use deny_unknown_fields
+            // remove "version", since v0 and v1 transactions use
+            // deny_unknown_fields
             v.as_object_mut()
                 .expect("must be an object because deserializing version succeeded")
                 .remove("version");
@@ -2073,12 +2076,14 @@ pub mod transaction {
             use sha3::{Digest, Keccak256};
 
             let Some((from_address, payload)) = self.calldata.split_first() else {
-                // This would indicate a pretty severe error in the L1 transaction.
-                // But since we haven't encoded this during serialization, this could in
+                // This would indicate a pretty severe error in the L1
+                // transaction. But since we haven't encoded
+                // this during serialization, this could in
                 // theory mess us up here.
                 //
-                // We should incorporate this into the deserialization instead. Returning an
-                // error here is unergonomic and far too late.
+                // We should incorporate this into the deserialization instead.
+                // Returning an error here is unergonomic and
+                // far too late.
                 return H256::zero();
             };
 
@@ -2183,14 +2188,14 @@ impl From<StateUpdate> for pathfinder_common::StateUpdate {
             .with_parent_state_commitment(gateway.old_root)
             .with_state_commitment(gateway.new_root);
 
-        // Extract the known system contract updates from the normal contract updates.
-        // This must occur before we map the contract updates, since we want to first
-        // remove the system contract updates.
+        // Extract the known system contract updates from the normal contract
+        // updates. This must occur before we map the contract updates,
+        // since we want to first remove the system contract updates.
         //
         // Currently there are two such contracts, at addresses 0x1 and 0x2.
         //
-        // As of starknet v0.13.4 these are embedded in this way, but in the future will
-        // be a separate property in the state diff.
+        // As of starknet v0.13.4 these are embedded in this way, but in the
+        // future will be a separate property in the state diff.
         for system_contract in ContractAddress::SYSTEM.iter() {
             if let Some((address, storage_updates)) = gateway
                 .state_diff
@@ -2203,8 +2208,8 @@ impl From<StateUpdate> for pathfinder_common::StateUpdate {
             }
         }
 
-        // Aggregate contract deployments, storage, nonce and class replacements into
-        // contract updates.
+        // Aggregate contract deployments, storage, nonce and class replacements
+        // into contract updates.
         for (address, storage_updates) in gateway.state_diff.storage_diffs {
             for state_update::StorageDiff { key, value } in storage_updates {
                 state_update = state_update.with_storage_update(address, key, value);

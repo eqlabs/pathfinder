@@ -107,10 +107,11 @@ pub async fn get_transaction_by_block_id_and_index(
                 include_proof_facts,
             }),
             None => {
-                // We now need to check whether it was the block hash or transaction index which
-                // were invalid. We do this by checking if the block exists
-                // at all. If no, then the block hash is invalid. If yes, then the index is
-                // invalid.
+                // We now need to check whether it was the block hash or
+                // transaction index which were invalid. We do
+                // this by checking if the block exists
+                // at all. If no, then the block hash is invalid. If yes, then
+                // the index is invalid.
                 let block_exists = db_tx
                     .block_exists(block_id)
                     .context("Querying block existence")?;

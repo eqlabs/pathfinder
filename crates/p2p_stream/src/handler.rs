@@ -309,11 +309,13 @@ where
                     .push_back(Event::OutboundTimeout(message.request_id));
             }
             StreamUpgradeError::NegotiationFailed => {
-                // The remote merely doesn't support the protocol(s) we requested.
-                // This is no reason to close the connection, which may
-                // successfully communicate with other protocols already.
-                // An event is reported to permit user code to react to the fact that
-                // the remote peer does not support the requested protocol(s).
+                // The remote merely doesn't support the protocol(s) we
+                // requested. This is no reason to close the
+                // connection, which may successfully
+                // communicate with other protocols already.
+                // An event is reported to permit user code to react to the fact
+                // that the remote peer does not support the
+                // requested protocol(s).
                 self.pending_events
                     .push_back(Event::OutboundUnsupportedProtocols(message.request_id));
             }

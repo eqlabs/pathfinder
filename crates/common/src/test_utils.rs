@@ -74,8 +74,9 @@ pub mod metrics {
                     return Counter::from_arc(counter.clone());
                 }
                 drop(read_guard);
-                // We could still be having some contention on write >here<, but let's assume
-                // most of the time the `read()` above does its job
+                // We could still be having some contention on write >here<, but
+                // let's assume most of the time the `read()`
+                // above does its job
                 let mut write_guard = self.0.counters.write().unwrap();
                 // Put it there
                 // let counter = write_guard.entry(key.clone()).or_default();

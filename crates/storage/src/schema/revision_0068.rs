@@ -36,8 +36,8 @@ pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
         RunningEventFilter::rebuild(tx, latest)
             .context("Rebuilding initial running_event_filter")?
     } else {
-        // No blocks in the database, create an event filter starting from the Genesis
-        // block.
+        // No blocks in the database, create an event filter starting from the
+        // Genesis block.
         RunningEventFilter {
             filter: AggregateBloom::new(BlockNumber::GENESIS),
             next_block: BlockNumber::GENESIS,

@@ -477,8 +477,8 @@ impl<
         );
 
         // Read the write-ahead log and recover all incomplete heights.
-        // This also returns finalized heights and the highest Decision height found
-        // (even in finalized heights).
+        // This also returns finalized heights and the highest Decision height
+        // found (even in finalized heights).
         let (incomplete_heights, finalized_heights, highest_decision) =
             match recovery::recover_incomplete_heights(&config.wal_dir, highest_committed) {
                 Ok((incomplete, finalized, decision_height)) => {
@@ -502,7 +502,8 @@ impl<
                 }
             };
 
-        // Set last_decided_height from the highest Decision found during recovery.
+        // Set last_decided_height from the highest Decision found during
+        // recovery.
         consensus.last_decided_height = highest_decision;
         if let Some(h) = highest_decision {
             tracing::info!(
@@ -512,7 +513,8 @@ impl<
             );
         }
 
-        // Determine the maximum height we're recovering (incomplete or finalized).
+        // Determine the maximum height we're recovering (incomplete or
+        // finalized).
         let max_height = incomplete_heights
             .iter()
             .chain(finalized_heights.iter())
@@ -526,9 +528,9 @@ impl<
             max_height.and_then(|max| max.checked_sub(config.history_depth));
 
         // Restore finalized heights that are within history_depth.
-        // This ensures we can accept votes for these heights, matching the behavior
-        // during normal operation where finalized heights remain in memory until
-        // pruned.
+        // This ensures we can accept votes for these heights, matching the
+        // behavior during normal operation where finalized heights
+        // remain in memory until pruned.
         for (height, entries) in finalized_heights {
             // Only restore finalized heights that are within history_depth.
             // (if max_height < history_depth, restore all finalized heights)
@@ -557,12 +559,15 @@ impl<
                 // Only call StartHeight if the height is not already finalized.
                 //
                 // With one exception:
-                // In an extremely rare case, where this node is required for consensus to move
-                // forward (ie. avoid stalling when there are only 3 nodes) it may happen that
-                // the other 2 nodes have not finalized their heights H and have timed out while
-                // our node, prior to being restarted, has finalized the same height H. Without
-                // our node restarting consensus at H the network will stall even though the
-                // number of honest nodes is sufficient (ie. 3).
+                // In an extremely rare case, where this node is required for
+                // consensus to move forward (ie. avoid stalling
+                // when there are only 3 nodes) it may happen that
+                // the other 2 nodes have not finalized their heights H and have
+                // timed out while our node, prior to being
+                // restarted, has finalized the same height H. Without
+                // our node restarting consensus at H the network will stall
+                // even though the number of honest nodes is
+                // sufficient (ie. 3).
                 if !internal_consensus.is_finalized()
                     || max_height.is_some_and(|max_height| max_height == height)
                 {
@@ -601,8 +606,9 @@ impl<
             consensus.internal.insert(height, internal_consensus);
         }
 
-        // Set min_kept_height to match what we've restored, so that is_height_finalized
-        // correctly identifies finalized heights that were pruned.
+        // Set min_kept_height to match what we've restored, so that
+        // is_height_finalized correctly identifies finalized heights
+        // that were pruned.
         consensus.min_kept_height = min_height_to_restore;
 
         tracing::info!(
@@ -749,7 +755,8 @@ impl<
                 // Track finished heights and update last_decided_height.
                 if let ConsensusEvent::Decision { height, .. } = &event {
                     finished_heights.push(*height);
-                    // Update last_decided_height to track the highest decided height.
+                    // Update last_decided_height to track the highest decided
+                    // height.
                     self.last_decided_height = Some(
                         self.last_decided_height
                             .map(|h| h.max(*height))
@@ -777,7 +784,8 @@ impl<
             let new_min_height = max_height.checked_sub(self.config.history_depth);
 
             if let Some(new_min) = new_min_height {
-                // Collect heights that will be pruned (before we remove them from the map).
+                // Collect heights that will be pruned (before we remove them
+                // from the map).
                 let pruned_heights: Vec<u64> = self
                     .internal
                     .keys()
@@ -836,8 +844,9 @@ impl<
         if let Some(engine) = self.internal.get(&height) {
             engine.is_finalized()
         } else {
-            // If the height is not in our internal map, it might have been pruned
-            // after being finalized, so we assume it's finalized
+            // If the height is not in our internal map, it might have been
+            // pruned after being finalized, so we assume it's
+            // finalized
             if let Some(min_height) = self.min_kept_height {
                 if height < min_height {
                     return true;

@@ -114,8 +114,9 @@ pub async fn trace_block_transactions(
                 let header = pending.pre_confirmed_header();
                 let transactions = pending.pre_confirmed_transactions().to_vec();
 
-                // `block_traces` on the gateway does not support pending blocks, so we do our
-                // best and create a pending state diff for everything up to but excluding the
+                // `block_traces` on the gateway does not support pending
+                // blocks, so we do our best and create a
+                // pending state diff for everything up to but excluding the
                 // preconfirmed block.
                 let pending_state = if pending.parent_blocks().next().is_some() {
                     Some(std::sync::Arc::new(pending.parents_overlay()))
@@ -176,10 +177,10 @@ pub async fn trace_block_transactions(
             }
         }
 
-        // Mainnet has a block range where re-execution is not possible (we get a
-        // different state diff due to a bug that was present on the sequencer
-        // when these blocks were produced). We should fall back to fetching
-        // traces from the feeder gateway instead.
+        // Mainnet has a block range where re-execution is not possible (we get
+        // a different state diff due to a bug that was present on the
+        // sequencer when these blocks were produced). We should fall
+        // back to fetching traces from the feeder gateway instead.
         if context.chain_id == ChainId::MAINNET
             && !input.block_id.is_pending()
             && header.number >= MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START
@@ -254,10 +255,11 @@ pub async fn trace_block_transactions(
     );
 
     // The gateway client retries transport errors with an unbounded exponential
-    // backoff, so a slow or unresponsive sequencer would otherwise hold this task
-    // (and the resources acquired during the preflight) for the full retry
-    // policy. Bound the fallback with an operator-tunable timeout and bail out
-    // early on graceful shutdown so the RPC slot is freed promptly.
+    // backoff, so a slow or unresponsive sequencer would otherwise hold this
+    // task (and the resources acquired during the preflight) for the full
+    // retry policy. Bound the fallback with an operator-tunable timeout and
+    // bail out early on graceful shutdown so the RPC slot is freed
+    // promptly.
     let cancellation_token = util::task::cancellation_token();
     let trace = tokio::select! {
         biased;
@@ -377,9 +379,10 @@ pub(crate) fn map_gateway_trace(
             "segment_arena_builtin",
         )?,
     };
-    // `saturating_add` for the same reason the counters above use `checked_add`:
-    // these `u128` gas figures are attacker-controlled on the fallback path and
-    // must not panic (debug) or silently wrap (release) on overflow.
+    // `saturating_add` for the same reason the counters above use
+    // `checked_add`: these `u128` gas figures are attacker-controlled on
+    // the fallback path and must not panic (debug) or silently wrap
+    // (release) on overflow.
     let l1_gas = validate_invocation_resources
         .total_gas_consumed
         .unwrap_or_default()
@@ -1360,8 +1363,8 @@ pub(crate) mod tests {
                 transaction_state_diffs: vec![],
             };
 
-            // Last L2 block, then the parent (pre-latest), then this so the tip is +2 and
-            // the overlay sits on the committed head.
+            // Last L2 block, then the parent (pre-latest), then this so the tip
+            // is +2 and the overlay sits on the committed head.
             crate::pending::PendingData::from_window(
                 Box::new(pre_confirmed_block),
                 last_block_header.number + 2,
@@ -1708,9 +1711,9 @@ pub(crate) mod tests {
         // Then, for RpcVersion that support `RETURN_INITIAL_READS` (i.e. after
         // RpcVersion::V10), test with the flag enabled.
         //
-        // NB: Testing twice with a different set of flags also serves as a guarantee
-        // that we don't accidentally cache results based solely on the block
-        // identifier.
+        // NB: Testing twice with a different set of flags also serves as a
+        // guarantee that we don't accidentally cache results based
+        // solely on the block identifier.
         if rpc_version >= RpcVersion::V10 {
             input
                 .trace_flags
@@ -1780,8 +1783,8 @@ pub(crate) mod tests {
             Ok((context, input, server))
         }
 
-        // First test that with a Starknet version that requires fetching traces from
-        // the gateway, we get an empty "initial_reads" object when
+        // First test that with a Starknet version that requires fetching traces
+        // from the gateway, we get an empty "initial_reads" object when
         // `RETURN_INITIAL_READS` is set.
         let (block_with_fallback, starknet_version_with_fallback) = (
             BlockNumber::new_or_panic(632905), // Must be lower than 632915.
@@ -1805,10 +1808,11 @@ pub(crate) mod tests {
         assert!(initial_reads.is_object());
         assert_eq!(initial_reads.to_string(), "{}");
 
-        // Next test that we get an empty "initial_reads" object when these conditions
-        // are fulfilled:
+        // Next test that we get an empty "initial_reads" object when these
+        // conditions are fulfilled:
         //   - Starknet version is new enough to support local tracing
-        //   - Block number is in the range where we fetch traces from the gateway
+        //   - Block number is in the range where we fetch traces from the
+        //     gateway
         //   - `RETURN_INITIAL_READS` is set
         let (re_execution_impossible_block, re_execution_impossible_starknet_version) = (
             // 1943704 + 10 = 1943714.

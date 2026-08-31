@@ -12,12 +12,13 @@ pub async fn refresh_http_client_periodically(
     loop {
         refresh_interval.tick().await;
 
-        // Address resolution using `std::net` is blocking, so we need to run it in a
-        // blocking context to avoid blocking the async runtime.
+        // Address resolution using `std::net` is blocking, so we need to run it
+        // in a blocking context to avoid blocking the async runtime.
         tokio::task::block_in_place(|| {
-            // Ignore the result of refresh since it can fail due to transient network
-            // issues, and we don't want to crash the entire application because of that.
-            // We'll just try again in the next cycle.
+            // Ignore the result of refresh since it can fail due to transient
+            // network issues, and we don't want to crash the entire
+            // application because of that. We'll just try again in
+            // the next cycle.
             let _ = client.refresh();
         });
     }

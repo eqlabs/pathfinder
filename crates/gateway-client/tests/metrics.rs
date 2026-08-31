@@ -103,9 +103,9 @@ async fn all_counter_types_including_tags() {
 
     // IMPORTANT
     //
-    // We're not using any crate::sequencer::metrics consts here, because this is
-    // public API and we'd like to catch if/when it changed (apparently due to a
-    // bug)
+    // We're not using any crate::sequencer::metrics consts here, because this
+    // is public API and we'd like to catch if/when it changed (apparently
+    // due to a bug)
     [
         ("gateway_requests_total", None, None, 21),
         ("gateway_requests_total", Some("latest"), None, 7),

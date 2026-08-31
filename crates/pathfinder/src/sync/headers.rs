@@ -51,8 +51,9 @@ pub(super) async fn next_gap(
 
         tracing::trace!(%head, "Searching for next gap");
 
-        // It's possible for the head block to be the head of the gap. This can occur
-        // when called with the L1 anchor which has not been synced yet.
+        // It's possible for the head block to be the head of the gap. This can
+        // occur when called with the L1 anchor which has not been
+        // synced yet.
         let head_exists = db
             .block_exists(head.into())
             .context("Checking if search head exists locally")?;
@@ -80,7 +81,8 @@ pub(super) async fn next_gap(
 
             (gap_head_parent_number, gap_head_parent_hash)
         } else {
-            // Start of search is already missing so it becomes the head of the gap.
+            // Start of search is already missing so it becomes the head of the
+            // gap.
             tracing::trace!(%head, "Start of search was missing");
             (head, head_hash)
         };
@@ -89,8 +91,9 @@ pub(super) async fn next_gap(
             match db.next_ancestor(head).context("Querying tail of gap")? {
                 Some((tail, tail_hash)) => (tail + 1, tail_hash),
                 None => {
-                    // By this point we are certain there is a gap, so the tail automatically
-                    // becomes genesis if no actual tail block is found.
+                    // By this point we are certain there is a gap, so the tail
+                    // automatically becomes genesis if no
+                    // actual tail block is found.
                     (BlockNumber::GENESIS, BlockHash::ZERO)
                 }
             };

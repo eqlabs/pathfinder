@@ -121,8 +121,8 @@ fn revert_class_updates(
                 ClassCommitmentLeafHash::ZERO
             }
             Some(casm_hash) => {
-                // Class hash has changed. Note that the class commitment leaf must have already
-                // been added to storage.
+                // Class hash has changed. Note that the class commitment leaf
+                // must have already been added to storage.
                 pathfinder_common::calculate_class_commitment_leaf_hash(casm_hash)
             }
         };

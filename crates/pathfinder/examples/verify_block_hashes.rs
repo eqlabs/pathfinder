@@ -59,8 +59,8 @@ fn main() -> anyhow::Result<()> {
                 .as_slice(),
         )?;
 
-        // The db can be storing default values for the receipt commitment if the db was
-        // created by syncing from the fgw
+        // The db can be storing default values for the receipt commitment if
+        // the db was created by syncing from the fgw
         if header.receipt_commitment == ReceiptCommitment::ZERO {
             header.receipt_commitment = computed_receipt_commitment;
         } else if header.receipt_commitment != computed_receipt_commitment {

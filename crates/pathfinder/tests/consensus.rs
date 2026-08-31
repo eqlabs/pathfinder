@@ -76,12 +76,13 @@ mod test {
     // TODO Test cases that should be supported by the integration tests:
     // - proposals:
     //   - [x] non-empty proposals (transactions that modify storage):
-    //      - Garbage L1-transaction handlers, that get reverted, but we get to test
-    //        from clear genesis (no bootstrap devnet DB), exercised in the happy
-    //        path scenario
-    //      - Valid declare, deploy, and invoke transactions, exercised in all the
-    //        other scenarios, thanks to a bootstrapped devnet DB
-    //   - [ ] empty proposals, which follow the spec, ie. no transaction batches:
+    //      - Garbage L1-transaction handlers, that get reverted, but we get to
+    //        test from clear genesis (no bootstrap devnet DB), exercised in the
+    //        happy path scenario
+    //      - Valid declare, deploy, and invoke transactions, exercised in all
+    //        the other scenarios, thanks to a bootstrapped devnet DB
+    //   - [ ] empty proposals, which follow the spec, ie. no transaction
+    //     batches:
     //      - ProposalInit,
     //      - ProposalFin,
     // - node set sizes:
@@ -131,25 +132,29 @@ mod test {
         let disallow_reverted_txns = bootstrap_db;
         let (configs, boot_height, stopwatch) = utils::setup(NUM_NODES, bootstrap_db).unwrap();
 
-        // System contracts start to matter after block 10 but we have a separate
-        // regression test for that, which checks that rollback at H>10 works correctly.
+        // System contracts start to matter after block 10 but we have a
+        // separate regression test for that, which checks that rollback
+        // at H>10 works correctly.
         let target_height: u64 = boot_height + 5;
 
         let alice_cfg = configs.first().unwrap();
         let mut fgw = FeederGateway::spawn(alice_cfg).unwrap();
         fgw.wait_for_ready(POLL_READY, READY_TIMEOUT).await.unwrap();
 
-        // We want everybody to have sync enabled so that not only Alice, Bob, and
-        // Charlie decide upon the new blocks but also they are able to **commit the
-        // blocks to their main DBs**. The trick is that MOST OF THE TIME the FGw will
-        // not provide any meaningful data to the 3 nodes because it's feeding
-        // off of Alice's DB which means it'll always be lagging behind the
-        // nodes that achieve consensus. However in reality, the FGw, will be sometimes
-        // able to provide some blocks to Bob or Charlie faster than they themselves
-        // acquire a positive decision from their consensus engines.
+        // We want everybody to have sync enabled so that not only Alice, Bob,
+        // and Charlie decide upon the new blocks but also they are able
+        // to **commit the blocks to their main DBs**. The trick is that
+        // MOST OF THE TIME the FGw will not provide any meaningful data
+        // to the 3 nodes because it's feeding off of Alice's DB which
+        // means it'll always be lagging behind the nodes that achieve
+        // consensus. However in reality, the FGw, will be sometimes
+        // able to provide some blocks to Bob or Charlie faster than they
+        // themselves acquire a positive decision from their consensus
+        // engines.
         //
-        // Additionally, dummy proposal creation relies on the parent block being
-        // committed to the main DB, so sync needs to be enabled for that as well.
+        // Additionally, dummy proposal creation relies on the parent block
+        // being committed to the main DB, so sync needs to be enabled
+        // for that as well.
         let mut configs = configs.into_iter().map(|cfg| {
             cfg.with_local_feeder_gateway(fgw.port())
                 .with_sync_enabled()
@@ -231,8 +236,8 @@ mod test {
             READY_TIMEOUT,
         );
 
-        // Wait for: the test to pass, timeout, user interruption, or bail out early if
-        // the RPC client encounters an error
+        // Wait for: the test to pass, timeout, user interruption, or bail out
+        // early if the RPC client encounters an error
         utils::join_all(
             vec![
                 alice_decided,
@@ -431,8 +436,8 @@ mod test {
 
         let maybe_bob = respawn_on_fail(true, bob, bob_cfg, POLL_READY, READY_TIMEOUT);
 
-        // Wait for: the test to pass, timeout, user interruption, or bail out early if
-        // the RPC client encounters an error
+        // Wait for: the test to pass, timeout, user interruption, or bail out
+        // early if the RPC client encounters an error
         let mut all_decided = vec![alice_decided, bob_decided, charlie_decided];
         if let Some(dan_decided) = maybe_dan_decided {
             all_decided.push(dan_decided);
@@ -508,22 +513,26 @@ mod test {
         let mut fgw = FeederGateway::spawn(alice_cfg).unwrap();
         fgw.wait_for_ready(POLL_READY, READY_TIMEOUT).await.unwrap();
 
-        // We want everybody to have sync enabled so that not only Alice, Bob, and
-        // Charlie decide upon the new blocks but also they are able to **commit the
-        // blocks to their main DBs**. The trick is that MOST OF THE TIME the FGw will
-        // not provide any meaningful data to the 3 nodes because it's feeding
-        // off of Alice's DB which means it'll always be lagging behind the
-        // nodes that achieve consensus. However in reality, the FGw, will be sometimes
-        // able to provide some blocks to Bob or Charlie faster than they themselves
-        // acquire a positive decision from their consensus engines.
+        // We want everybody to have sync enabled so that not only Alice, Bob,
+        // and Charlie decide upon the new blocks but also they are able
+        // to **commit the blocks to their main DBs**. The trick is that
+        // MOST OF THE TIME the FGw will not provide any meaningful data
+        // to the 3 nodes because it's feeding off of Alice's DB which
+        // means it'll always be lagging behind the nodes that achieve
+        // consensus. However in reality, the FGw, will be sometimes
+        // able to provide some blocks to Bob or Charlie faster than they
+        // themselves acquire a positive decision from their consensus
+        // engines.
         //
-        // This means that initially Dan will be actually syncing from the FGw until he
-        // catches up with the other nodes, at which point he should be committing the
-        // consensus-decided blocks to his own main DB, before actually sync is able to
-        // get them from the FGw.
+        // This means that initially Dan will be actually syncing from the FGw
+        // until he catches up with the other nodes, at which point he
+        // should be committing the consensus-decided blocks to his own
+        // main DB, before actually sync is able to get them from the
+        // FGw.
         //
-        // Additionally, dummy proposal creation relies on the parent block being
-        // committed to the main DB, so sync needs to be enabled for that as well.
+        // Additionally, dummy proposal creation relies on the parent block
+        // being committed to the main DB, so sync needs to be enabled
+        // for that as well.
         let mut configs = configs.into_iter().map(|cfg| {
             cfg.with_local_feeder_gateway(fgw.port())
                 .with_sync_enabled()
@@ -708,8 +717,9 @@ mod test {
             // ..send outdated votes.
             trigger: InjectFailureTrigger::OutdatedVote,
         };
-        // Do this for all three nodes, one of them will be picked to send a proposal
-        // at last_valid_height + 1 and the other two will be the sabotaging nodes.
+        // Do this for all three nodes, one of them will be picked to send a
+        // proposal at last_valid_height + 1 and the other two will be
+        // the sabotaging nodes.
         let mut configs = configs.into_iter().map(|cfg| {
             cfg.with_inject_failure(Some(inject_failure))
                 .with_local_feeder_gateway(fgw.port())
@@ -782,9 +792,10 @@ mod test {
 
         let (err_tx, err_rx) = mpsc::channel(3);
 
-        // ..then wait a bit more for the next height, which should never become decided
-        // upon because one of the nodes is sabotaging the consensus network (sending
-        // outdated votes) and getting punished by the other two nodes.
+        // ..then wait a bit more for the next height, which should never become
+        // decided upon because one of the nodes is sabotaging the
+        // consensus network (sending outdated votes) and getting
+        // punished by the other two nodes.
         let alice_decided = wait_for_height(
             &alice,
             last_valid_height + 1,

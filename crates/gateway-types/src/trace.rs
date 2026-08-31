@@ -326,11 +326,12 @@ mod tests {
             // `MAX_TRACE_CALL_DEPTH` counts `internal_calls` levels, so a tree
             // with that many nested children is exactly at the limit.
             //
-            // Serialise and parse with `from_str` rather than `from_value`: only
-            // the string/slice deserialisers track recursion, so this is the
-            // only way to exercise the same path as the production `from_slice`
-            // deserialisation. The cap sits below serde_json's recursion limit,
-            // so a tree at the cap parses without tripping it.
+            // Serialise and parse with `from_str` rather than `from_value`:
+            // only the string/slice deserialisers track recursion,
+            // so this is the only way to exercise the same path as
+            // the production `from_slice` deserialisation. The cap
+            // sits below serde_json's recursion limit, so a tree at
+            // the cap parses without tripping it.
             let json = serde_json::to_string(&nested_invocation(MAX_TRACE_CALL_DEPTH - 1)).unwrap();
             serde_json::from_str::<FunctionInvocation>(&json)
                 .expect("nesting at the cap should be accepted");

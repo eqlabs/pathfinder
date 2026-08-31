@@ -136,8 +136,8 @@ where
         // Is the peer connecting over a relay?
         let is_relayed = remote_addr.iter().any(|p| p == Protocol::P2pCircuit);
 
-        // Limit the number of inbound peer connections. Different limits apply to
-        // direct peers and peers connecting over a relay.
+        // Limit the number of inbound peer connections. Different limits apply
+        // to direct peers and peers connecting over a relay.
         if is_relayed {
             if self.inbound_relayed_peers().count() >= self.cfg.max_inbound_relayed_peers {
                 self.evict_inbound_peer(
@@ -254,9 +254,12 @@ where
                         peer_id,
                         |peer| {
                             if !peer.is_connected() {
-                                // If there was no successful connection when the dialing failed,
-                                // then the peer is definitely not connected. Otherwise, this might
-                                // have been a redial attempt, and the peer might still be
+                                // If there was no successful connection when
+                                // the dialing failed,
+                                // then the peer is definitely not connected.
+                                // Otherwise, this might
+                                // have been a redial attempt, and the peer
+                                // might still be
                                 // connected.
                                 peer.connectivity = Connectivity::Disconnected {
                                     connected_at: None,
@@ -343,8 +346,8 @@ where
             return Err(ConnectionDenied::new("too many inbound connections"));
         }
 
-        // Extract the peer IP from the multiaddr, or disconnect the peer if he doesn't
-        // have one.
+        // Extract the peer IP from the multiaddr, or disconnect the peer if he
+        // doesn't have one.
         let peer_ip = Self::get_ip(remote_addr)?;
 
         // If the peer is not in the IP whitelist, disconnect.
@@ -369,8 +372,9 @@ where
                 return None;
             }
             peer.connected_at().and_then(|connected_at| {
-                // If the connecting peer is relayed, only consider relayed peers for the recent
-                // peers set. Otherwise, only consider direct peers. Different connection
+                // If the connecting peer is relayed, only consider relayed
+                // peers for the recent peers set. Otherwise,
+                // only consider direct peers. Different connection
                 // timeouts apply to direct and relayed peers.
                 if is_relayed {
                     if !peer.is_relayed()
@@ -387,8 +391,8 @@ where
             })
         });
 
-        // If the peer IP is in the recent peers set, this means he is attempting to
-        // reconnect too quickly. Close the connection.
+        // If the peer IP is in the recent peers set, this means he is
+        // attempting to reconnect too quickly. Close the connection.
         if recent_peers.any(|ip| ip == peer_ip) {
             tracing::debug!(%connection_id, "Peer attempted to reconnect too quickly, closing");
             return Err(ConnectionDenied::new("reconnect too quickly"));
@@ -400,25 +404,25 @@ where
             _ => None,
         });
 
-        // If we can extract the peer ID, prevent evicted peers from reconnecting too
-        // quickly.
+        // If we can extract the peer ID, prevent evicted peers from
+        // reconnecting too quickly.
         if let Some(peer_id) = peer_id {
             self.prevent_evicted_peer_reconnections(peer_id)?;
         }
 
         drop(recent_peers);
 
-        // Limit the number of inbound peer connections. Different limits apply to
-        // direct peers and peers connecting over a relay.
+        // Limit the number of inbound peer connections. Different limits apply
+        // to direct peers and peers connecting over a relay.
         //
-        // This same check happens when the connection is established, but we are also
-        // checking here because it allows us to avoid potentially expensive
-        // protocol negotiation with the peer if there are already too many
-        // inbound connections.
+        // This same check happens when the connection is established, but we
+        // are also checking here because it allows us to avoid
+        // potentially expensive protocol negotiation with the peer if
+        // there are already too many inbound connections.
         //
-        // The check must be repeated when the connection is established due to race
-        // conditions, since multiple peers may be attempting to connect at the
-        // same time.
+        // The check must be repeated when the connection is established due to
+        // race conditions, since multiple peers may be attempting to
+        // connect at the same time.
         if is_relayed {
             if self.inbound_relayed_peers().count() >= self.cfg.max_inbound_relayed_peers {
                 self.evict_inbound_peer(
@@ -448,8 +452,8 @@ where
     ) -> Result<Vec<Multiaddr>, ConnectionDenied> {
         if let Some(peer_id) = maybe_peer {
             if effective_role.is_dialer() {
-                // This really is an outbound connection, and not a connection that requires
-                // hole-punching.
+                // This really is an outbound connection, and not a connection
+                // that requires hole-punching.
 
                 self.prevent_evicted_peer_reconnections(peer_id)?;
 
@@ -531,12 +535,13 @@ where
     fn evict_outbound_peer(&mut self) -> Result<(), ConnectionDenied> {
         let mut candidates: Vec<_> = self.outbound_peers().collect();
 
-        // Only peers which are flagged as not useful are considered for eviction.
+        // Only peers which are flagged as not useful are considered for
+        // eviction.
         candidates.retain(|(_, peer)| !peer.useful);
 
-        // The peer to be evicted is the one with the highest SHA3(eviction_secret ||
-        // peer_id) value. This is deterministic but unpredictable by any
-        // outside observer.
+        // The peer to be evicted is the one with the highest
+        // SHA3(eviction_secret || peer_id) value. This is deterministic
+        // but unpredictable by any outside observer.
         candidates.sort_by_key(|(peer_id, _)| {
             use sha3::{Digest, Sha3_256};
             let mut hasher = Sha3_256::default();
@@ -604,9 +609,10 @@ where
         let mut sorted: Vec<_> = grouped.iter().collect();
         sorted.sort_by_key(|&(group, _)| group);
         for (_, peers) in sorted.iter().take(4) {
-            // Pick the peer with the smallest SHA3(eviction_secret || peer_id) value and
-            // protect it from eviction. This is deterministic but unpredictable
-            // by any outside observer.
+            // Pick the peer with the smallest SHA3(eviction_secret || peer_id)
+            // value and protect it from eviction. This is
+            // deterministic but unpredictable by any outside
+            // observer.
             if let Some(peer_id) = peers.iter().min_by_key(|peer_id| {
                 use sha3::{Digest, Sha3_256};
                 let mut hasher = Sha3_256::default();
@@ -620,7 +626,8 @@ where
 
         // Protect 8 peers with the lowest minimum ping time. To circumvent this
         // step, the attacker would have to be able to run nodes that are
-        // geographically closer to us than these peers, which is difficult to do.
+        // geographically closer to us than these peers, which is difficult to
+        // do.
         let mut ping_times: Vec<_> = candidates
             .iter()
             .filter_map(|(&peer_id, peer)| Option::map(peer.min_ping, |ping| (peer_id, ping)))
@@ -630,12 +637,12 @@ where
             candidates.remove(peer_id);
         }
 
-        // TODO #1754: Save 4 nodes that have most recently gossiped valid transactions,
-        // and 8 nodes that have most recently gossiped a valid new head (or any
-        // other block if we are still syncing).
+        // TODO #1754: Save 4 nodes that have most recently gossiped valid
+        // transactions, and 8 nodes that have most recently gossiped a
+        // valid new head (or any other block if we are still syncing).
 
-        // Of the remaining nodes, protect half of them which have been connected
-        // for the longest time.
+        // Of the remaining nodes, protect half of them which have been
+        // connected for the longest time.
         let mut connected_at: Vec<_> = candidates
             .iter()
             .map(|(&peer_id, peer)| (peer_id, peer.connected_at().expect("peer is connected")))
@@ -728,7 +735,8 @@ where
                 Protocol::Ip4(ip) => Some(IpAddr::V4(ip)),
                 Protocol::Ip6(ip) => Some(IpAddr::V6(ip)),
                 Protocol::Dns4(dns) | Protocol::Dns6(dns) => {
-                    // We only care about resolving to an IP address so any port is fine.
+                    // We only care about resolving to an IP address so any port
+                    // is fine.
                     let dns_with_port = format!("{dns}:0");
                     match dns_with_port.to_socket_addrs() {
                         Ok(mut addrs) => addrs

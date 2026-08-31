@@ -126,14 +126,14 @@ pub async fn get_events(
     // 1. pre-confirmed     :     pre-confirmed -> query pre-confirmed only
     // 2. pre-confirmed     : non-pre-confirmed -> return empty result
     // 3. non-pre-confirmed : non-pre-confirmed -> query db only
-    // 4. non-pre-confirmed :     pre-confirmed -> query db and potentially append
-    //    pending events
+    // 4. non-pre-confirmed :     pre-confirmed -> query db and potentially
+    //    append pending events
     //
     // The database query for 3 and 4 is combined into one step.
     //
     // 4 requires some additional logic to handle some edge cases:
-    //  a) if from_block_number > pre_confirmed_block_number -> return empty result
-    //  b) Query database
+    //  a) if from_block_number > pre_confirmed_block_number -> return empty
+    // result  b) Query database
     //  c) if full page -> return page
     //      check if there are matching events in the pre-confirmed block
     //      and return a continuation token for the pre-confirmed block
@@ -195,8 +195,8 @@ pub async fn get_events(
 
         let pending: Option<PendingData> = pending.map(|p| p.validate(&transaction)).transpose()?;
 
-        // Replace from/to blocks with `BlockId::PreConfirmed` if their numbers match
-        // the pre-latest/pre-confirmed block number.
+        // Replace from/to blocks with `BlockId::PreConfirmed` if their numbers
+        // match the pre-latest/pre-confirmed block number.
         let from_block_id = request.from_block.map(|from_id| match from_id {
             Number(from)
                 if pending
@@ -218,8 +218,9 @@ pub async fn get_events(
             _ => to_id,
         });
 
-        // Handle the trivial (1), (2) and (4a) cases — all of which need pending data,
-        // which a pre-confirmed bound guarantees is present.
+        // Handle the trivial (1), (2) and (4a) cases — all of which need
+        // pending data, which a pre-confirmed bound guarantees is
+        // present.
         if let Some(pending) = pending.as_ref() {
             match (&from_block_id, &to_block_id) {
                 (Some(PreConfirmed), to) => {
@@ -308,7 +309,8 @@ pub async fn get_events(
         let append_from_pending =
             db_ct.is_none() && matches!(to_block_id, Some(PreConfirmed) | None);
 
-        // Append pending events only when there is a pending block to draw from.
+        // Append pending events only when there is a pending block to draw
+        // from.
         let continuation_token = match pending.as_ref() {
             Some(pending) if append_from_pending => {
                 if events.len() < request.chunk_size {
@@ -323,8 +325,9 @@ pub async fn get_events(
                     events.extend(pending_events);
                     pending_ct
                 } else {
-                    // We have a full page from the database, but there might be more pending
-                    // events. Return a continuation token for the pending block.
+                    // We have a full page from the database, but there might be
+                    // more pending events. Return a
+                    // continuation token for the pending block.
                     let pending_block = pending
                         .parent_blocks()
                         .next()
@@ -394,9 +397,10 @@ fn get_pending_events(
         .map(|parent| parent.block.number)
         .unwrap_or(pending_block);
 
-    // If we have a continuation token and it points into the un-committed window,
-    // resume from it. Otherwise start at the oldest un-committed block (validating
-    // the token doesn't go beyond the pre-confirmed block).
+    // If we have a continuation token and it points into the un-committed
+    // window, resume from it. Otherwise start at the oldest un-committed
+    // block (validating the token doesn't go beyond the pre-confirmed
+    // block).
     let (start_block, start_offset) = match continuation_token {
         Some(ct) if ct.block_number > pending_block => {
             return Err(GetEventsError::InvalidContinuationToken)
@@ -415,17 +419,17 @@ fn get_pending_events(
     let mut is_first = true;
 
     // Walk the window from oldest to newest, filling the page. The continuation
-    // token, when a page fills, points at the next unread position: the same block
-    // at a higher offset if it still has events, otherwise the next block at offset
-    // 0.
+    // token, when a page fills, points at the next unread position: the same
+    // block at a higher offset if it still has events, otherwise the next
+    // block at offset 0.
     let new_continuation_token = loop {
         let Some((number, receipts)) = blocks.next() else {
             // Scanned the whole window without filling the page.
             break None;
         };
 
-        // The resume offset only applies to the first block we touch, every next
-        // block is read from its start.
+        // The resume offset only applies to the first block we touch, every
+        // next block is read from its start.
         let block_offset = if is_first { start_offset } else { 0 };
         is_first = false;
 
@@ -1201,8 +1205,8 @@ mod tests {
         async fn explicit_pre_confirmed_errors_when_unavailable() {
             let context = RpcContext::for_tests().with_pending_data_cache(unavailable_cache());
 
-            // Explicitly requesting pre-confirmed makes the data mandatory: an unavailable
-            // cache should error here.
+            // Explicitly requesting pre-confirmed makes the data mandatory: an
+            // unavailable cache should error here.
             let input = GetEventsInput {
                 filter: EventFilter {
                     from_block: Some(BlockId::PreConfirmed),
@@ -1274,15 +1278,16 @@ mod tests {
             let (events, ct) =
                 get_pending_events(&pending, 100, &[], &HashSet::new(), None).unwrap();
             let block_numbers: Vec<_> = events.iter().map(|e| e.block_number).collect();
-            // Deep ancestors 7 and 8, immediate parent 9, then pre-confirmed 10.
+            // Deep ancestors 7 and 8, immediate parent 9, then pre-confirmed
+            // 10.
             assert_eq!(
                 block_numbers,
                 vec![Some(bn(7)), Some(bn(8)), Some(bn(9)), Some(bn(10))]
             );
             assert!(ct.is_none());
 
-            // Paging across the window: a chunk of 2 returns blocks 7 and 8 and a
-            // continuation token resuming at block 9.
+            // Paging across the window: a chunk of 2 returns blocks 7 and 8 and
+            // a continuation token resuming at block 9.
             let (page, ct) = get_pending_events(&pending, 2, &[], &HashSet::new(), None).unwrap();
             assert_eq!(
                 page.iter().map(|e| e.block_number).collect::<Vec<_>>(),
@@ -1365,16 +1370,18 @@ mod tests {
                 },
             };
 
-            // Block 0 has a single event. Blocks, 1 and 2 have no events. Pre-latest block
-            // (3 in this case) has 3 events. Pre-confirmed block (4) also has 3 events.
+            // Block 0 has a single event. Blocks, 1 and 2 have no events.
+            // Pre-latest block (3 in this case) has 3 events.
+            // Pre-confirmed block (4) also has 3 events.
             let all = get_events(context.clone(), input.clone(), RPC_VERSION)
                 .await
                 .unwrap()
                 .events;
 
-            // Check edge case where the page is full with events from the DB but this was
-            // the last page from the DB -- should continue from offset 0 of the pre-latest
-            // block next time.
+            // Check edge case where the page is full with events from the DB
+            // but this was the last page from the DB -- should
+            // continue from offset 0 of the pre-latest block next
+            // time.
             input.filter.chunk_size = 1;
             input.filter.continuation_token = None;
             let result = get_events(context.clone(), input.clone(), RPC_VERSION)
@@ -1383,8 +1390,10 @@ mod tests {
             assert_eq!(result.events, &all[0..1]);
             assert_eq!(result.continuation_token, Some("3-0".to_string()));
 
-            // Check edge case where the page is full with events from the pre-latest block
-            // - should continue from offset 0 of the pre-confirmed block next time.
+            // Check edge case where the page is full with events from the
+            // pre-latest block
+            // - should continue from offset 0 of the pre-confirmed block next
+            //   time.
             input.filter.chunk_size = 3;
             input.filter.continuation_token = result.continuation_token;
             let result = get_events(context.clone(), input.clone(), RPC_VERSION)
@@ -1393,8 +1402,9 @@ mod tests {
             assert_eq!(result.events, &all[1..4]);
             assert_eq!(result.continuation_token, Some("4-0".to_string()));
 
-            // Page includes a DB event and an event from the pre-latest block, but there
-            // are more two events in this block for the next page.
+            // Page includes a DB event and an event from the pre-latest block,
+            // but there are more two events in this block for the
+            // next page.
             input.filter.chunk_size = 2;
             input.filter.continuation_token = None;
             let result = get_events(context.clone(), input.clone(), RPC_VERSION)
@@ -1423,8 +1433,9 @@ mod tests {
             assert_eq!(result.events, &all[5..7]);
             assert_eq!(result.continuation_token, None);
 
-            // Continuation token for a page that does exist, should return all events (even
-            // from pre-latest/pre-confirmed) with sufficient page size.
+            // Continuation token for a page that does exist, should return all
+            // events (even from pre-latest/pre-confirmed) with
+            // sufficient page size.
             input.filter.chunk_size = 128;
             input.filter.continuation_token = Some("0-0".to_string());
             let result = get_events(context.clone(), input.clone(), RPC_VERSION)
@@ -1433,8 +1444,8 @@ mod tests {
             assert_eq!(result.events, all);
             assert_eq!(result.continuation_token, None);
 
-            // Non-existent page in pre-latest block - offset too large. Should return
-            // pre-confirmed block events.
+            // Non-existent page in pre-latest block - offset too large. Should
+            // return pre-confirmed block events.
             input.filter.chunk_size = 128;
             input.filter.continuation_token = Some("3-3".to_string());
             let result = get_events(context.clone(), input.clone(), RPC_VERSION)
@@ -1443,8 +1454,8 @@ mod tests {
             assert_eq!(result.events, &all[4..7]);
             assert_eq!(result.continuation_token, None);
 
-            // Non-existent page in pre-confirmed block - offset too large. Should return no
-            // events.
+            // Non-existent page in pre-confirmed block - offset too large.
+            // Should return no events.
             input.filter.chunk_size = 128;
             input.filter.continuation_token = Some("4-3".to_string());
             let result = get_events(context.clone(), input.clone(), RPC_VERSION)

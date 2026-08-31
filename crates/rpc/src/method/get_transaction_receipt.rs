@@ -98,7 +98,8 @@ pub async fn get_transaction_receipt(
 
         let db_tx = db.transaction().context("Creating database transaction")?;
 
-        // Pending is an optional first look; a finalized tx lives in the DB regardless.
+        // Pending is an optional first look; a finalized tx lives in the DB
+        // regardless.
         let pending = pending.map(|p| p.validate(&db_tx)).transpose()?;
 
         let finalized_tx_data = pending
@@ -192,8 +193,8 @@ mod tests {
             transaction_hash: transaction_hash_bytes!(b"txn 1"),
         };
 
-        // A finalized tx lives in the DB, so an unavailable pending cache must not
-        // error.
+        // A finalized tx lives in the DB, so an unavailable pending cache must
+        // not error.
         let result = get_transaction_receipt(context, input, RpcVersion::V09).await;
         assert!(result.is_ok());
     }

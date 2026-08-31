@@ -298,7 +298,8 @@ pub(crate) mod recovery {
         for (height, path) in files {
             let entries: Vec<WalEntry<V, A>> = read_entries(&path)?;
 
-            // Track the highest Decision height we encounter (even for finalized heights).
+            // Track the highest Decision height we encounter (even for
+            // finalized heights).
             for entry in &entries {
                 if let WalEntry::Decision {
                     height: decision_height,
@@ -313,17 +314,20 @@ pub(crate) mod recovery {
                 }
             }
 
-            // `WalEntry::Decision` indicates that a decision has been reached at this
-            // height by the consensus engine. But it's probable that the proposal itself
-            // hasn't fully been executed and committed to the main storage locally yet, or
-            // it has been executed but it just hasn't been committed to the main storage
-            // yet. Any of these scenarios means that the consensus engine for
-            // this height is not started but some work with the persisted
-            // proposal is still required, outside of the WAL framework itself.
+            // `WalEntry::Decision` indicates that a decision has been reached
+            // at this height by the consensus engine. But it's
+            // probable that the proposal itself hasn't fully been
+            // executed and committed to the main storage locally yet, or
+            // it has been executed but it just hasn't been committed to the
+            // main storage yet. Any of these scenarios means that
+            // the consensus engine for this height is not started
+            // but some work with the persisted proposal is still
+            // required, outside of the WAL framework itself.
             //
-            // The latter condition indicates that the executed proposal for this height has
-            // indeed been executed, finalized, and committed to the main storage locally,
-            // so there will be no additional work required for this height
+            // The latter condition indicates that the executed proposal for
+            // this height has indeed been executed, finalized, and
+            // committed to the main storage locally, so there will
+            // be no additional work required for this height
             // outside of the WAL framework.
             let is_finalized = entries.iter().any(|e| {
                 matches!(e, WalEntry::Decision { .. })

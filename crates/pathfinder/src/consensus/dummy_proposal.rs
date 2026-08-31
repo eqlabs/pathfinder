@@ -159,8 +159,9 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
 
     // We update the account entity each time, because the previously created
     // transactions could have not gone into the committed block and thus we
-    // want to be sure we have the correct initial account nonce value and we are
-    // sure of the previous deployments before we start the new proposal.
+    // want to be sure we have the correct initial account nonce value and we
+    // are sure of the previous deployments before we start the new
+    // proposal.
     account.update(
         db_txn,
         BlockNumber::new(height)
@@ -170,8 +171,8 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
 
     let deployed_in_db = account.deployed();
 
-    // We generate up to 10 batches of up to 30 transactions and then randomly pick
-    // how many of those transactions we execute.
+    // We generate up to 10 batches of up to 30 transactions and then randomly
+    // pick how many of those transactions we execute.
     let seed = thread_rng().gen::<u64>();
     let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
 
@@ -187,15 +188,15 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
     if empty_proposal {
         // Skip building any transaction batches.
     } else if height == 1 {
-        // Bootstrapped devnet DB already contains the genesis block, so the declaration
-        // of HelloStarknet falls into block number 1.
+        // Bootstrapped devnet DB already contains the genesis block, so the
+        // declaration of HelloStarknet falls into block number 1.
         let first_batch = vec![account.hello_starknet_declare()?];
         next_txn_idx_start += first_batch.len();
         batches.push(first_batch);
     } else {
-        // HelloStarknet need to be deployed at least once before we can invoke it, so
-        // if there are no deployments in the DB we just create a batch with the deploy
-        // transaction.
+        // HelloStarknet need to be deployed at least once before we can invoke
+        // it, so if there are no deployments in the DB we just create a
+        // batch with the deploy transaction.
         if deployed_in_db.is_empty() {
             // Declare goes into the first proposal, that's it
             let first_batch = vec![account.hello_starknet_deploy()?];
@@ -214,13 +215,15 @@ pub(crate) fn create_from_bootstrapped_devnet_db(
                         batch.push(account.hello_starknet_deploy()?);
                     }
 
-                    // Invoke a random contract instance if there are any deployments in the DB
+                    // Invoke a random contract instance if there are any
+                    // deployments in the DB
                     if let Some(contract_address) = deployed_in_db.choose(&mut rng) {
                         batch.push(account.hello_starknet_increase_balance(
                             *contract_address,
                             rng.gen_range(1..=1000),
                         ));
-                        // This is a view function, but it still gives us a realistic transaction
+                        // This is a view function, but it still gives us a
+                        // realistic transaction
                         batch.push(account.hello_starknet_get_balance(*contract_address));
                     }
 
@@ -428,8 +431,9 @@ pub fn create_l1_handler_transaction(
     index: usize,
     chain_id: ChainId,
 ) -> p2p_proto::consensus::Transaction {
-    // base is a seed and index dependent value to avoid collisions but at the same
-    // time easily allow to trace back which seed/index produced the transaction
+    // base is a seed and index dependent value to avoid collisions but at the
+    // same time easily allow to trace back which seed/index produced the
+    // transaction
     let base = index as u64 + ((seed as u64) << 32);
     let base = Felt::from_u64(base);
 

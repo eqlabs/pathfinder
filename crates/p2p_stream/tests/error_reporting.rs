@@ -35,8 +35,8 @@ async fn report_outbound_failure_on_read_response_failure() {
 
         resp_channel.send(Action::FailOnReadResponse).await.unwrap();
 
-        // Keep the connection alive, otherwise swarm2 may receive `ConnectionClosed`
-        // instead Wait for swarm2 disconnecting
+        // Keep the connection alive, otherwise swarm2 may receive
+        // `ConnectionClosed` instead Wait for swarm2 disconnecting
         let (peer, req_id_done, error) = wait_inbound_failure(&mut swarm1).await.unwrap();
         assert_eq!(peer, peer2_id);
         assert_eq!(req_id_done, req_id);
@@ -87,9 +87,9 @@ async fn report_outbound_failure_on_write_request_failure() {
     swarm1.listen().with_memory_addr_external().await;
     swarm2.connect(&mut swarm1).await;
 
-    // Expects no events because `Event::Request` is produced after `read_request`.
-    // Keep the connection alive, otherwise swarm2 may receive `ConnectionClosed`
-    // instead.
+    // Expects no events because `Event::Request` is produced after
+    // `read_request`. Keep the connection alive, otherwise swarm2 may
+    // receive `ConnectionClosed` instead.
     let server_task = async move {
         wait_no_events(&mut swarm1).await;
     };
@@ -175,8 +175,8 @@ async fn report_outbound_timeout_on_response_stream_timeout() {
 #[test_log::test(tokio::test)]
 async fn report_outbound_timeout_on_read_response_timeout() {
     // `swarm1` needs to have a bigger timeout to avoid racing
-    // stream timeouts are set to a larger value to make sure we trigger a response
-    // timeout
+    // stream timeouts are set to a larger value to make sure we trigger a
+    // response timeout
     let (peer1_id, mut swarm1) =
         new_swarm_with_timeouts(Duration::from_millis(500), Duration::from_millis(200));
     let (peer2_id, mut swarm2) =
@@ -312,8 +312,8 @@ async fn report_inbound_failure_on_write_response_failure() {
 
         assert!(resp_rx.next().await.is_none());
 
-        // We cannot know if writing response failed or there was no response written at
-        // all.
+        // We cannot know if writing response failed or there was no response
+        // written at all.
         wait_inbound_response_stream_closed(&mut swarm2)
             .await
             .unwrap();
@@ -446,9 +446,9 @@ async fn report_outbound_timeout_on_write_request_timeout() {
     swarm1.listen().with_memory_addr_external().await;
     swarm2.connect(&mut swarm1).await;
 
-    // Expects no events because `Event::Request` is produced after `read_request`.
-    // Keep the connection alive, otherwise swarm2 may receive `ConnectionClosed`
-    // instead.
+    // Expects no events because `Event::Request` is produced after
+    // `read_request`. Keep the connection alive, otherwise swarm2 may
+    // receive `ConnectionClosed` instead.
     let server_task = async move {
         wait_no_events(&mut swarm1).await;
     };

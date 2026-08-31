@@ -308,7 +308,8 @@ where
                                 .block_number(pathfinder_common::BlockId::Latest)
                                 .map_err(RpcError::InternalError)?
                                 .unwrap_or(BlockNumber::GENESIS);
-                            // + 1 because `starting_block` also counts as one block.
+                            // + 1 because `starting_block` also counts as one
+                            //   block.
                             let requested_history = (latest + 1)
                                 .checked_sub(starting_block.get())
                                 .map(|requested| requested.get())
@@ -524,8 +525,8 @@ pub fn split_ws(
     ws_cfg: &WebsocketContext,
 ) -> (WsSender, WsReceiver, SocketTasks) {
     let egress_timeout = ws_cfg.send_timeout;
-    // The reader cancels this to bring the sender task down with it. Neither task
-    // can close the socket alone.
+    // The reader cancels this to bring the sender task down with it. Neither
+    // task can close the socket alone.
     let connection_token = CancellationToken::new();
     let initial_frame_timeout = ws_cfg.initial_frame_timeout;
     let ping_interval = ws_cfg.ping_interval;
@@ -596,9 +597,10 @@ pub fn split_ws(
         let ping_tx = sender_tx.clone();
         async move {
             // A subscribed client only receives, so silence does not mean the
-            // peer is gone. An unused connection has until `first_frame_deadline`
-            // to send a request. After that the server pings to check on the
-            // peer. The first deadline is absolute, so a client cannot hold the
+            // peer is gone. An unused connection has until
+            // `first_frame_deadline` to send a request. After that
+            // the server pings to check on the peer. The first
+            // deadline is absolute, so a client cannot hold the
             // connection open by refreshing it with control frames.
             let first_frame_deadline = Instant::now() + initial_frame_timeout;
             let mut awaiting_first_frame = true;

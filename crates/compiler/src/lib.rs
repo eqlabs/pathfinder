@@ -187,12 +187,12 @@ fn pathfinder_exe() -> anyhow::Result<std::path::PathBuf> {
     #[cfg(not(debug_assertions))]
     {
         if is_pathfinder_exe {
-            // We're inside the release build of `pathfinder`, so we can just run the
-            // current executable.
+            // We're inside the release build of `pathfinder`, so we can just
+            // run the current executable.
             Ok(current_exe)
         } else {
-            // We're running a release build of a different executable, which is not
-            // supported for now.
+            // We're running a release build of a different executable, which is
+            // not supported for now.
             anyhow::bail!(
                 "In release builds, the compiler can only be used from the `pathfinder` \
                  executable. Current executable: {:?}",
@@ -203,13 +203,14 @@ fn pathfinder_exe() -> anyhow::Result<std::path::PathBuf> {
     #[cfg(debug_assertions)]
     {
         if is_pathfinder_exe {
-            // We're inside the debug build of `pathfinder`, so we can just run the current
-            // executable.
+            // We're inside the debug build of `pathfinder`, so we can just run
+            // the current executable.
             Ok(current_exe)
         } else {
-            // We're probably running from `cargo test`, so we need to find the `pathfinder`
-            // executable in the target directory. If this fails, we're running a debug
-            // build of a different executable, which won't be supported for now.
+            // We're probably running from `cargo test`, so we need to find the
+            // `pathfinder` executable in the target directory. If
+            // this fails, we're running a debug build of a
+            // different executable, which won't be supported for now.
             let debug_dir = current_exe
                 .parent() // target/debug/deps
                 .context("getting deps directory")?
@@ -318,9 +319,9 @@ pub fn compile_sierra_to_casm_impl(
     max_bytecode_size: usize,
 ) -> anyhow::Result<SerializedCasmDefinition> {
     // The class representation expected by the compiler doesn't match the
-    // representation used by the feeder gateway for Sierra classes, so we have to
-    // convert the JSON to something that can be parsed into the expected input
-    // format for the compiler.
+    // representation used by the feeder gateway for Sierra classes, so we have
+    // to convert the JSON to something that can be parsed into the expected
+    // input format for the compiler.
     serde_json::from_slice::<class_definition::Sierra<'_>>(sierra_definition.as_slice())
         .context("Parsing Sierra class")
         .map(|sierra_class| {

@@ -83,7 +83,8 @@ impl TransactionVariant {
             return true;
         }
 
-        // Some transaction variants had a different hash calculation in ancient times.
+        // Some transaction variants had a different hash calculation in ancient
+        // times.
         if Some(expected) == self.calculate_legacy_hash(chain_id) {
             return true;
         }
@@ -594,11 +595,12 @@ impl L1HandlerTransaction {
 
         let Some((from_address, payload)) = self.calldata.split_first() else {
             // This would indicate a pretty severe error in the L1 transaction.
-            // But since we haven't encoded this during serialization, this could in
-            // theory mess us up here.
+            // But since we haven't encoded this during serialization, this
+            // could in theory mess us up here.
             //
-            // We should incorporate this into the deserialization instead. Returning an
-            // error here is unergonomic and far too late.
+            // We should incorporate this into the deserialization instead.
+            // Returning an error here is unergonomic and far too
+            // late.
             return H256::zero();
         };
 
@@ -1075,8 +1077,8 @@ mod tests {
     use super::*;
     use crate::macro_prelude::*;
 
-    // Goerli support was removed, however some of the fixtures originally come from
-    // Goerli.
+    // Goerli support was removed, however some of the fixtures originally come
+    // from Goerli.
     const GOERLI_TESTNET: ChainId = ChainId(match Felt::from_be_slice(b"SN_GOERLI") {
         Ok(chain_id) => chain_id,
         Err(_) => unreachable!(),

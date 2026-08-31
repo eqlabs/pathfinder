@@ -97,8 +97,9 @@ mod inner {
         let my_peer_id = keypair.public().to_peer_id();
         tracing::info!(%my_peer_id, "🖧 Starting sync P2P");
 
-        // In testing it is convenient to paste the entire list of peers into their
-        // configs without having to remove the peer ID of the very configured peer.
+        // In testing it is convenient to paste the entire list of peers into
+        // their configs without having to remove the peer ID of the
+        // very configured peer.
         if let Some(my_idx) = predefined_peers.iter().position(|addr| {
             addr.iter()
                 .any(|p| matches!(p, Protocol::P2p(peer_id) if peer_id == my_peer_id))

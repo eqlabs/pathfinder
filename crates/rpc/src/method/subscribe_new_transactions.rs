@@ -206,20 +206,22 @@ impl RpcSubscriptionFlow for SubscribeNewTransactions {
         let submission_tracker = state.submission_tracker.clone();
         let mut received_watcher = submission_tracker.subscribe();
 
-        // Keep track of the updates already sent for each block. This is done in order
-        // to avoid sending duplicate notifications when seeing the same block multiple
-        // times in pending data (as new transactions are added). Post Starknet v0.14.0
-        // this includes the pre-confirmed block and an optional pre-latest block, which
+        // Keep track of the updates already sent for each block. This is done
+        // in order to avoid sending duplicate notifications when seeing
+        // the same block multiple times in pending data (as new
+        // transactions are added). Post Starknet v0.14.0 this includes
+        // the pre-confirmed block and an optional pre-latest block, which
         // is why we need the map.
         let mut sent_updates_per_block: HashMap<
             BlockNumber,
             HashSet<(TransactionHash, TxnFinalityStatusWithoutL1Accepted)>,
         > = HashMap::new();
 
-        // The highest committed block height seen on the L2-block stream. A block at or
-        // below this has been finalized, and its `sent_updates` were dropped when it
-        // was committed, so it must not be re-emitted as pending. A not-yet-pruned
-        // pending view can briefly show a just committed block as a parent.
+        // The highest committed block height seen on the L2-block stream. A
+        // block at or below this has been finalized, and its
+        // `sent_updates` were dropped when it was committed, so it must
+        // not be re-emitted as pending. A not-yet-pruned pending view
+        // can briefly show a just committed block as a parent.
         let mut latest_committed = BlockNumber::GENESIS;
 
         // Transactions sent with Received status are kept separately,
@@ -1038,8 +1040,8 @@ mod tests {
         );
         assert_recv_nothing(&mut rx).await;
 
-        // The finalized block is sent after the pre-confirmed block, but contains more
-        // transactions
+        // The finalized block is sent after the pre-confirmed block, but
+        // contains more transactions
         notifications
             .l2_blocks
             .send(
@@ -1055,8 +1057,8 @@ mod tests {
                 .into(),
             )
             .unwrap();
-        // We expect transactions 0x3 and 0x4 to be re-sent, since the finality status
-        // has changed to ACCEPTED_ON_L2.
+        // We expect transactions 0x3 and 0x4 to be re-sent, since the finality
+        // status has changed to ACCEPTED_ON_L2.
         assert_eq!(
             recv(&mut rx).await,
             sample_transaction_message("0x1", "0x3", subscription_id)
@@ -1126,8 +1128,9 @@ mod tests {
         };
         assert_recv_nothing(&mut rx).await;
 
-        // Tip block 2 (0x222) with block 1 (0x111) as an un-committed parent. The tip
-        // is emitted first, then the parent — both PRE_CONFIRMED.
+        // Tip block 2 (0x222) with block 1 (0x111) as an un-committed parent.
+        // The tip is emitted first, then the parent — both
+        // PRE_CONFIRMED.
         pending_data_cache.store(sample_pending_with_parent(
             BlockNumber::new_or_panic(2),
             vec![(contract_address!("0x22"), transaction_hash!("0x222"))],
@@ -1144,8 +1147,8 @@ mod tests {
         );
         assert_recv_nothing(&mut rx).await;
 
-        // Block 1 commits: 0x111 is re-sent as ACCEPTED_ON_L2 and its sent-set is
-        // dropped.
+        // Block 1 commits: 0x111 is re-sent as ACCEPTED_ON_L2 and its sent-set
+        // is dropped.
         notifications
             .l2_blocks
             .send(
@@ -1162,8 +1165,8 @@ mod tests {
         );
         assert_recv_nothing(&mut rx).await;
 
-        // A not-yet-pruned pending view still lists the now-committed block 1 as a
-        // parent. It must NOT be re-emitted as PRE_CONFIRMED.
+        // A not-yet-pruned pending view still lists the now-committed block 1
+        // as a parent. It must NOT be re-emitted as PRE_CONFIRMED.
         pending_data_cache.store(sample_pending_with_parent(
             BlockNumber::new_or_panic(2),
             vec![(contract_address!("0x22"), transaction_hash!("0x222"))],
@@ -1226,9 +1229,9 @@ mod tests {
         );
         assert_recv_nothing(&mut rx).await;
 
-        // Send a pre-confirmed block with two transactions: since we're filtering on
-        // finality status ACCEPTED_ON_L2, we expect that the pre-confirmed
-        // block will not send any receipts.
+        // Send a pre-confirmed block with two transactions: since we're
+        // filtering on finality status ACCEPTED_ON_L2, we expect that
+        // the pre-confirmed block will not send any receipts.
         pending_data_cache.store(sample_pre_confirmed_block(
             BlockNumber::new_or_panic(1),
             vec![
@@ -1239,8 +1242,8 @@ mod tests {
 
         assert_recv_nothing(&mut rx).await;
 
-        // The finalized block is sent after the pre-confirmed block, but contains more
-        // transactions.
+        // The finalized block is sent after the pre-confirmed block, but
+        // contains more transactions.
         notifications
             .l2_blocks
             .send(

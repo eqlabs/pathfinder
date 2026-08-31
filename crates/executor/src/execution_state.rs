@@ -241,8 +241,9 @@ impl ExecutionState {
         let chain_info = self.chain_info()?;
         let block_info = self.starknet_block_info()?;
 
-        // Perform system contract updates if we are executing on top of a parent block.
-        // Currently this is only the block hash from 10 blocks ago.
+        // Perform system contract updates if we are executing on top of a
+        // parent block. Currently this is only the block hash from 10
+        // blocks ago.
         let old_block_number_and_hash = if self.block_info.number.get() >= 10 {
             let block_number_whose_hash_becomes_available =
                 pathfinder_common::BlockNumber::new_or_panic(self.block_info.number.get() - 10);
@@ -350,18 +351,18 @@ impl ExecutionState {
             }))?;
         let eth_l1_data_gas_price =
             NonzeroGasPrice::new(GasPrice(if self.block_info.eth_l1_data_gas_price.0 == 0 {
-                // Bad API design - pre-v0.13.1 blocks have 0 data gas price, but
-                // blockifier doesn't allow for it. This value is ignored for those
-                // transactions.
+                // Bad API design - pre-v0.13.1 blocks have 0 data gas price,
+                // but blockifier doesn't allow for it. This
+                // value is ignored for those transactions.
                 1
             } else {
                 self.block_info.eth_l1_data_gas_price.0
             }))?;
         let strk_l1_data_gas_price =
             NonzeroGasPrice::new(GasPrice(if self.block_info.strk_l1_data_gas_price.0 == 0 {
-                // Bad API design - pre-v0.13.1 blocks have 0 data gas price, but
-                // blockifier doesn't allow for it. This value is ignored for those
-                // transactions.
+                // Bad API design - pre-v0.13.1 blocks have 0 data gas price,
+                // but blockifier doesn't allow for it. This
+                // value is ignored for those transactions.
                 1
             } else {
                 self.block_info.strk_l1_data_gas_price.0
@@ -646,8 +647,8 @@ mod tests {
 
         #[test]
         fn trace_block_context_uses_scaled_bouncer_config() {
-            // Below 10 so no historical block hash lookup is needed, the in-memory DB can
-            // be empty.
+            // Below 10 so no historical block hash lookup is needed, the
+            // in-memory DB can be empty.
             let block_number = BlockNumber::new_or_panic(5);
 
             for version in affected_versions() {

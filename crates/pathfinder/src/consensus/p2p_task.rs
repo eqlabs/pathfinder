@@ -176,9 +176,9 @@ pub fn spawn(
     // event channel size exceeding the limit, to avoid spamming the logs.
     let mut channel_size_warning_emitted = false;
 
-    // Decay application peer scores at regular intervals. The first tick completing
-    // immediately is okay since we likely won't have any peers with modified
-    // scores this early anyway.
+    // Decay application peer scores at regular intervals. The first tick
+    // completing immediately is okay since we likely won't have any peers
+    // with modified scores this early anyway.
     let mut peer_score_decay_timer = tokio::time::interval(peer_score::DECAY_PERIOD);
 
     let data_directory = data_directory.to_path_buf();
@@ -247,20 +247,31 @@ pub fn spawn(
 
                 let success = match p2p_task_event {
                     P2PTaskEvent::P2PEvent(event) => {
-                        // Even though rebroadcast certificates are not implemented yet, it still
-                        // does make sense to keep `history_depth` larger than 0. This is due to
-                        // race conditions that occur between the current height, which is being
-                        // committed and the next height which is being  proposed. For example: we
-                        // may have 3 nodes, from which ours has already committed H, while the
-                        // other 2 have not. If we fall over and respawn, the other nodes will still
-                        // be voting for H, while we are at H+1 and we are actively discarding votes
-                        // for H, so the other 2 nodes will not make any progress at H. And since
-                        // we're not keeping any historical engines (ie. including for H), we will
-                        // not help the other 2 nodes in the voting process.
+                        // Even though rebroadcast certificates are not
+                        // implemented yet, it still
+                        // does make sense to keep `history_depth` larger than
+                        // 0. This is due to
+                        // race conditions that occur between the current
+                        // height, which is being
+                        // committed and the next height which is being
+                        // proposed. For example: we may
+                        // have 3 nodes, from which ours has already committed
+                        // H, while the other 2 have
+                        // not. If we fall over and respawn, the other nodes
+                        // will still be voting for H,
+                        // while we are at H+1 and we are actively discarding
+                        // votes for H, so the other 2
+                        // nodes will not make any progress at H. And since
+                        // we're not keeping any historical engines (ie.
+                        // including for H), we will not
+                        // help the other 2 nodes in the voting process.
                         //
-                        // This call may yield unreliable results if history_depth is too small and
-                        // the currently decided upon and finalized block has not been committed by
-                        // the sync task yet, because we're only checking the DB here.
+                        // This call may yield unreliable results if
+                        // history_depth is too small and
+                        // the currently decided upon and finalized block has
+                        // not been committed by
+                        // the sync task yet, because we're only checking the DB
+                        // here.
                         if is_outdated_p2p_event(
                             &db_tx,
                             &event.kind,
@@ -301,14 +312,18 @@ pub fn spawn(
                                         ))
                                     }
                                     Ok(None) => {
-                                        // Still waiting for more parts to complete
-                                        // the proposal or the proposal is complete
-                                        // but cannot be executed yet, because the
+                                        // Still waiting for more parts to
+                                        // complete
+                                        // the proposal or the proposal is
+                                        // complete
+                                        // but cannot be executed yet, because
+                                        // the
                                         // previous block is not committed yet.
                                         Ok(ComputationSuccess::Continue)
                                     }
                                     Err(error) => {
-                                        // Log and skip on recoverable errors, don't bail out!
+                                        // Log and skip on recoverable errors,
+                                        // don't bail out!
                                         if error.is_recoverable() {
                                             tracing::warn!(
                                                 validator = %validator_address,
@@ -361,9 +376,12 @@ pub fn spawn(
                                 tracing::trace!(
                                     %number, "🖧  📥 {validator_address} get consensus finalized and decided upon block"
                                 );
-                                // If we're the proposer we could have a false positive here, which
-                                // we avoid by having the decided block marked, so we only return
-                                // a block that is both finalized and decided upon or nothing.
+                                // If we're the proposer we could have a false
+                                // positive here, which
+                                // we avoid by having the decided block marked,
+                                // so we only return
+                                // a block that is both finalized and decided
+                                // upon or nothing.
                                 let resp = {
                                     let decided_blocks = decided_blocks.read().unwrap();
                                     decided_blocks
@@ -397,22 +415,27 @@ pub fn spawn(
                                 );
 
                                 // There are 2 scenarios here:
-                                // 1. Consensus is used by sync to get the tip because the FGw is
-                                //    naturally lagging behind sync as it's just duplicating
+                                // 1. Consensus is used by sync to get the tip
+                                //    because the FGw is naturally lagging
+                                //    behind sync as it's just duplicating
                                 //    whatever consensus provides.
-                                // 2. A rare but still possible scenario where the FGw is ahead of
-                                //    consensus for some nodes due to low network latency and their
-                                //    consensus engines not notifying those nodes internally fast
-                                //    enough that the executed proposal has been decided upon. In
-                                //    such case the sync algo will choose to download the block from
-                                //    the FGw because supposedly the proposal has not been decided
-                                //    upon.
+                                // 2. A rare but still possible scenario where
+                                //    the FGw is ahead of consensus for some
+                                //    nodes due to low network latency and their
+                                //    consensus engines not notifying those
+                                //    nodes internally fast enough that the
+                                //    executed proposal has been decided upon.
+                                //    In such case the sync algo will choose to
+                                //    download the block from the FGw because
+                                //    supposedly the proposal has not been
+                                //    decided upon.
                                 remove_decided_block(
                                     decided_blocks.clone(),
                                     number,
                                     validator_address,
                                 );
-                                // Note: a committed block is always a decided block too
+                                // Note: a committed block is always a decided
+                                // block too
                                 let success = on_finalized_block_decided(
                                     number,
                                     &mut validator_cache,
@@ -554,11 +577,15 @@ pub fn spawn(
                         );
                         let stopwatch = std::time::Instant::now();
 
-                        // `None` is possible here if the node has been respawned when precommit for
-                        // this height has already been agreed by the quorum. We loose the finalized
-                        // block for the height, but the consensus engine should still be able to
-                        // decide on the block (thanks to WAL) and move on to the next height. The
-                        // actual missing block will be fetched by the sync task from the FGw.
+                        // `None` is possible here if the node has been
+                        // respawned when precommit for
+                        // this height has already been agreed by the quorum. We
+                        // loose the finalized block for
+                        // the height, but the consensus engine should still be
+                        // able to decide on the block
+                        // (thanks to WAL) and move on to the next height. The
+                        // actual missing block will be fetched by the sync task
+                        // from the FGw.
                         let mut decided_block_present = false;
 
                         if let Some(block) = finalized_blocks.remove(&height_and_round) {
@@ -580,8 +607,9 @@ pub fn spawn(
                             stopwatch.elapsed().as_millis()
                         );
 
-                        // Remove all finalized blocks for previous rounds at this height
-                        // because they will not be committed to the DB.
+                        // Remove all finalized blocks for previous rounds at
+                        // this height because they will
+                        // not be committed to the DB.
                         finalized_blocks.retain(|hnr, _| hnr.height() != height_and_round.height());
 
                         tracing::debug!(
@@ -590,7 +618,8 @@ pub fn spawn(
                             height_and_round.height()
                         );
 
-                        // Update L2 gas price provider with the decided block's data
+                        // Update L2 gas price provider with the decided block's
+                        // data
                         if let Some(ref l2_provider) = l2_gas_price_provider {
                             let decided_blocks = decided_blocks.read().unwrap();
                             if let Some(decided) = decided_blocks.get(
@@ -632,12 +661,16 @@ pub fn spawn(
                             height_and_round.height()
                         );
 
-                        // There is a rare but still possible scenario where the FGw is ahead of
-                        // consensus for some nodes due to low network latency and their consensus
-                        // engines not notifying those nodes internally fast enough that the
-                        // executed proposal has been decided upon. In such case we can check if the
-                        // finalized block has already been committed to the DB by the fgw sync task
-                        // without waiting for a commit confirmation which had already arrived in
+                        // There is a rare but still possible scenario where the
+                        // FGw is ahead of consensus for
+                        // some nodes due to low network latency and their
+                        // consensus engines not
+                        // notifying those nodes internally fast enough that the
+                        // executed proposal has been decided upon. In such case
+                        // we can check if the finalized
+                        // block has already been committed to the DB by the fgw
+                        // sync task without waiting for
+                        // a commit confirmation which had already arrived in
                         // the past.
                         let block_number = BlockNumber::new(height_and_round.height())
                             .context("height exceeds i64::MAX")?;
@@ -665,7 +698,8 @@ pub fn spawn(
                         };
 
                         if is_already_committed {
-                            // We can only remove this block if it has been committed
+                            // We can only remove this block if it has been
+                            // committed
                             remove_decided_block(
                                 decided_blocks.clone(),
                                 block_number,
@@ -761,7 +795,8 @@ fn remove_decided_block(
     let mut decided_blocks = decided_blocks.write().unwrap();
     // Removal can fail if the node has been respawned after the decision was
     // written into consensus WAL, because the consensus engine state will be
-    // restored but the decided blocks cache will be empty as it is not persisted
+    // restored but the decided blocks cache will be empty as it is not
+    // persisted
     if decided_blocks.remove(&number).is_some() {
         tracing::debug!(
             "🖧  🗑️ {validator_address} removed finalized block for last round at height {} after \
@@ -869,8 +904,8 @@ fn execute_deferred_for_next_height<T: TransactionExt>(
 
         // Execute deferred transactions first.
         let opt_commitment = {
-            // Parent block is now committed, so we can execute directly without deferral
-            // checks
+            // Parent block is now committed, so we can execute directly without
+            // deferral checks
             if !deferred.transactions.is_empty() {
                 batch_execution_manager.execute_batch::<T>(
                     hnr,
@@ -885,9 +920,10 @@ fn execute_deferred_for_next_height<T: TransactionExt>(
                     "🖧  ⚙️ processing deferred executed transaction count for height and round \
                      {hnr}"
                 );
-                // Execution has started at this point (from execute_batch above, if
-                // transactions were non-empty). If transactions were empty,
-                // execute_batch handles marking execution as started, so we can
+                // Execution has started at this point (from execute_batch
+                // above, if transactions were non-empty). If
+                // transactions were empty, execute_batch
+                // handles marking execution as started, so we can
                 // process executed transactioncount immediately.
                 batch_execution_manager.process_executed_transaction_count::<T>(
                     hnr,
@@ -1321,14 +1357,15 @@ fn defer_or_execute_proposal_fin<T: TransactionExt>(
                 &mut validator,
             )?;
 
-            // Process deferred commitment if it was stored (use it instead of the new one)
-            // (they should match, but the deferred one was received earlier)
+            // Process deferred commitment if it was stored (use it instead of
+            // the new one) (they should match, but the deferred one
+            // was received earlier)
             if let Some(deferred_commitment) = deferred.commitment {
                 tracing::debug!(
                     "🖧  ⚙️ using deferred commitment for height and round {height_and_round}"
                 );
-                // We've executed all transactions at the height, we can now finalize the
-                // proposal.
+                // We've executed all transactions at the height, we can now
+                // finalize the proposal.
                 let block =
                     validator.consensus_finalize(deferred_commitment.proposal_commitment)?;
                 tracing::debug!(
@@ -1602,7 +1639,8 @@ mod tests {
                     state_update,
                     ..
                 } = block;
-                // Fake trie updates - we don't care about actual trie state in this test
+                // Fake trie updates - we don't care about actual trie state in
+                // this test
                 let header = header.compute_hash(
                     BlockHash(Felt::from_u64(h.saturating_sub(1))),
                     StateCommitment::ZERO,

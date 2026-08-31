@@ -120,8 +120,9 @@ where
         Self,
         mpsc::UnboundedSender<Command<<B as ApplicationBehaviour>::Command>>,
     ) {
-        // Test event buffers are not used outside tests, so it is safe to make them
-        // unbounded as they will never contain any items in production.
+        // Test event buffers are not used outside tests, so it is safe to make
+        // them unbounded as they will never contain any items in
+        // production.
         let (_core_test_event_sender, core_rx) = mpsc::unbounded_channel();
         let (_app_test_event_sender, app_rx) = mpsc::unbounded_channel();
 
@@ -304,20 +305,25 @@ where
                     //
                     // https://github.com/libp2p/rust-libp2p/releases/tag/libp2p-v0.52.0
                     //
-                    // As a consequence, the observed address reported by identify is no longer
-                    // considered an external address but just an address candidate.
+                    // As a consequence, the observed address reported by
+                    // identify is no longer considered an
+                    // external address but just an address candidate.
                     //
                     // https://github.com/libp2p/rust-libp2p/blob/master/protocols/identify/CHANGELOG.md#0430
                     //
-                    // Observed addresses (aka. external address candidates) of the local node,
-                    // reported by a remote node via libp2p-identify,
-                    // are no longer automatically considered confirmed external addresses, in other
-                    // words they are no longer trusted by default.
-                    // Instead users need to confirm the reported observed address either manually,
-                    // or by using libp2p-autonat. In trusted environments users
+                    // Observed addresses (aka. external address candidates) of
+                    // the local node, reported by a remote
+                    // node via libp2p-identify,
+                    // are no longer automatically considered confirmed external
+                    // addresses, in other words they are no
+                    // longer trusted by default.
+                    // Instead users need to confirm the reported observed
+                    // address either manually, or by using
+                    // libp2p-autonat. In trusted environments users
                     // can simply extract observed addresses from a
-                    // libp2p-identify::Event::Received { info: libp2p_identify::Info {
-                    // observed_addr }} and confirm them via Swarm::add_external_address.
+                    // libp2p-identify::Event::Received { info:
+                    // libp2p_identify::Info { observed_addr
+                    // }} and confirm them via Swarm::add_external_address.
 
                     self.swarm.add_external_address(observed_addr);
 
@@ -413,7 +419,8 @@ where
                         match result {
                             QueryResult::Bootstrap(_) => {
                                 tracing::debug!("Checking low watermark");
-                                // Starting from libp2p-v0.54.1 bootstrap queries are started
+                                // Starting from libp2p-v0.54.1 bootstrap
+                                // queries are started
                                 // automatically in the kad behaviour:
                                 // 1. periodically,
                                 // 2. after a peer is added to the routing table, if the number of
