@@ -1407,7 +1407,6 @@ mod tests {
             async fn casm_by_hash(
                 &self,
                 _: ClassHash,
-                _: BlockId,
             ) -> Result<SerializedCasmDefinition, SequencerError> {
                 Ok(SerializedCasmDefinition::from_slice(CASM2))
             }
