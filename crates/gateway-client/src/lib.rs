@@ -73,7 +73,6 @@ pub trait GatewayApi: Sync {
     async fn class_by_hash(
         &self,
         class_hash: ClassHash,
-        block: BlockId,
     ) -> Result<SerializedOpaqueClassDefinition, SequencerError> {
         unimplemented!();
     }
@@ -81,7 +80,6 @@ pub trait GatewayApi: Sync {
     async fn casm_by_hash(
         &self,
         class_hash: ClassHash,
-        block: BlockId,
     ) -> Result<SerializedCasmDefinition, SequencerError> {
         unimplemented!();
     }
@@ -169,17 +167,15 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for Arc<T> {
     async fn class_by_hash(
         &self,
         class_hash: ClassHash,
-        block: BlockId,
     ) -> Result<SerializedOpaqueClassDefinition, SequencerError> {
-        self.as_ref().class_by_hash(class_hash, block).await
+        self.as_ref().class_by_hash(class_hash).await
     }
 
     async fn casm_by_hash(
         &self,
         class_hash: ClassHash,
-        block: BlockId,
     ) -> Result<SerializedCasmDefinition, SequencerError> {
-        self.as_ref().casm_by_hash(class_hash, block).await
+        self.as_ref().casm_by_hash(class_hash).await
     }
 
     async fn transaction_status(
@@ -538,13 +534,11 @@ impl GatewayApi for Client {
     async fn class_by_hash(
         &self,
         class_hash: ClassHash,
-        block: BlockId,
     ) -> Result<SerializedOpaqueClassDefinition, SequencerError> {
         let bytes = self
             .feeder_gateway_request()
             .get_class_by_hash()
             .class_hash(class_hash)
-            .block(block)
             .retry(self.retry)
             .get_as_bytes()
             .await?;
@@ -556,13 +550,11 @@ impl GatewayApi for Client {
     async fn casm_by_hash(
         &self,
         class_hash: ClassHash,
-        block: BlockId,
     ) -> Result<SerializedCasmDefinition, SequencerError> {
         let bytes = self
             .feeder_gateway_request()
             .get_compiled_class_by_class_hash()
             .class_hash(class_hash)
-            .block(block)
             .retry(self.retry)
             .get_as_bytes()
             .await?;

@@ -523,7 +523,7 @@ fn compile_or_fetch_impl<SequencerClient: GatewayApi + Clone + Send + 'static>(
                 // that the class is declared and exists so if the gateway responds with an
                 // error we should restart the sync and retry later.
                 Err(_) => tokio_handle
-                    .block_on(fgw.casm_by_hash(hash, BlockId::Latest))
+                    .block_on(fgw.casm_by_hash(hash))
                     .map_err(|error| {
                         tracing::debug!(%block_number, class_hash=%hash, %error, "Fetching casm from feeder gateway failed");
                         SyncError::FetchingCasmFailed

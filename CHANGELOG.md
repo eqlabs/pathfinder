@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- Class downloads no longer send `block_number=latest` to the feeder gateway, as required by Starknet 0.14.4.
+
 ### Added
 
 - `--rpc.gateway-trace-timeout` CLI option (default 30s) bounding how long `starknet_traceTransaction` and `starknet_traceBlockTransactions` may spend on the feeder gateway fallback path.
