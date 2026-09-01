@@ -101,16 +101,52 @@ async fn all_counter_types_including_tags() {
         .collect::<Vec<_>>()
         .await;
 
+    let cancellation_server = MockServer::start().await;
+    Mock::given(matchers::path("/feeder_gateway/get_block"))
+        .and(matchers::query_param("blockNumber", "124"))
+        .and(matchers::query_param("headerOnly", "true"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_delay(std::time::Duration::from_secs(60))
+                .set_body_json(serde_json::json!({
+                    "block_hash": "0x0",
+                    "block_number": 124
+                })),
+        )
+        .mount(&cancellation_server)
+        .await;
+    let cancellation_client = Client::for_test(cancellation_server.uri().parse().unwrap())
+        .unwrap()
+        .disable_retry_for_tests();
+    let mut cancelled_request =
+        Box::pin(cancellation_client.block_header(BlockId::Number(BlockNumber::new_or_panic(124))));
+
+    tokio::time::timeout(
+        std::time::Duration::from_millis(50),
+        cancelled_request.as_mut(),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(
+        handle.get_gauge_value("gateway_requests_in_flight", method_name),
+        1.0
+    );
+    drop(cancelled_request);
+    assert_eq!(
+        handle.get_gauge_value("gateway_requests_in_flight", method_name),
+        0.0
+    );
+
     // IMPORTANT
     //
     // We're not using any crate::sequencer::metrics consts here, because this
     // is public API and we'd like to catch if/when it changed (apparently
     // due to a bug)
     [
-        ("gateway_requests_total", None, None, 21),
+        ("gateway_requests_total", None, None, 22),
         ("gateway_requests_total", Some("latest"), None, 7),
         ("gateway_requests_total", Some("pending"), None, 7),
-        ("gateway_requests_failed_total", None, None, 18),
+        ("gateway_requests_failed_total", None, None, 19),
         ("gateway_requests_failed_total", Some("latest"), None, 6),
         ("gateway_requests_failed_total", Some("pending"), None, 6),
         ("gateway_requests_failed_total", None, Some("starknet"), 3),
@@ -157,6 +193,7 @@ async fn all_counter_types_including_tags() {
             Some("rate_limiting"),
             3,
         ),
+        ("gateway_requests_failed_total", None, Some("cancelled"), 1),
     ]
     .into_iter()
     .for_each(

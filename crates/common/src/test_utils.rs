@@ -21,12 +21,13 @@ pub mod metrics {
     use std::borrow::Cow;
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::{Arc, RwLock};
+    use std::sync::{Arc, Mutex, RwLock};
 
     use metrics::{
         Counter,
         CounterFn,
         Gauge,
+        GaugeFn,
         Histogram,
         Key,
         KeyName,
@@ -43,16 +44,20 @@ pub mod metrics {
     #[derive(Debug, Default)]
     pub struct FakeRecorder(FakeRecorderHandle);
 
-    /// Handle to the [`FakeRecorder`], which allows to get the current value of
-    /// counters.
+    /// Handle to the [`FakeRecorder`], which exposes current counter and gauge
+    /// values.
     #[derive(Clone, Debug, Default)]
     pub struct FakeRecorderHandle {
         counters: Arc<RwLock<HashMap<Key, Arc<FakeCounterFn>>>>,
+        gauges: Arc<RwLock<HashMap<Key, Arc<FakeGaugeFn>>>>,
         methods: Option<&'static [&'static str]>,
     }
 
     #[derive(Debug, Default)]
     struct FakeCounterFn(AtomicU64);
+
+    #[derive(Debug, Default)]
+    struct FakeGaugeFn(Mutex<f64>);
 
     impl Recorder for FakeRecorder {
         fn describe_counter(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
@@ -88,8 +93,13 @@ pub mod metrics {
             }
         }
 
-        fn register_gauge(&self, _: &Key, _metadata: &Metadata<'_>) -> Gauge {
-            unimplemented!()
+        fn register_gauge(&self, key: &Key, _metadata: &Metadata<'_>) -> Gauge {
+            if self.is_key_used(key) {
+                let mut gauges = self.0.gauges.write().unwrap();
+                Gauge::from_arc(gauges.entry(key.clone()).or_default().clone())
+            } else {
+                Gauge::noop()
+            }
         }
         fn register_histogram(&self, _: &Key, _metadata: &Metadata<'_>) -> Histogram {
             // Ignored in tests for now
@@ -98,13 +108,14 @@ pub mod metrics {
     }
 
     impl FakeRecorder {
-        /// Creates a [`FakeRecorder`] which only holds counter values for
+        /// Creates a [`FakeRecorder`] which only holds metric values for
         /// `methods`.
         ///
-        /// All other methods use the [no-op counters](`https://docs.rs/metrics/latest/metrics/struct.Counter.html#method.noop`)
+        /// Metrics for all other methods use no-op handles.
         pub fn new_for(methods: &'static [&'static str]) -> Self {
             Self(FakeRecorderHandle {
                 counters: Arc::default(),
+                gauges: Arc::default(),
                 methods: Some(methods),
             })
         }
@@ -169,6 +180,25 @@ pub mod metrics {
                 .0
                 .load(Ordering::Relaxed)
         }
+
+        /// Gets the current value for a gauge registered with a `method` label.
+        pub fn get_gauge_value(
+            &self,
+            gauge_name: &'static str,
+            method_name: impl Into<Cow<'static, str>>,
+        ) -> f64 {
+            let gauges = self.gauges.read().unwrap();
+            let value = *gauges
+                .get(&Key::from_parts(
+                    gauge_name,
+                    vec![Label::new("method", method_name.into())],
+                ))
+                .expect("Unregistered gauge name")
+                .0
+                .lock()
+                .unwrap();
+            value
+        }
     }
 
     impl CounterFn for FakeCounterFn {
@@ -177,6 +207,20 @@ pub mod metrics {
         }
         fn absolute(&self, _: u64) {
             unimplemented!()
+        }
+    }
+
+    impl GaugeFn for FakeGaugeFn {
+        fn increment(&self, val: f64) {
+            *self.0.lock().unwrap() += val;
+        }
+
+        fn decrement(&self, val: f64) {
+            *self.0.lock().unwrap() -= val;
+        }
+
+        fn set(&self, val: f64) {
+            *self.0.lock().unwrap() = val;
         }
     }
 }
