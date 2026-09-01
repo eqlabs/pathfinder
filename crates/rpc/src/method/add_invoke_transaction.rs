@@ -458,4 +458,79 @@ mod tests {
             .unwrap_err();
         assert_eq!(actual_error, expected_error);
     }
+
+    #[tokio::test]
+    async fn dropping_rpc_future_cancels_gateway_submission() {
+        use tokio::io::AsyncReadExt;
+        use tokio::sync::oneshot;
+        use tokio::time::{timeout, Duration};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let gateway_address = listener.local_addr().unwrap();
+        let (request_started_tx, request_started_rx) = oneshot::channel();
+        let (connection_closed_tx, connection_closed_rx) = oneshot::channel();
+
+        let gateway = tokio::spawn(async move {
+            let (mut connection, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0; 4096];
+
+            loop {
+                let bytes_read = connection.read(&mut buffer).await.unwrap();
+                assert_ne!(
+                    bytes_read, 0,
+                    "gateway connection closed before request arrived"
+                );
+                request.extend_from_slice(&buffer[..bytes_read]);
+
+                let Some(headers_end) = request.windows(4).position(|x| x == b"\r\n\r\n") else {
+                    continue;
+                };
+                let headers = std::str::from_utf8(&request[..headers_end]).unwrap();
+                let content_length = headers
+                    .lines()
+                    .find_map(|header| {
+                        let (name, value) = header.split_once(':')?;
+                        name.eq_ignore_ascii_case("content-length")
+                            .then(|| value.trim().parse::<usize>().unwrap())
+                    })
+                    .expect("request should have a content-length header");
+
+                if request.len() >= headers_end + 4 + content_length {
+                    break;
+                }
+            }
+
+            request_started_tx.send(()).unwrap();
+
+            // The gateway intentionally never sends a response. Dropping the
+            // RPC future must therefore close this outbound connection.
+            match connection.read(&mut buffer[..1]).await {
+                Ok(0) | Err(_) => {}
+                Ok(_) => panic!("unexpected data after the complete gateway request"),
+            }
+            connection_closed_tx.send(()).unwrap();
+        });
+
+        let mut context = RpcContext::for_tests();
+        context.sequencer = starknet_gateway_client::Client::for_test(
+            format!("http://{gateway_address}").parse().unwrap(),
+        )
+        .unwrap()
+        .disable_retry_for_tests();
+
+        let rpc_request = tokio::spawn(add_invoke_transaction(context, v3_input()));
+        timeout(Duration::from_secs(1), request_started_rx)
+            .await
+            .expect("gateway did not receive the request")
+            .unwrap();
+
+        rpc_request.abort();
+        assert!(rpc_request.await.unwrap_err().is_cancelled());
+        timeout(Duration::from_secs(1), connection_closed_rx)
+            .await
+            .expect("gateway connection survived RPC cancellation")
+            .unwrap();
+        gateway.await.unwrap();
+    }
 }

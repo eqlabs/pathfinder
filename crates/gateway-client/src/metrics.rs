@@ -7,6 +7,7 @@ use super::{BlockId, SequencerError};
 
 const METRIC_REQUESTS: &str = "gateway_requests_total";
 const METRIC_FAILED_REQUESTS: &str = "gateway_requests_failed_total";
+const METRIC_REQUESTS_IN_FLIGHT: &str = "gateway_requests_in_flight";
 const METRIC_REQUESTS_LATENCY: &str = "gateway_request_duration_seconds";
 const METRICS: [&str; 2] = [METRIC_REQUESTS, METRIC_FAILED_REQUESTS];
 const TAG_LATEST: &str = "latest";
@@ -16,7 +17,9 @@ const REASON_DECODE: &str = "decode";
 const REASON_STARKNET: &str = "starknet";
 const REASON_RATE_LIMITING: &str = "rate_limiting";
 const REASON_TIMEOUT: &str = "timeout";
-const REASONS: [&str; 4] = [
+const REASON_CANCELLED: &str = "cancelled";
+const REASONS: [&str; 5] = [
+    REASON_CANCELLED,
     REASON_DECODE,
     REASON_RATE_LIMITING,
     REASON_STARKNET,
@@ -42,8 +45,9 @@ pub fn register() {
         })
     });
 
-    // Request latency for all methods
+    // Request latency and in-flight requests for all methods
     Request::<Method>::METHODS.iter().for_each(|&method| {
+        let _ = metrics::gauge!(METRIC_REQUESTS_IN_FLIGHT, "method" => method);
         let _ = metrics::histogram!(METRIC_REQUESTS_LATENCY, "method" => method);
     });
 
@@ -112,15 +116,18 @@ impl RequestMetadata {
 
 /// # Usage
 ///
-///  Awaits future `f` and increments the following counters for a particular
+///  Awaits future `f` and records the following metrics for a particular
 /// method:
 /// - `gateway_requests_total`,
-/// - `gateway_requests_failed_total` if the future returns the `Err()` variant.
+/// - `gateway_requests_in_flight` while the future is alive,
+/// - `gateway_requests_failed_total` if the future returns the `Err()` variant
+///   or is cancelled before completion.
 ///
 /// # Additional counter labels
 ///
-/// 1. All the above counters are also duplicated for the special cases of:
-///    `("get_block" | "get_state_update") AND ("latest" | "pending")`.
+/// 1. `gateway_requests_total` and `gateway_requests_failed_total` are also
+///    duplicated for the special cases of: `("get_block" | "get_state_update")
+///    AND ("latest" | "pending")`.
 ///
 /// 2. `gateway_requests_failed_total` is also duplicated for the specific
 ///    failure reasons:
@@ -130,71 +137,114 @@ impl RequestMetadata {
 ///   error variant
 /// - `rate_limiting` if the future returns an `Err()` variant, which carries
 ///   the [`reqwest::StatusCode::TOO_MANY_REQUESTS`] status code
+/// - `cancelled` if the future is dropped before completion
 pub async fn with_metrics<T>(
     meta: RequestMetadata,
     f: impl Future<Output = Result<T, SequencerError>>,
 ) -> Result<T, SequencerError> {
-    /// Increments a counter and its block tag specific variants if they exist
-    fn increment(counter_name: &'static str, meta: RequestMetadata) {
-        let method = meta.method;
-        let tag = meta.tag;
-        metrics::counter!(counter_name, "method" => method).increment(1);
-
-        if let ("get_block" | "get_state_update", Some(tag)) = (method, tag.as_str()) {
-            metrics::counter!(counter_name, "method" => method, "tag" => tag).increment(1);
-        }
-    }
-
-    /// Increments the `gateway_requests_failed_total` counter for a given
-    /// failure `reason`, includes block tag specific variants if they exist
-    fn increment_failed(meta: RequestMetadata, reason: &'static str) {
-        let method = meta.method;
-        let tag = meta.tag;
-        metrics::counter!(METRIC_FAILED_REQUESTS, "method" => method, "reason" => reason)
-            .increment(1);
-
-        if let ("get_block" | "get_state_update", Some(tag)) = (method, tag.as_str()) {
-            metrics::counter!(METRIC_FAILED_REQUESTS, "method" => method, "tag" => tag, "reason" => reason).increment(1);
-        }
-    }
-
-    increment(METRIC_REQUESTS, meta);
-
-    let started = std::time::Instant::now();
+    let mut metrics = InFlightRequest::new(meta);
     let result = f.await;
-    let elapsed = started.elapsed();
+    metrics.finish(&result);
+    result
+}
 
-    metrics::histogram!(METRIC_REQUESTS_LATENCY, "method" => meta.method)
-        .record(elapsed.as_secs_f64());
+/// Increments a counter and its block tag specific variants if they exist.
+fn increment(counter_name: &'static str, meta: RequestMetadata) {
+    let method = meta.method;
+    let tag = meta.tag;
+    metrics::counter!(counter_name, "method" => method).increment(1);
 
-    result.inspect_err(|e| {
-        increment(METRIC_FAILED_REQUESTS, meta);
+    if let ("get_block" | "get_state_update", Some(tag)) = (method, tag.as_str()) {
+        metrics::counter!(counter_name, "method" => method, "tag" => tag).increment(1);
+    }
+}
 
-        match &e {
+/// Increments the `gateway_requests_failed_total` counter for a given failure
+/// `reason`, including block tag specific variants if they exist.
+fn increment_failed(meta: RequestMetadata, reason: &'static str) {
+    let method = meta.method;
+    let tag = meta.tag;
+    metrics::counter!(METRIC_FAILED_REQUESTS, "method" => method, "reason" => reason).increment(1);
+
+    if let ("get_block" | "get_state_update", Some(tag)) = (method, tag.as_str()) {
+        metrics::counter!(METRIC_FAILED_REQUESTS, "method" => method, "tag" => tag, "reason" => reason).increment(1);
+    }
+}
+
+struct InFlightRequest {
+    meta: RequestMetadata,
+    started: std::time::Instant,
+    in_flight: metrics::Gauge,
+    finished: bool,
+}
+
+impl InFlightRequest {
+    fn new(meta: RequestMetadata) -> Self {
+        increment(METRIC_REQUESTS, meta);
+
+        let in_flight = metrics::gauge!(METRIC_REQUESTS_IN_FLIGHT, "method" => meta.method);
+        in_flight.increment(1.0);
+
+        Self {
+            meta,
+            started: std::time::Instant::now(),
+            in_flight,
+            finished: false,
+        }
+    }
+
+    fn finish<T>(&mut self, result: &Result<T, SequencerError>) {
+        self.finish_timing();
+
+        let Err(error) = result else {
+            return;
+        };
+
+        increment(METRIC_FAILED_REQUESTS, self.meta);
+        match error {
             SequencerError::StarknetError(_) => {
-                increment_failed(meta, REASON_STARKNET);
+                increment_failed(self.meta, REASON_STARKNET);
             }
-            SequencerError::InvalidStarknetErrorVariant => {
-                increment_failed(meta, REASON_DECODE);
+            SequencerError::InvalidStarknetErrorVariant | SequencerError::InvalidResponse(_) => {
+                increment_failed(self.meta, REASON_DECODE);
             }
-            SequencerError::InvalidResponse(_) => {
-                increment_failed(meta, REASON_DECODE);
+            SequencerError::ReqwestError(error) if error.is_decode() => {
+                increment_failed(self.meta, REASON_DECODE);
             }
-            SequencerError::ReqwestError(e) if e.is_decode() => {
-                increment_failed(meta, REASON_DECODE);
-            }
-            SequencerError::ReqwestError(e)
-                if e.is_status()
-                    && e.status().expect("error kind should be status")
+            SequencerError::ReqwestError(error)
+                if error.is_status()
+                    && error.status().expect("error kind should be status")
                         == reqwest::StatusCode::TOO_MANY_REQUESTS =>
             {
-                increment_failed(meta, REASON_RATE_LIMITING);
+                increment_failed(self.meta, REASON_RATE_LIMITING);
             }
-            SequencerError::ReqwestError(e) if e.is_timeout() => {
-                increment_failed(meta, REASON_TIMEOUT);
+            SequencerError::ReqwestError(error) if error.is_timeout() => {
+                increment_failed(self.meta, REASON_TIMEOUT);
             }
-            SequencerError::ReqwestError(_) => {}
-            SequencerError::GatewayRequestCreationError(_) => {}
+            SequencerError::ReqwestError(_) | SequencerError::GatewayRequestCreationError(_) => {}
         }
-    })
+    }
+
+    fn finish_timing(&mut self) {
+        self.finished = true;
+        self.in_flight.decrement(1.0);
+        metrics::histogram!(METRIC_REQUESTS_LATENCY, "method" => self.meta.method)
+            .record(self.started.elapsed().as_secs_f64());
+    }
+}
+
+impl Drop for InFlightRequest {
+    fn drop(&mut self) {
+        if self.finished {
+            return;
+        }
+
+        self.finish_timing();
+        increment(METRIC_FAILED_REQUESTS, self.meta);
+        increment_failed(self.meta, REASON_CANCELLED);
+        tracing::debug!(
+            method = self.meta.method,
+            "Gateway request cancelled before completion"
+        );
+    }
 }
