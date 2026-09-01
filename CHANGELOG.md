@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The `blockifier` and `starknet_api` crates have been upgraded to 0.20.0-rc.0.
 - Class downloads no longer send `block_number=latest` to the feeder gateway, as required by Starknet 0.14.4.
 
 ### Added
