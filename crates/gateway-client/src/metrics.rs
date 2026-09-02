@@ -17,9 +17,7 @@ const REASON_DECODE: &str = "decode";
 const REASON_STARKNET: &str = "starknet";
 const REASON_RATE_LIMITING: &str = "rate_limiting";
 const REASON_TIMEOUT: &str = "timeout";
-const REASON_CANCELLED: &str = "cancelled";
-const REASONS: [&str; 5] = [
-    REASON_CANCELLED,
+const REASONS: [&str; 4] = [
     REASON_DECODE,
     REASON_RATE_LIMITING,
     REASON_STARKNET,
@@ -120,8 +118,7 @@ impl RequestMetadata {
 /// method:
 /// - `gateway_requests_total`,
 /// - `gateway_requests_in_flight` while the future is alive,
-/// - `gateway_requests_failed_total` if the future returns the `Err()` variant
-///   or is cancelled before completion.
+/// - `gateway_requests_failed_total` if the future returns the `Err()` variant.
 ///
 /// # Additional counter labels
 ///
@@ -137,7 +134,6 @@ impl RequestMetadata {
 ///   error variant
 /// - `rate_limiting` if the future returns an `Err()` variant, which carries
 ///   the [`reqwest::StatusCode::TOO_MANY_REQUESTS`] status code
-/// - `cancelled` if the future is dropped before completion
 pub async fn with_metrics<T>(
     meta: RequestMetadata,
     f: impl Future<Output = Result<T, SequencerError>>,
@@ -239,12 +235,10 @@ impl Drop for InFlightRequest {
             return;
         }
 
-        self.finish_timing();
-        increment(METRIC_FAILED_REQUESTS, self.meta);
-        increment_failed(self.meta, REASON_CANCELLED);
-        tracing::debug!(
-            method = self.meta.method,
-            "Gateway request cancelled before completion"
-        );
+        // A dropped request future is not necessarily a gateway failure: it is
+        // also how graceful shutdown and disconnected RPC clients cancel work.
+        // Keep the live gauge accurate without manufacturing latency or failure
+        // samples for a request that never completed.
+        self.in_flight.decrement(1.0);
     }
 }

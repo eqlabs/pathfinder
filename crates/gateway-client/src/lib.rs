@@ -105,6 +105,7 @@ pub trait GatewayApi: Sync {
     async fn add_invoke_transaction<'tx>(
         &self,
         invoke: request::add_transaction::InvokeFunction<'tx>,
+        timeout: Duration,
     ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
         unimplemented!();
     }
@@ -113,6 +114,7 @@ pub trait GatewayApi: Sync {
         &self,
         declare: request::add_transaction::Declare<'tx>,
         token: Option<String>,
+        timeout: Duration,
     ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
         unimplemented!();
     }
@@ -120,6 +122,7 @@ pub trait GatewayApi: Sync {
     async fn add_deploy_account<'tx>(
         &self,
         deploy: request::add_transaction::DeployAccount<'tx>,
+        timeout: Duration,
     ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError> {
         unimplemented!();
     }
@@ -199,23 +202,28 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for Arc<T> {
     async fn add_invoke_transaction<'tx>(
         &self,
         invoke: request::add_transaction::InvokeFunction<'tx>,
+        timeout: Duration,
     ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
-        self.as_ref().add_invoke_transaction(invoke).await
+        self.as_ref().add_invoke_transaction(invoke, timeout).await
     }
 
     async fn add_declare_transaction<'tx>(
         &self,
         declare: request::add_transaction::Declare<'tx>,
         token: Option<String>,
+        timeout: Duration,
     ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
-        self.as_ref().add_declare_transaction(declare, token).await
+        self.as_ref()
+            .add_declare_transaction(declare, token, timeout)
+            .await
     }
 
     async fn add_deploy_account<'tx>(
         &self,
         deploy: request::add_transaction::DeployAccount<'tx>,
+        timeout: Duration,
     ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError> {
-        self.as_ref().add_deploy_account(deploy).await
+        self.as_ref().add_deploy_account(deploy, timeout).await
     }
 
     async fn block_traces(&self, block: BlockId) -> Result<BlockTrace, SequencerError> {
@@ -622,6 +630,7 @@ impl GatewayApi for Client {
     async fn add_invoke_transaction<'tx>(
         &self,
         invoke: request::add_transaction::InvokeFunction<'tx>,
+        timeout: Duration,
     ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
         // Note that we don't do retries here.
         // This method is used to proxy an add transaction operation from the
@@ -635,7 +644,7 @@ impl GatewayApi for Client {
             .compress(self.compress_gateway_requests && !invoke.is_proof_empty())
             .post_with_json(
                 &request::add_transaction::AddTransaction::Invoke(invoke),
-                Some(Duration::MAX),
+                Some(timeout),
             )
             .await
     }
@@ -646,6 +655,7 @@ impl GatewayApi for Client {
         &self,
         declare: request::add_transaction::Declare<'tx>,
         token: Option<String>,
+        timeout: Duration,
     ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
         // Note that we don't do retries here.
         // This method is used to proxy an add transaction operation from the
@@ -658,7 +668,7 @@ impl GatewayApi for Client {
             .retry(false)
             .post_with_json(
                 &request::add_transaction::AddTransaction::Declare(declare),
-                Some(Duration::MAX),
+                Some(timeout),
             )
             .await
     }
@@ -667,6 +677,7 @@ impl GatewayApi for Client {
     async fn add_deploy_account<'tx>(
         &self,
         deploy: request::add_transaction::DeployAccount<'tx>,
+        timeout: Duration,
     ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError> {
         // Note that we don't do retries here.
         // This method is used to proxy an add transaction operation from the
@@ -677,7 +688,7 @@ impl GatewayApi for Client {
             .retry(false)
             .post_with_json(
                 &request::add_transaction::AddTransaction::DeployAccount(deploy),
-                Some(Duration::MAX),
+                Some(timeout),
             )
             .await
     }
@@ -721,7 +732,6 @@ mod tests {
 
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::prelude::*;
     use pathfinder_crypto::Felt;
     use starknet_gateway_test_fixtures::testnet::*;
     use starknet_gateway_types::error::{test_response_from, KnownStarknetErrorCode};
@@ -909,7 +919,10 @@ mod tests {
                     calldata: &call,
                 });
 
-                let error = client.add_invoke_transaction(invoke).await.unwrap_err();
+                let error = client
+                    .add_invoke_transaction(invoke, Duration::MAX)
+                    .await
+                    .unwrap_err();
                 assert_matches!(
                     error,
                     SequencerError::StarknetError(e) => assert_eq!(e.code, KnownStarknetErrorCode::DeprecatedTransaction.into())
@@ -941,7 +954,48 @@ mod tests {
                     entry_point_selector: None,
                     calldata: &call,
                 });
-                client.add_invoke_transaction(invoke).await.unwrap();
+                client
+                    .add_invoke_transaction(invoke, Duration::MAX)
+                    .await
+                    .unwrap();
+            }
+
+            #[tokio::test]
+            async fn uses_per_request_timeout() {
+                use request::add_transaction::{InvokeFunction, InvokeFunctionV0V1};
+
+                let server = MockServer::start().await;
+                Mock::given(matchers::method("POST"))
+                    .and(matchers::path("/gateway/add_transaction"))
+                    .respond_with(
+                        ResponseTemplate::new(200)
+                            .set_delay(Duration::from_secs(60))
+                            .set_body_json(serde_json::json!({
+                                "code": "TRANSACTION_RECEIVED",
+                                "transaction_hash": "0x1"
+                            })),
+                    )
+                    .mount(&server)
+                    .await;
+                let client = Client::for_test(server.uri().parse().unwrap()).unwrap();
+                let (_, fee, sig, nonce, addr, call) = inputs();
+                let invoke = InvokeFunction::V1(InvokeFunctionV0V1 {
+                    max_fee: fee,
+                    signature: &sig,
+                    nonce: Some(nonce),
+                    sender_address: addr,
+                    entry_point_selector: None,
+                    calldata: &call,
+                });
+
+                let error = client
+                    .add_invoke_transaction(invoke, Duration::from_millis(20))
+                    .await
+                    .unwrap_err();
+
+                assert_matches!(error, SequencerError::ReqwestError(error) => {
+                    assert!(error.is_timeout());
+                });
             }
         }
 
@@ -975,7 +1029,7 @@ mod tests {
                     compiled_class_hash: None,
                 });
                 let error = client
-                    .add_declare_transaction(declare, None)
+                    .add_declare_transaction(declare, None, Duration::MAX)
                     .await
                     .unwrap_err();
                 assert_matches!(
@@ -1010,7 +1064,10 @@ mod tests {
                     compiled_class_hash: None,
                 });
 
-                client.add_declare_transaction(declare, None).await.unwrap();
+                client
+                    .add_declare_transaction(declare, None, Duration::MAX)
+                    .await
+                    .unwrap();
             }
 
             fn sierra_contract_class_from_fixture() -> SierraContractDefinition {
@@ -1090,7 +1147,10 @@ mod tests {
                     )),
                 });
 
-                client.add_declare_transaction(declare, None).await.unwrap();
+                client
+                    .add_declare_transaction(declare, None, Duration::MAX)
+                    .await
+                    .unwrap();
             }
         }
 
@@ -1193,7 +1253,11 @@ mod tests {
                 });
 
                 client
-                    .add_declare_transaction(declare, Some(EXPECTED_TOKEN.to_owned()))
+                    .add_declare_transaction(
+                        declare,
+                        Some(EXPECTED_TOKEN.to_owned()),
+                        Duration::MAX,
+                    )
                     .await
                     .unwrap();
             }
@@ -1222,7 +1286,7 @@ mod tests {
                 });
 
                 let err = client
-                    .add_declare_transaction(declare, None)
+                    .add_declare_transaction(declare, None, Duration::MAX)
                     .await
                     .unwrap_err();
 
