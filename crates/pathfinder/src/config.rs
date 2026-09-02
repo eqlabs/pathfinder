@@ -611,6 +611,16 @@ Setting this value too low may cause compilation of large classes to fail.",
     rpc_block_trace_cache_size: std::num::NonZeroUsize,
 
     #[arg(
+        long = "rpc.gateway-add-transaction-timeout",
+        value_name = "Seconds",
+        long_help = "Maximum duration an `addInvokeTransaction`, `addDeclareTransaction`, or \
+                     `addDeployAccountTransaction` request may wait for the sequencer gateway.",
+        default_value = "60",
+        env = "PATHFINDER_RPC_GATEWAY_ADD_TRANSACTION_TIMEOUT"
+    )]
+    rpc_gateway_add_transaction_timeout: std::num::NonZeroU64,
+
+    #[arg(
         long = "rpc.gateway-trace-timeout",
         value_name = "Seconds",
         long_help = "Maximum duration a `trace_transaction` or `trace_block_transactions` request \
@@ -1213,6 +1223,7 @@ pub struct Config {
     pub submission_tracker_time_limit: NonZeroU64,
     pub submission_tracker_size_limit: NonZeroUsize,
     pub rpc_block_trace_cache_size: NonZeroUsize,
+    pub rpc_gateway_add_transaction_timeout: Duration,
     pub rpc_gateway_trace_timeout: Duration,
     pub consensus: Option<ConsensusConfig>,
     /// Integration testing config, only available on debug builds with `p2p`
@@ -1536,6 +1547,9 @@ impl Config {
             submission_tracker_time_limit: args.submission_tracker_time_limit,
             submission_tracker_size_limit: args.submission_tracker_size_limit,
             rpc_block_trace_cache_size: args.rpc_block_trace_cache_size,
+            rpc_gateway_add_transaction_timeout: Duration::from_secs(
+                args.rpc_gateway_add_transaction_timeout.get(),
+            ),
             rpc_gateway_trace_timeout: Duration::from_secs(args.rpc_gateway_trace_timeout.get()),
             consensus: ConsensusConfig::parse_or_exit(args.consensus),
             integration_testing: integration_testing::IntegrationTestingConfig::parse(

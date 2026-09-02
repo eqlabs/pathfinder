@@ -932,7 +932,10 @@ mod tests {
             let server = MockServer::start().await;
             let client = expect_compressed(&server).await;
             client
-                .add_invoke_transaction(InvokeFunction::V3(v3_non_empty_proof()))
+                .add_invoke_transaction(
+                    InvokeFunction::V3(v3_non_empty_proof()),
+                    std::time::Duration::MAX,
+                )
                 .await
                 .unwrap();
         }
@@ -942,7 +945,10 @@ mod tests {
             let server = MockServer::start().await;
             let client = expect_uncompressed(&server).await;
             client
-                .add_invoke_transaction(InvokeFunction::V3(v3_empty_proof()))
+                .add_invoke_transaction(
+                    InvokeFunction::V3(v3_empty_proof()),
+                    std::time::Duration::MAX,
+                )
                 .await
                 .unwrap();
         }

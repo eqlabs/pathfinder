@@ -189,8 +189,8 @@ pub(crate) async fn add_invoke_transaction_impl(
         BroadcastedInvokeTransaction::V3(tx) => {
             let response = context
                 .sequencer
-                .add_invoke_transaction(add_transaction::InvokeFunction::V3(
-                    add_transaction::InvokeFunctionV3 {
+                .add_invoke_transaction(
+                    add_transaction::InvokeFunction::V3(add_transaction::InvokeFunctionV3 {
                         signature: &tx.signature,
                         nonce: tx.nonce,
                         nonce_data_availability_mode: tx.nonce_data_availability_mode.into(),
@@ -203,8 +203,9 @@ pub(crate) async fn add_invoke_transaction_impl(
                         account_deployment_data: &tx.account_deployment_data,
                         proof_facts: &tx.proof_facts,
                         proof: &tx.proof,
-                    },
-                ))
+                    }),
+                    context.config.gateway_add_transaction_timeout,
+                )
                 .await?;
             let new_tx = InvokeTransactionV3 {
                 signature: tx.signature,

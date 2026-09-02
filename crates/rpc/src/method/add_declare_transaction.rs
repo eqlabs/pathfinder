@@ -243,6 +243,7 @@ pub async fn add_declare_transaction(
                         account_deployment_data: &tx.account_deployment_data,
                     }),
                     input.token,
+                    context.config.gateway_add_transaction_timeout,
                 )
                 .await?;
             let new_tx = DeclareTransactionV3 {

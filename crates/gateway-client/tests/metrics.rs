@@ -146,7 +146,7 @@ async fn all_counter_types_including_tags() {
         ("gateway_requests_total", None, None, 22),
         ("gateway_requests_total", Some("latest"), None, 7),
         ("gateway_requests_total", Some("pending"), None, 7),
-        ("gateway_requests_failed_total", None, None, 19),
+        ("gateway_requests_failed_total", None, None, 18),
         ("gateway_requests_failed_total", Some("latest"), None, 6),
         ("gateway_requests_failed_total", Some("pending"), None, 6),
         ("gateway_requests_failed_total", None, Some("starknet"), 3),
@@ -193,7 +193,6 @@ async fn all_counter_types_including_tags() {
             Some("rate_limiting"),
             3,
         ),
-        ("gateway_requests_failed_total", None, Some("cancelled"), 1),
     ]
     .into_iter()
     .for_each(

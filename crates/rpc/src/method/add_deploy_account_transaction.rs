@@ -188,8 +188,8 @@ pub(crate) async fn add_deploy_account_transaction_impl(
         BroadcastedDeployAccountTransaction::V3(tx) => {
             let response = context
                 .sequencer
-                .add_deploy_account(add_transaction::DeployAccount::V3(
-                    add_transaction::DeployAccountV3 {
+                .add_deploy_account(
+                    add_transaction::DeployAccount::V3(add_transaction::DeployAccountV3 {
                         signature: &tx.signature,
                         nonce: tx.nonce,
                         nonce_data_availability_mode: tx.nonce_data_availability_mode.into(),
@@ -200,8 +200,9 @@ pub(crate) async fn add_deploy_account_transaction_impl(
                         class_hash: tx.class_hash,
                         contract_address_salt: tx.contract_address_salt,
                         constructor_calldata: &tx.constructor_calldata,
-                    },
-                ))
+                    }),
+                    context.config.gateway_add_transaction_timeout,
+                )
                 .await?;
             let new_tx = DeployAccountTransactionV3 {
                 contract_address: tx.deployed_contract_address(),
