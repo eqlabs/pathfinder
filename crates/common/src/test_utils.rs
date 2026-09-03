@@ -21,7 +21,7 @@ pub mod metrics {
     use std::borrow::Cow;
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::{Arc, Mutex, RwLock};
+    use std::sync::{Arc, RwLock};
 
     use metrics::{
         Counter,
@@ -57,7 +57,7 @@ pub mod metrics {
     struct FakeCounterFn(AtomicU64);
 
     #[derive(Debug, Default)]
-    struct FakeGaugeFn(Mutex<f64>);
+    struct FakeGaugeFn(AtomicU64);
 
     impl Recorder for FakeRecorder {
         fn describe_counter(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
@@ -188,16 +188,16 @@ pub mod metrics {
             method_name: impl Into<Cow<'static, str>>,
         ) -> f64 {
             let gauges = self.gauges.read().unwrap();
-            let value = *gauges
-                .get(&Key::from_parts(
-                    gauge_name,
-                    vec![Label::new("method", method_name.into())],
-                ))
-                .expect("Unregistered gauge name")
-                .0
-                .lock()
-                .unwrap();
-            value
+            f64::from_bits(
+                gauges
+                    .get(&Key::from_parts(
+                        gauge_name,
+                        vec![Label::new("method", method_name.into())],
+                    ))
+                    .expect("Unregistered gauge name")
+                    .0
+                    .load(Ordering::Relaxed),
+            )
         }
     }
 
@@ -212,15 +212,23 @@ pub mod metrics {
 
     impl GaugeFn for FakeGaugeFn {
         fn increment(&self, val: f64) {
-            *self.0.lock().unwrap() += val;
+            self.0
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                    Some((f64::from_bits(current) + val).to_bits())
+                })
+                .unwrap();
         }
 
         fn decrement(&self, val: f64) {
-            *self.0.lock().unwrap() -= val;
+            self.0
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                    Some((f64::from_bits(current) - val).to_bits())
+                })
+                .unwrap();
         }
 
         fn set(&self, val: f64) {
-            *self.0.lock().unwrap() = val;
+            self.0.store(val.to_bits(), Ordering::Relaxed);
         }
     }
 }
