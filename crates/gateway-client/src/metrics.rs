@@ -171,7 +171,6 @@ struct InFlightRequest {
     meta: RequestMetadata,
     started: std::time::Instant,
     in_flight: metrics::Gauge,
-    finished: bool,
 }
 
 impl InFlightRequest {
@@ -185,7 +184,6 @@ impl InFlightRequest {
             meta,
             started: std::time::Instant::now(),
             in_flight,
-            finished: false,
         }
     }
 
@@ -222,8 +220,6 @@ impl InFlightRequest {
     }
 
     fn finish_timing(&mut self) {
-        self.finished = true;
-        self.in_flight.decrement(1.0);
         metrics::histogram!(METRIC_REQUESTS_LATENCY, "method" => self.meta.method)
             .record(self.started.elapsed().as_secs_f64());
     }
@@ -231,14 +227,6 @@ impl InFlightRequest {
 
 impl Drop for InFlightRequest {
     fn drop(&mut self) {
-        if self.finished {
-            return;
-        }
-
-        // A dropped request future is not necessarily a gateway failure: it is
-        // also how graceful shutdown and disconnected RPC clients cancel work.
-        // Keep the live gauge accurate without manufacturing latency or failure
-        // samples for a request that never completed.
         self.in_flight.decrement(1.0);
     }
 }
