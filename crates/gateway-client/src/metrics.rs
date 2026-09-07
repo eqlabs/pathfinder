@@ -1,8 +1,8 @@
 //! Metrics related utilities
 use futures::Future;
 
-use super::builder::Request;
 use super::builder::stage::Method;
+use super::builder::Request;
 use super::{BlockId, SequencerError};
 
 const METRIC_REQUESTS: &str = "gateway_requests_total";
