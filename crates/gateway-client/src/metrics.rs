@@ -1,8 +1,8 @@
 //! Metrics related utilities
 use futures::Future;
 
-use super::builder::stage::Method;
 use super::builder::Request;
+use super::builder::stage::Method;
 use super::{BlockId, SequencerError};
 
 const METRIC_REQUESTS: &str = "gateway_requests_total";
@@ -188,7 +188,8 @@ impl InFlightRequest {
     }
 
     fn finish<T>(&mut self, result: &Result<T, SequencerError>) {
-        self.finish_timing();
+        metrics::histogram!(METRIC_REQUESTS_LATENCY, "method" => self.meta.method)
+            .record(self.started.elapsed().as_secs_f64());
 
         let Err(error) = result else {
             return;
@@ -217,11 +218,6 @@ impl InFlightRequest {
             }
             SequencerError::ReqwestError(_) | SequencerError::GatewayRequestCreationError(_) => {}
         }
-    }
-
-    fn finish_timing(&mut self) {
-        metrics::histogram!(METRIC_REQUESTS_LATENCY, "method" => self.meta.method)
-            .record(self.started.elapsed().as_secs_f64());
     }
 }
 
