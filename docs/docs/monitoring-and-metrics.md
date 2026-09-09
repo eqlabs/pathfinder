@@ -109,6 +109,7 @@ The Prometheus Metrics endpoint (`/metrics`) exposes real-time operational data 
     - `gateway_requests_total{method="<sequencerRequestType>", tag="<latest|pending>", reason="<optionalFailureReason>"}`  
     - `gateway_requests_failed_total{method="<sequencerRequestType>", ...}`
     - `gateway_request_duration_seconds{method="<sequencerRequestType>", ...}`
+    - `gateway_requests_in_flight {method="<sequencerRequestType>", ...}`
 
   **Sync-Related Metrics**  
     - `current_block` - The latest block the node has synced.
