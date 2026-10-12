@@ -10,49 +10,23 @@ Database snapshots let you quickly start your node without having to download al
 
 Please check our [snapshot download page](https://rpc.pathfinder.swmansion.com/snapshots/latest) for the list of latest snapshots.
 
-There are two main ways to download and use a snapshot with Pathfinder:
+## How Snapshots Are Made
 
-* [Using Rclone](#using-rclone-for-snapshots)
-* [Using a direct HTTPS link](#downloading-via-https)
+Snapshots are created once a week from the databases of our public Pathfinder nodes. For each network we take an online copy of the live database with SQLite's `VACUUM INTO`, compress it with `zstd` and compute its SHA2-256 checksum. The snapshot download page lists each snapshot's block height, sizes and checksum.
 
-## Using Rclone for Snapshots
+### Retention
 
-[**Rclone**](https://rclone.org/) is a command-line program to manage files on cloud storage. It is highly recommended for Pathfinder snapshots due to its reliability and support for resumable downloads.
-
-### Rclone Configuration
-
-1. Follow the [official installation guide](https://rclone.org/install/) for your operating system.
-2. Open or create your Rclone configuration file (`$HOME/.config/rclone/rclone.conf`) and add:
-   ```ini
-   [pathfinder-snapshots]
-   type = s3
-   provider = Cloudflare
-   env_auth = false
-   access_key_id = 7635ce5752c94f802d97a28186e0c96d
-   secret_access_key = 529f8db483aae4df4e2a781b9db0c8a3a7c75c82ff70787ba2620310791c7821
-   endpoint = https://cbf011119e7864a873158d83f3304e27.r2.cloudflarestorage.com
-   acl = private
-   ```
-3. Use `rclone ls` to get a list of snapshot files:
-   ```bash
-   rclone ls pathfinder-snapshots:pathfinder-snapshots/
-   ```
-3. Choose the appropriate snapshot and then use `rclone` to copy the compressed SQLite file to your local directory:
-   ```bash
-   rclone copy -P pathfinder-snapshots:pathfinder-snapshots/mainnet_0.18.0_1674344.sqlite.zst .
-   ```
-
-:::tip 
-Add `-P` to get a progress display that helps you track the download status.
-:::
+Older snapshots are removed automatically after each weekly run. For each network we keep the two newest snapshots of each of the three newest Pathfinder minor versions, including all their patch releases. This way a compatible snapshot stays available for a while after a Pathfinder upgrade.
 
 ## Downloading via HTTPS
 
-While HTTPS URLs are also provided, direct HTTPS downloads can sometimes be less reliable for very large files. If you must use HTTPS, verify you can resume downloads or maintain a stable connection. For example:
+Snapshots are large files, so use a client that can resume an interrupted download. For example:
 
 ```bash
-wget --continue https://rpc.pathfinder.swmansion.com/snapshots/latest/mainnet.sqlite.zst
+wget --continue -O mainnet.sqlite.zst https://rpc.pathfinder.swmansion.com/snapshots/latest/mainnet
 ```
+
+Replace `mainnet` with `testnet-sepolia` or `integration-sepolia` for the other networks. The link redirects to the latest snapshot for that network.
 
 ## Extracting Snapshots and Checksums
 
