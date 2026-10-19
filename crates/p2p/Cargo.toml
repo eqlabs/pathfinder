@@ -36,7 +36,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 unsigned-varint = { workspace = true, features = ["futures"] }
 util = { path = "../util" }
-zeroize = { workspace = true }
+zeroize = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 # `clap` is here only due to the boot node example and should be removed once the example is removed.
