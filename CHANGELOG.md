@@ -442,7 +442,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     b. The latest L2 block if it is behind the latest L1 checkpoint or no L1 checkpoints have been received by the node (practically unreachable)
 
 - `starknet_getTransactionStatus` now returns RECEIVED even when the gateway cannot find the transaction, provided the transaction was successfully sent by the responding node within the last 5 minutes.
-- Pathfinder now allows the users to configure the number of historical messages to be streamed via the [webscoket API](https://docs.swmansion.com/pathfinder/interacting-with-pathfinder/websocket-api). This can be done using the `--rpc.websocket.max-history` CLI option.
+- Pathfinder now allows the users to configure the number of historical messages to be streamed via the [websocket API](https://docs.swmansion.com/pathfinder/interacting-with-pathfinder/websocket-api). This can be done using the `--rpc.websocket.max-history` CLI option.
   - Accepted values are:
     - "unlimited" - All historical messages will be streamed.
     - "N" - An integer specifying the number of historical messages to be streamed.
