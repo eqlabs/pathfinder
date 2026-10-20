@@ -30,7 +30,7 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Download release archive
         uses: actions/download-artifact@v8
         with:

@@ -15,7 +15,7 @@ jobs:
         permissions:
           contents: read
         steps:
-            - uses: actions/checkout@v5
+            - uses: actions/checkout@v7
             - name: Verify tag, Cargo version, and changelog
               run: |
                 set -euo pipefail
@@ -55,7 +55,7 @@ jobs:
                   os: macos-latest
         runs-on: ${{ matrix.os }}
         steps:
-            - uses: actions/checkout@v5
+            - uses: actions/checkout@v7
             - uses: arduino/setup-protoc@v3
               with:
                 repo-token: ${{ secrets.GITHUB_TOKEN }}
@@ -99,7 +99,7 @@ jobs:
         permissions:
           contents: write
         steps:
-            - uses: actions/checkout@v5
+            - uses: actions/checkout@v7
             - uses: taiki-e/create-gh-release-action@v1
               with:
                 changelog: CHANGELOG.md
