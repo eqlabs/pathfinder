@@ -49,12 +49,12 @@ authors = [
 anyhow = "1.0.102"
 # This one needs to match the version used by blockifier
 apollo_versioned_constants = { package = "apollo_versioned_constants", git = "https://github.com/starkware-libs/sequencer", tag = "blockifier-v0.20.0-rc.1" }
-ark-ff = "0.5.0"
+ark-ff = "0.6.0"
 assert_matches = "1.5.0"
 async-trait = "0.1.89"
 axum = "0.8.9"
 backon = { version = "1.6.0", default-features = false, features = ["tokio-sleep"] }
-base64 = "0.22.1"
+base64 = "0.23.1"
 # TODO: bincode development stopped, we should probably replace it. 3.0.0 is just a compile_error! in lib.rs
 bincode = "=2.0.1"
 bitvec = "1.0.1"
@@ -63,7 +63,7 @@ blockifier = { version = "0.20.0-rc.1", features = [
     "reexecution",
 ] }
 bytes = "1.11.1"
-cached = "0.59.0"
+cached = "4.0.2"
 # This one needs to match the version used by blockifier
 cairo-lang-starknet-classes = "=2.19.5"
 # This one needs to match the version used by blockifier
@@ -81,8 +81,8 @@ const_format = "0.2.36"
 criterion = "0.8.2"
 dashmap = "6.1"
 # upgrade once `rand` is upgraded
-fake = "2.10.0"
-ff = "0.13"
+fake = "5.1.0"
+ff = "0.14"
 flate2 = "1.1.9"
 futures = { version = "0.3", default-features = false }
 futures-bounded = "0.3.0"
@@ -101,8 +101,8 @@ libp2p-swarm-test = "0.7.0"
 metrics = "0.24.5"
 metrics-exporter-prometheus = { version = "0.18.3", default-features = false }
 mime = "0.3"
-mockall = "0.14.0"
-num-bigint = "0.4.6"
+mockall = "0.15.0"
+num-bigint = "0.5.1"
 num-traits = "0.2.19"
 paste = "1.0.15"
 pretty_assertions_sorted = "1.2.3"
@@ -114,10 +114,10 @@ prost-build = "0.14.3"
 prost-types = "0.14.3"
 quote = "1.0"
 r2d2 = "0.8.10"
-r2d2_sqlite = "0.33.0"
+r2d2_sqlite = "0.34.0"
 # upgrade once supported by `primitive-types`
-rand = "0.8.5"
-rand_chacha = "0.3.1"
+rand = "0.10.1"
+rand_chacha = "0.9.0"
 rayon = "1.12.0"
 reqwest = { version = "0.13.3", default-features = false, features = [
     "http2",
@@ -125,7 +125,7 @@ reqwest = { version = "0.13.3", default-features = false, features = [
     "gzip",
     "deflate",
 ] }
-rstest = "0.26.1"
+rstest = "0.27.0"
 rusqlite = "0.39.0"
 rustls = "0.23.38"
 semver = "1.0.28"
@@ -133,14 +133,14 @@ serde = "1.0.228"
 serde_json = "1.0.149"
 serde_with = "3.19.0"
 sha2 = "0.11.0"
-sha3 = "0.11"
+sha3 = "0.12"
 siphasher = "1.0.3"
 smallvec = "1.15.1"
 # This one needs to match the version used by blockifier
-starknet-types-core = "=0.2.4"
+starknet-types-core = "=1.0.0"
 # This one needs to match the version used by blockifier
 starknet_api = { version = "0.20.0-rc.1" }
-syn = "2.0"
+syn = "3.0"
 sysinfo = "0.39.3"
 tempfile = "3.27"
 test-log = { version = "0.2.20", features = ["trace"] }
@@ -153,17 +153,17 @@ tokio-stream = "0.1.18"
 tokio-tungstenite = "0.29"
 tokio-util = { version = "0.7.18", features = ["rt"] }
 tower = { version = "0.5.3", default-features = false }
-tower-http = { version = "0.6.10", default-features = false }
+tower-http = { version = "0.7.1", default-features = false }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["json"] }
 unsigned-varint = "0.8.0"
 url = "2.5.8"
-vergen-gitcl = { version = "9", default-features = false }
+vergen-gitcl = { version = "10", default-features = false }
 void = "1.0.2"
 warp = { version = "0.4.3", features = ["server"] }
 wiremock = "0.6.5"
 zeroize = "1.8.2"
-zstd = "0.13.3"
+zstd = "0.14.3"
 
 [profile.release]
 overflow-checks = true
