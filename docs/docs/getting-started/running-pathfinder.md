@@ -98,17 +98,7 @@ sudo apt install curl git
 
 ### Install Rust
 
-Pathfinder requires Rust version 1.80 or later. Install Rust by following the [official instructions](https://www.rust-lang.org/tools/install). If you already have Rust installed, verify the version:
-
-```bash
-cargo --version # must be 1.80 or higher
-```
-
-To update Rust, use:
-
-```bash
-rustup update
-```
+Pathfinder requires Rust 1.91 or later. Install Rust via [rustup](https://www.rust-lang.org/tools/install). When you build inside the repository, rustup automatically uses the toolchain pinned in `rust-toolchain.toml`.
 
 ### Install Build Dependencies
 
