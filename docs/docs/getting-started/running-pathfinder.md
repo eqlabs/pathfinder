@@ -68,13 +68,13 @@ mkdir -p pathfinder
 # Replace the value of PATHFINDER_ETHEREUM_API_URL with the URL of your Ethereum node's endpoint
 cp example.pathfinder-var.env pathfinder-var.env
 
-docker-compose up -d
+docker compose up -d
 ```
 
 To check if it's running correctly, use:
 
 ```bash
-docker-compose logs -f
+docker compose logs -f
 ```
 
 ## Building From Source
