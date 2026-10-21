@@ -216,6 +216,10 @@ To improve Cairo execution performance, Pathfinder supports "native execution". 
 --rpc.native-execution true
 ```
 
+:::note
+Native execution is only available in builds compiled with `--features cairo-native`, which requires LLVM and MLIR 19 when building from source.
+:::
+
 #### Limitations
 
 - Only Sierra 1.7+ classes can be compiled. This practically makes native execution only available for classes that have been compiled with a recent version of the Cairo compiler.
