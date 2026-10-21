@@ -70,7 +70,7 @@ You can view the logs of your Pathfinder Docker container using the command: `do
 <details>
 <summary><strong>How can I get real-time updates of new blocks?</strong></summary>
 
-Use the WebSocket API to subscribe to the `newHeads` event, which provides real-time notifications for new blocks added to the blockchain.
+Use the WebSocket API to subscribe to the `starknet_subscribeNewHeads` event, which provides real-time notifications for new blocks added to the blockchain.
 </details>
 
 <details>
