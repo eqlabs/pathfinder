@@ -6,7 +6,7 @@ sidebar_position: 5
 
 Pathfinder provides a dedicated monitoring API that can be enabled at startup. This API helps operators verify node health, confirm readiness, gauge synchronization progress, and capture metrics for observability.
 
-To enable the monitoring endpoints, use the `--monitor-address` configuration option (or the `MONITOR_ADDRESS` environment variable). For example, when running Pathfinder from source:
+To enable the monitoring endpoints, use the `--monitor-address` configuration option (or the `PATHFINDER_MONITOR_ADDRESS` environment variable). For example, when running Pathfinder from source:
 
 ```bash
 cargo run --release --bin pathfinder -- \

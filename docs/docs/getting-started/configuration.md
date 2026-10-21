@@ -136,7 +136,7 @@ Similarly, if you built Pathfinder from source and want to a prune state trie:
 
 ```bash
 cargo run --release --bin pathfinder -- \
-    --network testnet \
+    --network sepolia-testnet \
     --storage.state-tries=0
 ```
 
@@ -190,7 +190,7 @@ Similarly, if you built Pathfinder from source and want to a prune older blocks:
 
 ```bash
 cargo run --release --bin pathfinder -- \
-    --network testnet \
+    --network sepolia-testnet \
     --storage.blockchain-history=0
 ```
 
@@ -232,7 +232,7 @@ Pathfinder can also be configured via environment variables, which take second p
 
 By convention, environment variables for Pathfinder begin with `PATHFINDER_` and are in SCREAMING_SNAKE_CASE. 
 
-For instance, the `--ethereum-api-url` command-line option corresponds to `PATHFINDER_ETHEREUM_API_URL`, and `--network` to `PATHFINDER_NETWORK`, etc.
+For instance, the `--ethereum.url` command-line option corresponds to `PATHFINDER_ETHEREUM_API_URL`, and `--network` to `PATHFINDER_NETWORK`, etc.
 
 When using Docker, pass environment variables via the `-e` option:
 
