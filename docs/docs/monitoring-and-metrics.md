@@ -60,7 +60,7 @@ curl -i http://localhost:9000/ready
 
 ## Synced Status
 
-The Synced Status endpoint (`/ready/synced`) extends the readiness check by ensuring that Pathfinder is within six blocks of the network’s current tip. This guarantees that the node is both ready and nearly fully synced.
+The Synced Status endpoint (`/ready/synced`) extends the readiness check by ensuring that Pathfinder is fewer than six blocks behind the network’s current tip. This guarantees that the node is both ready and nearly fully synced.
 
 **Example**:
 ```bash
@@ -69,7 +69,7 @@ curl -i http://localhost:9000/ready/synced
 
 **Expected Responses:**
 - `200 OK`: The node is ready for requests and closely tracking the chain’s latest blocks.  
-- `503 Service Unavailable`: The node is still starting or more than six blocks behind the network tip.
+- `503 Service Unavailable`: The node is still starting or more than five blocks behind the network tip.
 
 ---
 
