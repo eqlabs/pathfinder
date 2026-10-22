@@ -28,7 +28,7 @@ docker run \
   swmansion/pathfinder:latest \
   --network mainnet \
   --monitor-address=0.0.0.0:9000 \
-  --rpc.websocket.enabled \
+  --rpc.websocket.enabled
 ```
 
 If you built Pathfinder from source, pass options after `--` so cargo doesn’t parse them:
