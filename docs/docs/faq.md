@@ -92,12 +92,6 @@ Yes, you can configure Pathfinder to connect to a custom network by specifying t
 </details>
 
 <details>
-<summary><strong>How do I monitor my Pathfinder node?</strong></summary>
-
-Use the monitoring API endpoints (`/health`, `/ready`, `/ready/synced`) and integrate Prometheus metrics for detailed monitoring. For more information, refer to the [Monitoring API section](monitoring-and-metrics).
-</details>
-
-<details>
 <summary><strong>What should I do if my node is not syncing?</strong></summary>
 
 Ensure your Ethereum endpoint is accessible and has archive capabilities, and verify that your hardware meets the performance requirements.
