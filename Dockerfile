@@ -15,7 +15,7 @@
 # build context, so rustup never sees the pin and the build always uses the Rust
 # that ships in this image (we exclude it so rustup doesn't re-download the
 # toolchain's components on every build)
-FROM --platform=$BUILDPLATFORM lukemathwalker/cargo-chef:0.1.77-rust-1.95.0-slim-bookworm AS cargo-chef
+FROM --platform=$BUILDPLATFORM lukemathwalker/cargo-chef:0.1.77-rust-1.96.0-slim-bookworm AS cargo-chef
 WORKDIR /usr/src/pathfinder
 
 FROM --platform=$BUILDPLATFORM cargo-chef AS rust-planner
