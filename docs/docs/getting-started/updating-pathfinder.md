@@ -15,7 +15,7 @@ When a new version of Pathfinder is released, you'll need to update your node to
 When Pathfinder detects a new release, it will log a message similar to:
 
 ```plaintext
-WARN New pathfinder release available! Please consider updating your node! release=0.14.3
+WARN New pathfinder release available! Please consider updating your node! release=0.24.2
 ```
 
 To update to the latest version:
@@ -53,9 +53,10 @@ Your node should now run the latest version without losing any stored data.
 
 If you built Pathfinder from source, follow these steps to update:
 
-1. Pull the latest changes from the repository: 
+1. Fetch the latest release tags and check out the new version:
    ```bash
-   git pull
+   git fetch --tags
+   git checkout <latest-version-tag>
    ```
 2. Rebuild your pathfinder node:
    ```bash
