@@ -5,7 +5,7 @@ slug: /faq
 
 # Frequently Asked Questions
 
-This section addresses common issues and questions that might arise while running or developing with Pathfinder. If you don’t find your answer here, consider searching the [GitHub issues](https://github.com/software-mansion/pathfinder/issues) or asking in the [Starknet Discord channel](https://discord.com/invite/QypNMzkHbc).
+This section addresses common issues and questions that might arise while running or developing with Pathfinder. If you don’t find your answer here, consider searching the [GitHub issues](https://github.com/software-mansion/pathfinder/issues) or asking in the [Starknet Discord channel](https://discord.com/invite/starknet-community).
 
 <details>
 <summary><strong>What is Pathfinder?</strong></summary>
