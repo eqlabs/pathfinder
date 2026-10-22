@@ -78,13 +78,10 @@ If you are looking to use the Pathfinder full node as part of a validator setup,
 
 ## Community and Support
 
-We highly value community engagement, especially during this alpha phase. Whether you encounter a bug, have a feature request, or need help using Pathfinder, we’d love to hear from you.
+We highly value community engagement. Whether you encounter a bug, have a feature request, or need help using Pathfinder, we’d love to hear from you.
 
 You can contribute to Pathfinder by:
 
 * **Opening an Issue**: If you encounter bugs or have feature requests, please open an issue on our [GitHub repository](https://github.com/software-mansion/pathfinder/issues/new).
 * **Joining our Community**: Connect with other users and developers by joining the Starknet [Discord channel](https://discord.com/invite/starknet-community).
 * **Contributing to the Codebase**: If you’re interested in contributing to Pathfinder, check out our [contributing guidelines](https://github.com/software-mansion/pathfinder/blob/main/contributing.md) and [open issues](https://github.com/software-mansion/pathfinder/issues) on GitHub.
-
-
-
