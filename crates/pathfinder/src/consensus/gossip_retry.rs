@@ -24,12 +24,14 @@ pub(crate) struct GossipRetryConfig {
 impl Default for GossipRetryConfig {
     fn default() -> Self {
         Self {
-            // Recoverable errors: exponential backoff with fewer retries since these indicate
-            // transient network issues that should resolve quickly.
+            // Recoverable errors: exponential backoff with fewer retries since
+            // these indicate transient network issues that should resolve
+            // quickly.
             max_retries: 10,
-            // NoPeersSubscribedToTopic: more retries with fixed delay since this is expected
-            // during startup when no peers are subscribed to the topic yet. The longer delay (5s)
-            // gives peers more time to subscribe before retrying.
+            // NoPeersSubscribedToTopic: more retries with fixed delay since
+            // this is expected during startup when no peers are subscribed to
+            // the topic yet. The longer delay (5s) gives peers more time to
+            // subscribe before retrying.
             max_no_peers_subscribed_retries: 20,
             initial_retry_delay_ms: 2000,       // 2 seconds
             no_peers_subscribed_delay_ms: 5000, // 5 seconds
@@ -125,7 +127,8 @@ where
                 );
                 return Ok(());
             }
-            // Duplicate means the message was already published, so treat as success.
+            // Duplicate means the message was already published, so treat as
+            // success.
             Err(PublishError::Duplicate) => {
                 tracing::debug!(
                     validator = %validator_address,
@@ -135,8 +138,8 @@ where
                 );
                 return Ok(());
             }
-            // This error variant means "no peers subscribed to the topic" (renamed to
-            // NoPeersSubscribedToTopic in newer libp2p versions).
+            // This error variant means "no peers subscribed to the topic"
+            // (renamed to NoPeersSubscribedToTopic in newer libp2p versions).
             Err(PublishError::NoPeersSubscribedToTopic) => {
                 no_peers_subscribed_retry_count += 1;
                 if no_peers_subscribed_retry_count >= config.max_no_peers_subscribed_retries {
@@ -225,7 +228,8 @@ pub(crate) fn is_gossip_error_recoverable(error: &p2p::libp2p::gossipsub::Publis
     use p2p::libp2p::gossipsub::PublishError;
 
     match error {
-        // These are handled separately in gossip_with_retry and should never reach here.
+        // These are handled separately in gossip_with_retry and should never
+        // reach here.
         PublishError::NoPeersSubscribedToTopic => {
             unreachable!("NoPeersSubscribedToTopic handled separately")
         }

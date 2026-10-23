@@ -70,8 +70,8 @@ pub async fn get_transaction_status(
                 crate::dto::TxnFinalityStatus::AcceptedOnL2 => {
                     Output::AcceptedOnL2((execution_status).into())
                 }
-                // This is technically not possible: pending data is either PreConfirmed or
-                // AcceptedOnL2.
+                // This is technically not possible: pending data is either
+                // PreConfirmed or AcceptedOnL2.
                 crate::dto::TxnFinalityStatus::AcceptedOnL1 => {
                     Output::AcceptedOnL1((execution_status).into())
                 }

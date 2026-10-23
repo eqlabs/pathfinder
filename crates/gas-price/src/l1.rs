@@ -307,8 +307,9 @@ impl L1GasPriceProvider {
 
         let (avg_base_fee, avg_blob_fee) = match self.get_average_prices(timestamp) {
             Ok(prices) => prices,
-            // NoDataAvailable and StaleData mean we can't compute an average for
-            // this timestamp, not that the proposal is wrong. Treat as insufficient data.
+            // NoDataAvailable and StaleData mean we can't compute an average
+            // for this timestamp, not that the proposal is wrong. Treat as
+            // insufficient data.
             Err(e) => {
                 tracing::debug!(error = %e, "L1 gas price data unavailable for validation");
                 return L1GasPriceValidationResult::InsufficientData;

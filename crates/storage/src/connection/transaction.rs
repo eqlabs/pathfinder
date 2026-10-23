@@ -846,7 +846,8 @@ pub(crate) mod dto {
     #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct L1Gas {
-        // TODO make these mandatory once some new release makes resyncing necessary
+        // TODO make these mandatory once some new release makes resyncing
+        // necessary
         pub l1_gas: Option<u128>,
         pub l1_data_gas: Option<u128>,
     }
@@ -1192,8 +1193,9 @@ pub(crate) mod dto {
             Self {
                 from_address: Faker.fake_with_rng(rng),
                 payload: fake::vec![MinimalFelt; 1..10],
-                // Create a Felt using only 160 bits. This is required because p2p specification
-                // uses the wrong type to represent this field.
+                // Create a Felt using only 160 bits. This is required because
+                // p2p specification uses the wrong type to represent this
+                // field.
                 to_address: MinimalFelt(Felt::from_be_slice(&fake::vec![u8; 20]).unwrap()),
             }
         }
@@ -1350,7 +1352,8 @@ pub(crate) mod dto {
             let ReceiptV3 {
                 actual_fee,
                 execution_resources,
-                // This information is redundant as it is already in the transaction itself.
+                // This information is redundant as it is already in the
+                // transaction itself.
                 l2_to_l1_messages,
                 transaction_hash,
                 transaction_index,

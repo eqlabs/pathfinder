@@ -363,11 +363,12 @@ async fn current_known_tx_status(
 
         let (block_number, finality_status, execution_status) = match l1_state {
             Some(l1_state) if l1_state.block_number >= block_number => (
-                // NOTE: This is not necessarily the block in which the transaction was accepted on
-                // L1, but the block at which we are certain that the L1 state contains the
-                // transaction.
+                // NOTE: This is not necessarily the block in which the
+                // transaction was accepted on L1, but the block at which we are
+                // certain that the L1 state contains the transaction.
                 //
-                // I don't think there is a way for us to provide the information on the former.
+                // I don't think there is a way for us to provide the
+                // information on the former.
                 l1_state.block_number,
                 FinalityStatus::AcceptedOnL1,
                 execution_status,
@@ -1126,8 +1127,9 @@ mod tests {
                         }
                         .into(),
                         BlockNumber::GENESIS + 3,
-                        // Previous block promoted to the immediate (un-committed) parent.
-                        // This should not result in a notification because it would have a
+                        // Previous block promoted to the immediate
+                        // (un-committed) parent. This should not result in a
+                        // notification because it would have a
                         // duplicate `PRE_CONFIRMED` status.
                         vec![crate::pending::PreLatestData {
                             block: crate::pending::PreLatestBlock {
@@ -1168,8 +1170,8 @@ mod tests {
                     )
                     .unwrap(),
                 ),
-                // No message expected for the pre-latest update since it would be a duplicate
-                // of the pre-confirmed update.
+                // No message expected for the pre-latest update since it would
+                // be a duplicate of the pre-confirmed update.
                 TestEvent::L2Block(
                     L2Block {
                         header: BlockHeader {

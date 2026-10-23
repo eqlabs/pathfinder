@@ -94,7 +94,8 @@ pub async fn trace_transaction(
                     header,
                     pending.pre_confirmed_transactions().to_vec(),
                     pending_state,
-                    // Can't use the cache for pending blocks since they have no block hash.
+                    // Can't use the cache for pending blocks since they have no
+                    // block hash.
                     pathfinder_executor::TraceCache::default(),
                 )
             } else if let Some((parent_tx, header, txs)) = pending.and_then(|p| {
@@ -127,7 +128,8 @@ pub async fn trace_transaction(
                     header,
                     txs,
                     pending_state,
-                    // Can't use the cache for pending blocks since they have no block hash.
+                    // Can't use the cache for pending blocks since they have no
+                    // block hash.
                     pathfinder_executor::TraceCache::default(),
                 )
             } else {

@@ -666,7 +666,8 @@ mod tests {
                     class_hash: class_hash!("0xcaadd"),
                     selector: Some(entry_point!("0xeeeee")),
                 }),
-                // An interim string representation of the in-contract call trace
+                // An interim string representation of the in-contract call
+                // trace
                 Frame::StringFrame(
                     "Error at pc=0:4273:\nCairo traceback (most recent call last):\nUnknown \
                      location (pc=0:67)\nUnknown location (pc=0:1997)\nUnknown location \
@@ -679,7 +680,8 @@ mod tests {
                     class_hash: class_hash!("0x2222caadd"),
                     selector: Some(entry_point!("0x2222eeeee")),
                 }),
-                // An interim string representation of the in-contract call trace
+                // An interim string representation of the in-contract call
+                // trace
                 Frame::StringFrame(
                     "Error at pc=0:4273:\nCairo traceback (most recent call last):\nUnknown \
                      location (pc=0:67)\nUnknown location (pc=0:1997)\nUnknown location \

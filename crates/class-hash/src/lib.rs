@@ -106,9 +106,9 @@ pub fn compute_class_hash(
             .map(|hash| {
                 (
                     hash,
-                    // It is safe to reinterpret the serialized definition as a Sierra definition
-                    // since the parsing step succeeded and confirmed it is a
-                    // Sierra definition.
+                    // It is safe to reinterpret the serialized definition as a
+                    // Sierra definition since the parsing step succeeded and
+                    // confirmed it is a Sierra definition.
                     SerializedClassDefinition::Sierra(SerializedSierraDefinition::from(
                         serialized_definition.into_inner(),
                     )),
@@ -120,8 +120,9 @@ pub fn compute_class_hash(
             .map(|hash| {
                 (
                     hash,
-                    // It is safe to reinterpret the serialized definition as a Cairo definition
-                    // since the parsing step succeeded and confirmed it is a Cairo definition.
+                    // It is safe to reinterpret the serialized definition as a
+                    // Cairo definition since the parsing step succeeded and
+                    // confirmed it is a Cairo definition.
                     SerializedClassDefinition::Cairo(SerializedCairoDefinition::from(
                         serialized_definition.into_inner(),
                     )),
@@ -813,7 +814,8 @@ pub mod json {
         #[serde(borrow)]
         pub debug_info: Option<&'a serde_json::value::RawValue>,
 
-        // Important that this is ordered by the numeric keys, not lexicographically
+        // Important that this is ordered by the numeric keys, not
+        // lexicographically
         pub hints: BTreeMap<u64, Vec<serde_json::Value>>,
 
         pub identifiers: serde_json::Value,
@@ -821,8 +823,8 @@ pub mod json {
         #[serde(borrow)]
         pub main_scope: Cow<'a, str>,
 
-        // Unlike most other integers, this one is hex string. We don't need to interpret it,
-        // it just needs to be part of the hashed output.
+        // Unlike most other integers, this one is hex string. We don't need to
+        // interpret it, it just needs to be part of the hashed output.
         #[serde(borrow)]
         pub prime: Cow<'a, str>,
 

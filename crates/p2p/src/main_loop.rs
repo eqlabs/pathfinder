@@ -208,7 +208,8 @@ where
             // ===========================
             //
             // A connection is established.
-            // If the connection is outbound, notify the caller that the dial succeeded.
+            // If the connection is outbound, notify the caller that the dial
+            // succeeded.
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
             } => {
@@ -272,9 +273,9 @@ where
             }
             // A peer is being dialed.
             SwarmEvent::Dialing {
-                // The only API available to the caller [`crate::core::Client`] only
-                // allows for dialing **known** peers, so we can discard the `None`
-                // case here.
+                // The only API available to the caller [`crate::core::Client`]
+                // only allows for dialing **known** peers, so we can discard
+                // the `None` case here.
                 peer_id: Some(peer_id),
                 connection_id: _, // TODO consider tracking connection ids for peers
             } => {
@@ -285,9 +286,9 @@ where
             // ===========================
             //
             // A peer is identified.
-            // The peer's observed address is added to our swarm's external addresses.
-            // If the peer supports Kademlia (our DHT protocol), the peer's listening addresses
-            // are added to the DHT.
+            // The peer's observed address is added to our swarm's external
+            // addresses. If the peer supports Kademlia (our DHT protocol), the
+            // peer's listening addresses are added to the DHT.
             SwarmEvent::Behaviour(Event::Identify(e)) => {
                 if let identify::Event::Received {
                     peer_id,
@@ -359,10 +360,11 @@ where
             //
             // A Kademlia event is received.
             // These events represent the progress of Kademlia DHT queries:
-            // - Bootstrap queries: Used when joining the network. -> We just log the success or
-            //   failure of the bootstrap.
-            // - GetClosestPeers queries: Used to find the closest peers to a given peer. -> We send
-            //   the response (the list of closest peers) back to the caller.
+            // - Bootstrap queries: Used when joining the network. -> We just
+            //   log the success or failure of the bootstrap.
+            // - GetClosestPeers queries: Used to find the closest peers to a
+            //   given peer. -> We send the response (the list of closest peers)
+            //   back to the caller.
             // - RoutingUpdated: A peer is added to the DHT.
             SwarmEvent::Behaviour(Event::Kademlia(e)) => match e {
                 kad::Event::OutboundQueryProgressed {
@@ -544,8 +546,9 @@ where
                     self.pending_dials.entry(peer_id)
                 {
                     match self.swarm.dial(
-                        // Dial a known peer with the given addresses only if it's not connected
-                        // yet and we haven't started dialing yet.
+                        // Dial a known peer with the given addresses only if
+                        // it's not connected yet and we haven't started dialing
+                        // yet.
                         DialOpts::peer_id(peer_id).addresses(addrs.clone()).build(),
                     ) {
                         Ok(_) => {

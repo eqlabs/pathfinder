@@ -100,7 +100,8 @@ impl TestEnvironment {
             info_watch_tx,
             storage.clone(),
             finalized_blocks,
-            // Only used for failure injection, which does not happen in these tests
+            // Only used for failure injection, which does not happen in these
+            // tests
             &PathBuf::default(),
             pathfinder_compiler::ResourceLimits::for_test(),
             pathfinder_compiler::BlockifierLibfuncs::default(),

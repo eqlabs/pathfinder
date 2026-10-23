@@ -1059,8 +1059,8 @@ fn parse_cors(inputs: Vec<String>) -> Result<Option<AllowedOrigins>, RpcCorsDoma
     let valid_origins = inputs
         .into_iter()
         .map(|input| match url::Url::parse(&input) {
-            // Valid URL but has to be limited to origin form, i.e. no path, query, trailing slash
-            // for default path etc.
+            // Valid URL but has to be limited to origin form, i.e. no path,
+            // query, trailing slash for default path etc.
             Ok(url) => {
                 let origin = url.origin();
 
@@ -1210,8 +1210,8 @@ pub struct Config {
     pub state_tries: Option<StateTries>,
     pub versioned_constants_map: VersionedConstantsMap,
     pub compiler_concurrency_limit: Option<NonZeroUsize>,
-    // Margin in bytes to subtract from total RAM when computing default compiler concurrency
-    // limit.
+    // Margin in bytes to subtract from total RAM when computing default
+    // compiler concurrency limit.
     pub compiler_concurrency_memory_margin: u64,
     pub compiler_resource_limits: pathfinder_compiler::ResourceLimits,
     pub blockifier_libfuncs: pathfinder_compiler::BlockifierLibfuncs,
@@ -1314,17 +1314,19 @@ impl NetworkConfig {
             (Some(Custom), _, _, _) => {
                 unreachable!("`--network custom` requirements are handled by clap derive")
             }
-            // Handle non-custom variants in an inner match so that the compiler will force
-            // us to handle a new network variants explicitly. Otherwise we end up with a
-            // catch-all arm that would swallow new variants silently.
+            // Handle non-custom variants in an inner match so that the compiler
+            // will force us to handle a new network variants explicitly.
+            // Otherwise we end up with a catch-all arm that would swallow new
+            // variants silently.
             (Some(non_custom), None, None, None) => match non_custom {
                 Mainnet => NetworkConfig::Mainnet,
                 SepoliaTestnet => NetworkConfig::SepoliaTestnet,
                 SepoliaIntegration => NetworkConfig::SepoliaIntegration,
                 Custom => unreachable!("Network::Custom handled in outer arm already"),
             },
-            // clap does not support disallowing args based on an enum value, so we have check for
-            // `--network non-custom` + custom required args manually.
+            // clap does not support disallowing args based on an enum value, so
+            // we have check for `--network non-custom` + custom required args
+            // manually.
             _ => {
                 use clap::error::ErrorKind;
 
@@ -1444,8 +1446,9 @@ impl ConsensusConfig {
             }
 
             Self {
-                // TODO: This is the only supported starknet version for consensus at the moment.
-                // TBD how a node's starknet version should be configured.
+                // TODO: This is the only supported starknet version for
+                // consensus at the moment. TBD how a node's starknet version
+                // should be configured.
                 my_starknet_version: StarknetVersion::V_0_14_0,
                 my_validator_address: ContractAddress(
                     consensus_cli

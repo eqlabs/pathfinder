@@ -701,11 +701,11 @@ pub(crate) mod tests {
                             // Number of calls
                             call_param!("0x1"),
                             CallParam(*universal_deployer_address.get()),
-                            // Entry point selector for the called contract, i.e.
-                            // AccountCallArray::selector
+                            // Entry point selector for the called contract,
+                            // i.e. AccountCallArray::selector
                             CallParam(EntryPoint::hashed(b"deployContract").0),
-                            // Length of the call data for the called contract, i.e.
-                            // AccountCallArray::data_len
+                            // Length of the call data for the called contract,
+                            // i.e. AccountCallArray::data_len
                             call_param!("0x4"),
                             // classHash
                             CallParam(contract_hash.0),
@@ -749,11 +749,11 @@ pub(crate) mod tests {
                             // Number of calls
                             call_param!("0x1"),
                             CallParam(*DEPLOYED_CONTRACT_ADDRESS.get()),
-                            // Entry point selector for the called contract, i.e.
-                            // AccountCallArray::selector
+                            // Entry point selector for the called contract,
+                            // i.e. AccountCallArray::selector
                             CallParam(EntryPoint::hashed(b"get_data").0),
-                            // Length of the call data for the called contract, i.e.
-                            // AccountCallArray::data_len
+                            // Length of the call data for the called contract,
+                            // i.e. AccountCallArray::data_len
                             call_param!("0x0"),
                         ],
                         proof_facts: vec![],
@@ -789,11 +789,11 @@ pub(crate) mod tests {
                             // Number of calls
                             call_param!("0x1"),
                             CallParam(*DEPLOYED_CONTRACT_ADDRESS.get()),
-                            // Entry point selector for the called contract, i.e.
-                            // AccountCallArray::selector
+                            // Entry point selector for the called contract,
+                            // i.e. AccountCallArray::selector
                             CallParam(EntryPoint::hashed(b"get_data").0),
-                            // Length of the call data for the called contract, i.e.
-                            // AccountCallArray::data_len
+                            // Length of the call data for the called contract,
+                            // i.e. AccountCallArray::data_len
                             call_param!("0x0"),
                         ],
                         proof_facts: vec![],
@@ -834,11 +834,11 @@ pub(crate) mod tests {
                             // Number of calls
                             call_param!("0x1"),
                             CallParam(*DEPLOYED_CONTRACT_ADDRESS.get()),
-                            // Entry point selector for the called contract, i.e.
-                            // AccountCallArray::selector
+                            // Entry point selector for the called contract,
+                            // i.e. AccountCallArray::selector
                             CallParam(EntryPoint::hashed(b"get_data").0),
-                            // Length of the call data for the called contract, i.e.
-                            // AccountCallArray::data_len
+                            // Length of the call data for the called contract,
+                            // i.e. AccountCallArray::data_len
                             call_param!("0x0"),
                         ],
                         proof_facts: vec![],
@@ -2688,7 +2688,8 @@ pub(crate) mod tests {
         let input = SimulateTransactionInput {
             transactions: vec![BroadcastedTransaction::Invoke(
                 BroadcastedInvokeTransaction::V3(BroadcastedInvokeTransactionV3 {
-                    // Calldata length over the limit, the rest of the fields should not matter.
+                    // Calldata length over the limit, the rest of the fields
+                    // should not matter.
                     calldata: vec![call_param!("0x123"); CALLDATA_LIMIT + 5],
 
                     nonce: transaction_nonce!("0x1"),
@@ -2728,7 +2729,8 @@ pub(crate) mod tests {
         let input = SimulateTransactionInput {
             transactions: vec![BroadcastedTransaction::Invoke(
                 BroadcastedInvokeTransaction::V3(BroadcastedInvokeTransactionV3 {
-                    // Signature length over the limit, the rest of the fields should not matter.
+                    // Signature length over the limit, the rest of the fields
+                    // should not matter.
                     signature: vec![
                         transaction_signature_elem!("0x123");
                         SIGNATURE_ELEMENT_LIMIT + 5

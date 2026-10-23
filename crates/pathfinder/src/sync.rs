@@ -225,7 +225,8 @@ impl Clone for LatestStream {
         Self {
             // Keep the rx for the next clone
             rx: self.rx.clone(),
-            // Create a new stream from the cloned rx, don't yield the initial value
+            // Create a new stream from the cloned rx, don't yield the initial
+            // value
             stream: WatchStream::from_changes(self.rx.clone()),
         }
     }
@@ -383,7 +384,8 @@ mod tests {
         last_event_rx.recv().await.unwrap();
 
         let mut interval = tokio::time::interval_at(
-            // Give sync some slack to process the last event and commit the last block
+            // Give sync some slack to process the last event and commit the
+            // last block
             tokio::time::Instant::now() + Duration::from_millis(500),
             Duration::from_millis(200),
         );
@@ -675,8 +677,8 @@ mod tests {
                     (0..=4)
                         .map(|_| AtomicU64::new((0..CHECKPOINT_BLOCKS).fake()))
                         .chain(
-                            // The last block is always error free to ease checking for sync
-                            // completion
+                            // The last block is always error free to ease
+                            // checking for sync completion
                             (5..=9).map(|_| {
                                 AtomicU64::new((CHECKPOINT_BLOCKS..ALL_BLOCKS - 1).fake())
                             }),

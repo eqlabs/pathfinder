@@ -527,8 +527,8 @@ where
             // fail.
             (BlockNumber::GENESIS, BlockHash::ZERO)
         }
-        // head() retries on non starknet errors so any other starknet error code indicates
-        // a problem with the feeder gateway
+        // head() retries on non starknet errors so any other starknet error
+        // code indicates a problem with the feeder gateway
         Err(error) => {
             tracing::error!(%error, "Error fetching latest block from gateway");
             Err(error).context("Fetching latest block from gateway")?

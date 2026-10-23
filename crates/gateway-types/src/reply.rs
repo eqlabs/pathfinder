@@ -724,8 +724,8 @@ pub mod transaction {
     #[derive(Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     pub enum ExecutionStatus {
-        // This must be the default as pre v0.12.1 receipts did not contain this value and
-        // were always success as reverted did not exist.
+        // This must be the default as pre v0.12.1 receipts did not contain this
+        // value and were always success as reverted did not exist.
         #[default]
         Succeeded,
         Reverted,
@@ -852,7 +852,8 @@ pub mod transaction {
                 actual_fee,
                 events,
                 execution_resources,
-                // This information is redundant as it is already in the transaction itself.
+                // This information is redundant as it is already in the
+                // transaction itself.
                 l1_to_l2_consumed_message: _,
                 l2_to_l1_messages,
                 transaction_hash,
@@ -958,8 +959,9 @@ pub mod transaction {
         pub l1_gas: ResourceBound,
         #[serde(rename = "L2_GAS")]
         pub l2_gas: ResourceBound,
-        // Introduced in Starknet v0.13.4. This has to be optional because not sending it to the
-        // gateway is not equivalent to sending an explicit zero bound.
+        // Introduced in Starknet v0.13.4. This has to be optional because not
+        // sending it to the gateway is not equivalent to sending an explicit
+        // zero bound.
         #[serde(
             default,
             skip_serializing_if = "Option::is_none",
@@ -1990,9 +1992,9 @@ pub mod transaction {
     pub struct InvokeTransactionV0 {
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,
-        // `contract_address` is the historic name for this field. `sender_address` was introduced
-        // with starknet v0.11. As of April 2024 the historic name is still used in older
-        // blocks.
+        // `contract_address` is the historic name for this field.
+        // `sender_address` was introduced with starknet v0.11. As of April 2024
+        // the historic name is still used in older blocks.
         #[serde(alias = "contract_address")]
         pub sender_address: ContractAddress,
         pub entry_point_selector: EntryPoint,
@@ -2063,7 +2065,8 @@ pub mod transaction {
     pub struct L1HandlerTransaction {
         pub contract_address: ContractAddress,
         pub entry_point_selector: EntryPoint,
-        // FIXME: remove once starkware fixes their gateway bug which was missing this field.
+        // FIXME: remove once starkware fixes their gateway bug which was
+        // missing this field.
         #[serde(default)]
         pub nonce: TransactionNonce,
         pub calldata: Vec<CallParam>,

@@ -75,8 +75,8 @@ pub struct BuiltinCounters {
 
 #[derive(Clone, Default, Debug, PartialEq, Eq, Dummy)]
 pub enum ExecutionStatus {
-    // This must be the default as pre v0.12.1 receipts did not contain this value and
-    // were always success as reverted did not exist.
+    // This must be the default as pre v0.12.1 receipts did not contain this
+    // value and were always success as reverted did not exist.
     #[default]
     Succeeded,
     Reverted {

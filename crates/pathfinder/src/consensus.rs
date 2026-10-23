@@ -45,8 +45,8 @@ pub struct ConsensusTaskHandles {
     pub consensus_p2p_event_processing_handle: ConsensusP2PEventProcessingTaskHandle,
     pub consensus_engine_handle: ConsensusEngineTaskHandle,
     pub consensus_channels: Option<ConsensusChannels>,
-    // Use to `join()` the worker pool, so that it's threads don't panic when the `p2p_task` is
-    // cancelled.
+    // Use to `join()` the worker pool, so that it's threads don't panic when
+    // the `p2p_task` is cancelled.
     pub worker_pool: Option<ValidatorWorkerPool>,
 }
 

@@ -355,8 +355,9 @@ pub(super) async fn poll_pre_confirmed<S: GatewayApi + Clone + Send + 'static>(
             fetch_missing_blocks(&sequencer, &window, committed, number, bridge, generation).await;
 
         match bridge {
-            // Serve when the tip's own contents changed, when the tip advanced, or when the window
-            // generation increased, i.e. when an updated view is available.
+            // Serve when the tip's own contents changed, when the tip advanced,
+            // or when the window generation increased, i.e. when an updated
+            // view is available.
             Some(parents) if changed || served != Some((number, generation)) => {
                 let accumulated = state
                     .accumulated
@@ -379,13 +380,14 @@ pub(super) async fn poll_pre_confirmed<S: GatewayApi + Clone + Send + 'static>(
                     ),
                 }
             }
-            // Nothing new to serve for this tip, keep the cache fresh for cold-start readers.
+            // Nothing new to serve for this tip, keep the cache fresh for
+            // cold-start readers.
             Some(_) => {
                 tracing::trace!("No change in pre-confirmed block data");
                 cache.mark_fresh();
             }
-            // We failed to fetch a missing block or the tip is not ahead of committed. Keep the
-            // last good view.
+            // We failed to fetch a missing block or the tip is not ahead of
+            // committed. Keep the last good view.
             None => {
                 if number > committed {
                     tracing::debug!(
@@ -1321,7 +1323,8 @@ mod tests {
                         block: block_with_tx(tx_for(height)),
                     })
                 }
-                // Completion fetches always fail — serving must not depend on them.
+                // Completion fetches always fail — serving must not depend on
+                // them.
                 _ => Err(SequencerError::InvalidResponse("no completions".into())),
             });
 

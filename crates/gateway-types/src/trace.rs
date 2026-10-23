@@ -151,8 +151,8 @@ pub struct TransactionTrace {
     pub fee_transfer_invocation: Option<FunctionInvocation>,
     #[serde(deserialize_with = "capped_felts")]
     pub signature: Vec<Felt>,
-    // This is present for get_block_traces but not for an individual transaction's
-    // trace in get_transaction_trace.
+    // This is present for get_block_traces but not for an individual
+    // transaction's trace in get_transaction_trace.
     pub transaction_hash: Option<TransactionHash>,
 }
 

@@ -230,7 +230,8 @@ impl PathfinderInstance {
                     .context("Clearing rpc port")?;
                 Ok(false)
             }
-            // The process is still running. The previous port value is still valid.
+            // The process is still running. The previous port value is still
+            // valid.
             Ok(None) => Ok(false),
             // An error occurred while checking the process status.
             Err(e) => Err(anyhow::anyhow!(
@@ -366,8 +367,8 @@ impl Config {
                 boot_peers: Vec::new(),
                 sync_enabled: false,
                 my_validator_address: (i + 1) as u8,
-                // The set is deduplicated when consensus task is started, so including the own
-                // validator address is fine.
+                // The set is deduplicated when consensus task is started, so
+                // including the own validator address is fine.
                 validator_addresses: (1..=set_size as u8).collect::<Vec<_>>(),
                 test_dir: test_dir.clone(),
                 pathfinder_bin: pathfinder_bin.to_path_buf(),

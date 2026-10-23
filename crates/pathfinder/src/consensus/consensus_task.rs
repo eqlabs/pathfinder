@@ -140,9 +140,10 @@ pub fn spawn(
                     tracing::info!("🧠 ℹ️  {validator_address} consensus event: {event:?}");
 
                     match event {
-                        // The consensus engine wants us to propose a block for the given height and
-                        // round. We create a proposal, feed its commitment back to the engine, and
-                        // cache the proposal for gossiping when the engine requests so.
+                        // The consensus engine wants us to propose a block for
+                        // the given height and round. We create a proposal,
+                        // feed its commitment back to the engine, and cache the
+                        // proposal for gossiping when the engine requests so.
                         ConsensusEvent::RequestProposal { height, round, .. } => {
                             tracing::info!(
                                 "🧠 🔍 {validator_address} is proposing at height {height}, round \
@@ -229,8 +230,8 @@ pub fn spawn(
                                 }
                             }
                         }
-                        // The consensus engine wants us to gossip a message via the P2P consensus
-                        // network.
+                        // The consensus engine wants us to gossip a message via
+                        // the P2P consensus network.
                         ConsensusEvent::Gossip(msg) => {
                             // Note: sometimes the engine will request gossiping
                             // votes for heights
@@ -250,7 +251,8 @@ pub fn spawn(
                                 .await
                                 .expect("Gossip request receiver not to be dropped");
                         }
-                        // Consensus has been reached for the given height and value.
+                        // Consensus has been reached for the given height and
+                        // value.
                         ConsensusEvent::Decision {
                             height,
                             round,
@@ -340,10 +342,11 @@ pub fn spawn(
                     tracing::info!("🧠 ⚙️  {validator_address} handling command {cmd:?}");
 
                     match &cmd {
-                        // Sometimes messages for the next height are received before the engine
-                        // decides upon the current height. In such case we need to ensure that a
-                        // consensus engine is already started for this new height carried in those
-                        // messages.
+                        // Sometimes messages for the next height are received
+                        // before the engine decides upon the current height. In
+                        // such case we need to ensure that a consensus engine
+                        // is already started for this new height carried in
+                        // those messages.
                         ConsensusCommand::Proposal(_) | ConsensusCommand::Vote(_) => {
                             if let ConsensusCommand::Vote(ref signed_vote) = cmd {
                                 let vote = &signed_vote.vote;

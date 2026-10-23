@@ -121,12 +121,14 @@ pub mod add_transaction {
         // AccountTransaction properties
         pub max_fee: Fee,
         pub signature: &'a [TransactionSignatureElem],
-        // NOTE: this is optional because Invoke v0 transactions do not have a nonce
+        // NOTE: this is optional because Invoke v0 transactions do not have a
+        // nonce
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub nonce: Option<TransactionNonce>,
 
         pub sender_address: ContractAddress,
-        // NOTE: this is optional because only Invoke v0 transactions have an entry point selector
+        // NOTE: this is optional because only Invoke v0 transactions have an
+        // entry point selector
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub entry_point_selector: Option<EntryPoint>,
         pub calldata: &'a [CallParam],
@@ -174,7 +176,8 @@ pub mod add_transaction {
         // Transaction properties
         pub version: TransactionVersion,
 
-        // AccountTransaction properties -- except for nonce which is non-optional here
+        // AccountTransaction properties -- except for nonce which is
+        // non-optional here
         pub max_fee: Fee,
         pub signature: &'a [TransactionSignatureElem],
 

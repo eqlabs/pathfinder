@@ -401,8 +401,8 @@ pub fn spawn(
 
                                 Ok(ComputationSuccess::Continue)
                             }
-                            // Sync confirms that the block at given height has been committed to
-                            // storage.
+                            // Sync confirms that the block at given height has
+                            // been committed to storage.
                             SyncMessageToConsensus::ConfirmBlockCommitted { number } => {
                                 tracing::trace!(
                                     %number, "🖧  📥 {validator_address} confirm finalized block committed"
@@ -567,8 +567,9 @@ pub fn spawn(
                             )))
                         }
                     },
-                    // Consensus has reached a positive decision on this proposal so the proposal's
-                    // execution needs to be finalized and the resulting block has to be committed
+                    // Consensus has reached a positive decision on this
+                    // proposal so the proposal's execution needs to be
+                    // finalized and the resulting block has to be committed
                     // to the database.
                     P2PTaskEvent::MarkBlockAsDecidedAndCleanUp(height_and_round, value) => {
                         tracing::info!(
@@ -1590,7 +1591,8 @@ mod tests {
                     storage.clone(),
                     ResourceLimits::for_test(),
                     BlockifierLibfuncs::default(),
-                    // The smallest config that reproduced the issue until it was fixed
+                    // The smallest config that reproduced the issue until it
+                    // was fixed
                     Some(ProposalCreationConfig {
                         num_batches: NonZeroUsize::new(3).unwrap(),
                         batch_len: NonZeroUsize::new(1).unwrap(),

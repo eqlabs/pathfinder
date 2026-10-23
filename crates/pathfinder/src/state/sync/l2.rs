@@ -842,8 +842,8 @@ async fn download_block(
                 Err(SequencerError::StarknetError(err)) if err.code == BlockNotFound.into() => {
                     return Ok(DownloadBlock::Wait);
                 }
-                // head() retries on non starknet errors so any other starknet error code indicates
-                // a problem with the feeder gateway
+                // head() retries on non starknet errors so any other starknet
+                // error code indicates a problem with the feeder gateway
                 Err(error) => {
                     tracing::error!(%error, "Error fetching latest block from gateway");
                     Err(error).context("Fetching latest block from gateway")?
@@ -874,12 +874,13 @@ async fn download_block(
                         .map(|(block_hash, _state_commitment)| *block_hash)
                 };
                 match our_block_hash {
-                    // Our chain is still valid, it's just that a new block has not been
-                    // published yet.
+                    // Our chain is still valid, it's just that a new block has
+                    // not been published yet.
                     Some(our_block_hash) if our_block_hash == seq_head_hash => {
                         Ok(DownloadBlock::Wait)
                     }
-                    // Our chain is not valid anymore so there must have been a reorg.
+                    // Our chain is not valid anymore so there must have been a
+                    // reorg.
                     Some(_) => Ok(DownloadBlock::Reorg),
                     None => {
                         // The block hash to compare to sequencer's could not be

@@ -83,7 +83,8 @@ async fn node_main(args: Box<config::NodeArgs>) -> anyhow::Result<Storage> {
     );
 
     info!(
-        // this is expected to be $(last_git_tag)-$(commits_since)-$(commit_hash)
+        // this is expected to be
+        // $(last_git_tag)-$(commits_since)-$(commit_hash)
         version = pathfinder_version::VERSION,
         "🏁 Starting node."
     );
@@ -432,7 +433,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
                     config.verify_tree_hashes,
                     config.compiler_resource_limits,
                     config.blockifier_libfuncs,
-                    // Does nothing in production builds. Used for integration testing only.
+                    // Does nothing in production builds. Used for integration
+                    // testing only.
                     integration_testing_config.inject_failure_config(),
                 )
             } else {
@@ -1312,8 +1314,9 @@ fn handle_critical_task_result(
             tracing::error!(%error, %task_name, "Task panicked");
             Err(anyhow::anyhow!("{task_name} task panicked"))
         }
-        // Cancelling all tracked tasks via [`util::task::tracker::close()`] does not cause join
-        // errors on registered task handles, so this is unexpected and we should threat it as error
+        // Cancelling all tracked tasks via [`util::task::tracker::close()`]
+        // does not cause join errors on registered task handles, so this is
+        // unexpected and we should threat it as error
         Err(_) => {
             tracing::error!(%task_name, "Task was cancelled unexpectedly");
             Err(anyhow::anyhow!(

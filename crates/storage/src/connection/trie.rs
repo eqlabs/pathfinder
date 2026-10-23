@@ -551,8 +551,8 @@ impl Transaction<'_> {
                 Node::Edge { child, .. } => {
                     to_process.push(*child);
                 }
-                // Leaves are not stored as separate nodes but are instead serialized in-line in
-                // their parents.
+                // Leaves are not stored as separate nodes but are instead
+                // serialized in-line in their parents.
                 Node::LeafEdge { .. } | Node::LeafBinary => {}
             }
         }
