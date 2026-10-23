@@ -15,7 +15,7 @@ The JSON-RPC interface allows you to query Starknet data, send transactions, and
   Exposed via `/rpc/pathfinder/v0_1`.
 
 :::note
-The API served at the root path (`/` for HTTP and `/ws` for WebSocket) can be set via the `--rpc.root-version` parameter (or `RPC_ROOT_VERSION` environment variable). Since a version upgrade _might_ change the version of the JSON-RPC API exposed on this path using this path is not recommended. Please use one of the explicitly versioned paths above.
+The API served at the root path (`/` for HTTP and `/ws` for WebSocket) can be set via the `--rpc.root-version` parameter (or `PATHFINDER_RPC_ROOT_VERSION` environment variable). Since a version upgrade _might_ change the version of the JSON-RPC API exposed on this path using this path is not recommended. Please use one of the explicitly versioned paths above.
 :::
 
 ## API Endpoints and Usage
@@ -79,4 +79,3 @@ For advanced use cases like verifying storage proofs or generating special debug
 /rpc/pathfinder/v0_1
 ```
 The complete specification for these JSON-only extension methods can be found in the [Pathfinder repository](https://github.com/software-mansion/pathfinder/blob/main/specs/rpc/pathfinder_rpc_api.json).
-

@@ -1,4 +1,3 @@
-version: "3"
 services:
   starknet-node:
     image: swmansion/pathfinder:latest

@@ -144,7 +144,7 @@ pub struct NodeArgs {
 Examples:
     alchemy: wss://eth-mainnet.g.alchemy.com/v2/<PROJECT_ID>
     geth:    wss://localhost:8545",
-        value_name = "HTTP(s) URL",
+        value_name = "WS(s) URL",
         value_hint = clap::ValueHint::Url,
         env = "PATHFINDER_ETHEREUM_API_URL",
     )]
@@ -526,9 +526,9 @@ This should only be enabled for debugging purposes as it adds substantial proces
         long = "rpc.compiler.concurrency-limit",
         long_help = "Maximum number of concurrent Sierra to CASM compilations for RPC calls.
 Default value is computed based on the formula:
-                     
+
     min(floor((total_ram - margin) / compiler_max_memory_usage), num_cpu_cores)
-                     
+
 where:
     `margin` is the value of --compiler.concurrency-memory-margin-mib
     `compiler_max_memory_usage` is the value of --compiler.max-memory-usage-mib option.",
@@ -538,7 +538,7 @@ where:
 
     #[arg(
         long = "compiler.concurrency-memory-margin-mib",
-        long_help = "Memory margin assumed for normal operation when computing compiler concurrency limit in MiB. 
+        long_help = "Memory margin assumed for normal operation when computing compiler concurrency limit in MiB.
 
 See --rpc.compiler.concurrency-limit for more details.",
         env = "PATHFINDER_COMPILER_CONCURRENCY_MEMORY_MARGIN_MIB",
@@ -549,7 +549,7 @@ See --rpc.compiler.concurrency-limit for more details.",
 
     #[arg(
         long = "compiler.max-memory-usage-mib",
-        long_help = "Maximum memory usage for the compiler in MiB. 
+        long_help = "Maximum memory usage for the compiler in MiB.
 
 Setting this value too low may cause compilation of large classes to fail.",
         env = "PATHFINDER_COMPILER_MAX_MEMORY_USAGE_MIB",
@@ -560,7 +560,7 @@ Setting this value too low may cause compilation of large classes to fail.",
 
     #[arg(
         long = "compiler.max-cpu-time-secs",
-        long_help = "Maximum CPU time for the compiler in seconds. 
+        long_help = "Maximum CPU time for the compiler in seconds.
 
 Setting this value too low may cause compilation of large classes to fail.",
         env = "PATHFINDER_COMPILER_MAX_CPU_TIME_SECONDS",

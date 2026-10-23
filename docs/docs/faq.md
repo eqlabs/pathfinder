@@ -5,7 +5,7 @@ slug: /faq
 
 # Frequently Asked Questions
 
-This section addresses common issues and questions that might arise while running or developing with Pathfinder. If you don’t find your answer here, consider searching the [GitHub issues](https://github.com/software-mansion/pathfinder/issues) or asking in the [Starknet Discord channel](https://discord.com/invite/QypNMzkHbc).
+This section addresses common issues and questions that might arise while running or developing with Pathfinder. If you don’t find your answer here, consider searching the [GitHub issues](https://github.com/software-mansion/pathfinder/issues) or asking in the [Starknet Discord channel](https://discord.com/invite/starknet-community).
 
 <details>
 <summary><strong>What is Pathfinder?</strong></summary>
@@ -70,7 +70,7 @@ You can view the logs of your Pathfinder Docker container using the command: `do
 <details>
 <summary><strong>How can I get real-time updates of new blocks?</strong></summary>
 
-Use the WebSocket API to subscribe to the `newHeads` event, which provides real-time notifications for new blocks added to the blockchain.
+Use the WebSocket API to subscribe to the `starknet_subscribeNewHeads` event, which provides real-time notifications for new blocks added to the blockchain.
 </details>
 
 <details>
@@ -89,12 +89,6 @@ You can contribute by opening issues, submitting pull requests, or joining the S
 <summary><strong>Can I use Pathfinder with a custom Starknet network?</strong></summary>
 
 Yes, you can configure Pathfinder to connect to a custom network by specifying the `--network custom` command line option and providing the appropriate gateway URLs. For more details, refer to the [custom network section](getting-started/configuration#custom-networks-and-gateway-proxies).
-</details>
-
-<details>
-<summary><strong>How do I monitor my Pathfinder node?</strong></summary>
-
-Use the monitoring API endpoints (`/health`, `/ready`, `/ready/synced`) and integrate Prometheus metrics for detailed monitoring. For more information, refer to the [Monitoring API section](monitoring-and-metrics).
 </details>
 
 <details>

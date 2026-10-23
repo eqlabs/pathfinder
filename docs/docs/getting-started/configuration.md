@@ -28,7 +28,7 @@ docker run \
   swmansion/pathfinder:latest \
   --network mainnet \
   --monitor-address=0.0.0.0:9000 \
-  --rpc.websocket.enabled \
+  --rpc.websocket.enabled
 ```
 
 If you built Pathfinder from source, pass options after `--` so cargo doesn’t parse them:
@@ -136,7 +136,7 @@ Similarly, if you built Pathfinder from source and want to a prune state trie:
 
 ```bash
 cargo run --release --bin pathfinder -- \
-    --network testnet \
+    --network sepolia-testnet \
     --storage.state-tries=0
 ```
 
@@ -190,7 +190,7 @@ Similarly, if you built Pathfinder from source and want to a prune older blocks:
 
 ```bash
 cargo run --release --bin pathfinder -- \
-    --network testnet \
+    --network sepolia-testnet \
     --storage.blockchain-history=0
 ```
 
@@ -216,6 +216,10 @@ To improve Cairo execution performance, Pathfinder supports "native execution". 
 --rpc.native-execution true
 ```
 
+:::note
+Native execution is only available in builds compiled with `--features cairo-native`, which requires LLVM and MLIR 19 when building from source.
+:::
+
 #### Limitations
 
 - Only Sierra 1.7+ classes can be compiled. This practically makes native execution only available for classes that have been compiled with a recent version of the Cairo compiler.
@@ -232,7 +236,7 @@ Pathfinder can also be configured via environment variables, which take second p
 
 By convention, environment variables for Pathfinder begin with `PATHFINDER_` and are in SCREAMING_SNAKE_CASE. 
 
-For instance, the `--ethereum-api-url` command-line option corresponds to `PATHFINDER_ETHEREUM_API_URL`, and `--network` to `PATHFINDER_NETWORK`, etc.
+For instance, the `--ethereum.url` command-line option corresponds to `PATHFINDER_ETHEREUM_API_URL`, and `--network` to `PATHFINDER_NETWORK`, etc.
 
 When using Docker, pass environment variables via the `-e` option:
 

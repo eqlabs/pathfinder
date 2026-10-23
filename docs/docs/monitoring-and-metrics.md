@@ -6,7 +6,7 @@ sidebar_position: 5
 
 Pathfinder provides a dedicated monitoring API that can be enabled at startup. This API helps operators verify node health, confirm readiness, gauge synchronization progress, and capture metrics for observability.
 
-To enable the monitoring endpoints, use the `--monitor-address` configuration option (or the `MONITOR_ADDRESS` environment variable). For example, when running Pathfinder from source:
+To enable the monitoring endpoints, use the `--monitor-address` configuration option (or the `PATHFINDER_MONITOR_ADDRESS` environment variable). For example, when running Pathfinder from source:
 
 ```bash
 cargo run --release --bin pathfinder -- \
@@ -60,7 +60,7 @@ curl -i http://localhost:9000/ready
 
 ## Synced Status
 
-The Synced Status endpoint (`/ready/synced`) extends the readiness check by ensuring that Pathfinder is within six blocks of the network’s current tip. This guarantees that the node is both ready and nearly fully synced.
+The Synced Status endpoint (`/ready/synced`) extends the readiness check by ensuring that Pathfinder is fewer than six blocks behind the network’s current tip. This guarantees that the node is both ready and nearly fully synced.
 
 **Example**:
 ```bash
@@ -69,7 +69,7 @@ curl -i http://localhost:9000/ready/synced
 
 **Expected Responses:**
 - `200 OK`: The node is ready for requests and closely tracking the chain’s latest blocks.  
-- `503 Service Unavailable`: The node is still starting or more than six blocks behind the network tip.
+- `503 Service Unavailable`: The node is still starting or more than five blocks behind the network tip.
 
 ---
 
