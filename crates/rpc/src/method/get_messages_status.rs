@@ -99,10 +99,12 @@ async fn get_messages_status_impl(
 
         use get_transaction_status::Output as TxStatus;
         let (finality_status, execution_status) = match status {
-            // Since Starknet 0.14, get_transaction_status isn't supposed to return Received or
-            // Rejected for L1 handler transactions; the cases are kept for backwards compatibility,
-            // more explicit error handling can be added if/when they actually happen. Moreover
-            // Transaction finality status Rejected has been removed in RPC v0.9.
+            // Since Starknet 0.14, get_transaction_status isn't supposed to
+            // return Received or Rejected for L1 handler transactions; the
+            // cases are kept for backwards compatibility, more explicit error
+            // handling can be added if/when they actually happen. Moreover
+            // Transaction finality status Rejected has been removed in RPC
+            // v0.9.
             TxStatus::Received => (FinalityStatus::Received, None),
             TxStatus::PreConfirmed(ref exec_status) => {
                 (FinalityStatus::PreConfirmed, Some(exec_status.clone()))

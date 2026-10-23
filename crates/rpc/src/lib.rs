@@ -1270,8 +1270,8 @@ pub mod test_utils {
 
         let pre_confirmed_block = crate::pending::PendingBlocks {
             pre_confirmed: crate::pending::PreConfirmedBlock {
-                // Pre-confirmed block is two blocks after latest when pre-latest
-                // is also present.
+                // Pre-confirmed block is two blocks after latest when
+                // pre-latest is also present.
                 number: latest.number + 2,
                 l1_gas_price: GasPrices {
                     price_in_wei: GasPrice::from_be_slice(b"gas price").unwrap(),

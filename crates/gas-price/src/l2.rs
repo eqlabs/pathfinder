@@ -174,9 +174,9 @@ mod tests {
     fn l2_gas_constants_match_with_apollo(#[case] version: StarknetVersion) {
         let pathfinder_c = L2GasPriceConstants::for_version(version);
         let apollo_c = match version {
-            // Apollo's constants are only versioned starting from v0.14.0, so for older
-            // versions (which are expected to be same as v0.14.0) we use the v0.14.0
-            // constants.
+            // Apollo's constants are only versioned starting from v0.14.0, so
+            // for older versions (which are expected to be same as v0.14.0) we
+            // use the v0.14.0 constants.
             StarknetVersion::V_0_13_2 | StarknetVersion::V_0_13_4 | StarknetVersion::V_0_14_0 => {
                 &*apollo_versioned_constants::VERSIONED_CONSTANTS_V0_14_0
             }

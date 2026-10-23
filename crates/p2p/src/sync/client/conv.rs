@@ -324,8 +324,9 @@ impl ToDto<p2p_proto::sync::receipt::Receipt> for (&TransactionVariant, Receipt)
                 .map(|m| MessageToL1 {
                     from_address: m.from_address.0,
                     payload: m.payload.into_iter().map(|p| p.0).collect(),
-                    // FIXME: to_address is incorrect in the p2p specification and should actually
-                    // be a Felt type. Once the spec is fixed, we can remove this temporary hack.
+                    // FIXME: to_address is incorrect in the p2p specification
+                    // and should actually be a Felt type. Once the spec is
+                    // fixed, we can remove this temporary hack.
                     to_address: EthereumAddress(primitive_types::H160::from_slice(
                         &m.to_address.0.to_be_bytes()[12..],
                     )),
@@ -556,7 +557,8 @@ impl TryFromDto<p2p_proto::sync::transaction::TransactionVariant> for Transactio
                 let class_hash = ClassHash(x.class_hash.0);
 
                 Self::DeployV0(DeployTransactionV0 {
-                    // Computing the address is CPU intensive, so we do it later on.
+                    // Computing the address is CPU intensive, so we do it later
+                    // on.
                     contract_address: ContractAddress::ZERO,
                     contract_address_salt,
                     class_hash,
@@ -570,7 +572,8 @@ impl TryFromDto<p2p_proto::sync::transaction::TransactionVariant> for Transactio
                 let class_hash = ClassHash(x.class_hash.0);
 
                 Self::DeployV1(DeployTransactionV1 {
-                    // Computing the address is CPU intensive, so we do it later on.
+                    // Computing the address is CPU intensive, so we do it later
+                    // on.
                     contract_address: ContractAddress::ZERO,
                     contract_address_salt,
                     class_hash,
@@ -585,7 +588,8 @@ impl TryFromDto<p2p_proto::sync::transaction::TransactionVariant> for Transactio
                 let class_hash = ClassHash(x.class_hash.0);
 
                 Self::DeployAccountV1(DeployAccountTransactionV1 {
-                    // Computing the address is CPU intensive, so we do it later on.
+                    // Computing the address is CPU intensive, so we do it later
+                    // on.
                     contract_address: ContractAddress::ZERO,
                     max_fee: Fee(x.max_fee),
                     signature: x
@@ -607,7 +611,8 @@ impl TryFromDto<p2p_proto::sync::transaction::TransactionVariant> for Transactio
                 let class_hash = ClassHash(x.class_hash.0);
 
                 Self::DeployAccountV3(DeployAccountTransactionV3 {
-                    // Computing the address is CPU intensive, so we do it later on.
+                    // Computing the address is CPU intensive, so we do it later
+                    // on.
                     contract_address: ContractAddress::ZERO,
                     signature: x
                         .signature

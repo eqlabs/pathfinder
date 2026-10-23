@@ -301,8 +301,9 @@ impl StateUpdate {
                     .find_map(|(k, v)| (k == &key).then_some(FoundStorageValue::Set(*v)))
                     .or_else(|| {
                         update.class.as_ref().and_then(|c| match c {
-                            // If the contract has been deployed in pending but the key has not been
-                            // set yet return the default value of zero.
+                            // If the contract has been deployed in pending but
+                            // the key has not been set yet return the default
+                            // value of zero.
                             ContractClassUpdate::Deploy(_) => Some(FoundStorageValue::Zero),
                             ContractClassUpdate::Replace(_) => None,
                         })

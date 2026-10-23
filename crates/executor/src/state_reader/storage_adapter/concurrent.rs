@@ -97,10 +97,12 @@ impl StorageAdapter for ConcurrentStorageAdapter {
             ConcurrencyConfig {
                 enabled: true,
                 n_workers,
-                // Based on a very limited benchmark, 8 seems to be a good chunk size.
+                // Based on a very limited benchmark, 8 seems to be a good chunk
+                // size.
                 //
-                // Sample: 617 validation compatible blocks from mainnet, from within the
-                // (23173..=1473516) block range, 16 workers, 16 cores.
+                // Sample: 617 validation compatible blocks from mainnet, from
+                // within the (23173..=1473516) block range, 16 workers, 16
+                // cores.
                 //
                 // | Chunk size | Total execution time (normalized)
                 // +------------+-----------------------------------
@@ -741,8 +743,8 @@ mod decided {
                 assert_eq!(
                     casm_definition_at(
                         &two(),
-                        // Note: it's the genesis block that contains the matching class
-                        // definition
+                        // Note: it's the genesis block that contains the
+                        // matching class definition
                         BlockId::Number(BlockNumber::GENESIS + 1),
                         ClassHash::ZERO,
                     ),
@@ -821,8 +823,8 @@ mod decided {
                 assert_eq!(
                     class_definition_at_with_block_number(
                         &two(),
-                        // Note: it's the genesis block that contains the matching class
-                        // definition
+                        // Note: it's the genesis block that contains the
+                        // matching class definition
                         BlockId::Number(BlockNumber::GENESIS + 1),
                         ClassHash::ZERO,
                     ),
@@ -921,7 +923,8 @@ mod decided {
                 assert_eq!(
                     storage_value(
                         &two(),
-                        // Note: it's the genesis block that contains the matching storage entry
+                        // Note: it's the genesis block that contains the
+                        // matching storage entry
                         BlockId::Number(BlockNumber::GENESIS + 1),
                         ContractAddress::ZERO,
                         StorageAddress::ZERO,
@@ -932,7 +935,8 @@ mod decided {
                 assert_eq!(
                     storage_value(
                         &two(),
-                        // Note: it's the genesis block that contains the matching storage entry
+                        // Note: it's the genesis block that contains the
+                        // matching storage entry
                         BlockId::Number(BlockNumber::GENESIS + 1),
                         ContractAddress::TWO,
                         StorageAddress(Felt::ONE),
@@ -1043,7 +1047,8 @@ mod decided {
                 assert_eq!(
                     contract_nonce(
                         &two(),
-                        // Note: it's the genesis block that contains the matching nonce
+                        // Note: it's the genesis block that contains the
+                        // matching nonce
                         ContractAddress::ZERO,
                         BlockId::Number(BlockNumber::GENESIS + 1),
                     ),
@@ -1130,7 +1135,8 @@ mod decided {
                 assert_eq!(
                     contract_class_hash(
                         &two(),
-                        // Note: it's the genesis block that contains the matching class hash
+                        // Note: it's the genesis block that contains the
+                        // matching class hash
                         BlockId::Number(BlockNumber::GENESIS + 1),
                         ContractAddress::ZERO,
                     ),
@@ -1140,7 +1146,8 @@ mod decided {
                 assert_eq!(
                     contract_class_hash(
                         &two(),
-                        // Note: it's the genesis block that contains the matching class hash
+                        // Note: it's the genesis block that contains the
+                        // matching class hash
                         BlockId::Number(BlockNumber::GENESIS + 1),
                         ContractAddress::ONE,
                     ),
@@ -1243,7 +1250,8 @@ mod decided {
                 assert_eq!(
                     casm_hash_at(
                         &two(),
-                        // Note: it's the genesis block that contains the matching class
+                        // Note: it's the genesis block that contains the
+                        // matching class
                         BlockId::Number(BlockNumber::GENESIS + 1),
                         ClassHash::ZERO,
                     ),

@@ -1189,7 +1189,8 @@ mod tests {
 
         let invoke_tx = crate::types::request::BroadcastedInvokeTransaction::V3(
             BroadcastedInvokeTransactionV3 {
-                // Calldata length over the limit, the rest of the fields should not matter.
+                // Calldata length over the limit, the rest of the fields should
+                // not matter.
                 calldata: vec![call_param!("0x123"); CALLDATA_LIMIT + 5],
 
                 version: TransactionVersion::THREE,
@@ -1229,7 +1230,8 @@ mod tests {
 
         let invoke_tx = crate::types::request::BroadcastedInvokeTransaction::V3(
             BroadcastedInvokeTransactionV3 {
-                // Signature length over the limit, the rest of the fields should not matter.
+                // Signature length over the limit, the rest of the fields
+                // should not matter.
                 signature: vec![transaction_signature_elem!("0x123"); SIGNATURE_ELEMENT_LIMIT + 5],
 
                 version: TransactionVersion::THREE,

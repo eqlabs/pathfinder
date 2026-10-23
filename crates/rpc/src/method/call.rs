@@ -760,7 +760,8 @@ mod tests {
                         CallParam(EntryPoint::hashed(b"call").0),
                         // Length of the call data for the called contract
                         call_param!("0x1"),
-                        // Number of calls, but then no more data; leads to deserialization error
+                        // Number of calls, but then no more data; leads to
+                        // deserialization error
                         call_param!("0x1"),
                     ],
                 },
@@ -802,7 +803,8 @@ mod tests {
 
             let input = Input {
                 request: FunctionCall {
-                    // Calldata length over the limit, the rest of the fields should not matter.
+                    // Calldata length over the limit, the rest of the fields
+                    // should not matter.
                     calldata: vec![call_param!("0x123"); CALLDATA_LIMIT + 5],
 
                     contract_address: contract_address!("0xdeadbeef"),

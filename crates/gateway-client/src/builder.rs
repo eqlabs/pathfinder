@@ -189,7 +189,8 @@ impl Request<stage::Params> {
                 BlockTag::None,
             ),
             BlockId::Hash(hash) => ("blockHash", hash.0.to_hex_str(), BlockTag::None),
-            // These have to use "blockNumber", "blockHash" does not accept tags.
+            // These have to use "blockNumber", "blockHash" does not accept
+            // tags.
             BlockId::Latest => ("blockNumber", Cow::from("latest"), BlockTag::Latest),
             BlockId::Pending => ("blockNumber", Cow::from("pending"), BlockTag::Pending),
         };
@@ -518,7 +519,8 @@ fn retry_condition(e: &SequencerError) -> bool {
         }
         SequencerError::StarknetError(_) => false,
         // Failing to serialize or compress the request body is not retryable,
-        // because it is fully deterministic based on the input or allocated resources
+        // because it is fully deterministic based on the input or allocated
+        // resources
         SequencerError::GatewayRequestCreationError(_) => false,
         SequencerError::InvalidStarknetErrorVariant => {
             error!(reason=?e, "Request failed, retrying");

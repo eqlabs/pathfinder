@@ -64,13 +64,13 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                     ON class_definitions(block_number);
             ",
         },
-        // This table definition does not change but its content will be lost after the
-        // `class_definitions` table gets dropped.
+        // This table definition does not change but its content will be lost
+        // after the `class_definitions` table gets dropped.
         TableUpdate {
             table_name: "casm_definitions",
-            // Setting the FOREIGN KEY to the `class_definitions_new` table, the reference target
-            // will be renamed when the `class_definitions_new` table gets renamed to
-            // `class_definitions`.
+            // Setting the FOREIGN KEY to the `class_definitions_new` table, the
+            // reference target will be renamed when the `class_definitions_new`
+            // table gets renamed to `class_definitions`.
             create_table_stmt: r"
                 CREATE TABLE casm_definitions_new(
                     hash                BLOB    PRIMARY KEY NOT NULL,

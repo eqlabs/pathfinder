@@ -218,7 +218,8 @@ pub mod cairo {
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct CairoContractClass {
-        // Gzip-compressed then base64-encoded JSON representation of the program.
+        // Gzip-compressed then base64-encoded JSON representation of the
+        // program.
         pub program: String,
         pub entry_points_by_type: entry_point::ContractEntryPoints,
         pub abi: Option<Vec<abi::ContractAbiEntry>>,
@@ -575,9 +576,9 @@ pub mod cairo {
         pub enum FunctionAbiType {
             Function,
             L1Handler,
-            // This is missing from the v0.2 RPC specification and will be added in the
-            // next version. We add it as a deviation from the current spec, since it is
-            // effectively a bug in the v0.2 specification.
+            // This is missing from the v0.2 RPC specification and will be added
+            // in the next version. We add it as a deviation from the current
+            // spec, since it is effectively a bug in the v0.2 specification.
             Constructor,
         }
 
@@ -615,9 +616,9 @@ pub mod cairo {
             pub data: Option<Vec<TypedParameter>>,
             // The `inputs` and `outputs` property is not part of the JSON-RPC
             // specification, but because we use these types to parse the
-            // `starknet_estimateFee` request and then serialize the class definition in
-            // the transaction for the Python layer we have to keep this property when
-            // serializing.
+            // `starknet_estimateFee` request and then serialize the class
+            // definition in the transaction for the Python layer we have to
+            // keep this property when serializing.
             #[serde(skip_serializing_if = "Option::is_none")]
             #[serde(default)]
             inputs: Option<Vec<TypedParameter>>,
@@ -637,10 +638,10 @@ pub mod cairo {
             #[serde(skip_serializing_if = "Option::is_none")]
             #[serde(default)]
             pub outputs: Option<Vec<TypedParameter>>,
-            // This is not part of the JSON-RPC specification, but because we use these
-            // types to parse the `starknet_estimateFee` request and then serialize the
-            // class definition in the transaction for the Python layer we have to keep
-            // this property when serializing.
+            // This is not part of the JSON-RPC specification, but because we
+            // use these types to parse the `starknet_estimateFee` request and
+            // then serialize the class definition in the transaction for the
+            // Python layer we have to keep this property when serializing.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             #[serde(rename = "stateMutability")]
             pub state_mutability: Option<String>,

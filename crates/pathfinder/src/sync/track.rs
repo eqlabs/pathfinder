@@ -727,8 +727,8 @@ struct BlockData {
 /// If successful, returns the stored block's number and hash.
 struct StoreBlock {
     connection: pathfinder_storage::Connection,
-    // We need this so that we can create extra read-only transactions for parallel contract state
-    // updates
+    // We need this so that we can create extra read-only transactions for
+    // parallel contract state updates
     storage: Storage,
     // Verify trie node hashes when loading tries from DB.
     verify_tree_hashes: bool,

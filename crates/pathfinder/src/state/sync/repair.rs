@@ -242,7 +242,8 @@ mod tests {
                 let definition = definition.clone();
                 async move {
                     Ok(DownloadedClass::Cairo {
-                        // Return the computed hash, which differs from the declared one.
+                        // Return the computed hash, which differs from the
+                        // declared one.
                         hash: computed,
                         definition,
                     })

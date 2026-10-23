@@ -37,8 +37,8 @@ use crate::{IntoFee as _, IntoFelt, IntoStarkFelt as _, TryIntoStarkFee as _};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Receipt {
     pub actual_fee: Fee,
-    // TODO(validator) currently there's a mismatch between reexecution and historical receipts but
-    // it does not impact the commitment
+    // TODO(validator) currently there's a mismatch between reexecution and
+    // historical receipts but it does not impact the commitment
     pub execution_resources: pathfinder_common::receipt::ExecutionResources,
     pub l2_to_l1_messages: Vec<pathfinder_common::receipt::L2ToL1Message>,
     pub execution_status: pathfinder_common::receipt::ExecutionStatus,
@@ -1256,7 +1256,8 @@ pub(crate) fn to_state_diff<S: StorageAdapter + Clone>(
     Ok(StateDiff {
         storage_diffs,
         deployed_contracts,
-        // This info is not present in the state diff, so we need to pass it separately.
+        // This info is not present in the state diff, so we need to pass it
+        // separately.
         deprecated_declared_classes: old_declared_contracts.collect(),
         declared_classes: state_maps
             .compiled_class_hashes
@@ -1277,8 +1278,8 @@ pub(crate) fn to_state_diff<S: StorageAdapter + Clone>(
             })
             .collect(),
         replaced_classes,
-        // Migrated compiled classes are computed only during finalization, so they're not available
-        // after executing a single transaction.
+        // Migrated compiled classes are computed only during finalization, so
+        // they're not available after executing a single transaction.
         migrated_compiled_classes: Default::default(),
     })
 }

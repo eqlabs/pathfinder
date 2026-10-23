@@ -58,7 +58,8 @@ pub fn predeclare(
 pub struct PrepocessedSierra {
     // Class hash
     pub sierra_class_hash: SierraHash,
-    // Deserialized into a format compatible with p2p, and hence the validator (for execution)
+    // Deserialized into a format compatible with p2p, and hence the validator
+    // (for execution)
     pub cairo1_class_p2p: p2p_proto::class::Cairo1Class,
     // Re-serialized into a storage-compatible format
     pub sierra_class_ser: SerializedSierraDefinition,

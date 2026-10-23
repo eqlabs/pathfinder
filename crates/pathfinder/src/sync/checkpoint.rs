@@ -930,7 +930,8 @@ mod tests {
                 handle_header_stream(
                     stream::iter(streamed_headers),
                     head,
-                    // Causes mismatches for all block hashes because setup assumes Sepolia
+                    // Causes mismatches for all block hashes because setup
+                    // assumes Sepolia
                     ChainId::MAINNET,
                     public_key,
                     None,
@@ -1134,8 +1135,8 @@ mod tests {
                 handle_transaction_stream(
                     stream::iter(streamed_transactions),
                     storage.clone(),
-                    // Causes mismatches for all transaction hashes because setup assumes
-                    // ChainId::SEPOLIA_TESTNET
+                    // Causes mismatches for all transaction hashes because
+                    // setup assumes ChainId::SEPOLIA_TESTNET
                     ChainId::MAINNET,
                     BlockNumber::GENESIS,
                 )

@@ -202,8 +202,8 @@ fn sierra_class_as_native(
             &sierra_class.entry_points_by_type,
             version_id,
             optimization_level,
-            // `stats` - Passing a [cairo_native::statistics::Statistics] object enables collecting
-            // compilation statistics.
+            // `stats` - Passing a [cairo_native::statistics::Statistics] object
+            // enables collecting compilation statistics.
             Some(&mut stats),
         );
         update_compiler_metrics(&stats);

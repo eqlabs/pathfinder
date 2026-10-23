@@ -700,8 +700,8 @@ impl RunningEventFilter {
             .context("Querying last stored event filter to_block")?;
 
         let first_running_event_filter_block = match last_to_block {
-            // Last stored block was at the end of the running event filter range, no need
-            // to rebuild.
+            // Last stored block was at the end of the running event filter
+            // range, no need to rebuild.
             Some(last_to_block) if last_to_block == latest.get() => {
                 let next_block = latest + 1;
 
@@ -711,9 +711,10 @@ impl RunningEventFilter {
                 });
             }
             Some(last_to_block) => last_to_block + 1,
-            // Event filter table is empty, either because we haven't covered an entire range
-            // yet or the old filters have been pruned. Either way, rebuild the running event
-            // filter in the range that includes the latest block.
+            // Event filter table is empty, either because we haven't covered an
+            // entire range yet or the old filters have been pruned. Either way,
+            // rebuild the running event filter in the range that includes the
+            // latest block.
             None => latest
                 .get()
                 .checked_sub(latest.get() % AGGREGATE_BLOOM_BLOCK_RANGE_LEN)
@@ -1026,7 +1027,8 @@ mod tests {
             from_block: Some(expected_event.block_number),
             to_block: Some(expected_event.block_number),
             contract_addresses: vec![expected_event.from_address],
-            // We're using a key which is present in _all_ events as the 2nd key.
+            // We're using a key which is present in _all_ events as the 2nd
+            // key.
             keys: vec![vec![], vec![event_key!("0xdeadbeef")]],
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
@@ -1076,7 +1078,8 @@ mod tests {
                 hash: transaction_hash!("0xF"),
                 variant: common::TransactionVariant::InvokeV0(common::InvokeTransactionV0 {
                     calldata: vec![],
-                    // Only required because event insert rejects if this is None
+                    // Only required because event insert rejects if this is
+                    // None
                     sender_address: ContractAddress::new_or_panic(Felt::ZERO),
                     entry_point_type: Some(common::EntryPointType::External),
                     entry_point_selector: EntryPoint(Felt::ZERO),
@@ -1088,7 +1091,8 @@ mod tests {
                 hash: transaction_hash!("0x1"),
                 variant: common::TransactionVariant::InvokeV0(common::InvokeTransactionV0 {
                     calldata: vec![],
-                    // Only required because event insert rejects if this is None
+                    // Only required because event insert rejects if this is
+                    // None
                     sender_address: ContractAddress::new_or_panic(Felt::ZERO),
                     entry_point_type: Some(common::EntryPointType::External),
                     entry_point_selector: EntryPoint(Felt::ZERO),
@@ -1669,7 +1673,8 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_addresses: vec![],
-            // We're using a key which is present in _all_ events as the 2nd key.
+            // We're using a key which is present in _all_ events as the 2nd
+            // key.
             keys: vec![vec![], vec![event_key!("0xdeadbeef")]],
             page_size: emitted_events.len(),
             offset: 0,
@@ -1703,7 +1708,8 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_addresses: vec![],
-            // We're using a key which is present in _all_ events as the 2nd key...
+            // We're using a key which is present in _all_ events as the 2nd
+            // key...
             keys: vec![vec![], vec![event_key!("0xdeadbeef")]],
             page_size: emitted_events.len(),
             offset: 0,
@@ -1714,9 +1720,11 @@ mod tests {
         assert_eq!(
             events,
             PageOfEvents {
-                // ...but only events from the first bloom filter range are returned...
+                // ...but only events from the first bloom filter range are
+                // returned...
                 events: emitted_events[..events_per_block * 10].to_vec(),
-                // ...with a continuation token pointing to the next block range.
+                // ...with a continuation token pointing to the next block
+                // range.
                 continuation_token: Some(ContinuationToken {
                     block_number: BlockNumber::new_or_panic(10),
                     offset: 0,
@@ -1729,7 +1737,8 @@ mod tests {
             from_block: Some(events.continuation_token.unwrap().block_number),
             to_block: None,
             contract_addresses: vec![],
-            // We're using a key which is present in _all_ events as the 2nd key...
+            // We're using a key which is present in _all_ events as the 2nd
+            // key...
             keys: vec![vec![], vec![event_key!("0xdeadbeef")]],
             page_size: emitted_events.len(),
             offset: 0,
@@ -1741,8 +1750,8 @@ mod tests {
         assert_eq!(
             events,
             PageOfEvents {
-                // ...but only events from the second (loaded) and third (running) event filter
-                // range are returned...
+                // ...but only events from the second (loaded) and third
+                // (running) event filter range are returned...
                 events: emitted_events[events_per_block * 10..].to_vec(),
                 // ...without a continuation token.
                 continuation_token: None,

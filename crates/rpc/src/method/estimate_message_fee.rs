@@ -439,7 +439,8 @@ mod tests {
         let rpc = setup(Setup::Full).await.expect("RPC context");
         let input = EstimateMessageFeeInput {
             message: MsgFromL1 {
-                // Calldata length over the limit, the rest of the fields should not matter.
+                // Calldata length over the limit, the rest of the fields should
+                // not matter.
                 payload: vec![call_param!("0x123"); CALLDATA_LIMIT + 5],
 
                 to_address: contract_address!("0xdeadbeef"),

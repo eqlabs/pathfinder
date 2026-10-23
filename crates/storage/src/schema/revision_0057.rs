@@ -405,7 +405,8 @@ pub(crate) mod dto {
     #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct ExecutionDataAvailability {
-        // TODO make these mandatory once some new release makes resyncing necessary
+        // TODO make these mandatory once some new release makes resyncing
+        // necessary
         pub l1_gas: Option<u128>,
         pub l1_data_gas: Option<u128>,
     }
@@ -597,8 +598,8 @@ pub(crate) mod dto {
                     .into_iter()
                     .map(|x| x.as_inner().to_owned().into())
                     .collect(),
-                // This is lossless and safe only because at the time of migration only values of
-                // H160 were stored.
+                // This is lossless and safe only because at the time of
+                // migration only values of H160 were stored.
                 to_address: EthereumAddress(primitive_types::H160::from_slice(
                     &to_address.as_inner().as_be_bytes()[12..],
                 )),
@@ -645,7 +646,8 @@ pub(crate) mod dto {
             let Receipt {
                 actual_fee,
                 execution_resources,
-                // This information is redundant as it is already in the transaction itself.
+                // This information is redundant as it is already in the
+                // transaction itself.
                 l2_to_l1_messages,
                 transaction_hash,
                 transaction_index,
@@ -1086,8 +1088,8 @@ pub(crate) mod dto {
                     account_deployment_data,
                     calldata,
                     sender_address,
-                    // There can be _no_ proof_facts in storage for invoke transactions before this
-                    // migration has been performed.
+                    // There can be _no_ proof_facts in storage for invoke
+                    // transactions before this migration has been performed.
                     proof_facts: _,
                 }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),

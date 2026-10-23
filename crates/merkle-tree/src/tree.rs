@@ -114,8 +114,8 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
         let root_hash = if let Some(root) = self.root.as_ref() {
             match &mut *root.borrow_mut() {
-                // If the root node is unresolved that means that there have been no changes made
-                // to the tree.
+                // If the root node is unresolved that means that there have
+                // been no changes made to the tree.
                 InternalNode::Unresolved(idx) => storage
                     .hash(*idx)
                     .context("Fetching root node's hash")?

@@ -328,7 +328,8 @@ impl Account {
                 CallParam(fixtures::HELLO_CLASS_HASH.0),
                 // UDC Calldata - salt
                 self.fetch_add_deployment_salt(),
-                // UDC Calldata - not_from_zero, 0 for origin independent deployment
+                // UDC Calldata - not_from_zero, 0 for origin independent
+                // deployment
                 CallParam::ZERO,
                 // UDC Calldata - calldata to pass to the target contract
                 CallParam::ZERO,

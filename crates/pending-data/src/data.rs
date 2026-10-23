@@ -314,7 +314,8 @@ impl PendingData {
             state_update: Arc::clone(&state_update),
             aggregated_state_update: state_update,
             number: latest.number + 1,
-            // No uncommitted blocks, so it sits directly on the latest committed block.
+            // No uncommitted blocks, so it sits directly on the latest
+            // committed block.
             aggregated_lower_bound: latest.number,
         }
     }

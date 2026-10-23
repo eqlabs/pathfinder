@@ -86,10 +86,11 @@ impl<'de> Deserialize<'de> for RpcRequest<'de> {
         #[derive(Deserialize)]
         struct Helper<'a> {
             jsonrpc: Cow<'a, str>,
-            // Double-bag the ID. This is required because serde maps both None and Null to None.
+            // Double-bag the ID. This is required because serde maps both None
+            // and Null to None.
             //
-            // The first Option lets us distinguish between None and null. The second Option is
-            // then used to parse the null case.
+            // The first Option lets us distinguish between None and null. The
+            // second Option is then used to parse the null case.
             #[serde(default, deserialize_with = "deserialize_some")]
             id: Option<Option<IdHelper>>,
             method: Cow<'a, str>,

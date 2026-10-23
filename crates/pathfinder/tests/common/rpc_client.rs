@@ -127,9 +127,9 @@ async fn wait_for_block_exists_fut(
     block_height: u64,
     poll_interval: Duration,
     disallow_reverted_txns: bool,
-    // Propagates deserialization and unexpected reverted transaction errors back to the test. This
-    // way we can bail out earlier instead of waiting for the `utils::join_all` timeout, which will
-    // still mask the actual error.
+    // Propagates deserialization and unexpected reverted transaction errors
+    // back to the test. This way we can bail out earlier instead of waiting for
+    // the `utils::join_all` timeout, which will still mask the actual error.
     error_tx: mpsc::Sender<anyhow::Error>,
 ) {
     loop {
@@ -333,8 +333,9 @@ pub struct ConsensusInfoOutput {
 pub struct ApplicationPeerScore {
     #[serde(alias = "peer_id")]
     pub _peer_id: String,
-    // `serde_json` does not correctly support deserializing f64 with the `arbitrary_precision`
-    // feature enabled directly, so we need to work around this limitation
+    // `serde_json` does not correctly support deserializing f64 with the
+    // `arbitrary_precision` feature enabled directly, so we need to work around
+    // this limitation
     pub score: serde_json::Value,
 }
 

@@ -133,7 +133,8 @@ pub fn init_db(db_dir: &Path, proposer: Address) -> anyhow::Result<BootDb> {
         transaction_count: 0,
         event_count: 0,
         l1_da_mode: L1DataAvailabilityMode::Calldata,
-        // No transactions (and hence no receipts) in genesis, so the root of an empty tree is zero
+        // No transactions (and hence no receipts) in genesis, so the root of an
+        // empty tree is zero
         receipt_commitment: ReceiptCommitment(Felt::ZERO),
         state_diff_commitment: state_update.compute_state_diff_commitment(),
         state_diff_length: state_update.state_diff_length(),

@@ -149,7 +149,8 @@ impl_from_p2p_cli!("consensus");
 impl P2PSyncConfig {
     pub(crate) fn parse_or_exit(args: P2PSyncCli) -> Self {
         Self {
-            // SAFETY: core conversion is safe because we exit the process on error
+            // SAFETY: core conversion is safe because we exit the process on
+            // error
             core: args.core.into(),
             proxy: args.proxy,
             l1_checkpoint_override: parse_l1_checkpoint_or_exit(args.l1_checkpoint_override),
@@ -197,7 +198,8 @@ fn parse_l1_checkpoint_or_exit(
 impl P2PConsensusConfig {
     pub fn parse_or_exit(args: P2PConsensusCli) -> Self {
         Self {
-            // SAFETY: core conversion is safe because we exit the process on error
+            // SAFETY: core conversion is safe because we exit the process on
+            // error
             core: args.core.into(),
         }
     }

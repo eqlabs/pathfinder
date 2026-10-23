@@ -214,9 +214,9 @@ impl UnvalidatedPendingData {
                     parents,
                 }
                 .into(),
-                // The pre-confirmed tip's own state update is serialized with the
-                // committed head as its old root, so stamp it here just like the
-                // no-parent branch below.
+                // The pre-confirmed tip's own state update is serialized with
+                // the committed head as its old root, so stamp it here just
+                // like the no-parent branch below.
                 state_update: Arc::new(
                     StateUpdate::clone(&watched_pending_data.state_update)
                         .with_parent_state_commitment(latest.state_commitment),
@@ -418,7 +418,8 @@ mod tests {
             state_update: pre_confirmed_state_update.into(),
             aggregated_state_update: aggregated_state_update.into(),
             number: latest.number + 2,
-            // Overlay covers {latest+1, latest+2}, so it sits on the committed head.
+            // Overlay covers {latest+1, latest+2}, so it sits on the committed
+            // head.
             aggregated_lower_bound: latest.number,
         }
     }
@@ -437,7 +438,8 @@ mod tests {
         PendingData {
             blocks: PendingBlocks {
                 pre_confirmed: PreConfirmedBlock {
-                    // This is not okay. Should be latest.number + 2 to be valid.
+                    // This is not okay. Should be latest.number + 2 to be
+                    // valid.
                     number: latest.number + 3,
                     ..Default::default()
                 },

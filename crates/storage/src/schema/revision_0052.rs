@@ -343,7 +343,8 @@ mod dto {
     #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct ExecutionDataAvailability {
-        // TODO make these mandatory once some new release makes resyncing necessary
+        // TODO make these mandatory once some new release makes resyncing
+        // necessary
         pub l1_gas: Option<u128>,
         pub l1_data_gas: Option<u128>,
     }
@@ -499,8 +500,8 @@ mod dto {
                     .into_iter()
                     .map(|x| x.as_inner().to_owned().into())
                     .collect(),
-                // This is lossless and safe only because at the time of migration only values of
-                // H160 were stored.
+                // This is lossless and safe only because at the time of
+                // migration only values of H160 were stored.
                 to_address: EthereumAddress(primitive_types::H160::from_slice(
                     &to_address.as_inner().as_be_bytes()[12..],
                 )),
@@ -539,7 +540,8 @@ mod dto {
             let Receipt::V0(ReceiptV0 {
                 actual_fee,
                 execution_resources,
-                // This information is redundant as it is already in the transaction itself.
+                // This information is redundant as it is already in the
+                // transaction itself.
                 l2_to_l1_messages,
                 transaction_hash,
                 transaction_index,
@@ -951,8 +953,8 @@ mod dto {
                     account_deployment_data,
                     calldata,
                     sender_address,
-                    // There can be _no_ proof_facts in storage for invoke transactions before this
-                    // migration has been performed.
+                    // There can be _no_ proof_facts in storage for invoke
+                    // transactions before this migration has been performed.
                     proof_facts: _,
                 }) => Self::V0 {
                     hash: transaction_hash.as_inner().to_owned().into(),
@@ -1529,7 +1531,8 @@ pub(crate) mod old_dto {
         pub builtin_instance_counter: BuiltinCounters,
         pub n_steps: u64,
         pub n_memory_holes: u64,
-        // TODO make these mandatory once some new release makes resyncing necessary
+        // TODO make these mandatory once some new release makes resyncing
+        // necessary
         pub l1_gas: Option<u128>,
         pub l1_data_gas: Option<u128>,
     }
@@ -1678,8 +1681,8 @@ pub(crate) mod old_dto {
             Self {
                 from_address,
                 payload,
-                // This is lossless and safe only because at the time of migration only values of
-                // H160 were stored.
+                // This is lossless and safe only because at the time of
+                // migration only values of H160 were stored.
                 to_address: EthereumAddress(primitive_types::H160::from_slice(
                     &to_address.as_inner().as_be_bytes()[12..],
                 )),
@@ -1690,8 +1693,8 @@ pub(crate) mod old_dto {
     #[derive(Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     pub enum ExecutionStatus {
-        // This must be the default as pre v0.12.1 receipts did not contain this value and
-        // were always success as reverted did not exist.
+        // This must be the default as pre v0.12.1 receipts did not contain this
+        // value and were always success as reverted did not exist.
         #[default]
         Succeeded,
         Reverted,
@@ -1753,7 +1756,8 @@ pub(crate) mod old_dto {
                 actual_fee,
                 events: _,
                 execution_resources,
-                // This information is redundant as it is already in the transaction itself.
+                // This information is redundant as it is already in the
+                // transaction itself.
                 l1_to_l2_consumed_message: _,
                 l2_to_l1_messages,
                 transaction_hash,
@@ -2158,8 +2162,8 @@ pub(crate) mod old_dto {
                     account_deployment_data,
                     calldata,
                     sender_address,
-                    // There can be _no_ proof_facts in storage for invoke transactions before this
-                    // migration has been performed.
+                    // There can be _no_ proof_facts in storage for invoke
+                    // transactions before this migration has been performed.
                     proof_facts: _,
                 }) => Self::Invoke(InvokeTransaction::V3(self::InvokeTransactionV3 {
                     nonce,
@@ -2814,10 +2818,11 @@ pub(crate) mod old_dto {
     pub struct InvokeTransactionV0 {
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,
-        // contract_address is the historic name for this field. sender_address was
-        // introduced with starknet v0.11. Although the gateway no longer uses the historic
-        // name at all, this alias must be kept until a database migration fixes all historic
-        // transaction naming, or until regenesis removes them all.
+        // contract_address is the historic name for this field. sender_address
+        // was introduced with starknet v0.11. Although the gateway no longer
+        // uses the historic name at all, this alias must be kept until a
+        // database migration fixes all historic transaction naming, or until
+        // regenesis removes them all.
         #[serde(alias = "contract_address")]
         pub sender_address: ContractAddress,
         pub entry_point_selector: EntryPoint,
@@ -2836,10 +2841,11 @@ pub(crate) mod old_dto {
     pub struct InvokeTransactionV1 {
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,
-        // contract_address is the historic name for this field. sender_address was
-        // introduced with starknet v0.11. Although the gateway no longer uses the historic
-        // name at all, this alias must be kept until a database migration fixes all historic
-        // transaction naming, or until regenesis removes them all.
+        // contract_address is the historic name for this field. sender_address
+        // was introduced with starknet v0.11. Although the gateway no longer
+        // uses the historic name at all, this alias must be kept until a
+        // database migration fixes all historic transaction naming, or until
+        // regenesis removes them all.
         #[serde(alias = "contract_address")]
         pub sender_address: ContractAddress,
         pub max_fee: Fee,
@@ -2879,7 +2885,8 @@ pub(crate) mod old_dto {
     pub struct L1HandlerTransaction {
         pub contract_address: ContractAddress,
         pub entry_point_selector: EntryPoint,
-        // FIXME: remove once starkware fixes their gateway bug which was missing this field.
+        // FIXME: remove once starkware fixes their gateway bug which was
+        // missing this field.
         #[serde(default)]
         pub nonce: TransactionNonce,
         pub calldata: Vec<CallParam>,
